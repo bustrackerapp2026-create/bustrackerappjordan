@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "709096564919",
+    "project_id": "bustrackerappv2",
+    "storage_bucket": "bustrackerappv2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:709096564919:android:975d2f6880caed37554532",
+        "android_client_info": {
+          "package_name": "com.example.jordan_bus_tracker"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDuAc-U44PoJWII88hqZX6vRREFb3vo7ZI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
