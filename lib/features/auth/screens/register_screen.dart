@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../providers/auth_provider.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -9,13 +11,22 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  final _formKey = GlobalKey<FormState>();
+
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _busNumberController = TextEditingController();
+  final _routeController = TextEditingController();
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+
+  String _selectedUserType = 'passenger';
+
+  bool get _showDriverFields => _selectedUserType == 'driver';
 
   @override
   void dispose() {
@@ -23,27 +34,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _busNumberController.dispose();
+    _routeController.dispose();
     super.dispose();
   }
 
-  void _register() async {
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate()) return;
+
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
-
-    if (name.isEmpty ||
-        email.isEmpty ||
-        password.isEmpty ||
-        confirmPassword.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ الرجاء تعبئة جميع الحقول'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
+    final busNumber = _busNumberController.text.trim();
+    final route = _routeController.text.trim();
 
     if (password != confirmPassword) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -57,22 +61,43 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     setState(() => _isLoading = true);
 
-    // محاكاة إنشاء الحساب
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final authProvider = context.read<AuthProvider>();
 
-    setState(() => _isLoading = false);
+      await authProvider.signUp(
+        email: email,
+        password: password,
+        fullName: name,
+        userType: _selectedUserType,
+        busNumber: _showDriverFields ? busNumber : null,
+        route: _showDriverFields ? route : null,
+      );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('✅ تم إنشاء الحساب بنجاح!'),
-        backgroundColor: Colors.green,
-      ),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              '✅ تم إنشاء الحساب بنجاح! سيتم تفعيل حساب السائق بعد المراجعة.'),
+          backgroundColor: Colors.green,
+        ),
+      );
 
-    // العودة إلى شاشة تسجيل الدخول
-    Navigator.pop(context);
+      Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -86,7 +111,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF1A73E8),
+              AppTheme.primaryColor,
               Color(0xFF6C63FF),
             ],
           ),
@@ -142,238 +167,419 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                     ],
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // الاسم
-                      const Text(
-                        'الاسم الكامل',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'الاسم الكامل',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _nameController,
-                        decoration: InputDecoration(
-                          hintText: 'أحمد محمد',
-                          prefixIcon: const Icon(
-                            Icons.person_outline,
-                            color: AppTheme.primaryColor,
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _nameController,
+                          textInputAction: TextInputAction.next,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'الرجاء إدخال الاسم الكامل';
+                            }
+                            return null;
+                          },
+                          decoration: InputDecoration(
+                            hintText: 'أحمد محمد',
+                            prefixIcon: const Icon(
+                              Icons.person_outline,
                               color: AppTheme.primaryColor,
-                              width: 2,
                             ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // البريد الإلكتروني
-                      const Text(
-                        'البريد الإلكتروني',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: InputDecoration(
-                          hintText: 'example@gmail.com',
-                          prefixIcon: const Icon(
-                            Icons.email_outlined,
-                            color: AppTheme.primaryColor,
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(
-                              color: AppTheme.primaryColor,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // كلمة السر
-                      const Text(
-                        'كلمة السر',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _passwordController,
-                        obscureText: _obscurePassword,
-                        decoration: InputDecoration(
-                          hintText: '••••••••',
-                          prefixIcon: const Icon(
-                            Icons.lock_outline,
-                            color: AppTheme.primaryColor,
-                          ),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_off
-                                  : Icons.visibility,
-                              color: Colors.grey,
-                            ),
-                            onPressed: () {
-                              setState(
-                                  () => _obscurePassword = !_obscurePassword);
-                            },
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(
-                              color: AppTheme.primaryColor,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // تأكيد كلمة السر
-                      const Text(
-                        'تأكيد كلمة السر',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _confirmPasswordController,
-                        obscureText: _obscureConfirmPassword,
-                        decoration: InputDecoration(
-                          hintText: '••••••••',
-                          prefixIcon: const Icon(
-                            Icons.lock_outline,
-                            color: AppTheme.primaryColor,
-                          ),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscureConfirmPassword
-                                  ? Icons.visibility_off
-                                  : Icons.visibility,
-                              color: Colors.grey,
-                            ),
-                            onPressed: () {
-                              setState(() => _obscureConfirmPassword =
-                                  !_obscureConfirmPassword);
-                            },
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(
-                              color: AppTheme.primaryColor,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // زر إنشاء الحساب
-                      SizedBox(
-                        width: double.infinity,
-                        height: 55,
-                        child: ElevatedButton(
-                          onPressed: _isLoading ? null : _register,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
+                            filled: true,
+                            fillColor: Colors.grey.shade50,
+                            border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none,
                             ),
-                            elevation: 0,
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                color: AppTheme.primaryColor,
+                                width: 2,
+                              ),
+                            ),
                           ),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2.5,
-                                  ),
-                                )
-                              : const Text(
-                                  'إنشاء حساب',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // رابط العودة إلى تسجيل الدخول
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text(
-                            'لديك حساب بالفعل؟',
-                            style: TextStyle(color: Colors.grey),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'البريد الإلكتروني',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
                           ),
-                          const SizedBox(width: 4),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                            },
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppTheme.primaryColor,
-                              padding: EdgeInsets.zero,
-                              minimumSize: const Size(80, 30),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'الرجاء إدخال البريد الإلكتروني';
+                            }
+                            final emailRegex = RegExp(
+                              r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                            );
+                            if (!emailRegex.hasMatch(value.trim())) {
+                              return 'صيغة البريد الإلكتروني غير صحيحة';
+                            }
+                            return null;
+                          },
+                          decoration: InputDecoration(
+                            hintText: 'example@gmail.com',
+                            prefixIcon: const Icon(
+                              Icons.email_outlined,
+                              color: AppTheme.primaryColor,
                             ),
-                            child: const Text(
-                              'تسجيل الدخول',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
+                            filled: true,
+                            fillColor: Colors.grey.shade50,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                color: AppTheme.primaryColor,
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'كلمة السر',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _passwordController,
+                          obscureText: _obscurePassword,
+                          textInputAction: TextInputAction.next,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'الرجاء إدخال كلمة السر';
+                            }
+                            if (value.length < 6) {
+                              return 'كلمة السر يجب أن تكون 6 أحرف على الأقل';
+                            }
+                            return null;
+                          },
+                          decoration: InputDecoration(
+                            hintText: '••••••••',
+                            prefixIcon: const Icon(
+                              Icons.lock_outline,
+                              color: AppTheme.primaryColor,
+                            ),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                                color: Colors.grey,
+                              ),
+                              onPressed: () {
+                                setState(
+                                  () => _obscurePassword = !_obscurePassword,
+                                );
+                              },
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey.shade50,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                color: AppTheme.primaryColor,
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'تأكيد كلمة السر',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _confirmPasswordController,
+                          obscureText: _obscureConfirmPassword,
+                          textInputAction: TextInputAction.done,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'الرجاء تأكيد كلمة السر';
+                            }
+                            if (value != _passwordController.text) {
+                              return 'كلمة السر غير متطابقة';
+                            }
+                            return null;
+                          },
+                          decoration: InputDecoration(
+                            hintText: '••••••••',
+                            prefixIcon: const Icon(
+                              Icons.lock_outline,
+                              color: AppTheme.primaryColor,
+                            ),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscureConfirmPassword
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                                color: Colors.grey,
+                              ),
+                              onPressed: () {
+                                setState(
+                                  () => _obscureConfirmPassword =
+                                      !_obscureConfirmPassword,
+                                );
+                              },
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey.shade50,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                color: AppTheme.primaryColor,
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'نوع الحساب',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ChoiceChip(
+                                label: const Text('🚗 سائق'),
+                                selected: _selectedUserType == 'driver',
+                                onSelected: (selected) {
+                                  if (selected) {
+                                    setState(
+                                      () => _selectedUserType = 'driver',
+                                    );
+                                  }
+                                },
+                                selectedColor: AppTheme.primaryColor,
+                                backgroundColor: Colors.grey.shade200,
+                                labelStyle: TextStyle(
+                                  color: _selectedUserType == 'driver'
+                                      ? Colors.white
+                                      : Colors.black87,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ChoiceChip(
+                                label: const Text('🚶 راكب'),
+                                selected: _selectedUserType == 'passenger',
+                                onSelected: (selected) {
+                                  if (selected) {
+                                    setState(
+                                      () => _selectedUserType = 'passenger',
+                                    );
+                                  }
+                                },
+                                selectedColor: AppTheme.primaryColor,
+                                backgroundColor: Colors.grey.shade200,
+                                labelStyle: TextStyle(
+                                  color: _selectedUserType == 'passenger'
+                                      ? Colors.white
+                                      : Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _selectedUserType == 'driver'
+                              ? '📌 سيتم تفعيل حساب السائق بعد موافقة الإدارة.'
+                              : '📌 يمكنك استخدام التطبيق فوراً كراكب.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _selectedUserType == 'driver'
+                                ? Colors.orange.shade700
+                                : Colors.green.shade700,
+                          ),
+                        ),
+                        if (_showDriverFields) ...[
+                          const SizedBox(height: 20),
+                          const Text(
+                            'معلومات السائق (مطلوبة)',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: _busNumberController,
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              if (_showDriverFields &&
+                                  (value == null || value.trim().isEmpty)) {
+                                return 'الرجاء إدخال رقم الباص';
+                              }
+                              return null;
+                            },
+                            decoration: InputDecoration(
+                              hintText: 'رقم الباص (مثل: 123)',
+                              prefixIcon: const Icon(
+                                Icons.directions_bus,
+                                color: AppTheme.primaryColor,
+                              ),
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(
+                                  color: AppTheme.primaryColor,
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _routeController,
+                            textInputAction: TextInputAction.done,
+                            validator: (value) {
+                              if (_showDriverFields &&
+                                  (value == null || value.trim().isEmpty)) {
+                                return 'الرجاء إدخال المسار';
+                              }
+                              return null;
+                            },
+                            decoration: InputDecoration(
+                              hintText: 'المسار (مثل: عمان - الزرقاء)',
+                              prefixIcon: const Icon(
+                                Icons.route,
+                                color: AppTheme.primaryColor,
+                              ),
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(
+                                  color: AppTheme.primaryColor,
+                                  width: 2,
+                                ),
                               ),
                             ),
                           ),
                         ],
-                      ),
-                    ],
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 55,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _register,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryColor,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2.5,
+                                    ),
+                                  )
+                                : const Text(
+                                    'إنشاء حساب',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              'لديك حساب بالفعل؟',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                            const SizedBox(width: 4),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                              },
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppTheme.primaryColor,
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(80, 30),
+                              ),
+                              child: const Text(
+                                'تسجيل الدخول',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
