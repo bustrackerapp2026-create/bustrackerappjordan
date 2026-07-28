@@ -4,7 +4,7 @@ import '../models/user_model.dart';
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // ✅ حفظ بيانات المستخدم باستخدام UserModel
+  // ✅ حفظ بيانات المستخدم (يستخدم UserModel الذي يحتوي على phoneNumber)
   Future<void> saveUserData(UserModel user) async {
     try {
       final data = user.toMap();
@@ -15,7 +15,7 @@ class FirestoreService {
     }
   }
 
-  // ✅ جلب بيانات المستخدم كـ UserModel
+  // ✅ جلب بيانات المستخدم (يعيد UserModel الذي يحتوي على phoneNumber)
   Future<UserModel?> getUserData(String uid) async {
     try {
       final doc = await _firestore.collection('users').doc(uid).get();
@@ -38,7 +38,7 @@ class FirestoreService {
     }
   }
 
-  // ✅ تحديث بيانات المستخدم باستخدام Map (جزئي)
+  // ✅ تحديث بيانات المستخدم
   Future<void> updateUserData(String uid, Map<String, dynamic> data) async {
     try {
       await _firestore.collection('users').doc(uid).update(data);

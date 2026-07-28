@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import '../../../models/user_model.dart';
-import '../../../services/firestore_service.dart';
+
+// ✅ استخدام Package Import الموحد
+import 'package:jordan_bus_tracker_new/models/user_model.dart';
+import 'package:jordan_bus_tracker_new/services/firestore_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
@@ -21,7 +23,6 @@ class AuthProvider extends ChangeNotifier {
     _auth.authStateChanges().listen((user) async {
       _user = user;
       if (user != null) {
-        // حماية: إذا كانت البيانات موجودة مسبقاً لنفس المستخدم لا نلغيها
         if (_userData?.uid != user.uid) {
           await _loadUserData(user.uid);
         }
@@ -59,11 +60,13 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  // ✅ دالة signUp تحتوي صراحة على المعامل phoneNumber
   Future<void> signUp({
     required String email,
     required String password,
     required String fullName,
     required String userType,
+    String? phoneNumber,
     String? busNumber,
     String? route,
   }) async {
@@ -81,15 +84,13 @@ class AuthProvider extends ChangeNotifier {
           email: email,
           fullName: fullName,
           userType: userType,
+          phoneNumber: phoneNumber ?? '',
           busNumber: busNumber ?? '',
           route: route ?? '',
           isVerified: false,
         );
 
-        // ✅ 1. الحفظ في Firestore أولاً
         await _firestoreService.saveUserData(newUser);
-
-        // ✅ 2. ثم ضبط الحالة المحلية
         _userData = newUser;
         _user = credential.user;
         notifyListeners();

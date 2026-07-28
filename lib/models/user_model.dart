@@ -5,6 +5,7 @@ class UserModel {
   final String email;
   final String fullName;
   final String userType; // 'driver' أو 'passenger'
+  final String phoneNumber; // ✅ حقل رقم الهاتف (جديد)
   final String busNumber;
   final String route;
   final bool isVerified;
@@ -15,6 +16,7 @@ class UserModel {
     required this.email,
     required this.fullName,
     required this.userType,
+    this.phoneNumber = '', // ✅ قيمة افتراضية فارغة
     this.busNumber = '',
     this.route = '',
     this.isVerified = false,
@@ -34,6 +36,7 @@ class UserModel {
       email: map['email'] ?? '',
       fullName: map['fullName'] ?? '',
       userType: map['userType'] ?? 'passenger',
+      phoneNumber: map['phoneNumber'] ?? '', // ✅ قراءة رقم الهاتف
       busNumber: map['busNumber'] ?? '',
       route: map['route'] ?? '',
       isVerified: map['isVerified'] ?? false,
@@ -47,6 +50,7 @@ class UserModel {
       'email': email,
       'fullName': fullName,
       'userType': userType,
+      'phoneNumber': phoneNumber, // ✅ حفظ رقم الهاتف
       'busNumber': busNumber,
       'route': route,
       'isVerified': isVerified,
@@ -58,6 +62,7 @@ class UserModel {
     String? email,
     String? fullName,
     String? userType,
+    String? phoneNumber,
     String? busNumber,
     String? route,
     bool? isVerified,
@@ -68,6 +73,7 @@ class UserModel {
       email: email ?? this.email,
       fullName: fullName ?? this.fullName,
       userType: userType ?? this.userType,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
       busNumber: busNumber ?? this.busNumber,
       route: route ?? this.route,
       isVerified: isVerified ?? this.isVerified,

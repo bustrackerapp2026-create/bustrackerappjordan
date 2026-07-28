@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../core/theme/app_theme.dart';
-import '../providers/auth_provider.dart';
+
+// ✅ توحيد الاستيرادات باستخدام Package Import المباشر لمنع التضارب
+import 'package:jordan_bus_tracker_new/core/theme/app_theme.dart';
+import 'package:jordan_bus_tracker_new/features/auth/providers/auth_provider.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -17,6 +19,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _busNumberController = TextEditingController();
   final _routeController = TextEditingController();
 
@@ -25,7 +28,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscureConfirmPassword = true;
 
   String _selectedUserType = 'passenger';
-
   bool get _showDriverFields => _selectedUserType == 'driver';
 
   @override
@@ -34,6 +36,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _phoneController.dispose();
     _busNumberController.dispose();
     _routeController.dispose();
     super.dispose();
@@ -46,6 +49,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
+    final phoneNumber = _phoneController.text.trim();
     final busNumber = _busNumberController.text.trim();
     final route = _routeController.text.trim();
 
@@ -64,10 +68,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       final authProvider = context.read<AuthProvider>();
 
+      // ✅ استدعاء دالة signUp
       await authProvider.signUp(
         email: email,
         password: password,
         fullName: name,
+        phoneNumber: phoneNumber.isNotEmpty ? phoneNumber : null,
         userType: _selectedUserType,
         busNumber: _showDriverFields ? busNumber : null,
         route: _showDriverFields ? route : null,
@@ -106,13 +112,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
               AppTheme.primaryColor,
-              Color(0xFF6C63FF),
+              AppTheme.primaryColor.withValues(alpha: 0.7),
             ],
           ),
         ),
@@ -126,7 +132,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   width: 100,
                   height: 100,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
+                    color: Colors.white.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -157,7 +163,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Colors.white.withValues(alpha: 0.95),
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
@@ -194,6 +200,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             hintText: 'أحمد محمد',
                             prefixIcon: const Icon(
                               Icons.person_outline,
+                              color: AppTheme.primaryColor,
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey.shade50,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                color: AppTheme.primaryColor,
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'رقم الهاتف',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            hintText: '079 0000 000',
+                            prefixIcon: const Icon(
+                              Icons.phone_outlined,
                               color: AppTheme.primaryColor,
                             ),
                             filled: true,
@@ -330,7 +371,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         TextFormField(
                           controller: _confirmPasswordController,
                           obscureText: _obscureConfirmPassword,
-                          textInputAction: TextInputAction.done,
+                          textInputAction: TextInputAction.next,
                           autocorrect: false,
                           enableSuggestions: false,
                           validator: (value) {
