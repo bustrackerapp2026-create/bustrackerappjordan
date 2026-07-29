@@ -8,22 +8,21 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    final user = authProvider.userData;
+    final cleanName = context.select<AuthProvider, String>(
+      (auth) => auth.userData?.fullName.trim() ?? '',
+    );
 
-    // ✅ استخراج الحرف الأول بطريقة آمنة ومعالجة المسافات
-    final String cleanName = user?.fullName.trim() ?? '';
-    final String initial = cleanName.isNotEmpty ? cleanName[0] : 'ر';
+    final String initial =
+        cleanName.isNotEmpty ? cleanName.characters.first : 'ر';
 
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 1,
-      // ✅ العرض في الجهة اليمنى (مع دعم العربي) لاسم وصورة المستخدم
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           CircleAvatar(
-            backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.15),
+            backgroundColor: AppTheme.primaryColor.withOpacity(0.15),
             radius: 18,
             child: Text(
               initial,
@@ -47,7 +46,6 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         ],
       ),
       centerTitle: false,
-      // ✅ وضع الأزرار في الجهة اليسرى (actions) لمنع خطأ الـ Overflow
       actions: [
         IconButton(
           icon: const Icon(Icons.notifications_outlined,
@@ -72,6 +70,10 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   void _showLogoutDialog(BuildContext context) {
+    final authProvider = context.read<AuthProvider>();
+    // ✅ حفظ مرجع الـ Messenger قبل تنشيط الـ Async
+    final messenger = ScaffoldMessenger.of(context);
+
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -84,9 +86,17 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(dialogContext); // إغلاق الديالوج
-              // ✅ فقط استدعاء الخروج، والـ AuthWrapper يتكفل فوراً بالتوجيه
-              await context.read<AuthProvider>().signOut();
+              Navigator.pop(dialogContext);
+              try {
+                await authProvider.signOut();
+              } catch (e) {
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text('حدث خطأ أثناء تسجيل الخروج: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,

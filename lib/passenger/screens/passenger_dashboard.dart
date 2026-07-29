@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../features/auth/providers/auth_provider.dart';
-import '../widgets/custom_app_bar.dart';
+import '../widgets/custom_app_bar.dart'; // ✅ استيراد الـ CustomAppBar
 import '../widgets/custom_bottom_nav_bar.dart';
 import 'tabs/map_tab.dart';
 import 'tabs/trips_tab.dart';
@@ -25,24 +23,9 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('لوحة تحكم الراكب'),
-        backgroundColor: Colors.blue.shade700,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              await authProvider.signOut();
-              // AuthWrapper سيتكفل بالتوجيه إلى شاشة تسجيل الدخول
-            },
-            tooltip: 'تسجيل الخروج',
-          ),
-        ],
-      ),
+      // ✅ ربط CustomAppBar المخصص للراكب
+      appBar: const CustomAppBar(),
       body: IndexedStack(
         index: _currentIndex,
         children: _tabs,

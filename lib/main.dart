@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'core/theme/app_theme.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
@@ -10,6 +12,25 @@ import 'admin/screens/admin_dashboard.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ✅ تحميل ملف .env
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint('⚠️ لم يتم العثور على ملف .env: $e');
+  }
+
+  // ✅ جلب مفتاح Mapbox بأمان بدون تسريب مفاتيح صريحة في الكود
+  final String? mapboxToken = dotenv.env['MAPBOX_ACCESS_TOKEN'];
+
+  if (mapboxToken != null && mapboxToken.isNotEmpty) {
+    MapboxOptions.setAccessToken(mapboxToken);
+    debugPrint('✅ تم تعيين مفتاح Mapbox بنجاح');
+  } else {
+    debugPrint(
+        '❌ تحذير أمني: لم يتم العثور على MAPBOX_ACCESS_TOKEN في ملف .env');
+  }
+
   await Firebase.initializeApp();
   runApp(const BusTrackerApp());
 }
@@ -34,7 +55,7 @@ class BusTrackerApp extends StatelessWidget {
 }
 
 // ============================================================
-// ✅ بوابة المصادقة (مع زر خروج في شاشة التحميل)
+// ✅ بوابة المصادقة الذكية المحسنة (AuthWrapper)
 // ============================================================
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -48,27 +69,24 @@ class AuthWrapper extends StatelessWidget {
       return const LoginScreen();
     }
 
-    // 2️⃣ جاري تحميل البيانات
+    // 2️⃣ جاري تحميل البيانات (مع خيار أمان لتسجيل الخروج منعاً للعلوق)
     if (authProvider.userData == null) {
-      // ✅ شاشة تحميل مع زر تسجيل الخروج
       return Scaffold(
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const CircularProgressIndicator(),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               const Text(
-                'جاري تحميل بيانات المستخدم...',
+                'جاري تحميل بيانات الحساب...',
                 style: TextStyle(color: Colors.grey),
               ),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: () async {
-                  await context.read<AuthProvider>().signOut();
-                },
+                onPressed: () => context.read<AuthProvider>().signOut(),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
+                  backgroundColor: Colors.red.shade600,
                   foregroundColor: Colors.white,
                 ),
                 child: const Text('تسجيل الخروج'),
@@ -81,12 +99,12 @@ class AuthWrapper extends StatelessWidget {
 
     final userData = authProvider.userData!;
 
-    // 3️⃣ أدمن
+    // 3️⃣ الأدمن
     if (userData.userType == 'admin') {
       return const AdminDashboard();
     }
 
-    // 4️⃣ سائق
+    // 4️⃣ السائق
     if (userData.userType == 'driver') {
       if (!userData.isVerified) {
         return const PendingApprovalScreen();
@@ -94,14 +112,11 @@ class AuthWrapper extends StatelessWidget {
       return const DriverDashboard();
     }
 
-    // 5️⃣ راكب (افتراضي)
+    // 5️⃣ الراكب (افتراضي)
     return const PassengerDashboard();
   }
 }
 
-// ============================================================
-// ✅ شاشة انتظار موافقة الإدارة للسائق
-// ============================================================
 class PendingApprovalScreen extends StatelessWidget {
   const PendingApprovalScreen({super.key});
 

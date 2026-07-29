@@ -24,7 +24,7 @@ class DriverCustomAppBar extends StatelessWidget
         children: [
           CircleAvatar(
             // ✅ متوافق مع الإصدارات المختلفة لتجنب الأخطاء
-            backgroundColor: AppTheme.primaryColor.withOpacity(0.15),
+            backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.15),
             radius: 18,
             child: Text(
               initial,
