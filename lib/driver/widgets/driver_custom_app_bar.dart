@@ -9,12 +9,10 @@ class DriverCustomAppBar extends StatelessWidget
 
   @override
   Widget build(BuildContext context) {
-    // 1. تحسين الأداء بـ context.select
     final cleanName = context.select<AuthProvider, String>(
       (auth) => auth.userData?.fullName.trim() ?? '',
     );
 
-    // 2. استخدام characters.first للحفاظ على أمان الـ Unicode
     final String initial =
         cleanName.isNotEmpty ? cleanName.characters.first : 'س';
 
@@ -25,7 +23,7 @@ class DriverCustomAppBar extends StatelessWidget
         mainAxisSize: MainAxisSize.min,
         children: [
           CircleAvatar(
-            // استعمل withOpacity إذا كنت تستخدم إصدار Flutter أقل من 3.27
+            // ✅ متوافق مع الإصدارات المختلفة لتجنب الأخطاء
             backgroundColor: AppTheme.primaryColor.withOpacity(0.15),
             radius: 18,
             child: Text(
@@ -76,8 +74,9 @@ class DriverCustomAppBar extends StatelessWidget
   }
 
   void _showLogoutDialog(BuildContext context) {
-    // تجهيز الـ Provider قبل الدخول في الـ Async
     final authProvider = context.read<AuthProvider>();
+    // حفظ الـ ScaffoldMessengerState قبل خروج السياق
+    final messenger = ScaffoldMessenger.of(context);
 
     showDialog(
       context: context,
@@ -95,14 +94,12 @@ class DriverCustomAppBar extends StatelessWidget
               try {
                 await authProvider.signOut();
               } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('حدث خطأ أثناء تسجيل الخروج: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text('حدث خطأ أثناء تسجيل الخروج: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
               }
             },
             style: ElevatedButton.styleFrom(

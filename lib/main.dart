@@ -6,6 +6,7 @@ import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'driver/screens/driver_dashboard.dart';
 import 'passenger/screens/passenger_dashboard.dart';
+import 'admin/screens/admin_dashboard.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,7 +34,7 @@ class BusTrackerApp extends StatelessWidget {
 }
 
 // ============================================================
-// ✅ بوابة المصادقة الذكية (AuthWrapper)
+// ✅ بوابة المصادقة (مع زر خروج في شاشة التحميل)
 // ============================================================
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -42,36 +43,64 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
 
-    // 1️⃣ إذا لم يكن مسجلاً دخولاً
+    // 1️⃣ إذا لم يكن مسجلاً
     if (!authProvider.isLoggedIn) {
       return const LoginScreen();
     }
 
-    // 2️⃣ جاري تحميل بيانات المستخدم من Firestore
+    // 2️⃣ جاري تحميل البيانات
     if (authProvider.userData == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      // ✅ شاشة تحميل مع زر تسجيل الخروج
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 24),
+              const Text(
+                'جاري تحميل بيانات المستخدم...',
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () async {
+                  await context.read<AuthProvider>().signOut();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('تسجيل الخروج'),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
     final userData = authProvider.userData!;
 
-    // 3️⃣ إذا كان سائقاً
+    // 3️⃣ أدمن
+    if (userData.userType == 'admin') {
+      return const AdminDashboard();
+    }
+
+    // 4️⃣ سائق
     if (userData.userType == 'driver') {
-      // ✅ فحص التوثيق: إذا لم يُفعّل حساب السائق بعد
       if (!userData.isVerified) {
         return const PendingApprovalScreen();
       }
       return const DriverDashboard();
     }
 
-    // 4️⃣ الراكب (افتراضي)
+    // 5️⃣ راكب (افتراضي)
     return const PassengerDashboard();
   }
 }
 
 // ============================================================
-// ✅ شاشة انتظار موافقة الإدارة للسائق (تم تصحيح الأيقونة والـ const)
+// ✅ شاشة انتظار موافقة الإدارة للسائق
 // ============================================================
 class PendingApprovalScreen extends StatelessWidget {
   const PendingApprovalScreen({super.key});
@@ -84,7 +113,6 @@ class PendingApprovalScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // ✅ تم تصحيح اسم الأيقونة إلى hourglass_top_rounded
             const Icon(
               Icons.hourglass_top_rounded,
               size: 80,

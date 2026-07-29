@@ -26,6 +26,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // ✅ تم ربط الـ DriverCustomAppBar المخصص هنا
       appBar: const DriverCustomAppBar(),
       body: IndexedStack(
         index: _currentIndex,
