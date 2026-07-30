@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/constants/user_roles.dart';
 import '../../../models/user_model.dart';
 import '../../../services/firestore_service.dart';
 
@@ -13,16 +14,33 @@ class VerifyDriversTab extends StatefulWidget {
 
 class _VerifyDriversTabState extends State<VerifyDriversTab> {
   final FirestoreService _firestoreService = FirestoreService();
+  final Set<String> _processingIds = {};
+  late Future<Map<String, int>> _statsFuture;
 
-  Future<void> _verifyDriver(
-      BuildContext context, String uid, String name) async {
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+
+  void _loadStats() {
+    _statsFuture = _firestoreService.getDriversStats();
+  }
+
+  // ✅ إزالة BuildContext من الدوال
+  Future<void> _verifyDriver(String uid, String name) async {
+    if (_processingIds.contains(uid)) return;
+
+    setState(() => _processingIds.add(uid));
+
     final messenger = ScaffoldMessenger.of(context);
     try {
       await _firestoreService.updateUserData(uid, {'isVerified': true});
+      _loadStats();
       if (mounted) {
         messenger.showSnackBar(
-          SnackBar(
-            content: Text('✅ تم توثيق السائق $name بنجاح!'),
+          const SnackBar(
+            content: Text('✅ تم توثيق السائق بنجاح!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -30,25 +48,32 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
     } catch (e) {
       if (mounted) {
         messenger.showSnackBar(
-          SnackBar(
-            content: Text('❌ فشل توثيق السائق: $e'),
+          const SnackBar(
+            content: Text('❌ فشل توثيق السائق، يرجى المحاولة لاحقاً.'),
             backgroundColor: Colors.red,
           ),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _processingIds.remove(uid));
+      }
     }
   }
 
-  // ✅ دالة رفض السائق
-  Future<void> _rejectDriver(
-      BuildContext context, String uid, String name) async {
+  Future<void> _rejectDriver(String uid, String name) async {
+    if (_processingIds.contains(uid)) return;
+
+    setState(() => _processingIds.add(uid));
+
     final messenger = ScaffoldMessenger.of(context);
     try {
       await _firestoreService.rejectDriver(uid);
+      _loadStats();
       if (mounted) {
         messenger.showSnackBar(
-          SnackBar(
-            content: Text('🗑️ تم رفض طلب السائق $name.'),
+          const SnackBar(
+            content: Text('🗑️ تم رفض طلب السائق.'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -56,17 +81,20 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
     } catch (e) {
       if (mounted) {
         messenger.showSnackBar(
-          SnackBar(
-            content: Text('❌ فشل رفض السائق: $e'),
+          const SnackBar(
+            content: Text('❌ فشل رفض السائق، يرجى المحاولة لاحقاً.'),
             backgroundColor: Colors.red,
           ),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _processingIds.remove(uid));
+      }
     }
   }
 
-  // ✅ عرض حوار تأكيد الرفض
-  void _showRejectDialog(BuildContext context, String uid, String name) {
+  void _showRejectDialog(String uid, String name) {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -80,7 +108,7 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(dialogContext);
-              _rejectDriver(context, uid, name);
+              _rejectDriver(uid, name);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -104,9 +132,8 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
       ),
       body: Column(
         children: [
-          // ✅ بطاقة الإحصائيات (في الأعلى)
           FutureBuilder<Map<String, int>>(
-            future: _firestoreService.getDriversStats(),
+            future: _statsFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Padding(
@@ -143,14 +170,13 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
               );
             },
           ),
-          // ✅ قائمة السائقين غير الموثقين (استبعاد المرفوضين)
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('users')
-                  .where('userType', isEqualTo: 'driver')
+                  .where('userType', isEqualTo: UserRoles.driver)
                   .where('isVerified', isEqualTo: false)
-                  .where('isRejected', isEqualTo: false) // ✅ استبعاد المرفوضين
+                  .where('isRejected', isEqualTo: false)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -198,6 +224,8 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
                       doc.data() as Map<String, dynamic>,
                       doc.id,
                     );
+
+                    final isProcessing = _processingIds.contains(driver.uid);
 
                     return Card(
                       elevation: 3,
@@ -260,16 +288,24 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
                             const SizedBox(height: 16),
                             Row(
                               children: [
-                                // زر الموافقة
                                 Expanded(
                                   child: ElevatedButton.icon(
-                                    onPressed: () => _verifyDriver(
-                                      context,
-                                      driver.uid,
-                                      driver.fullName,
-                                    ),
-                                    icon: const Icon(Icons.verified),
-                                    label: const Text('موافقة'),
+                                    onPressed: isProcessing
+                                        ? null
+                                        : () => _verifyDriver(
+                                            driver.uid, driver.fullName),
+                                    icon: isProcessing
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Icon(Icons.verified),
+                                    label: Text(
+                                        isProcessing ? 'جاري...' : 'موافقة'),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: AppTheme.primaryColor,
                                       foregroundColor: Colors.white,
@@ -280,16 +316,24 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
                                   ),
                                 ),
                                 const SizedBox(width: 12),
-                                // ✅ زر الرفض (جديد)
                                 Expanded(
                                   child: ElevatedButton.icon(
-                                    onPressed: () => _showRejectDialog(
-                                      context,
-                                      driver.uid,
-                                      driver.fullName,
-                                    ),
-                                    icon: const Icon(Icons.close),
-                                    label: const Text('رفض'),
+                                    onPressed: isProcessing
+                                        ? null
+                                        : () => _showRejectDialog(
+                                            driver.uid, driver.fullName),
+                                    icon: isProcessing
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Icon(Icons.close),
+                                    label:
+                                        Text(isProcessing ? 'جاري...' : 'رفض'),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.red,
                                       foregroundColor: Colors.white,
@@ -315,7 +359,6 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
     );
   }
 
-  // ✅ دالة مساعدة لبناء بطاقة الإحصائيات
   Widget _buildStatCard(String label, int count, Color color) {
     return Expanded(
       child: Container(

@@ -4,8 +4,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'core/theme/app_theme.dart';
+import 'core/constants/user_roles.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
+import 'features/auth/screens/pending_approval_screen.dart';
 import 'driver/screens/driver_dashboard.dart';
 import 'passenger/screens/passenger_dashboard.dart';
 import 'admin/screens/admin_dashboard.dart';
@@ -13,14 +15,12 @@ import 'admin/screens/admin_dashboard.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ تحميل ملف .env
   try {
     await dotenv.load(fileName: ".env");
   } catch (e) {
     debugPrint('⚠️ لم يتم العثور على ملف .env: $e');
   }
 
-  // ✅ جلب مفتاح Mapbox بأمان بدون تسريب مفاتيح صريحة في الكود
   final String? mapboxToken = dotenv.env['MAPBOX_ACCESS_TOKEN'];
 
   if (mapboxToken != null && mapboxToken.isNotEmpty) {
@@ -55,7 +55,7 @@ class BusTrackerApp extends StatelessWidget {
 }
 
 // ============================================================
-// ✅ بوابة المصادقة الذكية المحسنة (AuthWrapper)
+// ✅ بوابة المصادقة الذكية (AuthWrapper)
 // ============================================================
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -64,12 +64,10 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
 
-    // 1️⃣ إذا لم يكن مسجلاً
     if (!authProvider.isLoggedIn) {
       return const LoginScreen();
     }
 
-    // 2️⃣ جاري تحميل البيانات (مع خيار أمان لتسجيل الخروج منعاً للعلوق)
     if (authProvider.userData == null) {
       return Scaffold(
         body: Center(
@@ -86,7 +84,9 @@ class AuthWrapper extends StatelessWidget {
               ElevatedButton(
                 onPressed: () => context.read<AuthProvider>().signOut(),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade600,
+                  backgroundColor: Theme.of(context)
+                      .colorScheme
+                      .error, // ✅ استخدام لون الثيم
                   foregroundColor: Colors.white,
                 ),
                 child: const Text('تسجيل الخروج'),
@@ -99,59 +99,17 @@ class AuthWrapper extends StatelessWidget {
 
     final userData = authProvider.userData!;
 
-    // 3️⃣ الأدمن
-    if (userData.userType == 'admin') {
+    if (userData.userType == UserRoles.admin) {
       return const AdminDashboard();
     }
 
-    // 4️⃣ السائق
-    if (userData.userType == 'driver') {
+    if (userData.userType == UserRoles.driver) {
       if (!userData.isVerified) {
         return const PendingApprovalScreen();
       }
       return const DriverDashboard();
     }
 
-    // 5️⃣ الراكب (افتراضي)
     return const PassengerDashboard();
-  }
-}
-
-class PendingApprovalScreen extends StatelessWidget {
-  const PendingApprovalScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.hourglass_top_rounded,
-              size: 80,
-              color: Colors.orange,
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'حسابك قيد المراجعة',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'تم إنشاء حساب السائق بنجاح، وسيتم تفعيله من قبل الإدارة بعد التأكد من البيانات.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 16),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: () => context.read<AuthProvider>().signOut(),
-              child: const Text('تسجيل الخروج'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

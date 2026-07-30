@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-// ✅ تم حذف import 'package:cloud_firestore/cloud_firestore.dart'; (غير مستخدم)
 import '../../../core/theme/app_theme.dart';
 import '../../../models/pickup_point_model.dart';
 import '../../../services/pickup_point_service.dart';
@@ -14,13 +13,21 @@ class PendingPointsTab extends StatefulWidget {
 class _PendingPointsTabState extends State<PendingPointsTab> {
   final PickupPointService _service = PickupPointService();
 
+  // ✅ مجموعة لتخزين المعرفات الجاري معالجتها
+  final Set<String> _processingIds = {};
+
+  // ✅ دالة الموافقة (مع منع التكرار)
   Future<void> _approvePoint(String id, String name) async {
+    if (_processingIds.contains(id)) return;
+
+    setState(() => _processingIds.add(id));
+
     try {
       await _service.approvePickupPoint(id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ تم الموافقة على النقطة "$name"'),
+          const SnackBar(
+            content: Text('✅ تم الموافقة على النقطة بنجاح!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -28,22 +35,31 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ فشل الموافقة: $e'),
+          const SnackBar(
+            content: Text('❌ فشل الموافقة، يرجى المحاولة لاحقاً.'),
             backgroundColor: Colors.red,
           ),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _processingIds.remove(id));
+      }
     }
   }
 
+  // ✅ دالة الرفض (مع منع التكرار)
   Future<void> _rejectPoint(String id, String name) async {
+    if (_processingIds.contains(id)) return;
+
+    setState(() => _processingIds.add(id));
+
     try {
       await _service.rejectPickupPoint(id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('🗑️ تم رفض النقطة "$name"'),
+          const SnackBar(
+            content: Text('🗑️ تم رفض النقطة بنجاح.'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -51,11 +67,15 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ فشل الرفض: $e'),
+          const SnackBar(
+            content: Text('❌ فشل الرفض، يرجى المحاولة لاحقاً.'),
             backgroundColor: Colors.red,
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _processingIds.remove(id));
       }
     }
   }
@@ -139,6 +159,9 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
             itemBuilder: (context, index) {
               final point = points[index];
 
+              // ✅ التحقق مما إذا كانت هذه النقطة قيد المعالجة
+              final isProcessing = _processingIds.contains(point.id);
+
               return Card(
                 elevation: 3,
                 margin: const EdgeInsets.only(bottom: 12),
@@ -206,12 +229,23 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                       const Divider(height: 24),
                       Row(
                         children: [
+                          // ✅ زر الموافقة (مع حالة التحميل)
                           Expanded(
                             child: ElevatedButton.icon(
-                              onPressed: () =>
-                                  _approvePoint(point.id, point.name),
-                              icon: const Icon(Icons.check),
-                              label: const Text('موافقة'),
+                              onPressed: isProcessing
+                                  ? null
+                                  : () => _approvePoint(point.id, point.name),
+                              icon: isProcessing
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.check),
+                              label: Text(isProcessing ? 'جاري...' : 'موافقة'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.primaryColor,
                                 foregroundColor: Colors.white,
@@ -222,12 +256,24 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                             ),
                           ),
                           const SizedBox(width: 12),
+                          // ✅ زر الرفض (مع حالة التحميل)
                           Expanded(
                             child: ElevatedButton.icon(
-                              onPressed: () => _showRejectDialog(
-                                  context, point.id, point.name),
-                              icon: const Icon(Icons.close),
-                              label: const Text('رفض'),
+                              onPressed: isProcessing
+                                  ? null
+                                  : () => _showRejectDialog(
+                                      context, point.id, point.name),
+                              icon: isProcessing
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.close),
+                              label: Text(isProcessing ? 'جاري...' : 'رفض'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.red,
                                 foregroundColor: Colors.white,

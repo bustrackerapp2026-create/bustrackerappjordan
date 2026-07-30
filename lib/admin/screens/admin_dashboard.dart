@@ -21,6 +21,34 @@ class _AdminDashboardState extends State<AdminDashboard> {
     Center(child: Text('⚙️ الإعدادات (قيد التطوير)')),
   ];
 
+  // ✅ دالة عرض حوار تأكيد الخروج
+  void _showLogoutDialog(BuildContext context, AuthProvider authProvider) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تسجيل الخروج'),
+        content: const Text('هل أنت متأكد من رغبتك في تسجيل الخروج؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await authProvider.signOut();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('تأكيد الخروج'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
@@ -33,9 +61,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              await authProvider.signOut();
-            },
+            onPressed: () =>
+                _showLogoutDialog(context, authProvider), // ✅ استدعاء الحوار
             tooltip: 'تسجيل الخروج',
           ),
         ],
@@ -47,11 +74,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
-        type: BottomNavigationBarType.fixed, // ✅ يمنع اهتزاز الأيقونات
-        backgroundColor: Colors.white, // ✅ خلفية بيضاء ثابتة
-        selectedItemColor: Colors.blue.shade700, // ✅ لون العنصر المحدد
-        unselectedItemColor:
-            Colors.grey.shade700, // ✅ لون العناصر غير المحددة (أغمق)
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: Colors.white,
+        selectedItemColor: Colors.blue.shade700,
+        unselectedItemColor: Colors.grey.shade700,
         selectedFontSize: 13,
         unselectedFontSize: 12,
         items: const [
