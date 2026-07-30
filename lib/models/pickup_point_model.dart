@@ -5,20 +5,24 @@ class PickupPointModel {
   final String name;
   final double latitude;
   final double longitude;
-  final String route;
-  final String requestedBy;
-  final bool isApproved;
+  final String addedBy; // UID of driver or passenger
+  final String addedByUserType; // 'driver' أو 'passenger'
+  final String status; // 'pending', 'approved', 'rejected'
   final DateTime? createdAt;
+  final List<String> confirmations; // UIDs of users who confirmed this point
+  final int confirmationCount;
 
-  const PickupPointModel({
+  PickupPointModel({
     required this.id,
     required this.name,
     required this.latitude,
     required this.longitude,
-    required this.route,
-    this.requestedBy = '',
-    this.isApproved = false,
+    required this.addedBy,
+    this.addedByUserType = 'driver',
+    this.status = 'pending',
     this.createdAt,
+    this.confirmations = const [],
+    this.confirmationCount = 0,
   });
 
   factory PickupPointModel.fromMap(Map<String, dynamic> map, String docId) {
@@ -34,10 +38,12 @@ class PickupPointModel {
       name: map['name'] ?? '',
       latitude: (map['latitude'] as num?)?.toDouble() ?? 0.0,
       longitude: (map['longitude'] as num?)?.toDouble() ?? 0.0,
-      route: map['route'] ?? '',
-      requestedBy: map['requestedBy'] ?? '',
-      isApproved: map['isApproved'] ?? false,
+      addedBy: map['addedBy'] ?? '',
+      addedByUserType: map['addedByUserType'] ?? 'driver',
+      status: map['status'] ?? 'pending',
       createdAt: parsedDate,
+      confirmations: List<String>.from(map['confirmations'] ?? []),
+      confirmationCount: map['confirmationCount'] ?? 0,
     );
   }
 
@@ -46,9 +52,11 @@ class PickupPointModel {
       'name': name,
       'latitude': latitude,
       'longitude': longitude,
-      'route': route,
-      'requestedBy': requestedBy,
-      'isApproved': isApproved,
+      'addedBy': addedBy,
+      'addedByUserType': addedByUserType,
+      'status': status,
+      'confirmations': confirmations,
+      'confirmationCount': confirmationCount,
       'createdAt': FieldValue.serverTimestamp(),
     };
   }
@@ -58,20 +66,24 @@ class PickupPointModel {
     String? name,
     double? latitude,
     double? longitude,
-    String? route,
-    String? requestedBy,
-    bool? isApproved,
+    String? addedBy,
+    String? addedByUserType,
+    String? status,
     DateTime? createdAt,
+    List<String>? confirmations,
+    int? confirmationCount,
   }) {
     return PickupPointModel(
       id: id ?? this.id,
       name: name ?? this.name,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
-      route: route ?? this.route,
-      requestedBy: requestedBy ?? this.requestedBy,
-      isApproved: isApproved ?? this.isApproved,
+      addedBy: addedBy ?? this.addedBy,
+      addedByUserType: addedByUserType ?? this.addedByUserType,
+      status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
+      confirmations: confirmations ?? this.confirmations,
+      confirmationCount: confirmationCount ?? this.confirmationCount,
     );
   }
 }

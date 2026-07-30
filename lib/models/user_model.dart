@@ -4,11 +4,12 @@ class UserModel {
   final String uid;
   final String email;
   final String fullName;
-  final String userType; // 'driver' أو 'passenger'
-  final String phoneNumber; // ✅ حقل رقم الهاتف (جديد)
+  final String userType;
+  final String phoneNumber;
   final String busNumber;
   final String route;
   final bool isVerified;
+  final bool isRejected; // ✅ حقل جديد
   final DateTime? createdAt;
 
   const UserModel({
@@ -16,10 +17,11 @@ class UserModel {
     required this.email,
     required this.fullName,
     required this.userType,
-    this.phoneNumber = '', // ✅ قيمة افتراضية فارغة
+    this.phoneNumber = '',
     this.busNumber = '',
     this.route = '',
     this.isVerified = false,
+    this.isRejected = false, // ✅ قيمة افتراضية
     this.createdAt,
   });
 
@@ -36,10 +38,11 @@ class UserModel {
       email: map['email'] ?? '',
       fullName: map['fullName'] ?? '',
       userType: map['userType'] ?? 'passenger',
-      phoneNumber: map['phoneNumber'] ?? '', // ✅ قراءة رقم الهاتف
+      phoneNumber: map['phoneNumber'] ?? '',
       busNumber: map['busNumber'] ?? '',
       route: map['route'] ?? '',
       isVerified: map['isVerified'] ?? false,
+      isRejected: map['isRejected'] ?? false, // ✅ قراءة الحقل
       createdAt: parsedDate,
     );
   }
@@ -50,10 +53,11 @@ class UserModel {
       'email': email,
       'fullName': fullName,
       'userType': userType,
-      'phoneNumber': phoneNumber, // ✅ حفظ رقم الهاتف
+      'phoneNumber': phoneNumber,
       'busNumber': busNumber,
       'route': route,
       'isVerified': isVerified,
+      'isRejected': isRejected, // ✅ حفظ الحقل
     };
   }
 
@@ -66,6 +70,7 @@ class UserModel {
     String? busNumber,
     String? route,
     bool? isVerified,
+    bool? isRejected,
     DateTime? createdAt,
   }) {
     return UserModel(
@@ -77,6 +82,7 @@ class UserModel {
       busNumber: busNumber ?? this.busNumber,
       route: route ?? this.route,
       isVerified: isVerified ?? this.isVerified,
+      isRejected: isRejected ?? this.isRejected,
       createdAt: createdAt ?? this.createdAt,
     );
   }
