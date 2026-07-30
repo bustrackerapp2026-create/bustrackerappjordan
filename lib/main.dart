@@ -11,6 +11,7 @@ import 'features/auth/screens/pending_approval_screen.dart';
 import 'driver/screens/driver_dashboard.dart';
 import 'passenger/screens/passenger_dashboard.dart';
 import 'admin/screens/admin_dashboard.dart';
+import 'driver/providers/driver_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,6 +44,7 @@ class BusTrackerApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => DriverProvider()),
       ],
       child: MaterialApp(
         title: 'Bus Tracker Jordan',
