@@ -1,119 +1,104 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'trip_status.dart';
 
+/// نموذج بيانات الرحلة، يمثل رحلة بين نقطة انطلاق ووجهة.
 class TripModel {
   final String id;
+  final String passengerId;
   final String driverId;
-  final String driverName;
-  final String driverPhone;
-  final String busNumber;
-  final String route;
-  final double currentLatitude;
-  final double currentLongitude;
-  final double heading;
-  final double speed;
-  final bool isLive;
-  final int availableSeats;
-  final int totalSeats;
-  final String status; // 'active', 'completed', 'cancelled'
-  final DateTime? updatedAt;
+  final String pickupPoint;
+  final String dropoffPoint;
+  final DateTime createdAt;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+  final TripStatus status;
+  final double? fare;
+  final String? notes;
 
-  const TripModel({
+  TripModel({
     required this.id,
+    required this.passengerId,
     required this.driverId,
-    this.driverName = '',
-    this.driverPhone = '',
-    required this.busNumber,
-    required this.route,
-    this.currentLatitude = 0.0,
-    this.currentLongitude = 0.0,
-    this.heading = 0.0,
-    this.speed = 0.0,
-    this.isLive = false,
-    this.availableSeats = 20,
-    this.totalSeats = 20,
-    this.status = 'active',
-    this.updatedAt,
+    required this.pickupPoint,
+    required this.dropoffPoint,
+    required this.createdAt,
+    this.startedAt,
+    this.completedAt,
+    this.status = TripStatus.pending,
+    this.fare,
+    this.notes,
   });
 
   factory TripModel.fromMap(Map<String, dynamic> map, String docId) {
-    DateTime? parsedDate;
-    if (map['updatedAt'] is Timestamp) {
-      parsedDate = (map['updatedAt'] as Timestamp).toDate();
-    } else if (map['updatedAt'] is DateTime) {
-      parsedDate = map['updatedAt'] as DateTime;
+    DateTime parseDate(dynamic value) {
+      if (value is Timestamp) return value.toDate();
+      if (value is DateTime) return value;
+      return DateTime.now();
     }
 
     return TripModel(
       id: docId,
+      passengerId: map['passengerId'] ?? '',
       driverId: map['driverId'] ?? '',
-      driverName: map['driverName'] ?? '',
-      driverPhone: map['driverPhone'] ?? '',
-      busNumber: map['busNumber'] ?? '',
-      route: map['route'] ?? '',
-      currentLatitude: (map['currentLatitude'] as num?)?.toDouble() ?? 0.0,
-      currentLongitude: (map['currentLongitude'] as num?)?.toDouble() ?? 0.0,
-      heading: (map['heading'] as num?)?.toDouble() ?? 0.0,
-      speed: (map['speed'] as num?)?.toDouble() ?? 0.0,
-      isLive: map['isLive'] ?? false,
-      availableSeats: map['availableSeats'] ?? 20,
-      totalSeats: map['totalSeats'] ?? 20,
-      status: map['status'] ?? 'active',
-      updatedAt: parsedDate,
+      pickupPoint: map['pickupPoint'] ?? '',
+      dropoffPoint: map['dropoffPoint'] ?? '',
+      createdAt: parseDate(map['createdAt']),
+      startedAt: map['startedAt'] != null ? parseDate(map['startedAt']) : null,
+      completedAt:
+          map['completedAt'] != null ? parseDate(map['completedAt']) : null,
+      status: TripStatusExtension.fromString(map['status'] ?? 'pending'),
+      fare: (map['fare'] as num?)?.toDouble(),
+      notes: map['notes'],
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
+      'passengerId': passengerId,
       'driverId': driverId,
-      'driverName': driverName,
-      'driverPhone': driverPhone,
-      'busNumber': busNumber,
-      'route': route,
-      'currentLatitude': currentLatitude,
-      'currentLongitude': currentLongitude,
-      'heading': heading,
-      'speed': speed,
-      'isLive': isLive,
-      'availableSeats': availableSeats,
-      'totalSeats': totalSeats,
-      'status': status,
-      'updatedAt': FieldValue.serverTimestamp(),
+      'pickupPoint': pickupPoint,
+      'dropoffPoint': dropoffPoint,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'startedAt': startedAt != null ? Timestamp.fromDate(startedAt!) : null,
+      'completedAt':
+          completedAt != null ? Timestamp.fromDate(completedAt!) : null,
+      'status': status.stringValue,
+      'fare': fare,
+      'notes': notes,
     };
+  }
+
+  Map<String, dynamic> toCreateMap() {
+    final map = toMap();
+    map['createdAt'] = FieldValue.serverTimestamp();
+    return map;
   }
 
   TripModel copyWith({
     String? id,
+    String? passengerId,
     String? driverId,
-    String? driverName,
-    String? driverPhone,
-    String? busNumber,
-    String? route,
-    double? currentLatitude,
-    double? currentLongitude,
-    double? heading,
-    double? speed,
-    bool? isLive,
-    int? availableSeats,
-    int? totalSeats,
-    String? status,
-    DateTime? updatedAt,
+    String? pickupPoint,
+    String? dropoffPoint,
+    DateTime? createdAt,
+    DateTime? startedAt,
+    DateTime? completedAt,
+    TripStatus? status,
+    double? fare,
+    String? notes,
   }) {
     return TripModel(
       id: id ?? this.id,
+      passengerId: passengerId ?? this.passengerId,
       driverId: driverId ?? this.driverId,
-      driverName: driverName ?? this.driverName,
-      driverPhone: driverPhone ?? this.driverPhone,
-      busNumber: busNumber ?? this.busNumber,
-      route: route ?? this.route,
-      currentLatitude: currentLatitude ?? this.currentLatitude,
-      currentLongitude: currentLongitude ?? this.currentLongitude,
-      heading: heading ?? this.heading,
-      speed: speed ?? this.speed,
-      isLive: isLive ?? this.isLive,
-      availableSeats: availableSeats ?? this.availableSeats,
-      totalSeats: totalSeats ?? this.totalSeats,
+      pickupPoint: pickupPoint ?? this.pickupPoint,
+      dropoffPoint: dropoffPoint ?? this.dropoffPoint,
+      createdAt: createdAt ?? this.createdAt,
+      startedAt: startedAt ?? this.startedAt,
+      completedAt: completedAt ?? this.completedAt,
       status: status ?? this.status,
-      updatedAt: updatedAt ?? this.updatedAt,
+      fare: fare ?? this.fare,
+      notes: notes ?? this.notes,
     );
   }
 }
