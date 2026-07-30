@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
@@ -12,6 +13,7 @@ class AuthProvider extends ChangeNotifier {
   firebase_auth.User? _user;
   UserModel? _userData;
   bool _isLoading = false;
+  StreamSubscription<UserModel?>? _userDataSubscription;
 
   firebase_auth.User? get user => _user;
   UserModel? get userData => _userData;
@@ -20,32 +22,39 @@ class AuthProvider extends ChangeNotifier {
   String? get userId => _user?.uid;
 
   AuthProvider() {
-    _auth.authStateChanges().listen((user) async {
+    _auth.authStateChanges().listen((user) {
       _user = user;
       if (user != null) {
-        if (_userData?.uid != user.uid) {
-          await _loadUserData(user.uid);
-        }
+        _subscribeToUserData(user.uid);
       } else {
+        _cancelUserDataSubscription();
         _userData = null;
         notifyListeners();
       }
     });
   }
 
-  Future<void> _loadUserData(String uid) async {
-    try {
-      _userData = await _firestoreService.getUserData(uid);
-    } catch (e) {
-      debugPrint('خطأ في جلب بيانات المستخدم: $e');
-      _userData = null;
-    }
-    notifyListeners();
+  void _subscribeToUserData(String uid) {
+    _cancelUserDataSubscription();
+    _userDataSubscription = _firestoreService.getUserDataStream(uid).listen(
+      (data) {
+        _userData = data;
+        notifyListeners();
+      },
+      onError: (e) {
+        debugPrint('خطأ في جلب بث بيانات المستخدم: $e');
+      },
+    );
+  }
+
+  void _cancelUserDataSubscription() {
+    _userDataSubscription?.cancel();
+    _userDataSubscription = null;
   }
 
   Future<void> refreshUserData() async {
     if (_user != null) {
-      await _loadUserData(_user!.uid);
+      _subscribeToUserData(_user!.uid);
     }
   }
 
@@ -112,6 +121,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> signOut() async {
     try {
+      _cancelUserDataSubscription();
       await _auth.signOut();
       _user = null;
       _userData = null;
@@ -119,6 +129,12 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       throw Exception('فشل تسجيل الخروج: $e');
     }
+  }
+
+  @override
+  void dispose() {
+    _cancelUserDataSubscription();
+    super.dispose();
   }
 
   Future<void> sendEmailVerification() async {

@@ -22,7 +22,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           CircleAvatar(
-            backgroundColor: AppTheme.primaryColor.withOpacity(0.15),
+            backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.15),
             radius: 18,
             child: Text(
               initial,

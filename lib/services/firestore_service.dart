@@ -28,6 +28,16 @@ class FirestoreService {
     }
   }
 
+  // ✅ البث المباشر لبيانات المستخدم لضمان التحديث التلقائي للحالة والأدوار
+  Stream<UserModel?> getUserDataStream(String uid) {
+    return _firestore.collection('users').doc(uid).snapshots().map((snapshot) {
+      if (snapshot.exists && snapshot.data() != null) {
+        return UserModel.fromMap(snapshot.data()!, snapshot.id);
+      }
+      return null;
+    });
+  }
+
   // ✅ التحقق من وجود المستخدم
   Future<bool> userExists(String uid) async {
     try {
