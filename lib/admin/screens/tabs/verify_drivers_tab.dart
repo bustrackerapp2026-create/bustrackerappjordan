@@ -27,7 +27,6 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
     _statsFuture = _firestoreService.getDriversStats();
   }
 
-  // ✅ إزالة BuildContext من الدوال
   Future<void> _verifyDriver(String uid, String name) async {
     if (_processingIds.contains(uid)) return;
 
@@ -227,6 +226,18 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
 
                     final isProcessing = _processingIds.contains(driver.uid);
 
+                    // ✅ التحقق الآمن من البيانات
+                    final busNumberDisplay =
+                        driver.busNumber?.isNotEmpty == true
+                            ? driver.busNumber
+                            : 'غير محدد';
+                    final routeDisplay = driver.route?.isNotEmpty == true
+                        ? driver.route
+                        : 'غير محدد';
+                    final phoneDisplay = driver.phoneNumber?.isNotEmpty == true
+                        ? driver.phoneNumber
+                        : null;
+
                     return Card(
                       elevation: 3,
                       margin: const EdgeInsets.only(bottom: 12),
@@ -275,15 +286,13 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                    'رقم الحافلة: ${driver.busNumber.isNotEmpty ? driver.busNumber : "غير محدد"}'),
-                                Text(
-                                    'الخط: ${driver.route.isNotEmpty ? driver.route : "غير محدد"}'),
+                                Text('رقم الحافلة: $busNumberDisplay'),
+                                Text('الخط: $routeDisplay'),
                               ],
                             ),
-                            if (driver.phoneNumber.isNotEmpty) ...[
+                            if (phoneDisplay != null) ...[
                               const SizedBox(height: 6),
-                              Text('الهاتف: ${driver.phoneNumber}'),
+                              Text('الهاتف: $phoneDisplay'),
                             ],
                             const SizedBox(height: 16),
                             Row(

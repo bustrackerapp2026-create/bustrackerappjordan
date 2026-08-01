@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/pickup_point_model.dart';
 import '../../../services/pickup_point_service.dart';
+import '../../../services/pickup_point_service_exception.dart';
 
 class PendingPointsTab extends StatefulWidget {
   const PendingPointsTab({super.key});
@@ -12,11 +13,9 @@ class PendingPointsTab extends StatefulWidget {
 
 class _PendingPointsTabState extends State<PendingPointsTab> {
   final PickupPointService _service = PickupPointService();
-
-  // ✅ مجموعة لتخزين المعرفات الجاري معالجتها
   final Set<String> _processingIds = {};
 
-  // ✅ دالة الموافقة (مع منع التكرار)
+  // ✅ دالة الموافقة (مع منع التكرار وتحسين معالجة الأخطاء)
   Future<void> _approvePoint(String id, String name) async {
     if (_processingIds.contains(id)) return;
 
@@ -26,17 +25,19 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
       await _service.approvePickupPoint(id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ تم الموافقة على النقطة بنجاح!'),
+          SnackBar(
+            content: Text('✅ تم الموافقة على النقطة "$name" بنجاح!'),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
+      debugPrint('❌ خطأ في الموافقة على النقطة: $e');
       if (mounted) {
+        final errorMessage = _getUserFriendlyErrorMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ فشل الموافقة، يرجى المحاولة لاحقاً.'),
+          SnackBar(
+            content: Text(errorMessage),
             backgroundColor: Colors.red,
           ),
         );
@@ -48,7 +49,7 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
     }
   }
 
-  // ✅ دالة الرفض (مع منع التكرار)
+  // ✅ دالة الرفض (مع منع التكرار وتحسين معالجة الأخطاء)
   Future<void> _rejectPoint(String id, String name) async {
     if (_processingIds.contains(id)) return;
 
@@ -58,17 +59,19 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
       await _service.rejectPickupPoint(id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('🗑️ تم رفض النقطة بنجاح.'),
+          SnackBar(
+            content: Text('🗑️ تم رفض النقطة "$name" بنجاح.'),
             backgroundColor: Colors.orange,
           ),
         );
       }
     } catch (e) {
+      debugPrint('❌ خطأ في رفض النقطة: $e');
       if (mounted) {
+        final errorMessage = _getUserFriendlyErrorMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ فشل الرفض، يرجى المحاولة لاحقاً.'),
+          SnackBar(
+            content: Text(errorMessage),
             backgroundColor: Colors.red,
           ),
         );
@@ -78,6 +81,22 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
         setState(() => _processingIds.remove(id));
       }
     }
+  }
+
+  // ✅ دالة لاستخراج رسالة خطأ صديقة للمستخدم
+  String _getUserFriendlyErrorMessage(Object error) {
+    if (error is PickupPointServiceException) {
+      return '⚠️ ${error.message}';
+    }
+    if (error.toString().contains('permission') ||
+        error.toString().contains('PERMISSION_DENIED')) {
+      return '⚠️ ليس لديك صلاحية لإجراء هذه العملية.';
+    }
+    if (error.toString().contains('not found') ||
+        error.toString().contains('NOT_FOUND')) {
+      return '⚠️ النقطة غير موجودة أو تم حذفها.';
+    }
+    return '❌ فشلت العملية، يرجى المحاولة لاحقاً.';
   }
 
   void _showRejectDialog(BuildContext context, String id, String name) {
@@ -125,7 +144,25 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
 
           if (snapshot.hasError) {
             return Center(
-              child: Text('❌ حدث خطأ: ${snapshot.error}'),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 60, color: Colors.red),
+                  const SizedBox(height: 12),
+                  Text(
+                    '❌ حدث خطأ أثناء تحميل البيانات: ${snapshot.error}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {});
+                    },
+                    child: const Text('إعادة المحاولة'),
+                  ),
+                ],
+              ),
             );
           }
 
@@ -158,8 +195,6 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
             itemCount: points.length,
             itemBuilder: (context, index) {
               final point = points[index];
-
-              // ✅ التحقق مما إذا كانت هذه النقطة قيد المعالجة
               final isProcessing = _processingIds.contains(point.id);
 
               return Card(
@@ -229,7 +264,6 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                       const Divider(height: 24),
                       Row(
                         children: [
-                          // ✅ زر الموافقة (مع حالة التحميل)
                           Expanded(
                             child: ElevatedButton.icon(
                               onPressed: isProcessing
@@ -256,7 +290,6 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          // ✅ زر الرفض (مع حالة التحميل)
                           Expanded(
                             child: ElevatedButton.icon(
                               onPressed: isProcessing

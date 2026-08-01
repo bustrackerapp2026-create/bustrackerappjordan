@@ -4,16 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import '../../../map/widgets/map_settings_sheet.dart';
 import '../../../map/utils/map_helpers.dart';
-
-// ✅ استخدام الاستيراد المباشر (تأكد من مطابقة المسار لمشروعك)
 import '../../../driver/providers/driver_provider.dart';
 import '../../../features/auth/providers/auth_provider.dart';
+import '../../../services/trip_service.dart';
+import '../../../models/trip_model.dart';
+import '../../../models/trip_status.dart';
+import '../../../models/route_point.dart';
+import '../../../services/location_service.dart';
 
 class DriverMapTab extends StatefulWidget {
   const DriverMapTab({super.key});
@@ -30,11 +34,16 @@ class _DriverMapTabState extends State<DriverMapTab>
   PointAnnotation? _userAnnotation;
   Uint8List? _cachedUserMarkerBytes;
 
+  PolylineAnnotationManager? _polylineAnnotationManager;
+  PolylineAnnotation? _polylineAnnotation;
+
   // --- متغيرات الموقع والحالة ---
   bool _isLoadingLocation = false;
+  bool _isProcessingTrip = false;
   String _selectedRoute = AppConstants.jordanRoutes.first;
   StreamSubscription<geo.Position>? _locationSubscription;
   double _currentBearing = 0.0;
+  String? _currentTripId;
 
   // --- إعدادات الخريطة ---
   bool _showPlaceLabels = true;
@@ -42,16 +51,21 @@ class _DriverMapTabState extends State<DriverMapTab>
   bool _showRoadLabels = true;
   String _currentMapStyle = MapboxStyles.MAPBOX_STREETS;
 
+  final TripService _tripService = TripService();
+  final LocationService _locationService = LocationService();
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _preloadMarkerImage();
+    debugPrint('📍 DriverMapTab initState');
   }
 
   Future<void> _preloadMarkerImage() async {
     try {
       _cachedUserMarkerBytes = await MapHelpers.createUserMarkerBytes();
+      debugPrint('✅ تم تحميل صورة الماركر');
     } catch (e) {
       debugPrint('⚠️ خطأ في تحميل صورة الماركر: $e');
     }
@@ -63,6 +77,8 @@ class _DriverMapTabState extends State<DriverMapTab>
     _locationSubscription?.cancel();
     _userAnnotation = null;
     _pointAnnotationManager = null;
+    _polylineAnnotation = null;
+    _polylineAnnotationManager = null;
     super.dispose();
   }
 
@@ -81,6 +97,12 @@ class _DriverMapTabState extends State<DriverMapTab>
     _userAnnotation = null;
     _pointAnnotationManager =
         await _mapboxMap?.annotations.createPointAnnotationManager();
+  }
+
+  Future<void> _initPolylineManager() async {
+    if (_mapboxMap == null) return;
+    _polylineAnnotationManager =
+        await _mapboxMap?.annotations.createPolylineAnnotationManager();
   }
 
   Future<void> _updateUserMarker(double lat, double lng, double bearing) async {
@@ -108,6 +130,29 @@ class _DriverMapTabState extends State<DriverMapTab>
     _userAnnotation = await _pointAnnotationManager?.create(options);
   }
 
+  Future<void> _showRouteOnMap(List<RoutePoint> routePoints) async {
+    if (_polylineAnnotationManager == null || routePoints.isEmpty) return;
+
+    if (_polylineAnnotation != null) {
+      await _polylineAnnotationManager?.delete(_polylineAnnotation!);
+      _polylineAnnotation = null;
+    }
+
+    final positions =
+        routePoints.map((p) => Position(p.longitude, p.latitude)).toList();
+
+    final options = PolylineAnnotationOptions(
+      geometry: LineString(coordinates: positions),
+      lineColor: Colors.blue.toARGB32(),
+      lineWidth: 4.0,
+      lineOpacity: 0.8,
+    );
+
+    _polylineAnnotation = await _polylineAnnotationManager?.create(options);
+    debugPrint(
+        '✅ تم رسم المسار على الخريطة - عدد النقاط: ${routePoints.length}');
+  }
+
   Future<void> _applyLabelLayersFilter() async {
     if (_mapboxMap == null) return;
     await MapHelpers.applyLabelLayersFilter(
@@ -125,6 +170,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     });
     await _mapboxMap?.loadStyleURI(styleUri);
     await _initAnnotationManager();
+    await _initPolylineManager();
     await _applyLabelLayersFilter();
   }
 
@@ -134,37 +180,23 @@ class _DriverMapTabState extends State<DriverMapTab>
     setState(() => _isLoadingLocation = true);
 
     try {
-      final isGpsEnabled = await geo.Geolocator.isLocationServiceEnabled();
-      if (!isGpsEnabled) {
-        _showSnackBar('⚠️ يرجى تفعيل خدمة الموقع (GPS) في جهازك.',
-            isError: true);
-        return;
-      }
-
-      geo.LocationPermission permission =
-          await geo.Geolocator.checkPermission();
-      if (permission == geo.LocationPermission.denied) {
-        permission = await geo.Geolocator.requestPermission();
-        if (permission == geo.LocationPermission.denied) {
-          _showSnackBar('⚠️ تم رفض صلاحية الموقع.', isError: true);
-          return;
-        }
-      }
-      if (permission == geo.LocationPermission.deniedForever) {
-        _showSnackBar(
-            '⚠️ تم رفض صلاحية الموقع نهائياً. يرجى تفعيلها من الإعدادات.',
+      final hasPermission = await _locationService.checkAndRequestPermission();
+      if (!hasPermission) {
+        _showSnackBar('⚠️ يرجى تفعيل خدمة الموقع وإعطاء الصلاحية.',
             isError: true);
         return;
       }
 
       _locationSubscription?.cancel();
 
-      geo.Position position = await geo.Geolocator.getCurrentPosition(
-        locationSettings: const geo.LocationSettings(
-          accuracy: geo.LocationAccuracy.high,
-          timeLimit: Duration(seconds: 8),
-        ),
-      );
+      final position = await _locationService.getCurrentPosition();
+      if (position == null) {
+        _showSnackBar('⚠️ تعذر الحصول على الموقع الحالي.', isError: true);
+        return;
+      }
+
+      debugPrint(
+          '📍 تم جلب الموقع: ${position.latitude}, ${position.longitude}');
 
       double bearing = position.heading;
       if (bearing == 0.0 && position.speed > 0) {
@@ -183,12 +215,13 @@ class _DriverMapTabState extends State<DriverMapTab>
       );
       await _updateUserMarker(position.latitude, position.longitude, bearing);
 
-      _locationSubscription = geo.Geolocator.getPositionStream(
-        locationSettings: const geo.LocationSettings(
-          accuracy: geo.LocationAccuracy.bestForNavigation,
-          distanceFilter: 5,
-        ),
-      ).listen((geo.Position pos) {
+      if (mounted) {
+        context.read<DriverProvider>().updatePosition(position);
+      }
+
+      _locationSubscription = _locationService
+          .getPositionStream(distanceFilter: 5)
+          .listen((geo.Position pos) {
         if (mounted) {
           double newBearing = pos.heading;
           if (newBearing == 0.0 && pos.speed > 0) newBearing = _currentBearing;
@@ -203,6 +236,8 @@ class _DriverMapTabState extends State<DriverMapTab>
             ),
           );
           _updateUserMarker(pos.latitude, pos.longitude, newBearing);
+
+          context.read<DriverProvider>().updatePosition(pos);
         }
       }, onError: (error) {
         debugPrint('خطأ في تحديث الموقع: $error');
@@ -210,7 +245,8 @@ class _DriverMapTabState extends State<DriverMapTab>
 
       _showSnackBar('📍 تم تحديد موقعك.', isError: false);
     } catch (e) {
-      _showSnackBar('❌ تعذر تحديد موقعك، يرجى المحاولة لاحقاً.', isError: true);
+      debugPrint('❌ خطأ في تحديد الموقع: $e');
+      _showSnackBar('❌ تعذر تحديد موقعك.', isError: true);
     } finally {
       if (mounted) setState(() => _isLoadingLocation = false);
     }
@@ -247,6 +283,152 @@ class _DriverMapTabState extends State<DriverMapTab>
     _showSnackBar('🔄 تم إعادة التمركز.', isError: false);
   }
 
+  // ✅ بدء الرحلة مع إنشاء معرف فريد من Firestore
+  Future<void> _startTrip() async {
+    if (_isProcessingTrip) return;
+
+    final driverProvider = context.read<DriverProvider>();
+    final authProvider = context.read<AuthProvider>();
+    final userId = authProvider.userId;
+
+    if (!driverProvider.isOnline) {
+      _showSnackBar('⚠️ يجب أن تكون متاحاً أولاً.', isError: true);
+      return;
+    }
+    if (driverProvider.isTripActive) {
+      _showSnackBar('⚠️ الرحلة مفعلة بالفعل.', isError: true);
+      return;
+    }
+    if (userId == null) {
+      _showSnackBar('⚠️ يرجى تسجيل الدخول أولاً.', isError: true);
+      return;
+    }
+    if (driverProvider.currentPosition == null) {
+      _showSnackBar('⚠️ يرجى تحديد موقعك أولاً (اضغط على زر الموقع).',
+          isError: true);
+      return;
+    }
+
+    setState(() => _isProcessingTrip = true);
+
+    try {
+      // ✅ استخدام Firestore Auto ID
+      final docRef = FirebaseFirestore.instance.collection('trips').doc();
+      final tripId = docRef.id;
+      debugPrint('📝 جاري إنشاء رحلة جديدة باستخدام ID: $tripId');
+
+      final trip = TripModel(
+        id: tripId,
+        passengerId: '',
+        driverId: userId,
+        pickupPoint: 'نقطة البداية',
+        dropoffPoint: 'الوجهة',
+        createdAt: DateTime.now(),
+        status: TripStatus.active,
+        notes: 'رحلة بدأها السائق',
+      );
+
+      await _tripService.createTrip(trip);
+      debugPrint('✅ تم إنشاء الرحلة في Firestore: $tripId');
+
+      if (!mounted) return;
+
+      setState(() {
+        _currentTripId = tripId;
+      });
+      driverProvider.startTrip();
+      _showSnackBar('🚀 تم بدء الرحلة!', isError: false);
+    } catch (e) {
+      debugPrint('❌ فشل إنشاء الرحلة: $e');
+      if (mounted) {
+        _showSnackBar('❌ فشل بدء الرحلة، يرجى المحاولة لاحقاً.', isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingTrip = false);
+      }
+    }
+  }
+
+  // ✅ إنهاء الرحلة مع التحقق من حجم المسار وتمرير driverId
+  Future<void> _endTrip() async {
+    if (_isProcessingTrip) return;
+
+    final driverProvider = context.read<DriverProvider>();
+    final authProvider = context.read<AuthProvider>();
+    final driverId = authProvider.userId;
+
+    if (!driverProvider.isTripActive) {
+      _showSnackBar('⚠️ لا توجد رحلة نشطة.', isError: true);
+      return;
+    }
+    if (_currentTripId == null) {
+      _showSnackBar('⚠️ لا توجد رحلة نشطة للحفظ.', isError: true);
+      return;
+    }
+    if (driverId == null) {
+      _showSnackBar('⚠️ يرجى تسجيل الدخول أولاً.', isError: true);
+      return;
+    }
+
+    setState(() => _isProcessingTrip = true);
+
+    final route = driverProvider.endTrip();
+    debugPrint('📍 عدد نقاط المسار: ${route.length}');
+
+    try {
+      // ✅ تحقق إضافي من عدد النقاط قبل الإرسال
+      if (route.length > 5000) {
+        throw Exception(
+            'عدد نقاط المسار ($route.length) يتجاوز الحد الأقصى (5000).');
+      }
+
+      if (route.isNotEmpty) {
+        debugPrint('💾 جاري حفظ المسار في Firestore...');
+        // ✅ تمرير driverId للتحقق من الملكية
+        await _tripService.updateTripStatus(
+          _currentTripId!,
+          TripStatus.completed,
+          routePoints: route,
+          driverId: driverId,
+        );
+        debugPrint('✅ تم حفظ المسار بنجاح');
+
+        if (!mounted) return;
+
+        await _showRouteOnMap(route);
+        _showSnackBar('🏁 تم إنهاء الرحلة وحفظ المسار (${route.length} نقطة).',
+            isError: false);
+      } else {
+        // ✅ تمرير driverId أيضاً عند عدم وجود مسار
+        await _tripService.updateTripStatus(
+          _currentTripId!,
+          TripStatus.completed,
+          driverId: driverId,
+        );
+
+        if (!mounted) return;
+
+        _showSnackBar('🏁 تم إنهاء الرحلة (بدون مسار).', isError: false);
+      }
+
+      if (mounted) {
+        setState(() {
+          _currentTripId = null;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ فشل حفظ المسار: $e');
+      if (mounted) {
+        _showSnackBar('❌ فشل حفظ بيانات الرحلة على السيرفر.', isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingTrip = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -256,6 +438,7 @@ class _DriverMapTabState extends State<DriverMapTab>
           onMapCreated: (map) {
             _mapboxMap = map;
             _initAnnotationManager();
+            _initPolylineManager();
             _mapboxMap?.setCamera(
               CameraOptions(
                 center: Point(coordinates: Position(35.9106, 31.9522)),
@@ -365,141 +548,166 @@ class _DriverMapTabState extends State<DriverMapTab>
           bottom: 20,
           left: 16,
           right: 16,
-          child: Consumer2<DriverProvider, AuthProvider>(
-            builder: (context, driverProvider, authProvider, _) {
-              final user = authProvider.userData;
-              final isOnline = driverProvider.isOnline; // ✅ استخدام آمن للمتغير
+          child: Selector<DriverProvider, ({bool isOnline, bool isTripActive})>(
+            selector: (_, provider) => (
+              isOnline: provider.isOnline,
+              isTripActive: provider.isTripActive,
+            ),
+            builder: (context, state, _) {
+              return Consumer<AuthProvider>(
+                builder: (context, authProvider, __) {
+                  final user = authProvider.userData;
+                  final isOnline = state.isOnline;
+                  final isTripActive = state.isTripActive;
 
-              return Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.98),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 12,
-                        offset: Offset(0, 4)),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.98),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: const [
+                        BoxShadow(
+                            color: Colors.black12,
+                            blurRadius: 12,
+                            offset: Offset(0, 4)),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              '🚗 مرحباً ${user?.fullName ?? "السائق"}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(
-                                  Icons.circle,
-                                  size: 10,
-                                  color: isOnline ? Colors.green : Colors.red,
-                                ),
-                                const SizedBox(width: 4),
                                 Text(
-                                  isOnline ? 'متاح' : 'غير متاح',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: isOnline ? Colors.green : Colors.red,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  '🧭 ${_currentBearing.toStringAsFixed(1)}°',
+                                  '🚗 مرحباً ${user?.fullName ?? "السائق"}',
                                   style: const TextStyle(
-                                      fontSize: 11, color: Colors.grey),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(Icons.circle,
+                                        size: 10,
+                                        color: isOnline
+                                            ? Colors.green
+                                            : Colors.red),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      isOnline ? 'متاح' : 'غير متاح',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isOnline
+                                            ? Colors.green
+                                            : Colors.red,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      '🧭 ${_currentBearing.toStringAsFixed(1)}°',
+                                      style: const TextStyle(
+                                          fontSize: 11, color: Colors.grey),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                _selectedRoute,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
                           ],
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryColor,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            _selectedRoute,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold),
-                          ),
+                        const Divider(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  context
+                                      .read<DriverProvider>()
+                                      .toggleOnlineStatus();
+                                  _showSnackBar(
+                                    isOnline
+                                        ? '🟢 أصبحت متاحاً للطلبات'
+                                        : '🔴 تم إيقاف الاستقبال',
+                                    isError: false,
+                                  );
+                                },
+                                icon: Icon(
+                                    isOnline ? Icons.wifi : Icons.wifi_off,
+                                    size: 18),
+                                label: Text(isOnline ? 'متصل' : 'توصيل'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor:
+                                      isOnline ? Colors.green : Colors.grey,
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _isProcessingTrip
+                                    ? null
+                                    : (isTripActive ? _endTrip : _startTrip),
+                                icon: _isProcessingTrip
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Icon(
+                                        isTripActive
+                                            ? Icons.stop
+                                            : Icons.play_arrow,
+                                        size: 18),
+                                label: Text(
+                                  _isProcessingTrip
+                                      ? 'جاري...'
+                                      : (isTripActive ? 'إنهاء' : 'بدء الرحلة'),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isTripActive
+                                      ? Colors.red
+                                      : AppTheme.primaryColor,
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const Divider(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              driverProvider.toggleOnlineStatus();
-                              _showSnackBar(
-                                driverProvider.isOnline
-                                    ? '🟢 أصبحت متاحاً للطلبات'
-                                    : '🔴 تم إيقاف الاستقبال',
-                                isError: false,
-                              );
-                            },
-                            icon: Icon(
-                              isOnline ? Icons.wifi : Icons.wifi_off,
-                              size: 18,
-                            ),
-                            label: Text(isOnline ? 'متصل' : 'توصيل'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  isOnline ? Colors.green : Colors.grey,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              if (isOnline) {
-                                driverProvider.startTrip();
-                                _showSnackBar('🚀 تم بدء الرحلة!',
-                                    isError: false);
-                              } else {
-                                _showSnackBar('⚠️ يجب أن تكون متاحاً أولاً.',
-                                    isError: true);
-                              }
-                            },
-                            icon: const Icon(Icons.play_arrow, size: 18),
-                            label: const Text('بدء الرحلة'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primaryColor,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                  );
+                },
               );
             },
           ),
