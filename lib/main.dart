@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -15,6 +16,16 @@ import 'driver/providers/driver_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ✅ جعل شريط النظام (Status Bar) شفافاً ومتناسقاً لمنع ظهور البار الأسود المزعج
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness:
+          Brightness.dark, // أيقونات داكنة واضحة (ساعة، شبكة، بطارية)
+      systemNavigationBarColor: Colors.white,
+    ),
+  );
 
   try {
     await dotenv.load(fileName: ".env");
@@ -72,28 +83,30 @@ class AuthWrapper extends StatelessWidget {
 
     if (authProvider.userData == null) {
       return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 20),
-              const Text(
-                'جاري تحميل بيانات الحساب...',
-                style: TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () => context.read<AuthProvider>().signOut(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context)
-                      .colorScheme
-                      .error, // ✅ استخدام لون الثيم
-                  foregroundColor: Colors.white,
+        body: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 20),
+                const Text(
+                  'جاري تحميل بيانات الحساب...',
+                  style: TextStyle(color: Colors.grey),
                 ),
-                child: const Text('تسجيل الخروج'),
-              ),
-            ],
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () => context.read<AuthProvider>().signOut(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .error, // ✅ استخدام لون الثيم
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('تسجيل الخروج'),
+                ),
+              ],
+            ),
           ),
         ),
       );
