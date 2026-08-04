@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // ✅ مهم للتحكم بشريط الحالة
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import 'tabs/verify_drivers_tab.dart';
 import 'tabs/pending_points_tab.dart';
+import 'tabs/admin_map_tab.dart'; // ✅ استيراد تبويب الخريطة
+import 'tabs/settings_tab.dart'; // ✅ استيراد تبويب الإعدادات
+import '../widgets/admin_bottom_nav_bar.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -15,11 +18,12 @@ class AdminDashboard extends StatefulWidget {
 class _AdminDashboardState extends State<AdminDashboard> {
   int _currentIndex = 0;
 
+  // ✅ التبويبات الأربعة (التحقق، النقاط، الخريطة، الإعدادات)
   final List<Widget> _tabs = const [
-    VerifyDriversTab(),
-    PendingPointsTab(),
-    Center(child: Text('📊 الإحصائيات (قيد التطوير)')),
-    Center(child: Text('⚙️ الإعدادات (قيد التطوير)')),
+    VerifyDriversTab(), // 0: التحقق
+    PendingPointsTab(), // 1: النقاط
+    AdminMapTab(), // 2: الخريطة (جديد)
+    SettingsTab(), // 3: الإعدادات (جديد)
   ];
 
   void _showLogoutDialog(BuildContext context, AuthProvider authProvider) {
@@ -52,20 +56,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
   @override
   void initState() {
     super.initState();
-
-    // ✅ الحل النهائي: تغيير لون شريط الحالة إلى الأزرق
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
-        statusBarColor: Colors.blue, // ✅ خلفية زرقاء
-        statusBarIconBrightness: Brightness.light, // ✅ أيقونات بيضاء
-        statusBarBrightness: Brightness.dark, // ✅ للـ iOS
+        statusBarColor: Colors.blue,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
       ),
     );
   }
 
   @override
   void dispose() {
-    // ✅ إعادة ضبط شريط الحالة إلى الافتراضي عند الخروج
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -81,12 +82,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final authProvider = context.watch<AuthProvider>();
 
     return Scaffold(
-      // ✅ جعل التطبيق يمتد خلف شريط الحالة (للقضاء على الخلفية السوداء)
-      extendBodyBehindAppBar: true,
-
       appBar: AppBar(
         title: const Text(
-          'لوحة التحكم - المشرف',
+          'لوحة التحكم - الأدمن',
           style: TextStyle(
             color: Colors.white,
             fontSize: 18,
@@ -106,39 +104,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: IndexedStack(
-          index: _currentIndex,
-          children: _tabs,
-        ),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _tabs,
       ),
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar: AdminBottomNavBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        selectedItemColor: Colors.blue.shade700,
-        unselectedItemColor: Colors.grey.shade700,
-        selectedFontSize: 13,
-        unselectedFontSize: 12,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.verified_user),
-            label: 'التحقق',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.location_on),
-            label: 'النقاط',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: 'إحصائيات',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'إعدادات',
-          ),
-        ],
       ),
     );
   }
