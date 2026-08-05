@@ -5,12 +5,14 @@ class UserModel {
   final String email;
   final String fullName;
   final String userType;
-  final String? phoneNumber; // ✅ أصبح قابلاً للـ null
-  final String? busNumber; // ✅ أصبح قابلاً للـ null
-  final String? route; // ✅ أصبح قابلاً للـ null
+  final String? phoneNumber;
+  final String? busNumber;
+  final String? route;
   final bool isVerified;
   final bool isRejected;
   final DateTime? createdAt;
+
+  static final RegExp _emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
 
   const UserModel({
     required this.uid,
@@ -25,72 +27,33 @@ class UserModel {
     this.createdAt,
   });
 
-  // ============================================================
-  // ✅ دوال التحقق من صحة المدخلات (Input Validation)
-  // ============================================================
+  // ─── دوال Factory (من Firestore) ──────────────────────────────────
 
-  /// ✅ التحقق من صيغة البريد الإلكتروني (صيغة قياسية)
-  static String _validateEmail(String email) {
-    if (email.isEmpty) {
-      throw ArgumentError('البريد الإلكتروني مطلوب.');
-    }
-    final emailRegex = RegExp(
-      r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-    );
-    if (!emailRegex.hasMatch(email)) {
-      throw ArgumentError('صيغة البريد الإلكتروني غير صحيحة: $email');
-    }
-    return email;
-  }
-
-  /// ✅ التحقق من رقم الهاتف (يسمح بتركه فارغاً أو 10-12 رقماً مع +962 اختياري)
-  static String? _validatePhoneNumber(String? phone) {
-    if (phone == null || phone.isEmpty) {
-      return null; // ✅ رقم الهاتف غير مطلوب
-    }
-    final phoneRegex = RegExp(
-      r'^(?:\+962)?[0-9]{10,12}$',
-    );
-    if (!phoneRegex.hasMatch(phone.replaceAll(' ', ''))) {
-      throw ArgumentError('صيغة رقم الهاتف غير صحيحة: $phone');
-    }
-    return phone;
-  }
-
-  // ============================================================
-  // ✅ تحليل التواريخ
-  // ============================================================
-
-  static DateTime? _parseOptionalDate(dynamic value) {
-    if (value == null) return null;
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    throw FormatException('Invalid date format for createdAt: $value');
-  }
-
-  // ============================================================
-  // ✅ إنشاء من Map (قادم من Firestore)
-  // ============================================================
-
+  /// ✅ إنشاء UserModel من خريطة Firestore (الدالة الأساسية)
   factory UserModel.fromMap(Map<String, dynamic> map, String docId) {
     return UserModel(
       uid: docId,
-      email: _validateEmail(map['email'] ?? ''),
-      fullName: map['fullName'] ?? '',
-      userType: map['userType'] ?? 'passenger',
-      phoneNumber: _validatePhoneNumber(map['phoneNumber'] as String?),
+      email: _safeEmail(map['email']),
+      fullName: map['fullName']?.toString() ?? '',
+      userType: map['userType']?.toString() ?? 'passenger',
+      phoneNumber: _safePhoneNumber(map['phoneNumber']),
       busNumber: map['busNumber'] as String?,
       route: map['route'] as String?,
-      isVerified: map['isVerified'] ?? false,
-      isRejected: map['isRejected'] ?? false,
+      isVerified: map['isVerified'] == true,
+      isRejected: map['isRejected'] == true,
       createdAt: _parseOptionalDate(map['createdAt']),
     );
   }
 
-  // ============================================================
-  // ✅ التحويل إلى Map (للتخزين في Firestore)
-  // ============================================================
+  /// ✅ إنشاء UserModel من Firestore DocumentSnapshot
+  factory UserModel.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return UserModel.fromMap(data, doc.id);
+  }
 
+  // ─── دوال التحويل إلى Map ──────────────────────────────────────
+
+  /// ✅ تحويل UserModel إلى خريطة للتخزين في Firestore
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
@@ -105,44 +68,112 @@ class UserModel {
     };
   }
 
-  // ============================================================
-  // ✅ copyWith مع دعم تعيين القيم إلى null
-  // ============================================================
+  // ─── دوال مساعدة (تحويل JSON) ──────────────────────────────────
+
+  /// ✅ تحويل UserModel إلى JSON (لـ API)
+  Map<String, dynamic> toJson() {
+    return {
+      'uid': uid,
+      'email': email,
+      'fullName': fullName,
+      'userType': userType,
+      'phoneNumber': phoneNumber,
+      'busNumber': busNumber,
+      'route': route,
+      'isVerified': isVerified,
+      'isRejected': isRejected,
+      'createdAt': createdAt?.toIso8601String(),
+    };
+  }
+
+  /// ✅ إنشاء UserModel من JSON (لـ API)
+  factory UserModel.fromJson(Map<String, dynamic> json) {
+    return UserModel(
+      uid: json['uid'] ?? '',
+      email: json['email'] ?? '',
+      fullName: json['fullName'] ?? '',
+      userType: json['userType'] ?? 'passenger',
+      phoneNumber: json['phoneNumber'] as String?,
+      busNumber: json['busNumber'] as String?,
+      route: json['route'] as String?,
+      isVerified: json['isVerified'] ?? false,
+      isRejected: json['isRejected'] ?? false,
+      createdAt:
+          json['createdAt'] != null ? DateTime.parse(json['createdAt']) : null,
+    );
+  }
+
+  // ─── دوال مُحدِّثة ─────────────────────────────────────────────
 
   UserModel copyWith({
     String? uid,
     String? email,
     String? fullName,
     String? userType,
-    String? phoneNumber, // ✅ يمكن تمرير null لمسح القيمة
-    String? busNumber, // ✅ يمكن تمرير null لمسح القيمة
-    String? route, // ✅ يمكن تمرير null لمسح القيمة
+    String? phoneNumber,
+    String? busNumber,
+    String? route,
     bool? isVerified,
     bool? isRejected,
     DateTime? createdAt,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
-      email: email != null ? _validateEmail(email) : this.email,
+      email: email ?? this.email,
       fullName: fullName ?? this.fullName,
       userType: userType ?? this.userType,
-      phoneNumber: phoneNumber, // ✅ قبول null مباشرة
-      busNumber: busNumber, // ✅ قبول null مباشرة
-      route: route, // ✅ قبول null مباشرة
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      busNumber: busNumber ?? this.busNumber,
+      route: route ?? this.route,
       isVerified: isVerified ?? this.isVerified,
       isRejected: isRejected ?? this.isRejected,
       createdAt: createdAt ?? this.createdAt,
     );
   }
 
-  // ============================================================
-  // ✅ دوال مساعدة للاستخدام في التطبيق
-  // ============================================================
+  // ─── دوال مساعدة (Getters) ─────────────────────────────────────
 
-  /// ✅ الحصول على اسم المستخدم للعرض (اختصار)
   String get displayName => fullName.isNotEmpty ? fullName : 'مستخدم';
-
-  /// ✅ الحصول على رقم الهاتف مع تنسيق أو رسالة افتراضية
   String get displayPhone =>
       phoneNumber?.isNotEmpty == true ? phoneNumber! : 'غير محدد';
+  String get displayUserType {
+    switch (userType) {
+      case 'admin':
+        return 'مشرف';
+      case 'driver':
+        return 'سائق';
+      case 'passenger':
+        return 'راكب';
+      case 'service':
+        return 'سرفيس';
+      case 'bus_company':
+        return 'باص شركه';
+      default:
+        return userType;
+    }
+  }
+
+  // ─── دوال مساعدة (Private) ─────────────────────────────────────
+
+  static String _safeEmail(dynamic email) {
+    final str = email?.toString().trim() ?? '';
+    if (str.isNotEmpty && _emailRegex.hasMatch(str)) {
+      return str;
+    }
+    return str;
+  }
+
+  static String? _safePhoneNumber(dynamic phone) {
+    if (phone == null) return null;
+    final str = phone.toString().replaceAll(' ', '');
+    if (str.isEmpty) return null;
+    return str;
+  }
+
+  static DateTime? _parseOptionalDate(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return null;
+  }
 }
