@@ -5,7 +5,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../services/route_service.dart';
 import '../../../../models/route_model.dart';
-import 'map_core_mixin.dart';
+import '../../../../core/map/map_core.dart';
 
 mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
   final List<RouteModel> _routes = [];

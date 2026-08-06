@@ -106,6 +106,12 @@ class PickupPointModel {
     );
   }
 
+  /// ✅ إنشاء كائن من مستند Firestore مباشرة
+  factory PickupPointModel.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return PickupPointModel.fromMap(data, doc.id);
+  }
+
   // ============================================================
   // ✅ التحويل إلى Map (للتخزين في Firestore)
   // ============================================================

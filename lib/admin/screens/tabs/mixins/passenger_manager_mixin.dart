@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'map_core_mixin.dart';
+import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart'; // ✅ إضافة الاستيراد
 
 mixin PassengerManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
