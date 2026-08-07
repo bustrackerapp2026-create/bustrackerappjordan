@@ -148,28 +148,29 @@ class _AdminMapTabState extends State<AdminMapTab>
     final double lat = point.coordinates.lat.toDouble();
     final double lng = point.coordinates.lng.toDouble();
 
-    final name = await PickupPointDialog.show(context: context);
+    final result = await PickupPointDialog.show(context: context);
     if (!mounted) return;
 
-    if (name == null || name.trim().isEmpty) {
+    if (result == null || result.name.trim().isEmpty) {
       setState(() => _isAddingPickupPoint = false);
       return;
     }
 
     try {
       await _pickupManager.addPickupPoint(
-        name: name.trim(),
+        name: result.name.trim(),
         latitude: lat,
         longitude: lng,
         userId: userId,
         userType: userData.userType,
+        pointType: result.pointType,
       );
 
       if (!mounted) return;
 
       MapUtils.showSnackBar(
         context,
-        '✅ تم إضافة النقطة "${name.trim()}" بنجاح',
+        '✅ تم إضافة النقطة "${result.name.trim()}" بنجاح',
       );
     } catch (e) {
       if (!mounted) return;
@@ -181,6 +182,122 @@ class _AdminMapTabState extends State<AdminMapTab>
       );
     } finally {
       if (mounted) setState(() => _isAddingPickupPoint = false);
+    }
+  }
+
+  @override
+  void handlePickupTap(String pickupId) {
+    _showPickupActionsSheet(pickupId);
+  }
+
+  Future<void> _showPickupActionsSheet(String pickupId) async {
+    if (!mounted) return;
+
+    final point = await _pickupManager.getPickupPoint(pointId: pickupId);
+    if (!mounted || point == null) return;
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: false,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  point.name,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  point.pointType == 'passenger'
+                      ? 'تجمع ركاب'
+                      : 'تجمع باصات',
+                  style: const TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: const Icon(Icons.edit_rounded, color: AppTheme.primaryColor),
+                  title: const Text('تعديل النقطة'),
+                  onTap: () => Navigator.pop(sheetContext, 'edit'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_rounded, color: Colors.red),
+                  title: const Text('حذف النقطة'),
+                  onTap: () => Navigator.pop(sheetContext, 'delete'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted) return;
+
+    if (action == 'edit') {
+      final updated = await PickupPointDialog.show(
+        context: context,
+        initialName: point.name,
+        initialPointType: point.pointType,
+      );
+      if (updated == null || updated.name.trim().isEmpty) return;
+      try {
+        await _pickupManager.updatePickupPoint(
+          pointId: pickupId,
+          data: {
+            'name': updated.name.trim(),
+            'pointType': updated.pointType,
+          },
+        );
+        if (!mounted) return;
+        MapUtils.showSnackBar(context, '✅ تم تعديل النقطة');
+      } catch (e) {
+        if (!mounted) return;
+        MapUtils.showSnackBar(context, '❌ فشل تعديل النقطة', isError: true);
+      }
+      return;
+    }
+
+    if (action == 'delete') {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('حذف النقطة؟'),
+          content: Text('هل تريد حذف ${point.name}؟'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('حذف'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true) return;
+
+      try {
+        await _pickupManager.deletePickupPoint(pointId: pickupId);
+        if (!mounted) return;
+        MapUtils.showSnackBar(context, '🗑️ تم حذف النقطة');
+      } catch (e) {
+        if (!mounted) return;
+        MapUtils.showSnackBar(context, '❌ فشل حذف النقطة', isError: true);
+      }
     }
   }
 

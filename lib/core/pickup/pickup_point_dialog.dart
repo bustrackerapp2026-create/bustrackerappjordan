@@ -1,20 +1,53 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 
+class PickupPointDialogResult {
+  final String name;
+  final String pointType;
+
+  const PickupPointDialogResult({
+    required this.name,
+    required this.pointType,
+  });
+}
+
 /// حوار إضافة نقطة تجمع جديدة
-class PickupPointDialog extends StatelessWidget {
-  final Function(String name) onConfirm;
+class PickupPointDialog extends StatefulWidget {
+  final Function(String name, String pointType) onConfirm;
+  final String initialName;
+  final String initialPointType;
 
   const PickupPointDialog({
     super.key,
     required this.onConfirm,
+    this.initialName = '',
+    this.initialPointType = 'bus',
   });
 
   @override
-  Widget build(BuildContext context) {
-    final TextEditingController nameController = TextEditingController();
-    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+  State<PickupPointDialog> createState() => _PickupPointDialogState();
+}
 
+class _PickupPointDialogState extends State<PickupPointDialog> {
+  late final TextEditingController nameController;
+  late String selectedPointType;
+  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+    nameController = TextEditingController(text: widget.initialName);
+    selectedPointType = widget.initialPointType;
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text(
         'إضافة نقطة تجمع الباصات/الركاب',
@@ -80,6 +113,38 @@ class PickupPointDialog extends StatelessWidget {
                 return null;
               },
             ),
+            const SizedBox(height: 16),
+            const Text(
+              'اختر نوع النقطة',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.right,
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTypeOption(
+                    label: 'تجمع باصات',
+                    value: 'bus',
+                    icon: Icons.directions_bus_rounded,
+                    color: Colors.orange,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildTypeOption(
+                    label: 'تجمع ركاب',
+                    value: 'passenger',
+                    icon: Icons.people_alt_rounded,
+                    color: Colors.indigo,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -95,7 +160,7 @@ class PickupPointDialog extends StatelessWidget {
           onPressed: () {
             if (formKey.currentState!.validate()) {
               final name = nameController.text.trim();
-              onConfirm(name);
+              widget.onConfirm(name, selectedPointType);
               Navigator.pop(context);
             }
           },
@@ -112,17 +177,59 @@ class PickupPointDialog extends StatelessWidget {
     );
   }
 
-  /// ✅ دالة لعرض الحوار وإرجاع اسم النقطة
-  static Future<String?> show({
+  Widget _buildTypeOption({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    final isSelected = selectedPointType == value;
+    return InkWell(
+      onTap: () => setState(() => selectedPointType = value),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: isSelected ? color.withValues(alpha: 0.16) : Colors.grey.shade50,
+          border: Border.all(
+            color: isSelected ? color : Colors.grey.shade300,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? color : Colors.black87,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// ✅ دالة لعرض الحوار وإرجاع اسم النقطة ونوعها
+  static Future<PickupPointDialogResult?> show({
     required BuildContext context,
+    String initialName = '',
+    String initialPointType = 'bus',
   }) async {
-    String? result;
+    PickupPointDialogResult? result;
     await showDialog(
       context: context,
       barrierDismissible: true,
       builder: (context) => PickupPointDialog(
-        onConfirm: (name) {
-          result = name;
+        initialName: initialName,
+        initialPointType: initialPointType,
+        onConfirm: (name, pointType) {
+          result = PickupPointDialogResult(name: name, pointType: pointType);
         },
       ),
     );

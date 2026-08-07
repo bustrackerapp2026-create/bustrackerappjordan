@@ -64,6 +64,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           lat: point.latitude,
           lng: point.longitude,
           name: point.name,
+          pointType: point.pointType,
           confirmationCount: point.confirmationCount,
         );
       } catch (e) {
@@ -81,6 +82,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     required double lat,
     required double lng,
     required String name,
+    required String pointType,
     required int confirmationCount,
   }) async {
     if (pointAnnotationManager == null || !mounted) return;
@@ -89,13 +91,15 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     if (_pickupAnnotations.containsKey(pickupId)) {
       final annotation = _pickupAnnotations[pickupId]!;
-      annotation.geometry = point;
-      await pointAnnotationManager?.update(annotation);
-      return;
+      await pointAnnotationManager?.delete(annotation);
+      _pickupAnnotations.remove(pickupId);
     }
 
-    final markerBytes =
-        await _createPickupMarkerImage(name: name, count: confirmationCount);
+    final markerBytes = await _createPickupMarkerImage(
+      name: name,
+      pointType: pointType,
+      count: confirmationCount,
+    );
     if (markerBytes == null || !mounted) return;
 
     final options = PointAnnotationOptions(
@@ -113,9 +117,10 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   Future<Uint8List?> _createPickupMarkerImage({
     required String name,
+    required String pointType,
     required int count,
   }) async {
-    final cacheKey = 'pickup_${name.hashCode}_$count';
+    final cacheKey = 'pickup_${name.hashCode}_$count_$pointType';
     if (_pickupMarkerCache.containsKey(cacheKey)) {
       return _pickupMarkerCache[cacheKey];
     }
@@ -123,63 +128,80 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     try {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      const size = 70.0;
+      const size = 110.0;
       const center = Offset(size / 2, size / 2);
 
       canvas.drawColor(Colors.transparent, BlendMode.clear);
 
       final glowPaint = Paint()
-        ..color = Colors.orange.withValues(alpha: 0.25)
+        ..color = (pointType == 'passenger'
+                ? Colors.indigo.shade600
+                : Colors.orange.shade600)
+            .withValues(alpha: 0.25)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10.0);
-      canvas.drawCircle(center, 22, glowPaint);
+      canvas.drawCircle(center, 34, glowPaint);
 
       final outerPaint = Paint()
         ..color = Colors.white
         ..style = PaintingStyle.fill;
-      canvas.drawCircle(center, 16, outerPaint);
+      canvas.drawCircle(center, 24, outerPaint);
 
       final innerPaint = Paint()
-        ..color = Colors.orange.shade600
+        ..color = pointType == 'passenger'
+            ? Colors.indigo.shade700
+            : Colors.orange.shade600
         ..style = PaintingStyle.fill;
-      canvas.drawCircle(center, 12, innerPaint);
+      canvas.drawCircle(center, 18, innerPaint);
 
-      final locationPaint = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.fill;
-      final locationPath = Path();
-      final locCenter = Offset(center.dx, center.dy - 2);
-      locationPath
-          .addOval(Rect.fromCenter(center: locCenter, width: 6, height: 6));
-      locationPath.moveTo(locCenter.dx, locCenter.dy + 3);
-      locationPath.lineTo(locCenter.dx - 4, locCenter.dy + 10);
-      locationPath.lineTo(locCenter.dx + 4, locCenter.dy + 10);
-      locationPath.close();
-      canvas.drawPath(locationPath, locationPaint);
+      final iconData = pointType == 'passenger'
+          ? Icons.people_alt_rounded
+          : Icons.directions_bus_rounded;
+      final iconPainter = TextPainter(textDirection: TextDirection.ltr);
+      iconPainter.text = TextSpan(
+        text: String.fromCharCode(iconData.codePoint),
+        style: TextStyle(
+          fontSize: 24,
+          fontFamily: iconData.fontFamily,
+          package: iconData.fontPackage,
+          color: Colors.white,
+        ),
+      );
+      iconPainter.layout();
+      iconPainter.paint(canvas, Offset(center.dx - 12, center.dy - 16));
 
       final countPainter = TextPainter(
         text: TextSpan(
             text: '$count',
             style: const TextStyle(
-                color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
+                color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
         textDirection: TextDirection.ltr,
         textAlign: TextAlign.center,
       );
       countPainter.layout();
-      countPainter.paint(canvas, Offset(center.dx + 10, center.dy - 6));
+      countPainter.paint(canvas, Offset(center.dx + 12, center.dy - 30));
+
+      final bubblePaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+      final bubbleRect = Rect.fromLTWH(6, 70, size - 12, 30);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(bubbleRect, const Radius.circular(12)),
+        bubblePaint,
+      );
 
       final textPainter = TextPainter(
         text: TextSpan(
             text: name,
             style: const TextStyle(
                 color: Colors.black87,
-                fontSize: 9,
+                fontSize: 13,
                 fontWeight: FontWeight.bold)),
         textDirection: TextDirection.rtl,
         textAlign: TextAlign.center,
       );
-      textPainter.layout(maxWidth: size);
+      textPainter.layout(maxWidth: size - 24);
       textPainter.paint(
-          canvas, Offset((size - textPainter.width) / 2, size - 12));
+          canvas, Offset((size - textPainter.width) / 2, 76));
 
       final picture = recorder.endRecording();
       final image = await picture.toImage(size.toInt(), size.toInt());
