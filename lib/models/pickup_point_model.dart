@@ -8,6 +8,7 @@ class PickupPointModel {
     'approved',
     'rejected'
   ];
+  static const List<String> _validPointTypes = ['bus', 'passenger'];
 
   final String id;
   final String name;
@@ -16,6 +17,7 @@ class PickupPointModel {
   final String addedBy;
   final String addedByUserType;
   final String status;
+  final String pointType;
   final DateTime? createdAt;
   final List<String> confirmations;
   final int confirmationCount;
@@ -28,6 +30,7 @@ class PickupPointModel {
     required this.addedBy,
     this.addedByUserType = 'driver',
     String? status,
+    String? pointType,
     this.createdAt,
     this.confirmations = const [],
     this.confirmationCount = 0,
@@ -35,7 +38,8 @@ class PickupPointModel {
         name = _validateName(name),
         latitude = _validateLatitude(latitude),
         longitude = _validateLongitude(longitude),
-        status = _validateStatus(status ?? 'pending');
+        status = _validateStatus(status ?? 'pending'),
+        pointType = _validatePointType(pointType ?? 'bus');
 
   // ============================================================
   // ✅ دوال التحقق من صحة المدخلات (Validation)
@@ -76,6 +80,14 @@ class PickupPointModel {
     return value;
   }
 
+  static String _validatePointType(String value) {
+    if (!_validPointTypes.contains(value)) {
+      throw ArgumentError(
+          'نوع نقطة غير صالح: $value. يجب أن يكون أحد: ${_validPointTypes.join(', ')}');
+    }
+    return value;
+  }
+
   // ============================================================
   // ✅ تحليل التواريخ
   // ============================================================
@@ -100,6 +112,7 @@ class PickupPointModel {
       addedBy: map['addedBy'] as String? ?? '',
       addedByUserType: map['addedByUserType'] as String? ?? 'driver',
       status: map['status'] as String? ?? 'pending',
+      pointType: map['pointType'] as String? ?? 'bus',
       createdAt: _parseOptionalDate(map['createdAt']),
       confirmations: List<String>.from(map['confirmations'] ?? []),
       confirmationCount: map['confirmationCount'] ?? 0,
@@ -124,6 +137,7 @@ class PickupPointModel {
       'addedBy': addedBy,
       'addedByUserType': addedByUserType,
       'status': status,
+      'pointType': pointType,
       'confirmations': confirmations,
       'confirmationCount': confirmationCount,
       'createdAt': FieldValue.serverTimestamp(),
@@ -142,6 +156,7 @@ class PickupPointModel {
     String? addedBy,
     String? addedByUserType,
     String? status,
+    String? pointType,
     DateTime? createdAt,
     List<String>? confirmations,
     int? confirmationCount,
@@ -155,6 +170,7 @@ class PickupPointModel {
       addedBy: addedBy ?? this.addedBy,
       addedByUserType: addedByUserType ?? this.addedByUserType,
       status: status != null ? _validateStatus(status) : this.status,
+      pointType: pointType != null ? _validatePointType(pointType) : this.pointType,
       createdAt: createdAt ?? this.createdAt,
       confirmations: confirmations ?? this.confirmations,
       confirmationCount: confirmationCount ?? this.confirmationCount,

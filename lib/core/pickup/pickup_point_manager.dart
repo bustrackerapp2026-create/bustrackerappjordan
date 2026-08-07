@@ -27,6 +27,7 @@ class PickupPointManager {
     required double longitude,
     required String userId,
     required String userType,
+    String pointType = 'bus',
   }) async {
     try {
       // إنشاء كائن النقطة (بدون id)
@@ -38,6 +39,7 @@ class PickupPointManager {
         addedBy: userId,
         addedByUserType: userType,
         status: userType == 'admin' ? 'approved' : 'pending',
+        pointType: pointType,
         confirmations: const [],
         confirmationCount: 0,
       );
