@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
@@ -7,6 +8,8 @@ import '../../../../core/map/map_core.dart';
 import '../../../../core/pickup/pickup_point_manager.dart';
 import '../../../../core/pickup/pickup_point_dialog.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
+import '../../../../services/location_service.dart';
+import '../../../../map/widgets/search_bar_widget.dart';
 import 'mixins/driver_manager_mixin.dart';
 import 'mixins/passenger_manager_mixin.dart';
 import 'mixins/route_manager_mixin.dart';
@@ -27,7 +30,10 @@ class _AdminMapTabState extends State<AdminMapTab>
         RouteManagerMixin<AdminMapTab>,
         PickupPointMixin<AdminMapTab> {
   final PickupPointManager _pickupManager = PickupPointManager();
+  final LocationService _locationService = LocationService();
   bool _isAddingPickupPoint = false;
+  bool _isLoadingLocation = false;
+  StreamSubscription<Position>? _locationSubscription;
 
   @override
   void initState() {
@@ -46,6 +52,7 @@ class _AdminMapTabState extends State<AdminMapTab>
 
   @override
   void dispose() {
+    _locationSubscription?.cancel();
     _disposeMapFeatures();
     super.dispose();
   }
@@ -125,6 +132,54 @@ class _AdminMapTabState extends State<AdminMapTab>
       isError: true,
       duration: const Duration(seconds: 1),
     );
+  }
+
+  Future<void> _goToMyLocation() async {
+    if (mapboxMap == null) return;
+    setState(() => _isLoadingLocation = true);
+    try {
+      final hasPermission = await _locationService.checkAndRequestPermission();
+      if (!hasPermission) {
+        MapUtils.showSnackBar(context, '⚠️ يرجى تفعيل الموقع أولاً', isError: true);
+        return;
+      }
+
+      final position = await _locationService.getCurrentPosition();
+      if (position == null) {
+        MapUtils.showSnackBar(context, '⚠️ تعذر الحصول على الموقع الحالي', isError: true);
+        return;
+      }
+
+      mapboxMap?.setCamera(
+        CameraOptions(
+          center: Point(coordinates: Position(position.longitude, position.latitude)),
+          zoom: 15.0,
+          pitch: 45.0,
+        ),
+      );
+      MapUtils.showSnackBar(context, '📍 تم تحديد موقعك الحالي');
+    } catch (e) {
+      MapUtils.showSnackBar(context, '❌ تعذر تحديد موقعك: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoadingLocation = false);
+    }
+  }
+
+  Future<void> _searchPlace(String query) async {
+    if (query.trim().isEmpty) return;
+    final result = await _locationService.searchPlace(query);
+    if (result == null) {
+      MapUtils.showSnackBar(context, '⚠️ لم يتم العثور على المكان', isError: true);
+      return;
+    }
+    mapboxMap?.setCamera(
+      CameraOptions(
+        center: Point(coordinates: Position(result.longitude, result.latitude)),
+        zoom: 15.0,
+        pitch: 45.0,
+      ),
+    );
+    MapUtils.showSnackBar(context, '🔎 تم الانتقال إلى ${result.name}');
   }
 
   void _handleMapTap(Point point) async {
@@ -317,6 +372,17 @@ class _AdminMapTabState extends State<AdminMapTab>
         ),
         if (!isMapReady) const Center(child: CircularProgressIndicator()),
         Positioned(
+          top: 16,
+          left: 16,
+          right: 16,
+          child: SearchBarWidget(
+            selectedRoute: 'الكل',
+            routes: const ['الكل'],
+            onRouteChanged: (_) {},
+            onSearchSubmitted: (query) async => _searchPlace(query),
+          ),
+        ),
+        Positioned(
           bottom: 30,
           left: 16,
           child: FloatingActionButton(
@@ -349,6 +415,28 @@ class _AdminMapTabState extends State<AdminMapTab>
               _isAddingPickupPoint ? Icons.close : Icons.add_location,
               size: 26,
             ),
+          ),
+        ),
+        Positioned(
+          bottom: 180,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: 'admin_map_location_fab',
+            onPressed: _goToMyLocation,
+            backgroundColor: Colors.white,
+            foregroundColor: AppTheme.primaryColor,
+            elevation: 4,
+            shape: const CircleBorder(),
+            child: _isLoadingLocation
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      color: AppTheme.primaryColor,
+                      strokeWidth: 2.5,
+                    ),
+                  )
+                : const Icon(Icons.my_location_rounded, size: 26),
           ),
         ),
         Positioned(

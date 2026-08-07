@@ -21,6 +21,8 @@ class PickupPointModel {
   final DateTime? createdAt;
   final List<String> confirmations;
   final int confirmationCount;
+  final String reviewNote;
+  final String suggestedEdit;
 
   PickupPointModel({
     required this.id,
@@ -34,12 +36,16 @@ class PickupPointModel {
     this.createdAt,
     this.confirmations = const [],
     this.confirmationCount = 0,
+    String? reviewNote,
+    String? suggestedEdit,
   })  : // ✅ تعيين القيم في قائمة التهيئة فقط
         name = _validateName(name),
         latitude = _validateLatitude(latitude),
         longitude = _validateLongitude(longitude),
         status = _validateStatus(status ?? 'pending'),
-        pointType = _validatePointType(pointType ?? 'bus');
+        pointType = _validatePointType(pointType ?? 'bus'),
+        reviewNote = reviewNote ?? '',
+        suggestedEdit = suggestedEdit ?? '';
 
   // ============================================================
   // ✅ دوال التحقق من صحة المدخلات (Validation)
@@ -116,6 +122,8 @@ class PickupPointModel {
       createdAt: _parseOptionalDate(map['createdAt']),
       confirmations: List<String>.from(map['confirmations'] ?? []),
       confirmationCount: map['confirmationCount'] ?? 0,
+      reviewNote: map['reviewNote'] as String? ?? '',
+      suggestedEdit: map['suggestedEdit'] as String? ?? '',
     );
   }
 
@@ -140,6 +148,8 @@ class PickupPointModel {
       'pointType': pointType,
       'confirmations': confirmations,
       'confirmationCount': confirmationCount,
+      'reviewNote': reviewNote,
+      'suggestedEdit': suggestedEdit,
       'createdAt': FieldValue.serverTimestamp(),
     };
   }
@@ -160,6 +170,8 @@ class PickupPointModel {
     DateTime? createdAt,
     List<String>? confirmations,
     int? confirmationCount,
+    String? reviewNote,
+    String? suggestedEdit,
   }) {
     return PickupPointModel(
       id: id ?? this.id,
@@ -174,6 +186,8 @@ class PickupPointModel {
       createdAt: createdAt ?? this.createdAt,
       confirmations: confirmations ?? this.confirmations,
       confirmationCount: confirmationCount ?? this.confirmationCount,
+      reviewNote: reviewNote ?? this.reviewNote,
+      suggestedEdit: suggestedEdit ?? this.suggestedEdit,
     );
   }
 

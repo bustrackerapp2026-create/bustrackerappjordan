@@ -234,6 +234,17 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                                     color: Colors.grey,
                                   ),
                                 ),
+                                if (point.reviewNote.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4.0),
+                                    child: Text(
+                                      'ملاحظات المراجع: ${point.reviewNote}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.orange,
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -316,6 +327,66 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                               ),
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: isProcessing ? null : () async {
+                            final controller = TextEditingController(text: point.name);
+                            final result = await showDialog<String>(
+                              context: context,
+                              builder: (dialogContext) => AlertDialog(
+                                title: const Text('تعديل النقطة'),
+                                content: TextField(
+                                  controller: controller,
+                                  decoration: const InputDecoration(
+                                    labelText: 'اسم النقطة',
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(dialogContext),
+                                    child: const Text('إلغاء'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+                                    child: const Text('حفظ'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (!mounted || result == null || result.isEmpty) return;
+                            setState(() => _processingIds.add(point.id));
+                            try {
+                              await _service.updatePickupPoint(
+                                pointId: point.id,
+                                data: {
+                                  'name': result,
+                                  'status': 'pending',
+                                  'suggestedEdit': 'تم تعديلها من لوحة الإدارة',
+                                },
+                              );
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('✅ تم تعديل النقطة "${result}"')),
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('❌ فشل التعديل: $e'), backgroundColor: Colors.red),
+                                );
+                              }
+                            } finally {
+                              if (mounted) setState(() => _processingIds.remove(point.id));
+                            }
+                          },
+                          icon: const Icon(Icons.edit_note_outlined),
+                          label: const Text('تعديل وإرسالها للمراجعة مرة أخرى'),
+                        ),
+                      ),
                         ],
                       ),
                     ],

@@ -1,6 +1,21 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
+
+class PlaceSearchResult {
+  final String name;
+  final double latitude;
+  final double longitude;
+
+  const PlaceSearchResult({
+    required this.name,
+    required this.latitude,
+    required this.longitude,
+  });
+}
 
 /// خدمة الموقع الجغرافي مع تحسين الأداء وتوفير البطارية
 class LocationService {
@@ -22,6 +37,7 @@ class LocationService {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         debugPrint('⚠️ خدمة الموقع الجغرافي غير مفعّلة في الجهاز.');
+        await Geolocator.openLocationSettings();
         return false;
       }
 
@@ -36,6 +52,7 @@ class LocationService {
 
       if (permission == LocationPermission.deniedForever) {
         debugPrint('⚠️ تم رفض صلاحية الموقع نهائياً من إعدادات النظام.');
+        await Geolocator.openAppSettings();
         return false;
       }
 
@@ -85,6 +102,54 @@ class LocationService {
       debugPrint('❌ خطأ أثناء جلب الموقع الحالي: $e');
       // ✅ في حالة الفشل، نعيد آخر موقع معروف
       return _lastKnownPosition;
+    }
+  }
+
+  Future<PlaceSearchResult?> searchPlace(String query) async {
+    if (query.trim().isEmpty) return null;
+
+    try {
+      await dotenv.load(fileName: '.env');
+    } catch (_) {}
+
+    final token = dotenv.env['MAPBOX_ACCESS_TOKEN'] ?? '';
+    if (token.isEmpty) {
+      debugPrint('⚠️ لا يوجد MAPBOX_ACCESS_TOKEN للبحث عن الأماكن');
+      return null;
+    }
+
+    final encodedQuery = Uri.encodeComponent(query.trim());
+    final uri = Uri.parse(
+      'https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$token&country=jo&limit=1&language=ar',
+    );
+
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(uri);
+      final response = await request.close();
+      if (response.statusCode != HttpStatus.ok) return null;
+
+      final body = await response.transform(utf8.decoder).join();
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      final features = data['features'] as List<dynamic>?;
+      if (features == null || features.isEmpty) return null;
+
+      final feature = features.first as Map<String, dynamic>;
+      final center = feature['center'] as List<dynamic>?;
+      final placeName = feature['place_name'] as String? ?? query.trim();
+
+      if (center == null || center.length < 2) return null;
+
+      return PlaceSearchResult(
+        name: placeName,
+        longitude: (center[0] as num).toDouble(),
+        latitude: (center[1] as num).toDouble(),
+      );
+    } catch (e) {
+      debugPrint('❌ فشل البحث عن المكان: $e');
+      return null;
+    } finally {
+      client.close(force: true);
     }
   }
 

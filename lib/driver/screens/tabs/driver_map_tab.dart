@@ -6,6 +6,9 @@ import 'package:geolocator/geolocator.dart' as geo;
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/pickup/pickup_point_dialog.dart';
+import '../../../core/pickup/pickup_point_manager.dart';
+
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../map/widgets/search_bar_widget.dart';
@@ -53,6 +56,11 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   final TripService _tripService = TripService();
   final LocationService _locationService = LocationService();
+  final PickupPointManager _pickupManager = PickupPointManager();
+  final Map<String, PointAnnotation> _pickupAnnotations = {};
+  final Map<String, String> _pickupAnnotationToPointId = {};
+  StreamSubscription<QuerySnapshot>? _pickupPointsSubscription;
+  bool _isAddingPickupPoint = false;
 
   @override
   void initState() {
@@ -75,6 +83,7 @@ class _DriverMapTabState extends State<DriverMapTab>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _locationSubscription?.cancel();
+    _pickupPointsSubscription?.cancel();
     _userAnnotation = null;
     _pointAnnotationManager = null;
     _polylineAnnotation = null;
@@ -97,6 +106,13 @@ class _DriverMapTabState extends State<DriverMapTab>
     _userAnnotation = null;
     _pointAnnotationManager =
         await _mapboxMap?.annotations.createPointAnnotationManager();
+
+    _pointAnnotationManager?.tapEvents(onTap: (annotation) async {
+      final pickupId = _pickupAnnotationToPointId[annotation.id];
+      if (pickupId != null) {
+        await _showPickupPointSheet(pickupId);
+      }
+    });
   }
 
   Future<void> _initPolylineManager() async {
@@ -174,6 +190,24 @@ class _DriverMapTabState extends State<DriverMapTab>
     await _applyLabelLayersFilter();
   }
 
+  Future<void> _searchPlace(String query) async {
+    if (query.trim().isEmpty) return;
+    final result = await _locationService.searchPlace(query);
+    if (result == null) {
+      _showSnackBar('⚠️ لم يتم العثور على المكان.', isError: true);
+      return;
+    }
+    _mapboxMap?.setCamera(
+      CameraOptions(
+        center: Point(coordinates: Position(result.longitude, result.latitude)),
+        zoom: 15.0,
+        bearing: _currentBearing,
+        pitch: 45.0,
+      ),
+    );
+    _showSnackBar('🔎 تم الانتقال إلى ${result.name}', isError: false);
+  }
+
   Future<void> _goToMyLocation() async {
     if (_mapboxMap == null) return;
 
@@ -249,6 +283,170 @@ class _DriverMapTabState extends State<DriverMapTab>
       _showSnackBar('❌ تعذر تحديد موقعك.', isError: true);
     } finally {
       if (mounted) setState(() => _isLoadingLocation = false);
+    }
+  }
+
+  void _listenToPickupPoints() {
+    _pickupPointsSubscription?.cancel();
+    _pickupPointsSubscription = FirebaseFirestore.instance
+        .collection('pickupPoints')
+        .snapshots()
+        .listen((snapshot) async {
+      if (!mounted || _pointAnnotationManager == null) return;
+
+      for (final annotation in _pickupAnnotations.values) {
+        await _pointAnnotationManager?.delete(annotation);
+      }
+      _pickupAnnotations.clear();
+      _pickupAnnotationToPointId.clear();
+
+      for (final doc in snapshot.docs) {
+        final point = doc.data();
+        final latitude = (point['latitude'] as num?)?.toDouble();
+        final longitude = (point['longitude'] as num?)?.toDouble();
+        if (latitude == null || longitude == null) continue;
+
+        final options = PointAnnotationOptions(
+          geometry: Point(coordinates: Position(longitude, latitude)),
+          image: await MapHelpers.createUserMarkerBytes(),
+          iconSize: 0.8,
+          iconAnchor: IconAnchor.BOTTOM,
+        );
+        final annotation = await _pointAnnotationManager?.create(options);
+        if (annotation != null) {
+          _pickupAnnotations[doc.id] = annotation;
+          _pickupAnnotationToPointId[annotation.id] = doc.id;
+        }
+      }
+    });
+  }
+
+  Future<void> _showPickupPointSheet(String pickupId) async {
+    final point = await _pickupManager.getPickupPoint(pointId: pickupId);
+    if (!mounted || point == null) return;
+
+    final user = context.read<AuthProvider>().userId;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(point.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(point.pointType == 'passenger' ? 'تجمع ركاب' : 'تجمع باصات'),
+              if (point.reviewNote.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Text('ملاحظات المراجعة: ${point.reviewNote}', style: const TextStyle(color: Colors.orange)),
+                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: user == null ? null : () => Navigator.pop(sheetContext, 'confirm'),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text('هذا صحيح'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: user == null ? null : () => Navigator.pop(sheetContext, 'edit'),
+                      icon: const Icon(Icons.edit_note_outlined),
+                      label: const Text('أحتاج تعديل'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    if (action == 'confirm' && user != null) {
+      try {
+        await _pickupManager.confirmPickupPoint(pointId: pickupId, userId: user);
+        _showSnackBar('✅ تم تأكيد هذه النقطة للمراجعة.', isError: false);
+      } catch (e) {
+        _showSnackBar('❌ فشل تأكيد النقطة.', isError: true);
+      }
+      return;
+    }
+
+    if (action == 'edit' && user != null) {
+      final controller = TextEditingController();
+      final suggested = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('اقتراح تعديل النقطة'),
+          content: TextField(
+            controller: controller,
+            maxLines: 3,
+            decoration: const InputDecoration(hintText: 'اكتب ما تحتاجه من تعديل أو ملاحظة'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+            ElevatedButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('إرسال')),
+          ],
+        ),
+      );
+      if (suggested == null || suggested.isEmpty) return;
+      try {
+        await _pickupManager.updatePickupPoint(
+          pointId: pickupId,
+          data: {
+            'reviewNote': 'تمت مراجعة النقطة من قبل مستخدم',
+            'suggestedEdit': suggested,
+          },
+        );
+        _showSnackBar('📝 تم إرسال اقتراح التعديل للمراجعة.', isError: false);
+      } catch (e) {
+        _showSnackBar('❌ فشل إرسال اقتراح التعديل.', isError: true);
+      }
+    }
+  }
+
+  Future<void> _handleAddPickupPoint(Point point) async {
+    if (!_isAddingPickupPoint) return;
+    if (!mounted) return;
+
+    final authProvider = context.read<AuthProvider>();
+    final userId = authProvider.userId;
+    final userData = authProvider.userData;
+    if (userId == null || userData == null) {
+      _showSnackBar('⚠️ يرجى تسجيل الدخول أولاً.', isError: true);
+      setState(() => _isAddingPickupPoint = false);
+      return;
+    }
+
+    final result = await showPickupPointPickerDialog(context: context);
+    if (!mounted || result == null || result.name.trim().isEmpty) {
+      setState(() => _isAddingPickupPoint = false);
+      return;
+    }
+
+    try {
+      await _pickupManager.addPickupPoint(
+        name: result.name.trim(),
+        latitude: point.coordinates.lat.toDouble(),
+        longitude: point.coordinates.lng.toDouble(),
+        userId: userId,
+        userType: userData.userType,
+        pointType: result.pointType,
+      );
+      _showSnackBar('✅ تم إرسال النقطة للمراجعة.', isError: false);
+    } catch (e) {
+      _showSnackBar('❌ فشل إضافة النقطة.', isError: true);
+    } finally {
+      if (mounted) setState(() => _isAddingPickupPoint = false);
     }
   }
 
@@ -446,8 +644,14 @@ class _DriverMapTabState extends State<DriverMapTab>
               ),
             );
             _applyLabelLayersFilter();
+            _listenToPickupPoints();
           },
           styleUri: _currentMapStyle,
+          onTapListener: (event) {
+            if (_isAddingPickupPoint) {
+              _handleAddPickupPoint(event.point);
+            }
+          },
         ),
         Positioned(
           top: 16,
@@ -460,8 +664,8 @@ class _DriverMapTabState extends State<DriverMapTab>
               setState(() => _selectedRoute = newRoute);
               _showSnackBar('🔄 تم تصفية الخط: $newRoute', isError: false);
             },
-            onSearchSubmitted: (query) {
-              _showSnackBar('🔍 جاري البحث عن: $query', isError: false);
+            onSearchSubmitted: (query) async {
+              await _searchPlace(query);
             },
           ),
         ),
@@ -532,14 +736,19 @@ class _DriverMapTabState extends State<DriverMapTab>
               FloatingActionButton(
                 heroTag: 'driver_add_pickup',
                 onPressed: () {
-                  _showSnackBar('📍 اضغط على الخريطة لإضافة نقطة (قيد التطوير)',
-                      isError: false);
+                  setState(() => _isAddingPickupPoint = !_isAddingPickupPoint);
+                  _showSnackBar(
+                    _isAddingPickupPoint
+                        ? '📍 اضغط على الخريطة لإضافة نقطة جديدة'
+                        : '❌ تم إلغاء إضافة النقطة',
+                    isError: !_isAddingPickupPoint,
+                  );
                 },
-                backgroundColor: Colors.orange,
+                backgroundColor: _isAddingPickupPoint ? Colors.red : Colors.orange,
                 foregroundColor: Colors.white,
                 elevation: 4,
                 shape: const CircleBorder(),
-                child: const Icon(Icons.add_location, size: 26),
+                child: Icon(_isAddingPickupPoint ? Icons.close : Icons.add_location, size: 26),
               ),
             ],
           ),
