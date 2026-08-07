@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -49,10 +49,9 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  await FirebaseFirestore.instance.enableNetwork();
-  FirebaseFirestore.instance.settings = const Settings(
-    persistenceEnabled: true,
-  );
+  await firestore.FirebaseFirestore.instance.enableNetwork();
+  firestore.FirebaseFirestore.instance.settings =
+      const firestore.Settings(persistenceEnabled: true);
 
   runApp(const BusTrackerApp());
 }
