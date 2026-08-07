@@ -24,7 +24,7 @@ class AdminBottomNavBar extends StatelessWidget {
       items: const [
         BottomNavigationBarItem(
           icon: Icon(Icons.verified_user),
-          label: 'التحقق', // ✅ تم التعديل من "الرئيسية" إلى "التحقق"
+          label: 'الرئيسية',
         ),
         BottomNavigationBarItem(
           icon: Icon(Icons.location_on),
