@@ -131,8 +131,6 @@ class _AdminMapTabState extends State<AdminMapTab>
     if (!_isAddingPickupPoint) return;
     if (!mounted) return;
 
-    print("==== MAP TAP RECEIVED ====");
-
     final authProvider = context.read<AuthProvider>();
     final userId = authProvider.userId;
     final userData = authProvider.userData;
