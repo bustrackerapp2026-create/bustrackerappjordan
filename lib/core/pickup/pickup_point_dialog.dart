@@ -216,7 +216,7 @@ class _PickupPointDialogState extends State<PickupPointDialog> {
   }
 
   /// ✅ دالة لعرض الحوار وإرجاع اسم النقطة ونوعها
-  static Future<PickupPointDialogResult?> show({
+  static Future<PickupPointDialogResult?> showPickerDialog({
     required BuildContext context,
     String initialName = '',
     String initialPointType = 'bus',

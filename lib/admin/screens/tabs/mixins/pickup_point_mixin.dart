@@ -120,7 +120,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     required String pointType,
     required int count,
   }) async {
-    final cacheKey = 'pickup_${name.hashCode}_$count_$pointType';
+    final cacheKey = 'pickup_${name.hashCode}_${count}_$pointType';
     if (_pickupMarkerCache.containsKey(cacheKey)) {
       return _pickupMarkerCache[cacheKey];
     }

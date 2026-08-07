@@ -148,7 +148,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     final double lat = point.coordinates.lat.toDouble();
     final double lng = point.coordinates.lng.toDouble();
 
-    final result = await PickupPointDialog.show(context: context);
+    final result = await PickupPointDialog.showPickerDialog(context: context);
     if (!mounted) return;
 
     if (result == null || result.name.trim().isEmpty) {
@@ -245,7 +245,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     if (!mounted) return;
 
     if (action == 'edit') {
-      final updated = await PickupPointDialog.show(
+      final updated = await PickupPointDialog.showPickerDialog(
         context: context,
         initialName: point.name,
         initialPointType: point.pointType,
