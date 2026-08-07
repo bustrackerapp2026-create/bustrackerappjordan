@@ -183,6 +183,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final bubblePaint = Paint()
         ..color = Colors.white
         ..style = PaintingStyle.fill;
+      // ignore: prefer_const_constructors
       final bubbleRect = Rect.fromLTWH(6, 70, size - 12, 30);
       canvas.drawRRect(
         RRect.fromRectAndRadius(bubbleRect, const Radius.circular(12)),
