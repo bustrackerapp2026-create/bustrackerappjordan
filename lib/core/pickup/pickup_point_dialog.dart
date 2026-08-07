@@ -221,18 +221,30 @@ class _PickupPointDialogState extends State<PickupPointDialog> {
     String initialName = '',
     String initialPointType = 'bus',
   }) async {
-    PickupPointDialogResult? result;
-    await showDialog(
+    return showPickupPointPickerDialog(
       context: context,
-      barrierDismissible: true,
-      builder: (context) => PickupPointDialog(
-        initialName: initialName,
-        initialPointType: initialPointType,
-        onConfirm: (name, pointType) {
-          result = PickupPointDialogResult(name: name, pointType: pointType);
-        },
-      ),
+      initialName: initialName,
+      initialPointType: initialPointType,
     );
-    return result;
   }
+}
+
+Future<PickupPointDialogResult?> showPickupPointPickerDialog({
+  required BuildContext context,
+  String initialName = '',
+  String initialPointType = 'bus',
+}) async {
+  PickupPointDialogResult? result;
+  await showDialog<PickupPointDialogResult>(
+    context: context,
+    barrierDismissible: true,
+    builder: (dialogContext) => PickupPointDialog(
+      initialName: initialName,
+      initialPointType: initialPointType,
+      onConfirm: (name, pointType) {
+        result = PickupPointDialogResult(name: name, pointType: pointType);
+      },
+    ),
+  );
+  return result;
 }
