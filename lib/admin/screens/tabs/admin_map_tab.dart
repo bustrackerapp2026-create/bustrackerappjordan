@@ -134,44 +134,65 @@ class _AdminMapTabState extends State<AdminMapTab>
     );
   }
 
+  // ─── تحديد الموقع ──────────────────────────────────────────────────
+
   Future<void> _goToMyLocation() async {
     if (mapboxMap == null) return;
+    if (!mounted) return;
+
     setState(() => _isLoadingLocation = true);
+
     try {
       final hasPermission = await _locationService.checkAndRequestPermission();
+      if (!mounted) return; // ✅ التحقق بعد await
       if (!hasPermission) {
-        MapUtils.showSnackBar(context, '⚠️ يرجى تفعيل الموقع أولاً', isError: true);
+        MapUtils.showSnackBar(context, '⚠️ يرجى تفعيل الموقع أولاً',
+            isError: true);
         return;
       }
 
       final position = await _locationService.getCurrentPosition();
+      if (!mounted) return; // ✅ التحقق بعد await
       if (position == null) {
-        MapUtils.showSnackBar(context, '⚠️ تعذر الحصول على الموقع الحالي', isError: true);
+        MapUtils.showSnackBar(context, '⚠️ تعذر الحصول على الموقع الحالي',
+            isError: true);
         return;
       }
 
       mapboxMap?.setCamera(
         CameraOptions(
-          center: Point(coordinates: Position(position.longitude, position.latitude)),
+          center: Point(
+              coordinates: Position(position.longitude, position.latitude)),
           zoom: 15.0,
           pitch: 45.0,
         ),
       );
-      MapUtils.showSnackBar(context, '📍 تم تحديد موقعك الحالي');
+      if (mounted) {
+        MapUtils.showSnackBar(context, '📍 تم تحديد موقعك الحالي');
+      }
     } catch (e) {
-      MapUtils.showSnackBar(context, '❌ تعذر تحديد موقعك: $e', isError: true);
+      if (!mounted) return; // ✅ التحقق قبل استخدام context
+      MapUtils.log('❌ خطأ تحديد الموقع: $e', tag: 'AdminMap');
+      MapUtils.showSnackBar(context, '❌ تعذر تحديد موقعك', isError: true);
     } finally {
       if (mounted) setState(() => _isLoadingLocation = false);
     }
   }
 
+  // ─── البحث عن مكان ──────────────────────────────────────────────────
+
   Future<void> _searchPlace(String query) async {
     if (query.trim().isEmpty) return;
+    if (!mounted) return;
+
     final result = await _locationService.searchPlace(query);
+    if (!mounted) return; // ✅ التحقق بعد await
     if (result == null) {
-      MapUtils.showSnackBar(context, '⚠️ لم يتم العثور على المكان', isError: true);
+      MapUtils.showSnackBar(context, '⚠️ لم يتم العثور على المكان',
+          isError: true);
       return;
     }
+
     mapboxMap?.setCamera(
       CameraOptions(
         center: Point(coordinates: Position(result.longitude, result.latitude)),
@@ -179,13 +200,18 @@ class _AdminMapTabState extends State<AdminMapTab>
         pitch: 45.0,
       ),
     );
-    MapUtils.showSnackBar(context, '🔎 تم الانتقال إلى ${result.name}');
+    if (mounted) {
+      MapUtils.showSnackBar(context, '🔎 تم الانتقال إلى ${result.name}');
+    }
   }
+
+  // ─── إضافة نقطة تجمع ──────────────────────────────────────────────
 
   void _handleMapTap(Point point) async {
     if (!_isAddingPickupPoint) return;
     if (!mounted) return;
 
+    // ✅ أخذ بيانات المصادقة قبل أي await
     final authProvider = context.read<AuthProvider>();
     final userId = authProvider.userId;
     final userData = authProvider.userData;
@@ -204,7 +230,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     final double lng = point.coordinates.lng.toDouble();
 
     final result = await showPickupPointPickerDialog(context: context);
-    if (!mounted) return;
+    if (!mounted) return; // ✅ التحقق بعد await
 
     if (result == null || result.name.trim().isEmpty) {
       setState(() => _isAddingPickupPoint = false);
@@ -221,14 +247,14 @@ class _AdminMapTabState extends State<AdminMapTab>
         pointType: result.pointType,
       );
 
-      if (!mounted) return;
+      if (!mounted) return; // ✅ التحقق بعد await
 
       MapUtils.showSnackBar(
         context,
         '✅ تم إضافة النقطة "${result.name.trim()}" بنجاح',
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return; // ✅ التحقق قبل استخدام context
       MapUtils.log('❌ فشل إضافة النقطة: $e', tag: 'AdminMap');
       MapUtils.showSnackBar(
         context,
@@ -240,6 +266,8 @@ class _AdminMapTabState extends State<AdminMapTab>
     }
   }
 
+  // ─── التعامل مع نقاط التجمع (عرض / تعديل / حذف) ────────────────────
+
   @override
   void handlePickupTap(String pickupId) {
     _showPickupActionsSheet(pickupId);
@@ -249,7 +277,8 @@ class _AdminMapTabState extends State<AdminMapTab>
     if (!mounted) return;
 
     final point = await _pickupManager.getPickupPoint(pointId: pickupId);
-    if (!mounted || point == null) return;
+    if (!mounted) return; // ✅ التحقق بعد await
+    if (point == null) return;
 
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -274,14 +303,13 @@ class _AdminMapTabState extends State<AdminMapTab>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  point.pointType == 'passenger'
-                      ? 'تجمع ركاب'
-                      : 'تجمع باصات',
+                  point.pointType == 'passenger' ? 'تجمع ركاب' : 'تجمع باصات',
                   style: const TextStyle(color: Colors.grey, fontSize: 14),
                 ),
                 const SizedBox(height: 16),
                 ListTile(
-                  leading: const Icon(Icons.edit_rounded, color: AppTheme.primaryColor),
+                  leading: const Icon(Icons.edit_rounded,
+                      color: AppTheme.primaryColor),
                   title: const Text('تعديل النقطة'),
                   onTap: () => Navigator.pop(sheetContext, 'edit'),
                 ),
@@ -297,7 +325,9 @@ class _AdminMapTabState extends State<AdminMapTab>
       },
     );
 
-    if (!mounted) return;
+    if (!mounted) return; // ✅ التحقق بعد await
+
+    // ─── تعديل النقطة ──────────────────────────────────────────────────
 
     if (action == 'edit') {
       final updated = await showPickupPointPickerDialog(
@@ -305,7 +335,9 @@ class _AdminMapTabState extends State<AdminMapTab>
         initialName: point.name,
         initialPointType: point.pointType,
       );
+      if (!mounted) return; // ✅ التحقق بعد await
       if (updated == null || updated.name.trim().isEmpty) return;
+
       try {
         await _pickupManager.updatePickupPoint(
           pointId: pickupId,
@@ -314,14 +346,16 @@ class _AdminMapTabState extends State<AdminMapTab>
             'pointType': updated.pointType,
           },
         );
-        if (!mounted) return;
+        if (!mounted) return; // ✅ التحقق بعد await
         MapUtils.showSnackBar(context, '✅ تم تعديل النقطة');
       } catch (e) {
-        if (!mounted) return;
+        if (!mounted) return; // ✅ التحقق قبل استخدام context
         MapUtils.showSnackBar(context, '❌ فشل تعديل النقطة', isError: true);
       }
       return;
     }
+
+    // ─── حذف النقطة ──────────────────────────────────────────────────
 
     if (action == 'delete') {
       final confirm = await showDialog<bool>(
@@ -343,18 +377,21 @@ class _AdminMapTabState extends State<AdminMapTab>
         ),
       );
 
+      if (!mounted) return; // ✅ التحقق بعد await
       if (confirm != true) return;
 
       try {
         await _pickupManager.deletePickupPoint(pointId: pickupId);
-        if (!mounted) return;
+        if (!mounted) return; // ✅ التحقق بعد await
         MapUtils.showSnackBar(context, '🗑️ تم حذف النقطة');
       } catch (e) {
-        if (!mounted) return;
+        if (!mounted) return; // ✅ التحقق قبل استخدام context
         MapUtils.showSnackBar(context, '❌ فشل حذف النقطة', isError: true);
       }
     }
   }
+
+  // ─── واجهة المستخدم ──────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {

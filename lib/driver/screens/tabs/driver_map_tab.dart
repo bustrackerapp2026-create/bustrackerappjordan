@@ -336,20 +336,25 @@ class _DriverMapTabState extends State<DriverMapTab>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(point.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Text(point.name,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Text(point.pointType == 'passenger' ? 'تجمع ركاب' : 'تجمع باصات'),
               if (point.reviewNote.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0),
-                  child: Text('ملاحظات المراجعة: ${point.reviewNote}', style: const TextStyle(color: Colors.orange)),
+                  child: Text('ملاحظات المراجعة: ${point.reviewNote}',
+                      style: const TextStyle(color: Colors.orange)),
                 ),
               const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: user == null ? null : () => Navigator.pop(sheetContext, 'confirm'),
+                      onPressed: user == null
+                          ? null
+                          : () => Navigator.pop(sheetContext, 'confirm'),
                       icon: const Icon(Icons.check_circle_outline),
                       label: const Text('هذا صحيح'),
                     ),
@@ -357,7 +362,9 @@ class _DriverMapTabState extends State<DriverMapTab>
                   const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: user == null ? null : () => Navigator.pop(sheetContext, 'edit'),
+                      onPressed: user == null
+                          ? null
+                          : () => Navigator.pop(sheetContext, 'edit'),
                       icon: const Icon(Icons.edit_note_outlined),
                       label: const Text('أحتاج تعديل'),
                     ),
@@ -373,7 +380,8 @@ class _DriverMapTabState extends State<DriverMapTab>
     if (!mounted) return;
     if (action == 'confirm' && user != null) {
       try {
-        await _pickupManager.confirmPickupPoint(pointId: pickupId, userId: user);
+        await _pickupManager.confirmPickupPoint(
+            pointId: pickupId, userId: user);
         _showSnackBar('✅ تم تأكيد هذه النقطة للمراجعة.', isError: false);
       } catch (e) {
         _showSnackBar('❌ فشل تأكيد النقطة.', isError: true);
@@ -390,11 +398,17 @@ class _DriverMapTabState extends State<DriverMapTab>
           content: TextField(
             controller: controller,
             maxLines: 3,
-            decoration: const InputDecoration(hintText: 'اكتب ما تحتاجه من تعديل أو ملاحظة'),
+            decoration: const InputDecoration(
+                hintText: 'اكتب ما تحتاجه من تعديل أو ملاحظة'),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
-            ElevatedButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('إرسال')),
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('إلغاء')),
+            ElevatedButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, controller.text.trim()),
+                child: const Text('إرسال')),
           ],
         ),
       );
@@ -647,6 +661,7 @@ class _DriverMapTabState extends State<DriverMapTab>
             _listenToPickupPoints();
           },
           styleUri: _currentMapStyle,
+          // ignore: deprecated_member_use
           onTapListener: (event) {
             if (_isAddingPickupPoint) {
               _handleAddPickupPoint(event.point);
@@ -744,11 +759,14 @@ class _DriverMapTabState extends State<DriverMapTab>
                     isError: !_isAddingPickupPoint,
                   );
                 },
-                backgroundColor: _isAddingPickupPoint ? Colors.red : Colors.orange,
+                backgroundColor:
+                    _isAddingPickupPoint ? Colors.red : Colors.orange,
                 foregroundColor: Colors.white,
                 elevation: 4,
                 shape: const CircleBorder(),
-                child: Icon(_isAddingPickupPoint ? Icons.close : Icons.add_location, size: 26),
+                child: Icon(
+                    _isAddingPickupPoint ? Icons.close : Icons.add_location,
+                    size: 26),
               ),
             ],
           ),

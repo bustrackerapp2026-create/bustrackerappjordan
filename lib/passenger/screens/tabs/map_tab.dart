@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:geolocator/geolocator.dart' as geo;
 
 import '../../../core/theme/app_theme.dart';
-import '../../../core/pickup/pickup_point_dialog.dart';
 import '../../../core/pickup/pickup_point_manager.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/location_service.dart';
@@ -13,6 +13,77 @@ import '../../../core/constants/app_constants.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import '../../../map/widgets/map_settings_sheet.dart';
 import '../../../map/utils/map_helpers.dart';
+
+// ✅ تعريف دالة حوار اختيار نوع النقطة
+Future<({String name, String pointType})?> showPickupPointPickerDialog({
+  required BuildContext context,
+}) async {
+  final TextEditingController nameController = TextEditingController();
+  String selectedType = 'passenger'; // 'passenger' or 'bus'
+
+  return showDialog<({String name, String pointType})>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('إضافة نقطة تجمع جديدة'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: nameController,
+            decoration: const InputDecoration(
+              labelText: 'اسم النقطة',
+              hintText: 'مثل: مجمع الشمال',
+            ),
+            textDirection: TextDirection.rtl,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ChoiceChip(
+                  label: const Text('🚌 تجمع باصات'),
+                  selected: selectedType == 'bus',
+                  onSelected: (selected) {
+                    if (selected) selectedType = 'bus';
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ChoiceChip(
+                  label: const Text('🚶 تجمع ركاب'),
+                  selected: selectedType == 'passenger',
+                  onSelected: (selected) {
+                    if (selected) selectedType = 'passenger';
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('إلغاء'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final name = nameController.text.trim();
+            if (name.isEmpty) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(content: Text('يرجى إدخال اسم النقطة')),
+              );
+              return;
+            }
+            Navigator.pop(dialogContext, (name: name, pointType: selectedType));
+          },
+          child: const Text('إضافة'),
+        ),
+      ],
+    ),
+  );
+}
 
 class MapTab extends StatefulWidget {
   const MapTab({super.key});
@@ -27,7 +98,7 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
   PointAnnotation? _userAnnotation;
 
   bool _isLoadingLocation = false;
-  bool _isUpdatingMarker = false; // لمنع التضارب في إنشاء الماركر
+  bool _isUpdatingMarker = false;
   String _selectedRoute = AppConstants.jordanRoutes.first;
   StreamSubscription<geo.Position>? _locationSubscription;
 
@@ -95,7 +166,6 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     });
   }
 
-  /// 🚀 تحديث آمن وسريع لمؤشر المستخدم بدون سباق أو تكرار
   Future<void> _updateUserMarker(double lat, double lng, double bearing) async {
     if (_pointAnnotationManager == null || _isUpdatingMarker) return;
     _isUpdatingMarker = true;
@@ -111,10 +181,7 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
         iconRotate: bearing,
       );
 
-      // تنظيف المؤشر القديم بأمان
       await _clearUserMarker();
-
-      // إنشاء المؤشر الجديد
       _userAnnotation = await _pointAnnotationManager?.create(options);
     } catch (e) {
       debugPrint('خطأ أثناء تحديث ماركر الخريطة: $e');
@@ -239,8 +306,7 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
       builder: (dialogContext) => AlertDialog(
         title: const Text('تفعيل الموقع'),
         content: const Text(
-          'لتحديد موقعك بدقة مثل خرائط جوجل، نحتاج إلى صلاحية الموقع. يمكنك السماح عند استخدام التطبيق أو فتح الإعدادات.'
-        ),
+            'لتحديد موقعك بدقة مثل خرائط جوجل، نحتاج إلى صلاحية الموقع. يمكنك السماح عند استخدام التطبيق أو فتح الإعدادات.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -315,7 +381,9 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     final point = await _pickupManager.getPickupPoint(pointId: pickupId);
     if (!mounted || point == null) return;
 
-    final user = context.read<AuthProvider>().userId;
+    final user = Provider.of<AuthProvider>(context, listen: false)
+        .userId; // ✅ استخدم Provider.of بدلاً من read
+
     final action = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -328,14 +396,16 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
             children: [
               Text(
                 point.name,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Text(point.pointType == 'passenger' ? 'تجمع ركاب' : 'تجمع باصات'),
               if (point.reviewNote.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0),
-                  child: Text('ملاحظات المراجعة: ${point.reviewNote}', style: const TextStyle(color: Colors.orange)),
+                  child: Text('ملاحظات المراجعة: ${point.reviewNote}',
+                      style: const TextStyle(color: Colors.orange)),
                 ),
               const SizedBox(height: 12),
               Row(
@@ -374,7 +444,8 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     if (!mounted) return;
     if (action == 'confirm' && user != null) {
       try {
-        await _pickupManager.confirmPickupPoint(pointId: pickupId, userId: user);
+        await _pickupManager.confirmPickupPoint(
+            pointId: pickupId, userId: user);
         _showSnackBar('✅ تم تأكيد هذه النقطة للمراجعة.', isError: false);
       } catch (e) {
         _showSnackBar('❌ فشل تأكيد النقطة.', isError: true);
@@ -391,11 +462,17 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
           content: TextField(
             controller: controller,
             maxLines: 3,
-            decoration: const InputDecoration(hintText: 'اكتب ما تحتاجه من تعديل أو ملاحظة'),
+            decoration: const InputDecoration(
+                hintText: 'اكتب ما تحتاجه من تعديل أو ملاحظة'),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
-            ElevatedButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('إرسال')),
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('إلغاء')),
+            ElevatedButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, controller.text.trim()),
+                child: const Text('إرسال')),
           ],
         ),
       );
@@ -419,7 +496,7 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     if (!_isAddingPickupPoint) return;
     if (!mounted) return;
 
-    final authProvider = context.read<AuthProvider>();
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final userId = authProvider.userId;
     final userData = authProvider.userData;
     if (userId == null || userData == null) {
@@ -484,6 +561,7 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
             _listenToPickupPoints();
           },
           styleUri: _currentMapStyle,
+          // ignore: deprecated_member_use
           onTapListener: (event) {
             if (_isAddingPickupPoint) {
               _handleAddPickupPoint(event.point);
@@ -571,11 +649,15 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
                     isError: !_isAddingPickupPoint,
                   );
                 },
-                backgroundColor: _isAddingPickupPoint ? Colors.red : Colors.white,
-                foregroundColor: _isAddingPickupPoint ? Colors.white : AppTheme.primaryColor,
+                backgroundColor:
+                    _isAddingPickupPoint ? Colors.red : Colors.white,
+                foregroundColor:
+                    _isAddingPickupPoint ? Colors.white : AppTheme.primaryColor,
                 elevation: 4,
                 shape: const CircleBorder(),
-                child: Icon(_isAddingPickupPoint ? Icons.close : Icons.add_location_alt_rounded),
+                child: Icon(_isAddingPickupPoint
+                    ? Icons.close
+                    : Icons.add_location_alt_rounded),
               ),
             ],
           ),
