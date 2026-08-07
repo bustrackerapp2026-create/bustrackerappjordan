@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 // ✅ توحيد الاستيرادات باستخدام Package Import المباشر لمنع التضارب
 import 'package:jordan_bus_tracker_new/core/theme/app_theme.dart';
+import 'package:jordan_bus_tracker_new/core/utils/validators.dart';
 import 'package:jordan_bus_tracker_new/features/auth/providers/auth_provider.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -46,7 +47,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final name = _nameController.text.trim();
-    final email = _emailController.text.trim();
+    final email = AppValidators.sanitizeEmail(_emailController.text);
     final password = _passwordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
     final phoneNumber = _phoneController.text.trim();
@@ -266,18 +267,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'الرجاء إدخال البريد الإلكتروني';
-                            }
-                            final emailRegex = RegExp(
-                              r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                            );
-                            if (!emailRegex.hasMatch(value.trim())) {
-                              return 'صيغة البريد الإلكتروني غير صحيحة';
-                            }
-                            return null;
-                          },
+                          validator: AppValidators.validateEmail,
                           decoration: InputDecoration(
                             hintText: 'example@gmail.com',
                             prefixIcon: const Icon(
@@ -315,15 +305,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           textInputAction: TextInputAction.next,
                           autocorrect: false,
                           enableSuggestions: false,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'الرجاء إدخال كلمة السر';
-                            }
-                            if (value.length < 6) {
-                              return 'كلمة السر يجب أن تكون 6 أحرف على الأقل';
-                            }
-                            return null;
-                          },
+                          validator: AppValidators.validatePassword,
                           decoration: InputDecoration(
                             hintText: '••••••••',
                             prefixIcon: const Icon(
@@ -375,8 +357,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           autocorrect: false,
                           enableSuggestions: false,
                           validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'الرجاء تأكيد كلمة السر';
+                            final requiredValidation = AppValidators.validateRequired(
+                              value,
+                              fieldName: 'تأكيد كلمة السر',
+                            );
+                            if (requiredValidation != null) {
+                              return requiredValidation;
                             }
                             if (value != _passwordController.text) {
                               return 'كلمة السر غير متطابقة';

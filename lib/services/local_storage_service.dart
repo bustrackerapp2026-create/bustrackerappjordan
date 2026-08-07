@@ -10,8 +10,10 @@ class LocalStorageService {
 
   Future<void> saveLoginData(String email, bool rememberMe) async {
     final prefs = await SharedPreferences.getInstance();
-    if (rememberMe) {
-      await prefs.setString(_keyEmail, email);
+    final normalizedEmail = email.trim().toLowerCase();
+
+    if (rememberMe && normalizedEmail.isNotEmpty) {
+      await prefs.setString(_keyEmail, normalizedEmail);
       await prefs.setBool(_keyRememberMe, true);
     } else {
       await prefs.remove(_keyEmail);
@@ -21,7 +23,7 @@ class LocalStorageService {
 
   Future<Map<String, dynamic>> getLoginData() async {
     final prefs = await SharedPreferences.getInstance();
-    final email = prefs.getString(_keyEmail);
+    final email = prefs.getString(_keyEmail)?.trim().toLowerCase();
     final rememberMe = prefs.getBool(_keyRememberMe) ?? false;
 
     return {
