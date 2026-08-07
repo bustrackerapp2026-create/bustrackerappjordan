@@ -67,7 +67,28 @@ class FirestoreService {
 
   // ─── إحصائيات السائقين ─────────────────────────────────────────
 
-  Future<Map<String, int>> getDriversStats() async {
+  Map<String, int> _emptyUsersStats() {
+    return {
+      'total': 0,
+      'passenger': 0,
+      'driver': 0,
+      'service': 0,
+      'bus_company': 0,
+      'verified': 0,
+      'pending': 0,
+      'rejected': 0,
+    };
+  }
+
+  Map<String, int> _emptyPickupStats() {
+    return {
+      'total': 0,
+      'approved': 0,
+      'pending': 0,
+    };
+  }
+
+  Future<Map<String, int>> getDriversStats({bool useFallback = true}) async {
     try {
       final allDrivers = await _firestore
           .collection('users')
@@ -94,13 +115,16 @@ class FirestoreService {
         'rejected': rejected,
       };
     } catch (e) {
+      if (useFallback) {
+        return {'total': 0, 'verified': 0, 'pending': 0, 'rejected': 0};
+      }
       throw Exception('فشل جلب الإحصائيات: $e');
     }
   }
 
   // ─── إحصائيات جميع المستخدمين ──────────────────────────────────
 
-  Future<Map<String, int>> getAllUsersStats() async {
+  Future<Map<String, int>> getAllUsersStats({bool useFallback = true}) async {
     try {
       final allUsers = await _firestore.collection('users').get();
       final docs = allUsers.docs;
@@ -134,13 +158,16 @@ class FirestoreService {
         'rejected': rejected,
       };
     } catch (e) {
+      if (useFallback) {
+        return _emptyUsersStats();
+      }
       throw Exception('فشل جلب إحصائيات المستخدمين: $e');
     }
   }
 
   // ─── إحصائيات نقاط التجمع ──────────────────────────────────────
 
-  Future<Map<String, int>> getPickupPointsStats() async {
+  Future<Map<String, int>> getPickupPointsStats({bool useFallback = true}) async {
     try {
       final allPoints = await _firestore.collection('pickupPoints').get();
       final docs = allPoints.docs;
@@ -158,6 +185,9 @@ class FirestoreService {
         'pending': pending,
       };
     } catch (e) {
+      if (useFallback) {
+        return _emptyPickupStats();
+      }
       throw Exception('فشل جلب إحصائيات النقاط: $e');
     }
   }
