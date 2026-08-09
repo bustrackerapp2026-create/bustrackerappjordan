@@ -3,17 +3,188 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // This rule allows anyone with your Firestore database reference to view, edit,
-    // and delete all data in your Firestore database. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Firestore database will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Firestore database will be denied until you Update
-    // your rules
-    match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2026, 8, 16);
+    // ═══════════════════════════════════════════════════════════
+    // دوال مساعدة
+    // ═══════════════════════════════════════════════════════════
+
+    function isSignedIn() {
+      return request.auth != null;
     }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /// قراءة مستند المستخدم الحالي من مجموعة users
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userExists() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userType() {
+      return userDoc().data.userType;
+    }
+
+    function isAdmin() {
+      return userExists() && userType() == 'admin';
+    }
+
+    function isDriver() {
+      return userExists() && userType() == 'driver';
+    }
+
+    function isPassenger() {
+      return userExists() && userType() == 'passenger';
+    }
+
+    /// أنواع الحساب المسموح إنشاؤها من التطبيق (لا يمكن إنشاء admin من العميل)
+    function isAllowedSelfUserType(t) {
+      return t in ['passenger', 'driver', 'service', 'bus_company'];
+    }
+
+    /// حقول الموقع/التواجد التي يمكن للمستخدم تحديثها بنفسه
+    function onlySelfServiceFields() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly([
+          'fullName',
+          'phoneNumber',
+          'busNumber',
+          'route',
+          'currentLatitude',
+          'currentLongitude',
+          'isOnline',
+          'lastUpdated',
+          'locationUpdatedAt',
+          'updatedAt'
+        ]);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // users
+    // ═══════════════════════════════════════════════════════════
+
+    match /users/{userId} {
+      // القراءة: أي مستخدم مسجّل (مطلوب لخريطة الأدمن وإحصائيات السائقين)
+      allow read: if isSignedIn();
+
+      // إنشاء الحساب عند التسجيل: فقط على مستنده، وبدون منح نفسه صلاحية admin
+      allow create: if isOwner(userId)
+        && request.resource.data.uid == userId
+        && isAllowedSelfUserType(request.resource.data.userType)
+        && request.resource.data.isVerified == false
+        && request.resource.data.get('isRejected', false) == false;
+
+      // تحديث الملف الشخصي / الموقع: المالك لحقول محدودة فقط
+      // أو الأدمن لاعتماد/رفض السائقين وتعديل البيانات الإدارية
+      allow update: if isOwner(userId) && onlySelfServiceFields()
+        // منع تغيير النوع أو حالة الاعتماد من العميل
+        && request.resource.data.userType == resource.data.userType
+        && request.resource.data.isVerified == resource.data.isVerified
+        && request.resource.data.get('isRejected', false) == resource.data.get('isRejected', false)
+      || isAdmin();
+
+      // الحذف: الأدمن فقط (أو المالك إن رغبت لاحقاً)
+      allow delete: if isAdmin();
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // pickupPoints — نقاط التجمع
+    // ═══════════════════════════════════════════════════════════
+
+    match /pickupPoints/{pointId} {
+      // القراءة: أي مستخدم مسجّل (الخرائط تعرض المعتمدة؛ الأدمن يعرض المعلقة أيضاً)
+      allow read: if isSignedIn();
+
+      // الإضافة:
+      // - الأدمن: معتمدة مباشرة
+      // - غير الأدمن: معلقة فقط + addedBy = نفسه
+      allow create: if isSignedIn()
+        && request.resource.data.addedBy == request.auth.uid
+        && request.resource.data.pointType in ['bus', 'passenger']
+        && (
+          (isAdmin() && request.resource.data.status == 'approved')
+          ||
+          (!isAdmin() && request.resource.data.status == 'pending')
+        );
+
+      // التحديث:
+      // - الأدمن: كامل (اعتماد / رفض / تعديل / حذف منطقي عبر الحقول)
+      // - أي مستخدم مسجّل: تأكيد النقطة أو اقتراح تعديل فقط
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['confirmations', 'confirmationCount', 'reviewNote', 'suggestedEdit', 'updatedAt'])
+          // لا يغيّر الحالة أو الموقع أو المالك
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.latitude == resource.data.latitude
+          && request.resource.data.longitude == resource.data.longitude
+          && request.resource.data.addedBy == resource.data.addedBy
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // trips — الرحلات
+    // ═══════════════════════════════════════════════════════════
+
+    match /trips/{tripId} {
+      allow read: if isSignedIn() && (
+        isAdmin()
+        || resource.data.driverId == request.auth.uid
+        || resource.data.passengerId == request.auth.uid
+        // رحلات قيد الانتظار يمكن أن يراها السائقون المعتمدون لاستقبال الطلبات
+        || (isDriver() && resource.data.status == 'pending')
+      );
+
+      // إنشاء رحلة: السائق أو الراكب المرتبط بها
+      allow create: if isSignedIn()
+        && (
+          request.resource.data.driverId == request.auth.uid
+          || request.resource.data.passengerId == request.auth.uid
+        );
+
+      // تحديث: سائق الرحلة أو الأدمن
+      // قبول رحلة معلّقة: سائق يضع نفسه كـ driverId
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.driverId == request.auth.uid)
+        || (
+          isDriver()
+          && resource.data.status == 'pending'
+          && request.resource.data.driverId == request.auth.uid
+        );
+
+      allow delete: if isAdmin()
+        || (isSignedIn() && resource.data.driverId == request.auth.uid);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // routes — خطوط السير
+    // ═══════════════════════════════════════════════════════════
+
+    match /routes/{routeId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+
+      match /stops/{stopId} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+    }
+
+    // إحداثيات المسارات (chunks)
+    match /routeCoordinates/{chunkId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // أي مجموعة أخرى: مرفوضة افتراضياً (أضف قواعد صريحة عند الحاجة)
+    // ═══════════════════════════════════════════════════════════
+    // لا تضع match /{document=**} مفتوحاً هنا
   }
 }
