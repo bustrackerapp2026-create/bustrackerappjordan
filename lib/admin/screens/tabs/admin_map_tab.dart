@@ -26,7 +26,12 @@ class AdminMapTab extends StatefulWidget {
 }
 
 class _AdminMapTabState extends State<AdminMapTab>
-    with MapCoreMixin<AdminMapTab>, DriverManagerMixin<AdminMapTab>, PassengerManagerMixin<AdminMapTab>, RouteManagerMixin<AdminMapTab>, PickupPointMixin<AdminMapTab> {
+    with
+        MapCoreMixin<AdminMapTab>,
+        DriverManagerMixin<AdminMapTab>,
+        PassengerManagerMixin<AdminMapTab>,
+        RouteManagerMixin<AdminMapTab>,
+        PickupPointMixin<AdminMapTab> {
   final PickupPointManager _pickupManager = PickupPointManager();
   final LocationService _locationService = LocationService();
   bool _isAddingPickupPoint = false;
@@ -80,9 +85,12 @@ class _AdminMapTabState extends State<AdminMapTab>
     mapboxMap?.setCamera(CameraOptions(
       center: Point(coordinates: Position(focus.longitude, focus.latitude)),
       zoom: 16.5,
-      pitch: 45.0,
+      pitch: 0,
+      bearing: 0,
     ));
-    if (mounted) MapUtils.showSnackBar(context, '📍 تم التوجيه إلى: ${focus.pointName}');
+    if (mounted) {
+      MapUtils.showSnackBar(context, '📍 تم التوجيه إلى: ${focus.pointName}');
+    }
   }
 
   @override
@@ -100,7 +108,8 @@ class _AdminMapTabState extends State<AdminMapTab>
     if (!mounted) return;
     final driverId = _findId(driverAnnotations, annotation);
     if (driverId != null) {
-      MapUtils.showSnackBar(context, '🔄 جاري تحميل بيانات السائق (ID: $driverId)...');
+      MapUtils.showSnackBar(
+          context, '🔄 جاري تحميل بيانات السائق (ID: $driverId)...');
       return;
     }
     final pickupId = _findId(pickupAnnotations, annotation);
@@ -116,17 +125,22 @@ class _AdminMapTabState extends State<AdminMapTab>
 
   String _userTypeLabel(String type) {
     switch (type) {
-      case 'driver': return 'سائق';
-      case 'passenger': return 'راكب';
-      case 'admin': return 'أدمن';
-      default: return type;
+      case 'driver':
+        return 'سائق';
+      case 'passenger':
+        return 'راكب';
+      case 'admin':
+        return 'أدمن';
+      default:
+        return type;
     }
   }
 
   Future<String> _loadAdderName(String userId) async {
     if (userId.isEmpty) return 'غير معروف';
     try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+      final doc =
+          await FirebaseFirestore.instance.collection('users').doc(userId).get();
       final name = doc.data()?['fullName'] as String?;
       return (name != null && name.trim().isNotEmpty) ? name.trim() : 'بدون اسم';
     } catch (_) {
@@ -149,18 +163,25 @@ class _AdminMapTabState extends State<AdminMapTab>
     setState(() => _isLoadingLocation = true);
     try {
       if (!await _locationService.checkAndRequestPermission()) {
-        if (mounted) MapUtils.showSnackBar(context, '⚠️ يرجى تفعيل الموقع أولاً', isError: true);
+        if (mounted) {
+          MapUtils.showSnackBar(context, '⚠️ يرجى تفعيل الموقع أولاً',
+              isError: true);
+        }
         return;
       }
       final position = await _locationService.getCurrentPosition();
       if (!mounted || position == null) {
-        if (mounted) MapUtils.showSnackBar(context, '⚠️ تعذر الحصول على الموقع', isError: true);
+        if (mounted) {
+          MapUtils.showSnackBar(context, '⚠️ تعذر الحصول على الموقع',
+              isError: true);
+        }
         return;
       }
-      mapboxMap?.setCamera(CameraOptions(
-        center: Point(coordinates: Position(position.longitude, position.latitude)),
-        zoom: 15, pitch: 45,
-      ));
+      await flyToFlat(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        zoom: 15,
+      );
       if (mounted) MapUtils.showSnackBar(context, '📍 تم تحديد موقعك الحالي');
     } finally {
       if (mounted) setState(() => _isLoadingLocation = false);
@@ -172,13 +193,15 @@ class _AdminMapTabState extends State<AdminMapTab>
     final result = await _locationService.searchPlace(query);
     if (!mounted) return;
     if (result == null) {
-      MapUtils.showSnackBar(context, '⚠️ لم يتم العثور على المكان', isError: true);
+      MapUtils.showSnackBar(context, '⚠️ لم يتم العثور على المكان',
+          isError: true);
       return;
     }
-    mapboxMap?.setCamera(CameraOptions(
-      center: Point(coordinates: Position(result.longitude, result.latitude)),
-      zoom: 15, pitch: 45,
-    ));
+    await flyToFlat(
+      latitude: result.latitude,
+      longitude: result.longitude,
+      zoom: 15,
+    );
     MapUtils.showSnackBar(context, '🔎 تم الانتقال إلى ${result.name}');
   }
 
@@ -186,7 +209,8 @@ class _AdminMapTabState extends State<AdminMapTab>
     if (!_isAddingPickupPoint || !mounted) return;
     final auth = context.read<AuthProvider>();
     if (auth.userId == null || auth.userData == null) {
-      MapUtils.showSnackBar(context, '⚠️ يرجى تسجيل الدخول أولاً', isError: true);
+      MapUtils.showSnackBar(context, '⚠️ يرجى تسجيل الدخول أولاً',
+          isError: true);
       setState(() => _isAddingPickupPoint = false);
       return;
     }
@@ -207,7 +231,9 @@ class _AdminMapTabState extends State<AdminMapTab>
       );
       if (mounted) MapUtils.showSnackBar(context, '✅ تم إضافة النقطة');
     } catch (_) {
-      if (mounted) MapUtils.showSnackBar(context, '❌ فشل إضافة النقطة', isError: true);
+      if (mounted) {
+        MapUtils.showSnackBar(context, '❌ فشل إضافة النقطة', isError: true);
+      }
     } finally {
       if (mounted) setState(() => _isAddingPickupPoint = false);
     }
@@ -219,7 +245,9 @@ class _AdminMapTabState extends State<AdminMapTab>
     final adderFuture = _loadAdderName(point.addedBy);
     final action = await showModalBottomSheet<String>(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => FutureBuilder<String>(
         future: adderFuture,
         builder: (_, snap) {
@@ -231,13 +259,23 @@ class _AdminMapTabState extends State<AdminMapTab>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(point.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  Text(point.pointType == 'passenger' ? '🚶 تجمع ركاب' : '🚌 تجمع باصات'),
+                  Text(point.name,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(point.pointType == 'passenger'
+                      ? '🚶 تجمع ركاب'
+                      : '🚌 تجمع باصات'),
                   const SizedBox(height: 12),
-                  Text('أكدها $count', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text('أضافها: ${snap.data ?? '...'} · ${_userTypeLabel(point.addedByUserType)}'),
-                  ListTile(title: const Text('تعديل'), onTap: () => Navigator.pop(ctx, 'edit')),
-                  ListTile(title: const Text('حذف'), onTap: () => Navigator.pop(ctx, 'delete')),
+                  Text('أكدها $count',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text(
+                      'أضافها: ${snap.data ?? '...'} · ${_userTypeLabel(point.addedByUserType)}'),
+                  ListTile(
+                      title: const Text('تعديل'),
+                      onTap: () => Navigator.pop(ctx, 'edit')),
+                  ListTile(
+                      title: const Text('حذف'),
+                      onTap: () => Navigator.pop(ctx, 'delete')),
                 ],
               ),
             ),
@@ -247,9 +285,16 @@ class _AdminMapTabState extends State<AdminMapTab>
     );
     if (!mounted) return;
     if (action == 'edit') {
-      final updated = await showPickupPointPickerDialog(context: context, initialName: point.name, initialPointType: point.pointType);
+      final updated = await showPickupPointPickerDialog(
+        context: context,
+        initialName: point.name,
+        initialPointType: point.pointType,
+      );
       if (updated == null || !mounted) return;
-      await _pickupManager.updatePickupPoint(pointId: pickupId, data: {'name': updated.name.trim(), 'pointType': updated.pointType});
+      await _pickupManager.updatePickupPoint(
+        pointId: pickupId,
+        data: {'name': updated.name.trim(), 'pointType': updated.pointType},
+      );
       if (mounted) MapUtils.showSnackBar(context, '✅ تم تعديل النقطة');
     } else if (action == 'delete') {
       await _pickupManager.deletePickupPoint(pointId: pickupId);
@@ -259,64 +304,93 @@ class _AdminMapTabState extends State<AdminMapTab>
 
   @override
   Widget build(BuildContext context) {
-    return Stack(children: [
-      MapWidget(
-        key: const ValueKey('admin_map_widget'),
-        onMapCreated: onMapCreated,
-        // ignore: deprecated_member_use
-        onTapListener: (event) {
-          if (_isAddingPickupPoint) {
-            _handleMapTap(event.point);
-          } else {
-            handleMapBackgroundTap(event);
-          }
-        },
-        styleUri: currentMapStyle,
-      ),
-      if (!isMapReady) const Center(child: CircularProgressIndicator()),
-      Positioned(
-        top: 16, left: 16, right: 16,
-        child: SearchBarWidget(selectedRoute: 'الكل', routes: const ['الكل'], onRouteChanged: (_) {}, onSearchSubmitted: _searchPlace),
-      ),
-      Positioned(
-        bottom: 30, left: 16,
-        child: FloatingActionButton(
-          heroTag: 'admin_passengers_toggle',
-          onPressed: togglePassengersVisibility,
-          backgroundColor: showPassengers ? Colors.blue.shade700 : Colors.grey,
-          child: Icon(showPassengers ? Icons.person : Icons.person_off),
+    return Stack(
+      children: [
+        MapWidget(
+          key: const ValueKey('admin_map_widget'),
+          onMapCreated: onMapCreated,
+          // ignore: deprecated_member_use
+          onTapListener: (event) {
+            if (_isAddingPickupPoint) {
+              _handleMapTap(event.point);
+            } else {
+              handleMapBackgroundTap(event);
+            }
+          },
+          styleUri: currentMapStyle,
         ),
-      ),
-      Positioned(
-        bottom: 100, right: 16,
-        child: FloatingActionButton(
-          heroTag: 'admin_add_pickup',
-          onPressed: _isAddingPickupPoint ? _cancelAddPickupPoint : _startAddPickupPoint,
-          backgroundColor: _isAddingPickupPoint ? Colors.red : Colors.orange,
-          child: Icon(_isAddingPickupPoint ? Icons.close : Icons.add_location),
+        if (!isMapReady) const Center(child: CircularProgressIndicator()),
+        Positioned(
+          top: 16,
+          left: 16,
+          right: 16,
+          child: SearchBarWidget(
+            selectedRoute: 'الكل',
+            routes: const ['الكل'],
+            onRouteChanged: (_) {},
+            onSearchSubmitted: _searchPlace,
+          ),
         ),
-      ),
-      Positioned(
-        bottom: 180, right: 16,
-        child: FloatingActionButton(
-          heroTag: 'admin_map_location_fab',
-          onPressed: _goToMyLocation,
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.primaryColor,
-          child: _isLoadingLocation
-              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.my_location_rounded),
+        Positioned(
+          bottom: 30,
+          left: 16,
+          child: FloatingActionButton(
+            heroTag: 'admin_passengers_toggle',
+            onPressed: togglePassengersVisibility,
+            backgroundColor:
+                showPassengers ? Colors.blue.shade700 : Colors.grey,
+            foregroundColor: Colors.white,
+            child: Icon(showPassengers ? Icons.person : Icons.person_off),
+          ),
         ),
-      ),
-      Positioned(
-        bottom: 30, right: 16,
-        child: FloatingActionButton(
-          heroTag: 'admin_map_layers_fab',
-          onPressed: () => showMapSettingsSheet(context),
-          backgroundColor: Colors.white,
-          child: const Icon(Icons.layers_rounded),
+        Positioned(
+          bottom: 100,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: 'admin_add_pickup',
+            onPressed: _isAddingPickupPoint
+                ? _cancelAddPickupPoint
+                : _startAddPickupPoint,
+            backgroundColor: _isAddingPickupPoint ? Colors.red : Colors.orange,
+            foregroundColor: Colors.white,
+            child: Icon(
+              _isAddingPickupPoint ? Icons.close : Icons.add_location,
+            ),
+          ),
         ),
-      ),
-    ]);
+        Positioned(
+          bottom: 180,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: 'admin_map_location_fab',
+            onPressed: _goToMyLocation,
+            backgroundColor: Colors.white,
+            foregroundColor: AppTheme.primaryColor,
+            elevation: 4,
+            shape: const CircleBorder(),
+            child: _isLoadingLocation
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.my_location_rounded),
+          ),
+        ),
+        Positioned(
+          bottom: 30,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: 'admin_map_layers_fab',
+            onPressed: () => showMapSettingsSheet(context),
+            backgroundColor: Colors.white,
+            foregroundColor: AppTheme.textColor,
+            elevation: 4,
+            shape: const CircleBorder(),
+            child: const Icon(Icons.layers_rounded, size: 26),
+          ),
+        ),
+      ],
+    );
   }
 }

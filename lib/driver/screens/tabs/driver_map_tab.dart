@@ -118,7 +118,6 @@ class _DriverMapTabState extends State<DriverMapTab>
       if (bearing == 0.0 && position.speed > 0) bearing = _currentBearing;
       setState(() => _currentBearing = bearing);
 
-      // خريطة مسطحة مثل جوجل — بدون pitch أو تدوير الكاميرا
       await flyToFlat(
         latitude: position.latitude,
         longitude: position.longitude,
@@ -136,7 +135,6 @@ class _DriverMapTabState extends State<DriverMapTab>
         double newBearing = pos.heading;
         if (newBearing == 0.0 && pos.speed > 0) newBearing = _currentBearing;
         setState(() => _currentBearing = newBearing);
-        // أثناء التتبع: نحرّك المركز فقط بدون ميلان/تدوير للشاشة
         mapboxMap?.setCamera(
           CameraOptions(
             center: Point(coordinates: Position(pos.longitude, pos.latitude)),
@@ -175,7 +173,7 @@ class _DriverMapTabState extends State<DriverMapTab>
       context,
       mapboxMap,
       query,
-      0, // لا ندوّر الكاميرا حسب الاتجاه
+      0,
       _locationService,
     );
   }
@@ -234,12 +232,15 @@ class _DriverMapTabState extends State<DriverMapTab>
                 heroTag: 'driver_compass',
                 onPressed: resetNorth,
                 backgroundColor: Colors.white,
+                foregroundColor: AppTheme.textColor,
                 child: const Icon(Icons.explore_outlined),
               ),
               const SizedBox(height: 10),
               FloatingActionButton(
                 heroTag: 'driver_recenter',
                 onPressed: _recenterCamera,
+                backgroundColor: Colors.blue.shade700,
+                foregroundColor: Colors.white,
                 child: const Icon(Icons.center_focus_strong),
               ),
               const SizedBox(height: 10),
@@ -261,7 +262,10 @@ class _DriverMapTabState extends State<DriverMapTab>
                 heroTag: 'driver_map_layers',
                 onPressed: () => showMapSettingsSheet(context),
                 backgroundColor: Colors.white,
-                child: const Icon(Icons.layers),
+                foregroundColor: AppTheme.textColor,
+                elevation: 4,
+                shape: const CircleBorder(),
+                child: const Icon(Icons.layers, size: 26),
               ),
               const SizedBox(height: 10),
               FloatingActionButton(
@@ -278,6 +282,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                 },
                 backgroundColor:
                     isAddingPickupPoint ? Colors.red : Colors.orange,
+                foregroundColor: Colors.white,
                 child: Icon(
                   isAddingPickupPoint ? Icons.close : Icons.add_location,
                 ),
