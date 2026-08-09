@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import '../../core/theme/app_theme.dart';
+import '../../services/location_service.dart';
+import '../../map/utils/map_helpers.dart';
 import 'map_constants.dart';
 
 /// دوال مساعدة مشتركة للخرائط
@@ -88,5 +91,61 @@ class MapUtils {
     }
     if (value is num) return value.toDouble();
     return null;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  //  ✅ دوال جديدة (للخطوة الحالية)
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /// ✅ تحميل صورة الماركر مسبقاً (لتجنب التأخير عند الاستخدام)
+  ///
+  /// تعود بـ [Uint8List?] أو `null` في حالة الفشل.
+  static Future<Uint8List?> preloadMarkerImage() async {
+    try {
+      return await MapHelpers.createUserMarkerBytes();
+    } catch (e) {
+      log('⚠️ خطأ في تحميل صورة الماركر: $e', tag: 'MapUtils');
+      return null;
+    }
+  }
+
+  /// ✅ البحث عن مكان باستخدام LocationService
+  ///
+  /// [context] سياق التطبيق (للـ SnackBar والتحقق من mounted)
+  /// [mapboxMap] كائن الخريطة لتحريك الكاميرا
+  /// [query] النص المراد البحث عنه
+  /// [currentBearing] اتجاه الكاميرا الحالي
+  /// [locationService] خدمة الموقع (للبحث)
+  ///
+  /// تعود بـ `void`، وتظهر النتائج عبر SnackBar.
+  static Future<void> searchPlace(
+    BuildContext context,
+    MapboxMap? mapboxMap,
+    String query,
+    double currentBearing,
+    LocationService locationService,
+  ) async {
+    if (query.trim().isEmpty) return;
+    if (!context.mounted) return;
+
+    final result = await locationService.searchPlace(query);
+    if (!context.mounted) return;
+
+    if (result == null) {
+      showSnackBar(context, '⚠️ لم يتم العثور على المكان.', isError: true);
+      return;
+    }
+
+    mapboxMap?.setCamera(
+      CameraOptions(
+        center: Point(
+          coordinates: Position(result.longitude, result.latitude),
+        ),
+        zoom: 15.0,
+        bearing: currentBearing,
+        pitch: 45.0,
+      ),
+    );
+    showSnackBar(context, '🔎 تم الانتقال إلى ${result.name}', isError: false);
   }
 }
