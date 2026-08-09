@@ -1,27 +1,38 @@
 {
   "indexes": [
     {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userType", "order": "ASCENDING" },
+        { "fieldPath": "isVerified", "order": "ASCENDING" },
+        { "fieldPath": "isOnline", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "trips",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "driverId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ],
-      "density": "SPARSE_ALL"
+        { "fieldPath": "driverId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "trips",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "passengerId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "routeCoordinates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "routeId", "order": "ASCENDING" },
+        { "fieldPath": "chunkIndex", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
