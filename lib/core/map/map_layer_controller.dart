@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 
-import '../theme/app_theme.dart';
+import 'poi_info_card.dart';
 
 /// نتيجة النقر على معلم من خريطة Mapbox
 class MapPoiInfo {
@@ -222,70 +222,9 @@ class MapLayerController {
     }
   }
 
-  /// عرض بسيط وواضح لاسم المكان ونوعه فقط (بدون أزرار إضافية)
+  /// يعرض البطاقة المخصصة من [PoiInfoCard]
   static void showPoiSheet(BuildContext context, MapPoiInfo info) {
-    final icon = _iconForCategory(info.category);
-    final color = _colorForCategory(info.category);
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: color.withValues(alpha: 0.12),
-                    child: Icon(icon, color: color),
-                  ),
-                  title: Text(
-                    info.name,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      info.secondaryName != null &&
-                              info.secondaryName!.isNotEmpty
-                          ? '${info.category}\n${info.secondaryName}'
-                          : info.category,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        color: Colors.grey.shade700,
-                        height: 1.35,
-                      ),
-                    ),
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    PoiInfoCard.show(context, info);
   }
 
   static String _firstLayerId(List<String?>? layerIds) {
@@ -424,29 +363,6 @@ class MapLayerController {
     }
     if (c.isNotEmpty) return clazz ?? type ?? 'مكان';
     return 'مكان على الخريطة';
-  }
-
-  static Color _colorForCategory(String category) {
-    if (category.contains('مستشفى')) return const Color(0xFFE53935);
-    if (category.contains('مطعم')) return const Color(0xFFFB8C00);
-    if (category.contains('تعليمليم')) return const Color(0xFF1E88E5);
-    if (category.contains('مواصلات')) return const Color(0xFF43A047);
-    if (category.contains('تسوق')) return const Color(0xFF8E24AA);
-    if (category.contains('عبادة')) return const Color(0xFF00897B);
-    if (category.contains('حديقة')) return const Color(0xFF2E7D32);
-    return AppTheme.primaryColor;
-  }
-
-  static IconData _iconForCategory(String category) {
-    if (category.contains('مستشفى')) return Icons.local_hospital_rounded;
-    if (category.contains('مطعم')) return Icons.restaurant_rounded;
-    if (category.contains('تعليمليم')) return Icons.school_rounded;
-    if (category.contains('مواصلات')) return Icons.directions_bus_rounded;
-    if (category.contains('تسوق')) return Icons.storefront_rounded;
-    if (category.contains('عبادة')) return Icons.mosque_rounded;
-    if (category.contains('حديقة')) return Icons.park_rounded;
-    if (category.contains('وقود')) return Icons.local_gas_station_rounded;
-    return Icons.place_rounded;
   }
 
   static void _log(String msg) {
