@@ -24,7 +24,11 @@ class DriverMapTab extends StatefulWidget {
 }
 
 class _DriverMapTabState extends State<DriverMapTab>
-    with WidgetsBindingObserver, MapCoreMixin<DriverMapTab>, PickupPointMixin<DriverMapTab>, TripManagerMixin<DriverMapTab> {
+    with
+        WidgetsBindingObserver,
+        MapCoreMixin<DriverMapTab>,
+        PickupPointMixin<DriverMapTab>,
+        TripManagerMixin<DriverMapTab> {
   PointAnnotation? _userAnnotation;
   Uint8List? _cachedUserMarkerBytes;
   bool _isLoadingLocation = false;
@@ -58,8 +62,12 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _isLoadingLocation) _goToMyLocation();
-    if (state == AppLifecycleState.detached) _locationSubscription?.cancel();
+    if (state == AppLifecycleState.resumed && _isLoadingLocation) {
+      _goToMyLocation();
+    }
+    if (state == AppLifecycleState.detached) {
+      _locationSubscription?.cancel();
+    }
   }
 
   Future<void> _updateUserMarker(double lat, double lng, double bearing) async {
@@ -73,13 +81,15 @@ class _DriverMapTabState extends State<DriverMapTab>
     }
     _cachedUserMarkerBytes ??= await MapHelpers.createUserMarkerBytes();
     if (_cachedUserMarkerBytes == null) return;
-    _userAnnotation = await pointAnnotationManager?.create(PointAnnotationOptions(
-      geometry: point,
-      image: _cachedUserMarkerBytes!,
-      iconSize: 1.0,
-      iconAnchor: IconAnchor.CENTER,
-      iconRotate: bearing,
-    ));
+    _userAnnotation = await pointAnnotationManager?.create(
+      PointAnnotationOptions(
+        geometry: point,
+        image: _cachedUserMarkerBytes!,
+        iconSize: 1.0,
+        iconAnchor: IconAnchor.CENTER,
+        iconRotate: bearing,
+      ),
+    );
   }
 
   Future<void> _goToMyLocation() async {
@@ -87,37 +97,63 @@ class _DriverMapTabState extends State<DriverMapTab>
     setState(() => _isLoadingLocation = true);
     try {
       if (!await _locationService.checkAndRequestPermission()) {
-        if (mounted) MapUtils.showSnackBar(context, '⚠️ يرجى تفعيل خدمة الموقع.', isError: true);
+        if (!mounted) return;
+        MapUtils.showSnackBar(context, '⚠️ يرجى تفعيل خدمة الموقع.',
+            isError: true);
         return;
       }
+      if (!mounted) return;
+
       _locationSubscription?.cancel();
       final position = await _locationService.getCurrentPosition();
-      if (!mounted || position == null) {
-        if (mounted) MapUtils.showSnackBar(context, '⚠️ تعذر الحصول على الموقع.', isError: true);
+      if (!mounted) return;
+
+      if (position == null) {
+        MapUtils.showSnackBar(context, '⚠️ تعذر الحصول على الموقع.',
+            isError: true);
         return;
       }
+
       double bearing = position.heading;
       if (bearing == 0.0 && position.speed > 0) bearing = _currentBearing;
       setState(() => _currentBearing = bearing);
-      mapboxMap?.setCamera(CameraOptions(
-        center: Point(coordinates: Position(position.longitude, position.latitude)),
-        zoom: 15, bearing: bearing, pitch: 45,
-      ));
+
+      mapboxMap?.setCamera(
+        CameraOptions(
+          center: Point(
+            coordinates: Position(position.longitude, position.latitude),
+          ),
+          zoom: 15,
+          bearing: bearing,
+          pitch: 45,
+        ),
+      );
       await _updateUserMarker(position.latitude, position.longitude, bearing);
+
+      if (!mounted) return;
       context.read<DriverProvider>().updatePosition(position);
-      _locationSubscription = _locationService.getPositionStream(distanceFilter: 5).listen((pos) {
+
+      _locationSubscription = _locationService
+          .getPositionStream(distanceFilter: 5)
+          .listen((pos) {
         if (!mounted) return;
         double newBearing = pos.heading;
         if (newBearing == 0.0 && pos.speed > 0) newBearing = _currentBearing;
         setState(() => _currentBearing = newBearing);
-        mapboxMap?.setCamera(CameraOptions(
-          center: Point(coordinates: Position(pos.longitude, pos.latitude)),
-          zoom: 15, bearing: newBearing, pitch: 45,
-        ));
+        mapboxMap?.setCamera(
+          CameraOptions(
+            center: Point(coordinates: Position(pos.longitude, pos.latitude)),
+            zoom: 15,
+            bearing: newBearing,
+            pitch: 45,
+          ),
+        );
         _updateUserMarker(pos.latitude, pos.longitude, newBearing);
         context.read<DriverProvider>().updatePosition(pos);
       });
-      if (mounted) MapUtils.showSnackBar(context, '📍 تم تحديد موقعك.');
+
+      if (!mounted) return;
+      MapUtils.showSnackBar(context, '📍 تم تحديد موقعك.');
     } finally {
       if (mounted) setState(() => _isLoadingLocation = false);
     }
@@ -129,125 +165,175 @@ class _DriverMapTabState extends State<DriverMapTab>
       MapUtils.showSnackBar(context, '⚠️ لا يوجد موقع محدد.', isError: true);
       return;
     }
-    mapboxMap?.setCamera(CameraOptions(
-      center: Point(coordinates: Position(pos.longitude, pos.latitude)),
-      zoom: 16, bearing: _currentBearing, pitch: 45,
-    ));
+    mapboxMap?.setCamera(
+      CameraOptions(
+        center: Point(coordinates: Position(pos.longitude, pos.latitude)),
+        zoom: 16,
+        bearing: _currentBearing,
+        pitch: 45,
+      ),
+    );
   }
 
   Future<void> _searchPlace(String query) async {
     if (!mounted) return;
-    await MapUtils.searchPlace(context, mapboxMap, query, _currentBearing, _locationService);
+    await MapUtils.searchPlace(
+      context,
+      mapboxMap,
+      query,
+      _currentBearing,
+      _locationService,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(children: [
-      MapWidget(
-        key: const ValueKey('driver_map'),
-        onMapCreated: (map) async {
-          mapboxMap = map;
-          await initAnnotationManager();
-          mapboxMap?.setCamera(CameraOptions(
-            center: Point(coordinates: Position(35.9106, 31.9522)),
-            zoom: 12,
-          ));
-          applyMapConstraints();
-          await Future<void>.delayed(const Duration(milliseconds: 400));
-          await applyLabelLayersFilter();
-          listenToPickupPoints();
-        },
-        styleUri: currentMapStyle,
-        // ignore: deprecated_member_use
-        onTapListener: (event) {
-          if (isAddingPickupPoint) {
-            handleAddPickupPoint(event.point);
-          } else {
-            handleMapBackgroundTap(event);
-          }
-        },
-      ),
-      Positioned(
-        top: 16, left: 16, right: 16,
-        child: SearchBarWidget(
-          selectedRoute: _selectedRoute,
-          routes: AppConstants.jordanRoutes,
-          onRouteChanged: (r) => setState(() => _selectedRoute = r),
-          onSearchSubmitted: _searchPlace,
-        ),
-      ),
-      Positioned(
-        bottom: 140, right: 16,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          FloatingActionButton(heroTag: 'driver_recenter', onPressed: _recenterCamera, child: const Icon(Icons.center_focus_strong)),
-          const SizedBox(height: 10),
-          FloatingActionButton(
-            heroTag: 'driver_my_location',
-            onPressed: _goToMyLocation,
-            backgroundColor: Colors.white,
-            foregroundColor: AppTheme.primaryColor,
-            child: _isLoadingLocation
-                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.my_location),
-          ),
-          const SizedBox(height: 10),
-          FloatingActionButton(
-            heroTag: 'driver_map_layers',
-            onPressed: () => showMapSettingsSheet(context),
-            backgroundColor: Colors.white,
-            child: const Icon(Icons.layers),
-          ),
-          const SizedBox(height: 10),
-          FloatingActionButton(
-            heroTag: 'driver_add_pickup',
-            onPressed: () {
-              toggleAddingPickupPoint();
-              MapUtils.showSnackBar(
-                context,
-                isAddingPickupPoint ? '📍 اضغط على الخريطة لإضافة نقطة' : '❌ تم الإلغاء',
-                isError: !isAddingPickupPoint,
-              );
-            },
-            backgroundColor: isAddingPickupPoint ? Colors.red : Colors.orange,
-            child: Icon(isAddingPickupPoint ? Icons.close : Icons.add_location),
-          ),
-        ]),
-      ),
-      Positioned(
-        bottom: 20, left: 16, right: 16,
-        child: Selector<DriverProvider, ({bool isOnline, bool isTripActive})>(
-          selector: (_, p) => (isOnline: p.isOnline, isTripActive: p.isTripActive),
-          builder: (context, state, _) {
-            final user = context.watch<AuthProvider>().userData;
-            return Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.98),
-                borderRadius: BorderRadius.circular(20),
+    return Stack(
+      children: [
+        MapWidget(
+          key: const ValueKey('driver_map'),
+          onMapCreated: (map) async {
+            mapboxMap = map;
+            await initAnnotationManager();
+            mapboxMap?.setCamera(
+              CameraOptions(
+                center: Point(coordinates: Position(35.9106, 31.9522)),
+                zoom: 12,
               ),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text('🚗 مرحباً ${user?.fullName ?? "السائق"}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text(state.isOnline ? 'متاح' : 'غير متاح'),
-                Row(children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => context.read<DriverProvider>().toggleOnlineStatus(),
-                      child: Text(state.isOnline ? 'متصل' : 'توصيل'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: isProcessingTrip ? null : (state.isTripActive ? endTrip : startTrip),
-                      child: Text(state.isTripActive ? 'إنهاء' : 'بدء الرحلة'),
-                    ),
-                  ),
-                ]),
-              ]),
             );
+            applyMapConstraints();
+            await Future<void>.delayed(const Duration(milliseconds: 400));
+            await applyLabelLayersFilter();
+            listenToPickupPoints();
+          },
+          styleUri: currentMapStyle,
+          // ignore: deprecated_member_use
+          onTapListener: (event) {
+            if (isAddingPickupPoint) {
+              handleAddPickupPoint(event.point);
+            } else {
+              handleMapBackgroundTap(event);
+            }
           },
         ),
-      ),
-    ]);
+        Positioned(
+          top: 16,
+          left: 16,
+          right: 16,
+          child: SearchBarWidget(
+            selectedRoute: _selectedRoute,
+            routes: AppConstants.jordanRoutes,
+            onRouteChanged: (r) => setState(() => _selectedRoute = r),
+            onSearchSubmitted: _searchPlace,
+          ),
+        ),
+        Positioned(
+          bottom: 140,
+          right: 16,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FloatingActionButton(
+                heroTag: 'driver_recenter',
+                onPressed: _recenterCamera,
+                child: const Icon(Icons.center_focus_strong),
+              ),
+              const SizedBox(height: 10),
+              FloatingActionButton(
+                heroTag: 'driver_my_location',
+                onPressed: _goToMyLocation,
+                backgroundColor: Colors.white,
+                foregroundColor: AppTheme.primaryColor,
+                child: _isLoadingLocation
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.my_location),
+              ),
+              const SizedBox(height: 10),
+              FloatingActionButton(
+                heroTag: 'driver_map_layers',
+                onPressed: () => showMapSettingsSheet(context),
+                backgroundColor: Colors.white,
+                child: const Icon(Icons.layers),
+              ),
+              const SizedBox(height: 10),
+              FloatingActionButton(
+                heroTag: 'driver_add_pickup',
+                onPressed: () {
+                  toggleAddingPickupPoint();
+                  MapUtils.showSnackBar(
+                    context,
+                    isAddingPickupPoint
+                        ? '📍 اضغط على الخريطة لإضافة نقطة'
+                        : '❌ تم الإلغاء',
+                    isError: !isAddingPickupPoint,
+                  );
+                },
+                backgroundColor:
+                    isAddingPickupPoint ? Colors.red : Colors.orange,
+                child: Icon(
+                  isAddingPickupPoint ? Icons.close : Icons.add_location,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          bottom: 20,
+          left: 16,
+          right: 16,
+          child: Selector<DriverProvider, ({bool isOnline, bool isTripActive})>(
+            selector: (_, p) =>
+                (isOnline: p.isOnline, isTripActive: p.isTripActive),
+            builder: (context, state, _) {
+              final user = context.watch<AuthProvider>().userData;
+              return Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.98),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '🚗 مرحباً ${user?.fullName ?? "السائق"}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(state.isOnline ? 'متاح' : 'غير متاح'),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => context
+                                .read<DriverProvider>()
+                                .toggleOnlineStatus(),
+                            child: Text(state.isOnline ? 'متصل' : 'توصيل'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: isProcessingTrip
+                                ? null
+                                : (state.isTripActive ? endTrip : startTrip),
+                            child: Text(
+                              state.isTripActive ? 'إنهاء' : 'بدء الرحلة',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }

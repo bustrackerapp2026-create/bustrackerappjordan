@@ -164,6 +164,9 @@ class MapLayerController {
       if (features.isEmpty) return null;
 
       for (final item in features) {
+        // API يعيد List<QueriedRenderedFeature?>
+        if (item == null) continue;
+
         final featureMap = item.queriedFeature.feature;
         final props = _asStringKeyedMap(featureMap['properties']);
         final layerIds = item.layers;
@@ -202,7 +205,16 @@ class MapLayerController {
         );
       }
 
-      final first = features.first;
+      // مسار احتياطي: أول عنصر غير null
+      QueriedRenderedFeature? first;
+      for (final f in features) {
+        if (f != null) {
+          first = f;
+          break;
+        }
+      }
+      if (first == null) return null;
+
       final props =
           _asStringKeyedMap(first.queriedFeature.feature['properties']);
       final fallbackName = props.values
@@ -211,6 +223,7 @@ class MapLayerController {
           .take(1)
           .join();
       if (fallbackName.isEmpty) return null;
+
       return MapPoiInfo(
         name: fallbackName,
         category: 'معلم على الخريطة',
