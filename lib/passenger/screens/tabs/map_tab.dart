@@ -6,6 +6,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:geolocator/geolocator.dart' as geo;
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/map/map_layer_controller.dart';
 import '../../../core/map/pickup_point_sheet.dart';
 import '../../../core/pickup/pickup_point_manager.dart';
 import '../../../core/pickup/pickup_marker_helper.dart';
@@ -217,9 +218,29 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
       _currentMapStyle = styleUri;
     });
     await _mapboxMap?.loadStyleURI(styleUri);
+    await Future<void>.delayed(const Duration(milliseconds: 400));
     await _initAnnotationManager();
     await _applyLabelLayersFilter();
     _listenToPickupPoints();
+  }
+
+  /// استعلام معلم Mapbox عند النقر على خلفية الخريطة (مثل الأدمن/السائق)
+  Future<void> _handleMapBackgroundTap(MapContentGestureContext gesture) async {
+    if (!mounted || _mapboxMap == null) return;
+    if (_isAddingPickupPoint) return;
+
+    try {
+      final poi = await MapLayerController.queryPoiAt(
+        mapboxMap: _mapboxMap!,
+        screenCoordinate: gesture.touchPosition,
+      );
+      if (!mounted) return;
+      if (poi == null) return;
+
+      MapLayerController.showPoiSheet(context, poi);
+    } catch (e) {
+      debugPrint('⚠️ فشل استعلام المعلم: $e');
+    }
   }
 
   Future<void> _goToMyLocation() async {
@@ -376,7 +397,6 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     _showSnackBar('🔎 تم الانتقال إلى ${result.name}', isError: false);
   }
 
-  /// مزامنة فورية لنقاط التجمع المعتمدة بنفس شكل خريطة الأدمن
   void _listenToPickupPoints() {
     _pickupPointsSubscription?.cancel();
     _pickupPointsSubscription = FirebaseFirestore.instance
@@ -447,7 +467,6 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     });
   }
 
-  /// عرض البطاقة الموحّدة الجميلة لنقطة التجمع (نفس تصميم الأدمن والسائق)
   Future<void> _showPickupPointSheet(String pickupId) async {
     final point = await _pickupManager.getPickupPoint(pointId: pickupId);
     if (!mounted || point == null) return;
@@ -616,6 +635,9 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
           onTapListener: (event) {
             if (_isAddingPickupPoint) {
               _handleAddPickupPoint(event.point);
+            } else {
+              // ✅ استعلام المعالم عند النقر (مثل خريطة الأدمن)
+              _handleMapBackgroundTap(event);
             }
           },
         ),
@@ -652,7 +674,6 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
                     showRoadLabels: _showRoadLabels,
                     onStyleChanged: _changeMapStyle,
                     onApplyFilters: () {
-                      setState(() {});
                       _applyLabelLayersFilter();
                     },
                     onTogglePlaceLabels: (val) =>
