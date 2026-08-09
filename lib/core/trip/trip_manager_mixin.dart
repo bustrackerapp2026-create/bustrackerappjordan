@@ -13,7 +13,6 @@ import '../../models/trip_status.dart';
 import '../../models/route_point.dart';
 
 mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
-  // ─── متغيرات الرحلات ──────────────────────────────────────────────
   bool _isProcessingTrip = false;
   String? _currentTripId;
   PolylineAnnotationManager? _polylineAnnotationManager;
@@ -23,7 +22,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool get isProcessingTrip => _isProcessingTrip;
   String? get currentTripId => _currentTripId;
 
-  // ─── رسم مسار الرحلة ──────────────────────────────────────────────
   Future<void> showRouteOnMap(List<RoutePoint> routePoints) async {
     if (_polylineAnnotationManager == null || routePoints.isEmpty) return;
 
@@ -53,7 +51,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         tag: 'TripManager');
   }
 
-  // ─── بدء الرحلة ────────────────────────────────────────────────────
   Future<void> startTrip() async {
     if (_isProcessingTrip) return;
     if (!mounted) return;
@@ -88,8 +85,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     try {
       final docRef = FirebaseFirestore.instance.collection('trips').doc();
       final tripId = docRef.id;
-      MapUtils.log('📝 جاري إنشاء رحلة جديدة باستخدام ID: $tripId',
-          tag: 'TripManager');
 
       final trip = TripModel(
         id: tripId,
@@ -103,14 +98,10 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       );
 
       await _tripService.createTrip(trip);
-      MapUtils.log('✅ تم إنشاء الرحلة في Firestore: $tripId',
-          tag: 'TripManager');
 
       if (!mounted) return;
 
-      setState(() {
-        _currentTripId = tripId;
-      });
+      setState(() => _currentTripId = tripId);
       driverProvider.startTrip();
       MapUtils.showSnackBar(context, '🚀 تم بدء الرحلة!', isError: false);
     } catch (e) {
@@ -125,7 +116,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  // ─── إنهاء الرحلة ──────────────────────────────────────────────────
   Future<void> endTrip() async {
     if (_isProcessingTrip) return;
     if (!mounted) return;
@@ -149,10 +139,10 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       return;
     }
 
+    final tripId = _currentTripId!;
     setState(() => _isProcessingTrip = true);
 
     final route = driverProvider.endTrip();
-    MapUtils.log('📍 عدد نقاط المسار: ${route.length}', tag: 'TripManager');
 
     try {
       if (route.length > 5000) {
@@ -161,34 +151,34 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       if (route.isNotEmpty) {
-        MapUtils.log('💾 جاري حفظ المسار في Firestore...', tag: 'TripManager');
         await _tripService.updateTripStatus(
-          _currentTripId!,
+          tripId,
           TripStatus.completed,
           routePoints: route,
           driverId: driverId,
         );
-        MapUtils.log('✅ تم حفظ المسار بنجاح', tag: 'TripManager');
 
         if (!mounted) return;
 
         await showRouteOnMap(route);
+
+        if (!mounted) return;
         MapUtils.showSnackBar(
             context, '🏁 تم إنهاء الرحلة وحفظ المسار (${route.length} نقطة).',
             isError: false);
       } else {
         await _tripService.updateTripStatus(
-            _currentTripId!, TripStatus.completed,
-            driverId: driverId);
+          tripId,
+          TripStatus.completed,
+          driverId: driverId,
+        );
         if (!mounted) return;
         MapUtils.showSnackBar(context, '🏁 تم إنهاء الرحلة (بدون مسار).',
             isError: false);
       }
 
       if (mounted) {
-        setState(() {
-          _currentTripId = null;
-        });
+        setState(() => _currentTripId = null);
       }
     } catch (e) {
       MapUtils.log('❌ فشل حفظ المسار: $e', tag: 'TripManager');

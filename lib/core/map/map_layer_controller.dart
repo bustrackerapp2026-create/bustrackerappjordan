@@ -22,13 +22,9 @@ class MapPoiInfo {
 }
 
 /// تحكم موحّد بطبقات التسميات والمعالم لجميع الخرائط (أدمن / سائق / راكب).
-///
-/// يكتشف الطبقات من الستايل الحالي بدل الاعتماد على أسماء ثابتة فقط،
-/// حتى تعمل المفاتيح فعلياً على Streets / Outdoors / Satellite Streets.
 class MapLayerController {
   MapLayerController._();
 
-  // كلمات مفتاحية لتصنيف طبقات التسمية حسب id أو source-layer
   static const List<String> _placeKeywords = [
     'settlement',
     'place-label',
@@ -66,7 +62,6 @@ class MapLayerController {
     'golf-hole-label',
   ];
 
-  /// طبقات احتياطية معروفة في Mapbox Streets v8 إن فشل الاكتشاف الديناميكي
   static const List<String> _fallbackPlace = [
     'settlement-label',
     'settlement-subdivision-label',
@@ -92,7 +87,6 @@ class MapLayerController {
     'tunnel-label',
   ];
 
-  /// تطبيق إظهار/إخفاء طبقات الأسماء والمعالم
   static Future<void> applyLabelFilters({
     required MapboxMap mapboxMap,
     required bool showPlaceLabels,
@@ -100,7 +94,6 @@ class MapLayerController {
     required bool showRoadLabels,
   }) async {
     try {
-      // انتظار بسيط حتى يكتمل تحميل طبقات الستايل
       await Future<void>.delayed(const Duration(milliseconds: 120));
 
       final style = mapboxMap.style;
@@ -111,11 +104,11 @@ class MapLayerController {
       final roadIds = <String>{};
 
       for (final layer in layers) {
-        final id = layer?.id;
-        if (id == null || id.isEmpty) continue;
+        final rawId = layer?.id;
+        if (rawId == null || rawId.isEmpty) continue;
+        final id = rawId;
         final lower = id.toLowerCase();
 
-        // تجاهل طبقات الرسم الأساسية (طرق/مباني) — نهتم بالتسميات فقط
         if (_isBaseGeometryLayer(lower)) continue;
 
         if (_matchesAny(lower, _placeKeywords)) {
@@ -127,7 +120,6 @@ class MapLayerController {
         }
       }
 
-      // إن لم يُكتشف شيء، استخدم القائمة الاحتياطية
       if (placeIds.isEmpty) placeIds.addAll(_fallbackPlace);
       if (poiIds.isEmpty) poiIds.addAll(_fallbackPoi);
       if (roadIds.isEmpty) roadIds.addAll(_fallbackRoad);
@@ -147,7 +139,6 @@ class MapLayerController {
     }
   }
 
-  /// الاستعلام عن معلم عند النقر على الخريطة
   static Future<MapPoiInfo?> queryPoiAt({
     required MapboxMap mapboxMap,
     required ScreenCoordinate screenCoordinate,
@@ -165,8 +156,6 @@ class MapLayerController {
       );
 
       final geometry = RenderedQueryGeometry.fromScreenBox(box);
-
-      // أولاً: كل الطبقات الظاهرة ثم نرشّح المعالم المفيدة
       final features = await mapboxMap.queryRenderedFeatures(
         geometry,
         RenderedQueryOptions(layerIds: null, filter: null),
@@ -175,23 +164,19 @@ class MapLayerController {
       if (features.isEmpty) return null;
 
       for (final item in features) {
-        if (item == null) continue;
-        final qf = item.queriedFeature;
-        final featureMap = qf.feature;
+        final featureMap = item.queriedFeature.feature;
         final props = _asStringKeyedMap(featureMap['properties']);
         final layerIds = item.layers;
 
         final name = _extractName(props);
         if (name == null || name.isEmpty) continue;
 
-        final clazz = (props['class'] ?? props['category_en'] ?? props['type'])
-            ?.toString();
+        final clazzRaw = props['class'] ?? props['category_en'] ?? props['type'];
+        final clazz = clazzRaw?.toString();
         final type = props['type']?.toString();
         final category = _categoryLabel(clazz, type, name);
-        final layerId =
-            (layerIds != null && layerIds.isNotEmpty) ? layerIds.first : 'map';
+        final layerId = _firstLayerId(layerIds);
 
-        // تجاهل تسميات المدن/الشوارع العامة إن أمكن والتركيز على POI
         final lowerLayer = layerId.toLowerCase();
         final looksLikePoi = lowerLayer.contains('poi') ||
             lowerLayer.contains('airport') ||
@@ -199,7 +184,6 @@ class MapLayerController {
             (clazz != null && clazz.isNotEmpty);
 
         if (!looksLikePoi && !_looksLikePoiName(name)) {
-          // نقبل الاسم إن لم نجد أفضل
           return MapPoiInfo(
             name: name,
             category: category,
@@ -218,10 +202,9 @@ class MapLayerController {
         );
       }
 
-      // إن لم نجد اسماً واضحاً، أظهر أول خاصية مفيدة
       final first = features.first;
-      if (first == null) return null;
-      final props = _asStringKeyedMap(first.queriedFeature.feature['properties']);
+      final props =
+          _asStringKeyedMap(first.queriedFeature.feature['properties']);
       final fallbackName = props.values
           .map((e) => e?.toString() ?? '')
           .where((e) => e.trim().length > 2)
@@ -231,7 +214,7 @@ class MapLayerController {
       return MapPoiInfo(
         name: fallbackName,
         category: 'معلم على الخريطة',
-        layerId: first.layers?.isNotEmpty == true ? first.layers!.first : 'map',
+        layerId: _firstLayerId(first.layers),
       );
     } catch (e) {
       _log('فشل استعلام المعلم: $e');
@@ -239,7 +222,6 @@ class MapLayerController {
     }
   }
 
-  /// عرض ورقة معلومات المعلم
   static void showPoiSheet(BuildContext context, MapPoiInfo info) {
     showModalBottomSheet(
       context: context,
@@ -322,7 +304,13 @@ class MapLayerController {
     );
   }
 
-  // ─── مساعدات داخلية ─────────────────────────────────────────────
+  static String _firstLayerId(List<String?>? layerIds) {
+    if (layerIds == null || layerIds.isEmpty) return 'map';
+    for (final id in layerIds) {
+      if (id != null && id.isNotEmpty) return id;
+    }
+    return 'map';
+  }
 
   static Future<int> _setVisibilityBatch(
     StyleManager style,
@@ -337,9 +325,7 @@ class MapLayerController {
         if (!exists) continue;
         await style.setStyleLayerProperty(id, 'visibility', value);
         ok++;
-      } catch (_) {
-        // طبقة غير موجودة أو غير قابلة للتعديل في هذا الستايل
-      }
+      } catch (_) {}
     }
     return ok;
   }
@@ -368,7 +354,6 @@ class MapLayerController {
       'landcover',
       'national-park',
     ];
-    // لا تتخطّى إن كانت تسمية
     if (lowerId.contains('label') || lowerId.contains('poi')) return false;
     for (final s in skip) {
       if (lowerId.startsWith(s) || lowerId == s) return true;
@@ -411,14 +396,18 @@ class MapLayerController {
 
   static String _categoryLabel(String? clazz, String? type, String name) {
     final c = (clazz ?? type ?? '').toLowerCase();
-    if (c.contains('hospital') || c.contains('clinic') || c.contains('medical')) {
+    if (c.contains('hospital') ||
+        c.contains('clinic') ||
+        c.contains('medical')) {
       return 'مستشفى / رعاية صحية';
     }
     if (c.contains('restaurant') || c.contains('cafe') || c.contains('food')) {
       return 'مطعم / مقهى';
     }
-    if (c.contains('school') || c.contains('college') || c.contains('university')) {
-      return 'تعليمؤسسة تعليمية';
+    if (c.contains('school') ||
+        c.contains('college') ||
+        c.contains('university')) {
+      return 'مؤسسة تعليمية';
     }
     if (c.contains('fuel') || c.contains('parking')) {
       return 'محطة / مواقف';
@@ -429,7 +418,9 @@ class MapLayerController {
     if (c.contains('shop') || c.contains('mall') || c.contains('store')) {
       return 'تسوق';
     }
-    if (c.contains('mosque') || c.contains('place_of_worship') || c.contains('religion')) {
+    if (c.contains('mosque') ||
+        c.contains('place_of_worship') ||
+        c.contains('religion')) {
       return 'مكان عبادة';
     }
     if (c.contains('park') || c.contains('garden')) {

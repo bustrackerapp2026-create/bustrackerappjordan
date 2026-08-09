@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import '../../core/theme/app_theme.dart';
-import '../../map/utils/map_helpers.dart';
 import 'map_constants.dart';
 import 'map_layer_controller.dart';
 import 'map_utils.dart';
@@ -31,7 +30,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     await initPolylineManager();
     applyMapConstraints();
     _setDefaultCamera();
-    // بعد اكتمال الستايل نطبّق الفلاتر
     await Future<void>.delayed(const Duration(milliseconds: 400));
     await applyLabelLayersFilter();
     if (mounted) setState(() => isMapReady = true);
@@ -128,7 +126,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     try {
       if (mounted) setState(() => currentMapStyle = styleUri);
       await mapboxMap?.loadStyleURI(styleUri);
-      // انتظار تحميل طبقات الستايل الجديد
       await Future<void>.delayed(const Duration(milliseconds: 500));
       await initAnnotationManager();
       await initPolylineManager();
@@ -141,7 +138,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  /// تُستدعى بعد تغيير الستايل لإعادة رسم بيانات التطبيق (مسارات...)
   void onStyleChanged() {}
 
   Color hexToColor(String hex) {
@@ -161,7 +157,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
 
   void handleAnnotationTap(PointAnnotation annotation) {}
 
-  /// نقر عام على الخريطة: معالم Mapbox (مطاعم/مستشفيات...) إن لم تُلغَ
   Future<void> handleMapBackgroundTap(MapContentGestureContext gesture) async {
     if (!mounted || mapboxMap == null) return;
     if (suppressPoiTap) return;
