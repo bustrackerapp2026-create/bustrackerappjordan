@@ -7,80 +7,90 @@ import 'package:geolocator/geolocator.dart' as geo;
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/pickup/pickup_point_manager.dart';
+import '../../../core/pickup/pickup_marker_helper.dart';
 import '../../../features/auth/providers/auth_provider.dart';
+import '../../../models/pickup_point_model.dart';
 import '../../../services/location_service.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import '../../../map/widgets/map_settings_sheet.dart';
 import '../../../map/utils/map_helpers.dart';
 
-// ✅ تعريف دالة حوار اختيار نوع النقطة
 Future<({String name, String pointType})?> showPickupPointPickerDialog({
   required BuildContext context,
 }) async {
   final TextEditingController nameController = TextEditingController();
-  String selectedType = 'passenger'; // 'passenger' or 'bus'
+  String selectedType = 'passenger';
 
   return showDialog<({String name, String pointType})>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('إضافة نقطة تجمع جديدة'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: nameController,
-            decoration: const InputDecoration(
-              labelText: 'اسم النقطة',
-              hintText: 'مثل: مجمع الشمال',
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
+        title: const Text('إضافة نقطة تجمع جديدة'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'اسم النقطة',
+                hintText: 'مثل: مجمع الشمال',
+              ),
+              textDirection: TextDirection.rtl,
             ),
-            textDirection: TextDirection.rtl,
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: ChoiceChip(
+                    label: const Text('🚌 تجمع باصات'),
+                    selected: selectedType == 'bus',
+                    onSelected: (selected) {
+                      if (selected) {
+                        setDialogState(() => selectedType = 'bus');
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ChoiceChip(
+                    label: const Text('🚶 تجمع ركاب'),
+                    selected: selectedType == 'passenger',
+                    onSelected: (selected) {
+                      if (selected) {
+                        setDialogState(() => selectedType = 'passenger');
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('إلغاء'),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('🚌 تجمع باصات'),
-                  selected: selectedType == 'bus',
-                  onSelected: (selected) {
-                    if (selected) selectedType = 'bus';
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('🚶 تجمع ركاب'),
-                  selected: selectedType == 'passenger',
-                  onSelected: (selected) {
-                    if (selected) selectedType = 'passenger';
-                  },
-                ),
-              ),
-            ],
+          ElevatedButton(
+            onPressed: () {
+              final name = nameController.text.trim();
+              if (name.isEmpty) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(content: Text('يرجى إدخال اسم النقطة')),
+                );
+                return;
+              }
+              Navigator.pop(
+                dialogContext,
+                (name: name, pointType: selectedType),
+              );
+            },
+            child: const Text('إضافة'),
           ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext),
-          child: const Text('إلغاء'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            final name = nameController.text.trim();
-            if (name.isEmpty) {
-              ScaffoldMessenger.of(dialogContext).showSnackBar(
-                const SnackBar(content: Text('يرجى إدخال اسم النقطة')),
-              );
-              return;
-            }
-            Navigator.pop(dialogContext, (name: name, pointType: selectedType));
-          },
-          child: const Text('إضافة'),
-        ),
-      ],
     ),
   );
 }
@@ -208,9 +218,9 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     await _mapboxMap?.loadStyleURI(styleUri);
     await _initAnnotationManager();
     await _applyLabelLayersFilter();
+    _listenToPickupPoints();
   }
 
-  /// ⭐ تحديد الموقع باستخدام LocationService المحسّن
   Future<void> _goToMyLocation() async {
     if (_mapboxMap == null) return;
     if (!mounted) return;
@@ -222,14 +232,14 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
       if (!mounted) return;
 
       if (!hasPermission) {
-        final deniedForever = await _locationService.isPermissionDeniedForever();
+        final deniedForever =
+            await _locationService.isPermissionDeniedForever();
         if (deniedForever) {
           final shouldOpen = await _showPermissionDialog();
           if (shouldOpen == true) {
             await _locationService.openAppSettings();
           }
         } else {
-          // خدمة الموقع معطّلة
           final serviceEnabled =
               await geo.Geolocator.isLocationServiceEnabled();
           if (!serviceEnabled) {
@@ -247,13 +257,11 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
 
       _locationSubscription?.cancel();
 
-      // 1) محاولة فورية بـ LastKnown لتجربة مستخدم سريعة
       final lastKnown = await _locationService.getLastKnownPosition();
       if (lastKnown != null && mounted) {
         await _moveCameraAndMarker(lastKnown);
       }
 
-      // 2) الحصول على موقع دقيق عبر الاستراتيجية المتعددة
       final position = await _locationService.getCurrentPosition(
         preferHighAccuracy: true,
         timeout: const Duration(seconds: 15),
@@ -271,7 +279,6 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
 
       await _moveCameraAndMarker(position);
 
-      // 3) بدء التتبع المستمر
       _locationSubscription = _locationService
           .getPositionStream(distanceFilter: 5)
           .listen((geo.Position pos) {
@@ -368,39 +375,74 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     _showSnackBar('🔎 تم الانتقال إلى ${result.name}', isError: false);
   }
 
+  /// مزامنة فورية لنقاط التجمع المعتمدة بنفس شكل خريطة الأدمن
   void _listenToPickupPoints() {
     _pickupPointsSubscription?.cancel();
     _pickupPointsSubscription = FirebaseFirestore.instance
         .collection('pickupPoints')
+        .where('status', isEqualTo: 'approved')
         .snapshots()
         .listen((snapshot) async {
-      if (!mounted || _pointAnnotationManager == null) return;
-
-      for (final annotation in _pickupAnnotations.values) {
-        await _pointAnnotationManager?.delete(annotation);
+      if (!mounted) return;
+      if (_pointAnnotationManager == null) {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        if (!mounted || _pointAnnotationManager == null) return;
       }
-      _pickupAnnotations.clear();
-      _pickupAnnotationToPointId.clear();
 
-      for (final doc in snapshot.docs) {
-        final point = doc.data();
-        final latitude = (point['latitude'] as num?)?.toDouble();
-        final longitude = (point['longitude'] as num?)?.toDouble();
-        if (latitude == null || longitude == null) continue;
+      final incomingIds = snapshot.docs.map((d) => d.id).toSet();
+      final existingIds = _pickupAnnotations.keys.toSet();
 
-        final bytes = await MapHelpers.createUserMarkerBytes();
-        final options = PointAnnotationOptions(
-          geometry: Point(coordinates: Position(longitude, latitude)),
-          image: bytes,
-          iconSize: 0.8,
-          iconAnchor: IconAnchor.BOTTOM,
-        );
-        final annotation = await _pointAnnotationManager?.create(options);
+      for (final id in existingIds.difference(incomingIds)) {
+        final annotation = _pickupAnnotations.remove(id);
         if (annotation != null) {
-          _pickupAnnotations[doc.id] = annotation;
-          _pickupAnnotationToPointId[annotation.id] = doc.id;
+          try {
+            await _pointAnnotationManager?.delete(annotation);
+          } catch (_) {}
+          _pickupAnnotationToPointId.remove(annotation.id);
         }
       }
+
+      for (final doc in snapshot.docs) {
+        if (!mounted) return;
+        try {
+          final point = PickupPointModel.fromFirestore(doc);
+          if (point.latitude == 0.0 && point.longitude == 0.0) continue;
+
+          final existing = _pickupAnnotations.remove(point.id);
+          if (existing != null) {
+            try {
+              await _pointAnnotationManager?.delete(existing);
+            } catch (_) {}
+            _pickupAnnotationToPointId.remove(existing.id);
+          }
+
+          final bytes = await PickupMarkerHelper.createMarkerBytes(
+            name: point.name,
+            pointType: point.pointType,
+            confirmationCount: point.confirmationCount,
+          );
+          if (bytes == null || !mounted) continue;
+
+          final options = PointAnnotationOptions(
+            geometry: Point(
+              coordinates: Position(point.longitude, point.latitude),
+            ),
+            image: bytes,
+            iconSize: 1.05,
+            iconAnchor: IconAnchor.BOTTOM,
+          );
+
+          final annotation = await _pointAnnotationManager?.create(options);
+          if (annotation != null) {
+            _pickupAnnotations[point.id] = annotation;
+            _pickupAnnotationToPointId[annotation.id] = point.id;
+          }
+        } catch (e) {
+          debugPrint('⚠️ خطأ رسم نقطة ${doc.id}: $e');
+        }
+      }
+    }, onError: (e) {
+      debugPrint('⚠️ خطأ في بث نقاط التجمع: $e');
     });
   }
 
@@ -413,6 +455,9 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     final action = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
@@ -420,29 +465,63 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                point.name,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: PickupMarkerHelper.primaryColorFor(
+                      point.pointType,
+                    ).withValues(alpha: 0.15),
+                    child: Icon(
+                      PickupMarkerHelper.iconFor(point.pointType),
+                      color:
+                          PickupMarkerHelper.primaryColorFor(point.pointType),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          point.name,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          point.pointType == 'passenger'
+                              ? '🚶 تجمع ركاب'
+                              : '🚌 تجمع باصات',
+                          style: TextStyle(
+                            color: PickupMarkerHelper.primaryColorFor(
+                              point.pointType,
+                            ),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(point.pointType == 'passenger' ? 'تجمع ركاب' : 'تجمع باصات'),
               if (point.reviewNote.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text('ملاحظات المراجعة: ${point.reviewNote}',
-                      style: const TextStyle(color: Colors.orange)),
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    'ملاحظات المراجعة: ${point.reviewNote}',
+                    style: const TextStyle(color: Colors.orange),
+                  ),
                 ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: user == null
                           ? null
-                          : () async {
-                              Navigator.pop(sheetContext, 'confirm');
-                            },
+                          : () => Navigator.pop(sheetContext, 'confirm'),
                       icon: const Icon(Icons.check_circle_outline),
                       label: const Text('هذا صحيح'),
                     ),
@@ -452,9 +531,7 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
                     child: OutlinedButton.icon(
                       onPressed: user == null
                           ? null
-                          : () async {
-                              Navigator.pop(sheetContext, 'edit');
-                            },
+                          : () => Navigator.pop(sheetContext, 'edit'),
                       icon: const Icon(Icons.edit_note_outlined),
                       label: const Text('أحتاج تعديل'),
                     ),
@@ -471,7 +548,9 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     if (action == 'confirm' && user != null) {
       try {
         await _pickupManager.confirmPickupPoint(
-            pointId: pickupId, userId: user);
+          pointId: pickupId,
+          userId: user,
+        );
         _showSnackBar('✅ تم تأكيد هذه النقطة للمراجعة.', isError: false);
       } catch (e) {
         _showSnackBar('❌ فشل تأكيد النقطة.', isError: true);
@@ -489,16 +568,19 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
             controller: controller,
             maxLines: 3,
             decoration: const InputDecoration(
-                hintText: 'اكتب ما تحتاجه من تعديل أو ملاحظة'),
+              hintText: 'اكتب ما تحتاجه من تعديل أو ملاحظة',
+            ),
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('إلغاء')),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
             ElevatedButton(
-                onPressed: () =>
-                    Navigator.pop(dialogContext, controller.text.trim()),
-                child: const Text('إرسال')),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('إرسال'),
+            ),
           ],
         ),
       );
@@ -573,17 +655,16 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
       children: [
         MapWidget(
           key: const ValueKey('passenger_map'),
-          onMapCreated: (map) {
+          onMapCreated: (map) async {
             _mapboxMap = map;
-            _initAnnotationManager();
+            await _initAnnotationManager();
             _mapboxMap?.setCamera(
               CameraOptions(
                 center: Point(coordinates: Position(35.9106, 31.9522)),
                 zoom: 12.0,
               ),
             );
-            _initAnnotationManager();
-            _applyLabelLayersFilter();
+            await _applyLabelLayersFilter();
             _listenToPickupPoints();
           },
           styleUri: _currentMapStyle,
@@ -681,9 +762,11 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
                     _isAddingPickupPoint ? Colors.white : AppTheme.primaryColor,
                 elevation: 4,
                 shape: const CircleBorder(),
-                child: Icon(_isAddingPickupPoint
-                    ? Icons.close
-                    : Icons.add_location_alt_rounded),
+                child: Icon(
+                  _isAddingPickupPoint
+                      ? Icons.close
+                      : Icons.add_location_alt_rounded,
+                ),
               ),
             ],
           ),
@@ -714,8 +797,11 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
                       backgroundColor:
                           AppTheme.primaryColor.withValues(alpha: 0.1),
                       radius: 18,
-                      child: const Icon(Icons.directions_bus,
-                          color: AppTheme.primaryColor, size: 20),
+                      child: const Icon(
+                        Icons.directions_bus,
+                        color: AppTheme.primaryColor,
+                        size: 20,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Column(
@@ -733,8 +819,10 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
                         const SizedBox(height: 2),
                         Text(
                           'زاوية الاتجاه: ${_currentBearing.toStringAsFixed(1)}°',
-                          style:
-                              const TextStyle(fontSize: 11, color: Colors.grey),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
                         ),
                       ],
                     ),
