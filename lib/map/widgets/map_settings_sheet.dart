@@ -14,6 +14,12 @@ void showMapSettingsSheet({
   required ValueChanged<bool> onTogglePoiLabels,
   required ValueChanged<bool> onToggleRoadLabels,
 }) {
+  // نسخ محلية تتحدث فوراً داخل الورقة (مثل خريطة الأدمن)
+  String localStyle = currentStyle;
+  bool localPlace = showPlaceLabels;
+  bool localPoi = showPoiLabels;
+  bool localRoad = showRoadLabels;
+
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -60,8 +66,9 @@ void showMapSettingsSheet({
                       title: 'شوارع',
                       icon: Icons.map,
                       styleUri: MapboxStyles.MAPBOX_STREETS,
-                      currentStyle: currentStyle,
+                      currentStyle: localStyle,
                       onTap: (uri) {
+                        localStyle = uri;
                         onStyleChanged(uri);
                         setSheetState(() {});
                       },
@@ -70,8 +77,9 @@ void showMapSettingsSheet({
                       title: 'قمر صناعي',
                       icon: Icons.satellite_alt,
                       styleUri: MapboxStyles.SATELLITE_STREETS,
-                      currentStyle: currentStyle,
+                      currentStyle: localStyle,
                       onTap: (uri) {
+                        localStyle = uri;
                         onStyleChanged(uri);
                         setSheetState(() {});
                       },
@@ -80,8 +88,9 @@ void showMapSettingsSheet({
                       title: 'طبيعة',
                       icon: Icons.landscape,
                       styleUri: MapboxStyles.OUTDOORS,
-                      currentStyle: currentStyle,
+                      currentStyle: localStyle,
                       onTap: (uri) {
+                        localStyle = uri;
                         onStyleChanged(uri);
                         setSheetState(() {});
                       },
@@ -98,9 +107,10 @@ void showMapSettingsSheet({
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('📍 المدن والأماكن الكبرى'),
-                  value: showPlaceLabels,
+                  value: localPlace,
                   activeThumbColor: AppTheme.primaryColor,
                   onChanged: (val) {
+                    localPlace = val;
                     onTogglePlaceLabels(val);
                     setSheetState(() {});
                     onApplyFilters();
@@ -110,9 +120,10 @@ void showMapSettingsSheet({
                   contentPadding: EdgeInsets.zero,
                   title: const Text('🏛️ معالم الجذب (POI)'),
                   subtitle: const Text('مطاعم، مستشفيات، مدارس...'),
-                  value: showPoiLabels,
+                  value: localPoi,
                   activeThumbColor: AppTheme.primaryColor,
                   onChanged: (val) {
+                    localPoi = val;
                     onTogglePoiLabels(val);
                     setSheetState(() {});
                     onApplyFilters();
@@ -121,9 +132,10 @@ void showMapSettingsSheet({
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('🛣️ أسماء الشوارع'),
-                  value: showRoadLabels,
+                  value: localRoad,
                   activeThumbColor: AppTheme.primaryColor,
                   onChanged: (val) {
+                    localRoad = val;
                     onToggleRoadLabels(val);
                     setSheetState(() {});
                     onApplyFilters();
