@@ -210,93 +210,118 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     await _applyLabelLayersFilter();
   }
 
+  /// ⭐ تحديد الموقع باستخدام LocationService المحسّن
   Future<void> _goToMyLocation() async {
     if (_mapboxMap == null) return;
+    if (!mounted) return;
 
     setState(() => _isLoadingLocation = true);
 
     try {
       final hasPermission = await _locationService.checkAndRequestPermission();
+      if (!mounted) return;
+
       if (!hasPermission) {
-        final shouldOpenSettings = await _showPermissionDialog();
-        if (shouldOpenSettings == true) {
-          await geo.Geolocator.openAppSettings();
+        final deniedForever = await _locationService.isPermissionDeniedForever();
+        if (deniedForever) {
+          final shouldOpen = await _showPermissionDialog();
+          if (shouldOpen == true) {
+            await _locationService.openAppSettings();
+          }
+        } else {
+          // خدمة الموقع معطّلة
+          final serviceEnabled =
+              await geo.Geolocator.isLocationServiceEnabled();
+          if (!serviceEnabled) {
+            _showSnackBar(
+              '⚠️ يرجى تفعيل خدمة الموقع من إعدادات الجهاز.',
+              isError: true,
+            );
+            await _locationService.openLocationSettings();
+          } else {
+            _showSnackBar('⚠️ يرجى السماح بصلاحية الموقع.', isError: true);
+          }
         }
         return;
       }
 
       _locationSubscription?.cancel();
 
-      geo.Position position = await geo.Geolocator.getCurrentPosition(
-        locationSettings: const geo.LocationSettings(
-          accuracy: geo.LocationAccuracy.high,
-          timeLimit: Duration(seconds: 8),
-        ),
-      );
-
-      double bearing = position.heading;
-      if (bearing == 0.0 && position.speed > 0) {
-        bearing = _currentBearing;
+      // 1) محاولة فورية بـ LastKnown لتجربة مستخدم سريعة
+      final lastKnown = await _locationService.getLastKnownPosition();
+      if (lastKnown != null && mounted) {
+        await _moveCameraAndMarker(lastKnown);
       }
 
-      if (mounted) {
-        setState(() {
-          _currentBearing = bearing;
-        });
-      }
-
-      _mapboxMap?.setCamera(
-        CameraOptions(
-          center: Point(
-              coordinates: Position(position.longitude, position.latitude)),
-          zoom: 15.0,
-          bearing: bearing,
-          pitch: 45.0,
-        ),
+      // 2) الحصول على موقع دقيق عبر الاستراتيجية المتعددة
+      final position = await _locationService.getCurrentPosition(
+        preferHighAccuracy: true,
+        timeout: const Duration(seconds: 15),
       );
 
-      await _updateUserMarker(position.latitude, position.longitude, bearing);
+      if (!mounted) return;
 
-      _locationSubscription = geo.Geolocator.getPositionStream(
-        locationSettings: const geo.LocationSettings(
-          accuracy: geo.LocationAccuracy.bestForNavigation,
-          distanceFilter: 5,
-        ),
-      ).listen((geo.Position pos) {
+      if (position == null) {
+        _showSnackBar(
+          '❌ تعذر تحديد موقعك. تأكد من تفعيل GPS والخروج لمكان مفتوح إن أمكن.',
+          isError: true,
+        );
+        return;
+      }
+
+      await _moveCameraAndMarker(position);
+
+      // 3) بدء التتبع المستمر
+      _locationSubscription = _locationService
+          .getPositionStream(distanceFilter: 5)
+          .listen((geo.Position pos) {
         if (mounted) {
-          double newBearing = pos.heading;
-          if (newBearing == 0.0 && pos.speed > 0) {
-            newBearing = _currentBearing;
-          }
-          setState(() {
-            _currentBearing = newBearing;
-          });
-          _mapboxMap?.setCamera(
-            CameraOptions(
-              center: Point(coordinates: Position(pos.longitude, pos.latitude)),
-              zoom: 15.0,
-              bearing: newBearing,
-              pitch: 45.0,
-            ),
-          );
-          _updateUserMarker(pos.latitude, pos.longitude, newBearing);
+          _moveCameraAndMarker(pos, animate: false);
         }
       }, onError: (error) {
         debugPrint('خطأ في تحديث الموقع: $error');
       });
 
       if (mounted) {
-        _showSnackBar('📍 تم تحديد موقعك.', isError: false);
+        _showSnackBar('📍 تم تحديد موقعك بنجاح.', isError: false);
       }
     } catch (e) {
       if (mounted) {
-        _showSnackBar('❌ تعذر تحديد موقعك: $e', isError: true);
+        _showSnackBar('❌ تعذر تحديد موقعك. حاول مرة أخرى.', isError: true);
+        debugPrint('خطأ تحديد الموقع: $e');
       }
     } finally {
       if (mounted) {
         setState(() => _isLoadingLocation = false);
       }
     }
+  }
+
+  Future<void> _moveCameraAndMarker(
+    geo.Position position, {
+    bool animate = true,
+  }) async {
+    double bearing = position.heading;
+    if (bearing == 0.0 && position.speed > 0) {
+      bearing = _currentBearing;
+    }
+
+    if (mounted) {
+      setState(() => _currentBearing = bearing);
+    }
+
+    _mapboxMap?.setCamera(
+      CameraOptions(
+        center: Point(
+          coordinates: Position(position.longitude, position.latitude),
+        ),
+        zoom: 15.0,
+        bearing: bearing,
+        pitch: 45.0,
+      ),
+    );
+
+    await _updateUserMarker(position.latitude, position.longitude, bearing);
   }
 
   Future<bool?> _showPermissionDialog() async {
@@ -306,11 +331,13 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
       builder: (dialogContext) => AlertDialog(
         title: const Text('تفعيل الموقع'),
         content: const Text(
-            'لتحديد موقعك بدقة مثل خرائط جوجل، نحتاج إلى صلاحية الموقع. يمكنك السماح عند استخدام التطبيق أو فتح الإعدادات.'),
+          'لتحديد موقعك بدقة مثل خرائط جوجل، نحتاج إلى صلاحية الموقع.\n\n'
+          'يمكنك السماح عند استخدام التطبيق أو فتح الإعدادات ومنح الصلاحية يدوياً.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('عدم السماح'),
+            child: const Text('لاحقاً'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(dialogContext, true),
@@ -381,8 +408,7 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     final point = await _pickupManager.getPickupPoint(pointId: pickupId);
     if (!mounted || point == null) return;
 
-    final user = Provider.of<AuthProvider>(context, listen: false)
-        .userId; // ✅ استخدم Provider.of بدلاً من read
+    final user = Provider.of<AuthProvider>(context, listen: false).userId;
 
     final action = await showModalBottomSheet<String>(
       context: context,
