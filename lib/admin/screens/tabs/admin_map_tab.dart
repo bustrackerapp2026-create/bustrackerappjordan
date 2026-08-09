@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +6,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../core/map/map_core.dart';
+import '../../../../core/map/pickup_point_sheet.dart';
 import '../../../../core/pickup/pickup_point_manager.dart';
 import '../../../../core/pickup/pickup_point_dialog.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
@@ -123,31 +123,6 @@ class _AdminMapTabState extends State<AdminMapTab>
     return null;
   }
 
-  String _userTypeLabel(String type) {
-    switch (type) {
-      case 'driver':
-        return 'سائق';
-      case 'passenger':
-        return 'راكب';
-      case 'admin':
-        return 'أدمن';
-      default:
-        return type;
-    }
-  }
-
-  Future<String> _loadAdderName(String userId) async {
-    if (userId.isEmpty) return 'غير معروف';
-    try {
-      final doc =
-          await FirebaseFirestore.instance.collection('users').doc(userId).get();
-      final name = doc.data()?['fullName'] as String?;
-      return (name != null && name.trim().isNotEmpty) ? name.trim() : 'بدون اسم';
-    } catch (_) {
-      return 'تعذر جلب الاسم';
-    }
-  }
-
   void _startAddPickupPoint() {
     setState(() => _isAddingPickupPoint = true);
     MapUtils.showSnackBar(context, '📍 اضغط على الخريطة لتحديد موقع النقطة');
@@ -242,49 +217,20 @@ class _AdminMapTabState extends State<AdminMapTab>
   Future<void> _showPickupActionsSheet(String pickupId) async {
     final point = await _pickupManager.getPickupPoint(pointId: pickupId);
     if (!mounted || point == null) return;
-    final adderFuture = _loadAdderName(point.addedBy);
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => FutureBuilder<String>(
-        future: adderFuture,
-        builder: (_, snap) {
-          final count = point.confirmationCount;
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(point.name,
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold)),
-                  Text(point.pointType == 'passenger'
-                      ? '🚶 تجمع ركاب'
-                      : '🚌 تجمع باصات'),
-                  const SizedBox(height: 12),
-                  Text('أكدها $count',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text(
-                      'أضافها: ${snap.data ?? '...'} · ${_userTypeLabel(point.addedByUserType)}'),
-                  ListTile(
-                      title: const Text('تعديل'),
-                      onTap: () => Navigator.pop(ctx, 'edit')),
-                  ListTile(
-                      title: const Text('حذف'),
-                      onTap: () => Navigator.pop(ctx, 'delete')),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
+
+    final adderName = await PickupPointSheet.loadAdderName(point.addedBy);
     if (!mounted) return;
-    if (action == 'edit') {
+
+    final action = await PickupPointSheet.show(
+      context: context,
+      point: point,
+      mode: PickupSheetMode.admin,
+      adderName: adderName,
+    );
+
+    if (!mounted || action == null || action == PickupSheetAction.close) return;
+
+    if (action == PickupSheetAction.edit) {
       final updated = await showPickupPointPickerDialog(
         context: context,
         initialName: point.name,
@@ -296,9 +242,21 @@ class _AdminMapTabState extends State<AdminMapTab>
         data: {'name': updated.name.trim(), 'pointType': updated.pointType},
       );
       if (mounted) MapUtils.showSnackBar(context, '✅ تم تعديل النقطة');
-    } else if (action == 'delete') {
+    } else if (action == PickupSheetAction.delete) {
       await _pickupManager.deletePickupPoint(pointId: pickupId);
       if (mounted) MapUtils.showSnackBar(context, '🗑️ تم حذف النقطة');
+    } else if (action == PickupSheetAction.approve) {
+      await _pickupManager.updatePickupPoint(
+        pointId: pickupId,
+        data: {'status': 'approved'},
+      );
+      if (mounted) MapUtils.showSnackBar(context, '✅ تم اعتماد النقطة');
+    } else if (action == PickupSheetAction.reject) {
+      await _pickupManager.updatePickupPoint(
+        pointId: pickupId,
+        data: {'status': 'rejected'},
+      );
+      if (mounted) MapUtils.showSnackBar(context, '🚫 تم رفض النقطة');
     }
   }
 
