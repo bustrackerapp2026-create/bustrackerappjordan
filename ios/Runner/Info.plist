@@ -26,6 +26,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>نحتاج إلى موقعك لتحديد موقعك على الخريطة وتتبع الباصات القريبة منك بدقة.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>نحتاج إلى موقعك أثناء استخدام التطبيق لتحديد موقعك وتتبع الرحلات.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>نحتاج إلى موقعك لتحديد موقعك على الخريطة.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

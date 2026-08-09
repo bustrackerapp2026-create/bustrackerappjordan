@@ -17,93 +17,183 @@ class PlaceSearchResult {
   });
 }
 
-/// خدمة الموقع الجغرافي مع تحسين الأداء وتوفير البطارية
+/// خدمة الموقع الجغرافي الاحترافية
+/// استراتيجية موثوقة: LastKnown → Medium Accuracy → High Accuracy مع Fallback
 class LocationService {
   static final LocationService _instance = LocationService._internal();
   factory LocationService() => _instance;
   LocationService._internal();
 
-  // ✅ تخزين آخر موقع معروف
   Position? _lastKnownPosition;
-
-  // ✅ التحكم في Throttle
   DateTime? _lastEmitTime;
 
   // ─── الصلاحيات ──────────────────────────────────────────────
 
-  /// ✅ التحقق من الصلاحيات وتجهيز الخدمة
+  /// التحقق من تفعيل خدمة الموقع + طلب الصلاحيات بشكل صحيح
   Future<bool> checkAndRequestPermission() async {
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         debugPrint('⚠️ خدمة الموقع الجغرافي غير مفعّلة في الجهاز.');
-        await Geolocator.openLocationSettings();
         return false;
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
+
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          debugPrint('⚠️ تم رفض صلاحية الموقع.');
-          return false;
-        }
+      }
+
+      if (permission == LocationPermission.denied) {
+        debugPrint('⚠️ تم رفض صلاحية الموقع.');
+        return false;
       }
 
       if (permission == LocationPermission.deniedForever) {
         debugPrint('⚠️ تم رفض صلاحية الموقع نهائياً من إعدادات النظام.');
-        await Geolocator.openAppSettings();
         return false;
       }
 
-      return true;
+      // whileInUse أو always مقبولان
+      return permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always;
     } catch (e) {
       debugPrint('❌ خطأ في التحقق من صلاحيات الموقع: $e');
       return false;
     }
   }
 
-  // ─── جلب الموقع ─────────────────────────────────────────────
+  /// هل يجب فتح إعدادات التطبيق؟ (deniedForever)
+  Future<bool> isPermissionDeniedForever() async {
+    final permission = await Geolocator.checkPermission();
+    return permission == LocationPermission.deniedForever;
+  }
 
-  /// ✅ جلب آخر موقع معروف (سريع ولا يستهلك بطارية)
+  Future<void> openAppSettings() => Geolocator.openAppSettings();
+  Future<void> openLocationSettings() => Geolocator.openLocationSettings();
+
+  // ─── جلب الموقع (الاستراتيجية الاحترافية) ───────────────────
+
+  /// جلب آخر موقع معروف بسرعة (لا يستهلك بطارية)
   Future<Position?> getLastKnownPosition() async {
     try {
-      final hasPermission = await checkAndRequestPermission();
-      if (!hasPermission) return _lastKnownPosition;
-
       final position = await Geolocator.getLastKnownPosition();
       if (position != null) {
         _lastKnownPosition = position;
       }
-      return position;
+      return position ?? _lastKnownPosition;
     } catch (e) {
       debugPrint('❌ خطأ في جلب آخر موقع معروف: $e');
       return _lastKnownPosition;
     }
   }
 
-  /// ✅ جلب الموقع الحالي (دقيق ولكن يستهلك بطارية)
-  Future<Position?> getCurrentPosition() async {
+  ///
+  /// ⭐ الدالة الرئيسية لتحديد الموقع الحالي — موثوقة وسريعة
+  ///
+  /// الاستراتيجية:
+  /// 1. محاولة LastKnown فورية (تجربة مستخدم فورية)
+  /// 2. محاولة Medium accuracy (سريعة وموثوقة في معظم الحالات)
+  /// 3. محاولة High accuracy مع timeout أطول
+  /// 4. إرجاع أفضل نتيجة متاحة + تحديث الكاش
+  ///
+  Future<Position?> getCurrentPosition({
+    bool preferHighAccuracy = true,
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
     try {
       final hasPermission = await checkAndRequestPermission();
-      if (!hasPermission) return _lastKnownPosition;
+      if (!hasPermission) {
+        debugPrint('⚠️ لا توجد صلاحية موقع — إرجاع آخر موقع معروف إن وُجد');
+        return _lastKnownPosition;
+      }
 
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
-        ),
-      );
+      // ─── المرحلة 1: Last Known (فوري) ───
+      Position? bestPosition = await getLastKnownPosition();
+      if (bestPosition != null) {
+        debugPrint(
+            '📍 [Location] LastKnown: ${bestPosition.latitude}, ${bestPosition.longitude}');
+      }
 
-      // ✅ تخزين آخر موقع معروف
-      _lastKnownPosition = position;
-      return position;
+      // ─── المرحلة 2: Medium Accuracy (سريعة وموثوقة) ───
+      try {
+        final medium = await Geolocator.getCurrentPosition(
+          locationSettings: LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 8),
+            // على أندرويد: استخدام LocationManager التقليدي أحياناً أكثر استقراراً
+            forceAndroidLocationManager: false,
+          ),
+        );
+        bestPosition = medium;
+        _lastKnownPosition = medium;
+        debugPrint(
+            '📍 [Location] Medium: ${medium.latitude}, ${medium.longitude} (±${medium.accuracy}m)');
+
+        // إذا كانت الدقة جيدة بما فيه الكفاية، نرجع فوراً
+        if (medium.accuracy <= 50) {
+          return medium;
+        }
+      } catch (e) {
+        debugPrint('⚠️ [Location] فشل Medium accuracy: $e');
+      }
+
+      // ─── المرحلة 3: High Accuracy (إذا طُلب) ───
+      if (preferHighAccuracy) {
+        try {
+          final high = await Geolocator.getCurrentPosition(
+            locationSettings: LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: timeout,
+              distanceFilter: 0,
+            ),
+          );
+          bestPosition = high;
+          _lastKnownPosition = high;
+          debugPrint(
+              '📍 [Location] High: ${high.latitude}, ${high.longitude} (±${high.accuracy}m)');
+          return high;
+        } catch (e) {
+          debugPrint('⚠️ [Location] فشل High accuracy: $e');
+        }
+      }
+
+      // ─── المرحلة 4: Fallback نهائي ───
+      if (bestPosition != null) {
+        debugPrint('📍 [Location] استخدام أفضل نتيجة متاحة (Fallback)');
+        return bestPosition;
+      }
+
+      // محاولة أخيرة بدقة منخفضة جداً (Network-based)
+      try {
+        final low = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.low,
+            timeLimit: Duration(seconds: 6),
+          ),
+        );
+        _lastKnownPosition = low;
+        debugPrint(
+            '📍 [Location] Low (Network): ${low.latitude}, ${low.longitude}');
+        return low;
+      } catch (e) {
+        debugPrint('❌ [Location] فشل جميع المحاولات: $e');
+        return _lastKnownPosition;
+      }
     } catch (e) {
-      debugPrint('❌ خطأ أثناء جلب الموقع الحالي: $e');
-      // ✅ في حالة الفشل، نعيد آخر موقع معروف
+      debugPrint('❌ خطأ عام أثناء جلب الموقع الحالي: $e');
       return _lastKnownPosition;
     }
   }
+
+  /// نسخة سريعة جداً للاستخدام عند فتح الخريطة (لا تنتظر GPS)
+  Future<Position?> getPositionFast() async {
+    final last = await getLastKnownPosition();
+    if (last != null) return last;
+    return getCurrentPosition(preferHighAccuracy: false);
+  }
+
+  // ─── البحث عن أماكن ─────────────────────────────────────────
 
   Future<PlaceSearchResult?> searchPlace(String query) async {
     if (query.trim().isEmpty) return null;
@@ -120,13 +210,14 @@ class LocationService {
 
     final encodedQuery = Uri.encodeComponent(query.trim());
     final uri = Uri.parse(
-      'https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json?access_token=$token&country=jo&limit=1&language=ar',
+      'https://api.mapbox.com/geocoding/v5/mapbox.places/$encodedQuery.json'
+      '?access_token=$token&country=jo&limit=1&language=ar',
     );
 
     final client = HttpClient();
     try {
       final request = await client.getUrl(uri);
-      final response = await request.close();
+      final response = await request.close().timeout(const Duration(seconds: 10));
       if (response.statusCode != HttpStatus.ok) return null;
 
       final body = await response.transform(utf8.decoder).join();
@@ -155,28 +246,20 @@ class LocationService {
 
   // ─── البث المباشر مع Throttle ──────────────────────────────
 
-  /// ✅ البث المباشر لإحداثيات الموقع مع Throttle لتوفير البطارية
-  /// - `throttleDuration`: الحد الأدنى للفاصل الزمني بين التحديثات (افتراضي 250ms)
-  /// - `distanceFilter`: الحد الأدنى للمسافة بين التحديثات (افتراضي 5 متر)
-  /// - `accuracy`: دقة الموقع (افتراضي `bestForNavigation`)
   Stream<Position> getPositionStream({
     int distanceFilter = 5,
-    LocationAccuracy accuracy = LocationAccuracy.bestForNavigation,
-    Duration throttleDuration = const Duration(milliseconds: 250),
+    LocationAccuracy accuracy = LocationAccuracy.high,
+    Duration throttleDuration = const Duration(milliseconds: 400),
   }) {
-    // ✅ استخدام StreamTransformer لتقييد التحديثات
     return Geolocator.getPositionStream(
       locationSettings: LocationSettings(
         accuracy: accuracy,
         distanceFilter: distanceFilter,
-        timeLimit: throttleDuration * 2, // مهلة ضعف وقت Throttle
       ),
     ).transform(
       StreamTransformer<Position, Position>.fromHandlers(
         handleData: (position, sink) {
           final now = DateTime.now();
-
-          // ✅ تطبيق Throttle: لا نرسل تحديثاً إذا كان الوقت الماضي أقل من المطلوب
           if (_lastEmitTime == null ||
               now.difference(_lastEmitTime!) >= throttleDuration) {
             _lastEmitTime = now;
@@ -186,69 +269,61 @@ class LocationService {
         },
         handleError: (error, stackTrace, sink) {
           debugPrint('⚠️ خطأ في Stream الموقع: $error');
-          // ✅ في حالة الخطأ، نحاول إرسال آخر موقع معروف (إن وجد)
           if (_lastKnownPosition != null) {
             sink.add(_lastKnownPosition!);
           } else {
-            sink.addError(error);
+            sink.addError(error, stackTrace);
           }
         },
       ),
     );
   }
 
-  // ─── Stream مع إعادة محاولة ────────────────────────────────
-
-  /// ✅ بث الموقع مع إعادة محاولة تلقائية عند فشل الـ Stream
   Stream<Position> getPositionStreamWithRetry({
     int distanceFilter = 5,
-    LocationAccuracy accuracy = LocationAccuracy.bestForNavigation,
-    Duration throttleDuration = const Duration(milliseconds: 250),
+    LocationAccuracy accuracy = LocationAccuracy.high,
+    Duration throttleDuration = const Duration(milliseconds: 400),
     int maxRetries = 3,
-    Duration retryDelay = const Duration(seconds: 1),
   }) {
-    return Stream.fromFuture(
-      Future<Stream<Position>>(() async {
-        int retryCount = 0;
+    return Stream.multi((controller) {
+      int retryCount = 0;
+      StreamSubscription<Position>? sub;
 
-        // ✅ دالة لبدء الـ Stream مع إعادة المحاولة
-        Stream<Position> createStream() {
-          try {
-            return getPositionStream(
-              distanceFilter: distanceFilter,
-              accuracy: accuracy,
-              throttleDuration: throttleDuration,
-            );
-          } catch (e) {
-            // ✅ إذا فشل إنشاء الـ Stream، نعيد محاولة بعد تأخير
+      void start() {
+        sub?.cancel();
+        sub = getPositionStream(
+          distanceFilter: distanceFilter,
+          accuracy: accuracy,
+          throttleDuration: throttleDuration,
+        ).listen(
+          controller.add,
+          onError: (e, st) {
             if (retryCount < maxRetries) {
               retryCount++;
               debugPrint(
                   '🔄 إعادة محاولة Stream الموقع ($retryCount/$maxRetries)');
-              return Stream.error(e);
+              Future.delayed(Duration(seconds: retryCount), start);
             } else {
-              debugPrint('❌ فشل Stream الموقع بعد $maxRetries محاولات');
-              return Stream.error(e);
+              controller.addError(e, st);
             }
-          }
-        }
+          },
+          onDone: controller.close,
+        );
+      }
 
-        return createStream();
-      }),
-    ).asyncExpand((stream) => stream);
+      controller.onCancel = () => sub?.cancel();
+      start();
+    });
   }
 
   // ─── دوال مساعدة ────────────────────────────────────────────
 
-  /// ✅ التحقق مما إذا كان الموقع متاحاً
   bool get hasLocation => _lastKnownPosition != null;
 
-  /// ✅ إعادة تعيين آخر موقع معروف
   void clearLastKnownPosition() {
     _lastKnownPosition = null;
     _lastEmitTime = null;
   }
 
-  /// ✅ الحصول على آخر موقع معروف (متزامن)
   Position? get lastKnownPosition => _lastKnownPosition;
 }
