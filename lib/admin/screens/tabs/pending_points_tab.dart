@@ -62,44 +62,17 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
     }
   }
 
-  /// تعديل اسم النقطة مع حماية من استخدام context بعد تعطيل الودجت
   Future<void> _editPoint(PickupPointModel point) async {
     if (_processingIds.contains(point.id)) return;
     if (!mounted) return;
 
-    final controller = TextEditingController(text: point.name);
-
+    // الحوار يملك الـ controller ويتخلص منه بأمان داخل State الخاص به
     final result = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('تعديل النقطة'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'اسم النقطة',
-          ),
-          textDirection: TextDirection.rtl,
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final text = controller.text.trim();
-              if (text.isEmpty) return;
-              Navigator.pop(dialogContext, text);
-            },
-            child: const Text('حفظ'),
-          ),
-        ],
+      builder: (dialogContext) => _EditPointNameDialog(
+        initialName: point.name,
       ),
     );
-
-    // تخلص من المتحكم بعد إغلاق الحوار
-    controller.dispose();
 
     if (!mounted) return;
     if (result == null || result.isEmpty) return;
@@ -391,6 +364,67 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
           );
         },
       ),
+    );
+  }
+}
+
+/// حوار تعديل اسم النقطة — يملك TextEditingController ويتخلص منه في dispose فقط
+class _EditPointNameDialog extends StatefulWidget {
+  final String initialName;
+
+  const _EditPointNameDialog({required this.initialName});
+
+  @override
+  State<_EditPointNameDialog> createState() => _EditPointNameDialogState();
+}
+
+class _EditPointNameDialogState extends State<_EditPointNameDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('تعديل النقطة'),
+      content: TextField(
+        controller: _controller,
+        decoration: const InputDecoration(
+          labelText: 'اسم النقطة',
+        ),
+        textDirection: TextDirection.rtl,
+        autofocus: true,
+        onSubmitted: (value) {
+          final text = value.trim();
+          if (text.isNotEmpty) {
+            Navigator.pop(context, text);
+          }
+        },
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('إلغاء'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final text = _controller.text.trim();
+            if (text.isEmpty) return;
+            Navigator.pop(context, text);
+          },
+          child: const Text('حفظ'),
+        ),
+      ],
     );
   }
 }
