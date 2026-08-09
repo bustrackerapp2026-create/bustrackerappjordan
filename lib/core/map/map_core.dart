@@ -28,12 +28,77 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   void _initializeMap() async {
     await initAnnotationManager();
     await initPolylineManager();
+    await applyGoogleLikeCameraBehavior();
     applyMapConstraints();
     _setDefaultCamera();
     await Future<void>.delayed(const Duration(milliseconds: 400));
     await applyLabelLayersFilter();
     if (mounted) setState(() => isMapReady = true);
     MapUtils.log('✅ تم إنشاء الخريطة بنجاح');
+  }
+
+  /// سلوك قريب من خرائط جوجل: خريطة مسطحة بدون ميلان، شمال ثابت افتراضياً
+  Future<void> applyGoogleLikeCameraBehavior() async {
+    if (mapboxMap == null) return;
+    try {
+      await mapboxMap!.gestures.updateSettings(
+        GesturesSettings(
+          // منع الميلان بإصبعين الذي يسبب «التفاف» الشاشة
+          pitchEnabled: false,
+          // السماح بالتدوير اختياريًا بإصبعين (مثل جوجل) — يمكن إيقافه
+          rotateEnabled: true,
+          scrollEnabled: true,
+          pinchToZoomEnabled: true,
+          doubleTapToZoomInEnabled: true,
+          doubleTouchToZoomOutEnabled: true,
+          quickZoomEnabled: true,
+          simultaneousRotateAndPinchToZoomEnabled: true,
+        ),
+      );
+
+      // تثبيت الكاميرا مسطحة ومتجهة للشمال
+      await mapboxMap!.setCamera(
+        CameraOptions(
+          pitch: 0.0,
+          bearing: 0.0,
+        ),
+      );
+    } catch (e) {
+      MapUtils.log('⚠️ تعذر ضبط إيماءات الكاميرا: $e');
+    }
+  }
+
+  /// انتقال سلس لموقع معيّن بأسلوب جوجل (مسطح + شمال للأعلى)
+  Future<void> flyToFlat({
+    required double latitude,
+    required double longitude,
+    double zoom = 15.5,
+  }) async {
+    if (mapboxMap == null) return;
+    await mapboxMap!.flyTo(
+      CameraOptions(
+        center: Point(coordinates: Position(longitude, latitude)),
+        zoom: zoom,
+        pitch: 0.0,
+        bearing: 0.0,
+      ),
+      MapAnimationOptions(duration: 900, startDelay: 0),
+    );
+  }
+
+  /// إعادة توجيه الشمال للأعلى (مثل بوصلة جوجل)
+  Future<void> resetNorth() async {
+    if (mapboxMap == null) return;
+    final state = await mapboxMap!.getCameraState();
+    await mapboxMap!.easeTo(
+      CameraOptions(
+        center: state.center,
+        zoom: state.zoom,
+        pitch: 0.0,
+        bearing: 0.0,
+      ),
+      MapAnimationOptions(duration: 400, startDelay: 0),
+    );
   }
 
   void _setDefaultCamera() {
@@ -43,6 +108,8 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
           coordinates: Position(MapConstants.centerLng, MapConstants.centerLat),
         ),
         zoom: MapConstants.defaultZoom,
+        pitch: 0.0,
+        bearing: 0.0,
       ),
     );
   }
@@ -61,9 +128,11 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
             ),
             infiniteBounds: false,
           ),
+          maxPitch: 0.0, // منع أي ميلان برمجيًا أيضًا
+          minPitch: 0.0,
         ),
       );
-      MapUtils.log('✅ تم تحديد حدود الكاميرا (الأردن)');
+      MapUtils.log('✅ تم تحديد حدود الكاميرا (الأردن) بدون ميلان');
     } catch (e) {
       MapUtils.log('⚠️ خطأ في تطبيق الحدود: $e');
     }
@@ -129,6 +198,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
       await Future<void>.delayed(const Duration(milliseconds: 500));
       await initAnnotationManager();
       await initPolylineManager();
+      await applyGoogleLikeCameraBehavior();
       await applyLabelLayersFilter();
       applyMapConstraints();
       onStyleChanged();
@@ -194,6 +264,17 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
               ),
             )
           : const Icon(Icons.my_location, size: 28),
+    );
+  }
+
+  Widget buildCompassButton() {
+    return FloatingActionButton.small(
+      heroTag: 'map_compass_$hashCode',
+      onPressed: resetNorth,
+      backgroundColor: Colors.white,
+      foregroundColor: Colors.black87,
+      elevation: 3,
+      child: const Icon(Icons.explore_outlined, size: 22),
     );
   }
 

@@ -2,15 +2,19 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 
-/// نتيجة النقر على معلم من خريطة Mapbox (مطعم / مستشفى / ...)
+import '../theme/app_theme.dart';
+
+/// نتيجة النقر على معلم من خريطة Mapbox
 class MapPoiInfo {
   final String name;
   final String category;
   final String? rawClass;
   final String? rawType;
   final String layerId;
+  final String? secondaryName;
 
   const MapPoiInfo({
     required this.name,
@@ -18,10 +22,10 @@ class MapPoiInfo {
     this.rawClass,
     this.rawType,
     required this.layerId,
+    this.secondaryName,
   });
 }
 
-/// تحكم موحّد بطبقات التسميات والمعالم لجميع الخرائط (أدمن / سائق / راكب).
 class MapLayerController {
   MapLayerController._();
 
@@ -164,7 +168,6 @@ class MapLayerController {
       if (features.isEmpty) return null;
 
       for (final item in features) {
-        // API يعيد List<QueriedRenderedFeature?>
         if (item == null) continue;
 
         final featureMap = item.queriedFeature.feature;
@@ -179,22 +182,7 @@ class MapLayerController {
         final type = props['type']?.toString();
         final category = _categoryLabel(clazz, type, name);
         final layerId = _firstLayerId(layerIds);
-
-        final lowerLayer = layerId.toLowerCase();
-        final looksLikePoi = lowerLayer.contains('poi') ||
-            lowerLayer.contains('airport') ||
-            lowerLayer.contains('transit') ||
-            (clazz != null && clazz.isNotEmpty);
-
-        if (!looksLikePoi && !_looksLikePoiName(name)) {
-          return MapPoiInfo(
-            name: name,
-            category: category,
-            rawClass: clazz,
-            rawType: type,
-            layerId: layerId,
-          );
-        }
+        final secondary = _extractSecondaryName(props, name);
 
         return MapPoiInfo(
           name: name,
@@ -202,10 +190,10 @@ class MapLayerController {
           rawClass: clazz,
           rawType: type,
           layerId: layerId,
+          secondaryName: secondary,
         );
       }
 
-      // مسار احتياطي: أول عنصر غير null
       QueriedRenderedFeature? first;
       for (final f in features) {
         if (f != null) {
@@ -226,7 +214,7 @@ class MapLayerController {
 
       return MapPoiInfo(
         name: fallbackName,
-        category: 'معلم على الخريطة',
+        category: 'مكان على الخريطة',
         layerId: _firstLayerId(first.layers),
       );
     } catch (e) {
@@ -235,23 +223,38 @@ class MapLayerController {
     }
   }
 
+  /// بطاقة مكان بأسلوب قريب من خرائط جوجل
   static void showPoiSheet(BuildContext context, MapPoiInfo info) {
+    final color = _colorForCategory(info.category);
+    final icon = _iconForCategory(info.category);
+
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const SizedBox(height: 10),
                 Center(
                   child: Container(
-                    width: 40,
+                    width: 36,
                     height: 4,
                     decoration: BoxDecoration(
                       color: Colors.grey.shade300,
@@ -259,55 +262,136 @@ class MapLayerController {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: Colors.blue.shade50,
-                      child: Icon(
-                        _iconForCategory(info.category),
-                        color: Colors.blue.shade700,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(icon, color: color, size: 30),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            info.name,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              info.name,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                height: 1.25,
+                                color: Color(0xFF202124),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            info.category,
-                            style: TextStyle(
-                              color: Colors.grey.shade700,
-                              fontWeight: FontWeight.w600,
+                            const SizedBox(height: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: color.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                info.category,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: color,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                            if (info.secondaryName != null &&
+                                info.secondaryName!.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                info.secondaryName!,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                if (info.rawClass != null || info.rawType != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    [
-                      if (info.rawClass != null) 'التصنيف: ${info.rawClass}',
-                      if (info.rawType != null) 'النوع: ${info.rawType}',
-                    ].join(' · '),
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                      IconButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: Icon(Icons.close, color: Colors.grey.shade600),
+                      ),
+                    ],
                   ),
-                ],
-                const SizedBox(height: 8),
-                Text(
-                  'طبقة الخريطة: ${info.layerId}',
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _PoiActionButton(
+                          icon: Icons.directions_rounded,
+                          label: 'الاتجاهات',
+                          filled: true,
+                          color: AppTheme.primaryColor,
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  '🔜 الاتجاهات ستتوفر مع نظام المسارات',
+                                ),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _PoiActionButton(
+                          icon: Icons.share_outlined,
+                          label: 'مشاركة',
+                          filled: false,
+                          color: AppTheme.primaryColor,
+                          onTap: () async {
+                            final text =
+                                '${info.name}\n${info.category}'
+                                '${info.secondaryName != null ? '\n${info.secondaryName}' : ''}';
+                            await Clipboard.setData(ClipboardData(text: text));
+                            if (context.mounted) {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('📋 تم نسخ معلومات المكان'),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _PoiActionButton(
+                          icon: Icons.near_me_outlined,
+                          label: 'حوله',
+                          filled: false,
+                          color: AppTheme.primaryColor,
+                          onTap: () {
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -407,23 +491,35 @@ class MapLayerController {
     return null;
   }
 
+  static String? _extractSecondaryName(
+    Map<String, dynamic> props,
+    String primary,
+  ) {
+    const keys = ['name_en', 'name:en', 'name_ar', 'name:ar', 'name'];
+    for (final k in keys) {
+      final v = props[k]?.toString().trim();
+      if (v != null && v.isNotEmpty && v != primary) return v;
+    }
+    return null;
+  }
+
   static String _categoryLabel(String? clazz, String? type, String name) {
     final c = (clazz ?? type ?? '').toLowerCase();
     if (c.contains('hospital') ||
         c.contains('clinic') ||
         c.contains('medical')) {
-      return 'مستشفى / رعاية صحية';
+      return 'مستشفى · رعاية صحية';
     }
     if (c.contains('restaurant') || c.contains('cafe') || c.contains('food')) {
-      return 'مطعم / مقهى';
+      return 'مطعم · مقهى';
     }
     if (c.contains('school') ||
         c.contains('college') ||
         c.contains('university')) {
-      return 'مؤسسة تعليمية';
+      return 'تعليمسسة تعليمية';
     }
     if (c.contains('fuel') || c.contains('parking')) {
-      return 'محطة / مواقف';
+      return 'محطة وقود · مواقف';
     }
     if (c.contains('bus') || c.contains('station') || c.contains('transit')) {
       return 'مواصلات عامة';
@@ -437,36 +533,81 @@ class MapLayerController {
       return 'مكان عبادة';
     }
     if (c.contains('park') || c.contains('garden')) {
-      return 'حديقة / متنزه';
+      return 'حديقة · متنزه';
     }
-    if (c.isNotEmpty) return clazz ?? type ?? 'معلم';
-    return 'معلم على الخريطة';
+    if (c.isNotEmpty) return clazz ?? type ?? 'مكان';
+    return 'مكان على الخريطة';
   }
 
-  static bool _looksLikePoiName(String name) {
-    final n = name.toLowerCase();
-    return n.contains('مستشفى') ||
-        n.contains('مطعم') ||
-        n.contains('مقهى') ||
-        n.contains('مسجد') ||
-        n.contains('جامعة') ||
-        n.contains('مول') ||
-        n.contains('hospital') ||
-        n.contains('restaurant');
+  static Color _colorForCategory(String category) {
+    if (category.contains('مستشفى')) return const Color(0xFFE53935);
+    if (category.contains('مطعم')) return const Color(0xFFFB8C00);
+    if (category.contains('تعليمليم')) return const Color(0xFF1E88E5);
+    if (category.contains('مواصلات')) return const Color(0xFF43A047);
+    if (category.contains('تسوق')) return const Color(0xFF8E24AA);
+    if (category.contains('عبادة')) return const Color(0xFF00897B);
+    if (category.contains('حديقة')) return const Color(0xFF2E7D32);
+    return AppTheme.primaryColor;
   }
 
   static IconData _iconForCategory(String category) {
-    if (category.contains('مستشفى')) return Icons.local_hospital_outlined;
-    if (category.contains('مطعم')) return Icons.restaurant_outlined;
-    if (category.contains('تعليمليم')) return Icons.school_outlined;
-    if (category.contains('مواصلات')) return Icons.directions_bus_outlined;
-    if (category.contains('تسوق')) return Icons.storefront_outlined;
-    if (category.contains('عبادة')) return Icons.mosque_outlined;
-    if (category.contains('حديقة')) return Icons.park_outlined;
-    return Icons.place_outlined;
+    if (category.contains('مستشفى')) return Icons.local_hospital_rounded;
+    if (category.contains('مطعم')) return Icons.restaurant_rounded;
+    if (category.contains('تعليمليم')) return Icons.school_rounded;
+    if (category.contains('مواصلات')) return Icons.directions_bus_rounded;
+    if (category.contains('تسوق')) return Icons.storefront_rounded;
+    if (category.contains('عبادة')) return Icons.mosque_rounded;
+    if (category.contains('حديقة')) return Icons.park_rounded;
+    if (category.contains('وقود')) return Icons.local_gas_station_rounded;
+    return Icons.place_rounded;
   }
 
   static void _log(String msg) {
     if (kDebugMode) debugPrint('🗺️ [MapLayers] $msg');
+  }
+}
+
+class _PoiActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool filled;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _PoiActionButton({
+    required this.icon,
+    required this.label,
+    required this.filled,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: filled ? color : color.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            children: [
+              Icon(icon, size: 22, color: filled ? Colors.white : color),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: filled ? Colors.white : color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
