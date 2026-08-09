@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 
+import '../../core/map/map_layer_controller.dart';
+
 class MapHelpers {
   static Uint8List? _cachedMarkerBytes;
 
@@ -49,57 +51,18 @@ class MapHelpers {
     return _cachedMarkerBytes!;
   }
 
+  /// يوجّه للتحكم الموحّد بالطبقات (اكتشاف ديناميكي من الستايل)
   static Future<void> applyLabelLayersFilter({
     required MapboxMap mapboxMap,
     required bool showPlaceLabels,
     required bool showPoiLabels,
     required bool showRoadLabels,
-  }) async {
-    try {
-      final placeLayers = [
-        'settlement-label',
-        'settlement-subdistrict-label',
-        'state-label',
-        'country-label'
-      ];
-      final poiLayers = [
-        'poi-label',
-        'medical-label',
-        'education-label',
-        'natural-point-label'
-      ];
-      final roadLayers = [
-        'road-label',
-        'road-intersection',
-        'bridge-label',
-        'tunnel-label'
-      ];
-
-      for (var layerId in placeLayers) {
-        await mapboxMap.style.setStyleLayerProperty(
-          layerId,
-          'visibility',
-          showPlaceLabels ? 'visible' : 'none',
-        );
-      }
-
-      for (var layerId in poiLayers) {
-        await mapboxMap.style.setStyleLayerProperty(
-          layerId,
-          'visibility',
-          showPoiLabels ? 'visible' : 'none',
-        );
-      }
-
-      for (var layerId in roadLayers) {
-        await mapboxMap.style.setStyleLayerProperty(
-          layerId,
-          'visibility',
-          showRoadLabels ? 'visible' : 'none',
-        );
-      }
-    } catch (e) {
-      debugPrint('تنبيه: بعض قنوات التسمية قد لا تتوفر في الستايل الحالي: $e');
-    }
+  }) {
+    return MapLayerController.applyLabelFilters(
+      mapboxMap: mapboxMap,
+      showPlaceLabels: showPlaceLabels,
+      showPoiLabels: showPoiLabels,
+      showRoadLabels: showRoadLabels,
+    );
   }
 }
