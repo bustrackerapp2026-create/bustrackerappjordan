@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import '../../../../core/theme/app_theme.dart';
@@ -48,7 +49,7 @@ class _AdminMapTabState extends State<AdminMapTab>
   @override
   void didUpdateWidget(covariant AdminMapTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _tryApplyFocusRequest();
+    _scheduleFocusRequest();
   }
 
   @override
@@ -60,14 +61,24 @@ class _AdminMapTabState extends State<AdminMapTab>
       listenToActivePassengers();
       listenToRoutes();
       listenToPickupPoints();
-      _tryApplyFocusRequest();
+      _scheduleFocusRequest();
       MapUtils.log('✅ تم تهيئة جميع ميزات خريطة الأدمن', tag: 'AdminMap');
     });
   }
 
-  void _tryApplyFocusRequest() {
+  /// لا نستدعي SnackBar أثناء build — نؤجل لما بعد الإطار الحالي
+  void _scheduleFocusRequest() {
     final focus = widget.focusRequest;
     if (focus == null) return;
+    if (_lastHandledFocusToken == focus.token) return;
+
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _applyFocusRequest(focus);
+    });
+  }
+
+  void _applyFocusRequest(AdminMapFocusRequest focus) {
     if (_lastHandledFocusToken == focus.token) return;
     if (mapboxMap == null) return;
 
@@ -83,12 +94,11 @@ class _AdminMapTabState extends State<AdminMapTab>
       ),
     );
 
-    if (mounted) {
-      MapUtils.showSnackBar(
-        context,
-        '📍 تم التوجيه إلى: ${focus.pointName}',
-      );
-    }
+    if (!mounted) return;
+    MapUtils.showSnackBar(
+      context,
+      '📍 تم التوجيه إلى: ${focus.pointName}',
+    );
   }
 
   @override
