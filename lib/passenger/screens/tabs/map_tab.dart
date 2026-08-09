@@ -6,6 +6,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:geolocator/geolocator.dart' as geo;
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/map/pickup_point_sheet.dart';
 import '../../../core/pickup/pickup_point_manager.dart';
 import '../../../core/pickup/pickup_marker_helper.dart';
 import '../../../features/auth/providers/auth_provider.dart';
@@ -446,129 +447,62 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
     });
   }
 
+  /// عرض البطاقة الموحّدة الجميلة لنقطة التجمع (نفس تصميم الأدمن والسائق)
   Future<void> _showPickupPointSheet(String pickupId) async {
     final point = await _pickupManager.getPickupPoint(pointId: pickupId);
     if (!mounted || point == null) return;
 
     final user = Provider.of<AuthProvider>(context, listen: false).userId;
+    final adderName = await PickupPointSheet.loadAdderName(point.addedBy);
+    if (!mounted) return;
 
-    final action = await showModalBottomSheet<String>(
+    final action = await PickupPointSheet.show(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: PickupMarkerHelper.primaryColorFor(
-                      point.pointType,
-                    ).withValues(alpha: 0.15),
-                    child: Icon(
-                      PickupMarkerHelper.iconFor(point.pointType),
-                      color:
-                          PickupMarkerHelper.primaryColorFor(point.pointType),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          point.name,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          point.pointType == 'passenger'
-                              ? '🚶 تجمع ركاب'
-                              : '🚌 تجمع باصات',
-                          style: TextStyle(
-                            color: PickupMarkerHelper.primaryColorFor(
-                              point.pointType,
-                            ),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (point.reviewNote.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(
-                    'ملاحظات المراجعة: ${point.reviewNote}',
-                    style: const TextStyle(color: Colors.orange),
-                  ),
-                ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: user == null
-                          ? null
-                          : () => Navigator.pop(sheetContext, 'confirm'),
-                      icon: const Icon(Icons.check_circle_outline),
-                      label: const Text('هذا صحيح'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: user == null
-                          ? null
-                          : () => Navigator.pop(sheetContext, 'edit'),
-                      icon: const Icon(Icons.edit_note_outlined),
-                      label: const Text('أحتاج تعديل'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+      point: point,
+      mode: PickupSheetMode.user,
+      adderName: adderName,
     );
 
-    if (!mounted) return;
-    if (action == 'confirm' && user != null) {
+    if (!mounted || action == null || action == PickupSheetAction.close) return;
+
+    if (action == PickupSheetAction.confirm && user != null) {
       try {
         await _pickupManager.confirmPickupPoint(
           pointId: pickupId,
           userId: user,
         );
+        if (!mounted) return;
         _showSnackBar('✅ تم تأكيد هذه النقطة للمراجعة.', isError: false);
       } catch (e) {
+        if (!mounted) return;
         _showSnackBar('❌ فشل تأكيد النقطة.', isError: true);
       }
       return;
     }
 
-    if (action == 'edit' && user != null) {
+    if (action == PickupSheetAction.suggestEdit && user != null) {
       final controller = TextEditingController();
       final suggested = await showDialog<String>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('اقتراح تعديل النقطة'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: const Text(
+            'اقتراح تعديل النقطة',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
           content: TextField(
             controller: controller,
             maxLines: 3,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'اكتب ما تحتاجه من تعديل أو ملاحظة',
+              filled: true,
+              fillColor: Colors.grey.shade50,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
           actions: [
@@ -579,11 +513,19 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
             ElevatedButton(
               onPressed: () =>
                   Navigator.pop(dialogContext, controller.text.trim()),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               child: const Text('إرسال'),
             ),
           ],
         ),
       );
+      if (!mounted) return;
       if (suggested == null || suggested.isEmpty) return;
       try {
         await _pickupManager.updatePickupPoint(
@@ -593,8 +535,10 @@ class _MapTabState extends State<MapTab> with WidgetsBindingObserver {
             'suggestedEdit': suggested,
           },
         );
+        if (!mounted) return;
         _showSnackBar('📝 تم إرسال اقتراح التعديل للمراجعة.', isError: false);
       } catch (e) {
+        if (!mounted) return;
         _showSnackBar('❌ فشل إرسال اقتراح التعديل.', isError: true);
       }
     }
