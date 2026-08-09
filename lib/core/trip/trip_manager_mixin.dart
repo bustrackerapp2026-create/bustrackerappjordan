@@ -115,10 +115,11 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       MapUtils.showSnackBar(context, '🚀 تم بدء الرحلة!', isError: false);
     } catch (e) {
       MapUtils.log('❌ فشل إنشاء الرحلة: $e', tag: 'TripManager');
-      if (!mounted) return;
-      MapUtils.showSnackBar(
-          context, '❌ فشل بدء الرحلة، يرجى المحاولة لاحقاً.',
-          isError: true);
+      if (mounted) {
+        MapUtils.showSnackBar(
+            context, '❌ فشل بدء الرحلة، يرجى المحاولة لاحقاً.',
+            isError: true);
+      }
     } finally {
       if (mounted) setState(() => _isProcessingTrip = false);
     }
@@ -172,8 +173,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         if (!mounted) return;
 
         await showRouteOnMap(route);
-
-        if (!mounted) return;
         MapUtils.showSnackBar(
             context, '🏁 تم إنهاء الرحلة وحفظ المسار (${route.length} نقطة).',
             isError: false);
@@ -193,9 +192,10 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
     } catch (e) {
       MapUtils.log('❌ فشل حفظ المسار: $e', tag: 'TripManager');
-      if (!mounted) return;
-      MapUtils.showSnackBar(context, '❌ فشل حفظ بيانات الرحلة على السيرفر.',
-          isError: true);
+      if (mounted) {
+        MapUtils.showSnackBar(context, '❌ فشل حفظ بيانات الرحلة على السيرفر.',
+            isError: true);
+      }
     } finally {
       if (mounted) setState(() => _isProcessingTrip = false);
     }
