@@ -10,6 +10,7 @@ import '../../features/auth/providers/auth_provider.dart';
 import '../../models/pickup_point_model.dart';
 import '../map/map_core.dart';
 import '../map/map_utils.dart';
+import '../map/pickup_point_sheet.dart';
 import 'pickup_marker_helper.dart';
 import 'pickup_point_dialog.dart';
 import 'pickup_point_manager.dart';
@@ -57,7 +58,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   Future<void> _syncPickupMarkers(QuerySnapshot snapshot) async {
-    // إذا لم يكن المدير جاهزاً بعد، ننتظر قليلاً ثم نعيد المحاولة
     if (!mounted) return;
     if (pointAnnotationManager == null) {
       await Future<void>.delayed(const Duration(milliseconds: 400));
@@ -67,7 +67,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final incomingIds = snapshot.docs.map((d) => d.id).toSet();
     final existingIds = _pickupAnnotations.keys.toSet();
 
-    // حذف النقاط التي أُزيلت أو لم تعد معتمدة
     for (final id in existingIds.difference(incomingIds)) {
       final annotation = _pickupAnnotations.remove(id);
       if (annotation != null) {
@@ -102,7 +101,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Future<void> _upsertPickupMarker(PickupPointModel point) async {
     if (pointAnnotationManager == null || !mounted) return;
 
-    // إزالة القديمة إن وُجدت ثم إعادة الإنشاء بصورة محدّثة
     final existing = _pickupAnnotations.remove(point.id);
     if (existing != null) {
       try {
@@ -149,106 +147,25 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return _pickupAnnotationToPointId[annotation.id];
   }
 
+  /// عرض البطاقة الموحّدة الجميلة لنقطة التجمع
   Future<void> showPickupPointSheet(String pickupId) async {
     final point = await _pickupManager.getPickupPoint(pointId: pickupId);
-    if (!mounted) return;
-    if (point == null) return;
+    if (!mounted || point == null) return;
 
     final user = context.read<AuthProvider>().userId;
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: PickupMarkerHelper.primaryColorFor(
-                      point.pointType,
-                    ).withValues(alpha: 0.15),
-                    child: Icon(
-                      PickupMarkerHelper.iconFor(point.pointType),
-                      color: PickupMarkerHelper.primaryColorFor(point.pointType),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          point.name,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          point.pointType == 'passenger'
-                              ? '🚶 تجمع ركاب'
-                              : '🚌 تجمع باصات',
-                          style: TextStyle(
-                            color: PickupMarkerHelper.primaryColorFor(
-                              point.pointType,
-                            ),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (point.reviewNote.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(
-                    'ملاحظات المراجعة: ${point.reviewNote}',
-                    style: const TextStyle(color: Colors.orange),
-                  ),
-                ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: user == null
-                          ? null
-                          : () => Navigator.pop(sheetContext, 'confirm'),
-                      icon: const Icon(Icons.check_circle_outline),
-                      label: const Text('هذا صحيح'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: user == null
-                          ? null
-                          : () => Navigator.pop(sheetContext, 'edit'),
-                      icon: const Icon(Icons.edit_note_outlined),
-                      label: const Text('أحتاج تعديل'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
+    final adderName = await PickupPointSheet.loadAdderName(point.addedBy);
     if (!mounted) return;
 
-    if (action == 'confirm' && user != null) {
+    final action = await PickupPointSheet.show(
+      context: context,
+      point: point,
+      mode: PickupSheetMode.user,
+      adderName: adderName,
+    );
+
+    if (!mounted || action == null || action == PickupSheetAction.close) return;
+
+    if (action == PickupSheetAction.confirm && user != null) {
       try {
         await _pickupManager.confirmPickupPoint(
           pointId: pickupId,
@@ -267,17 +184,29 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       return;
     }
 
-    if (action == 'edit' && user != null) {
+    if (action == PickupSheetAction.suggestEdit && user != null) {
       final controller = TextEditingController();
       final suggested = await showDialog<String>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('اقتراح تعديل النقطة'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: const Text(
+            'اقتراح تعديل النقطة',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
           content: TextField(
             controller: controller,
             maxLines: 3,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'اكتب ما تحتاجه من تعديل أو ملاحظة',
+              filled: true,
+              fillColor: Colors.grey.shade50,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
           actions: [
@@ -288,6 +217,13 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             ElevatedButton(
               onPressed: () =>
                   Navigator.pop(dialogContext, controller.text.trim()),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               child: const Text('إرسال'),
             ),
           ],
