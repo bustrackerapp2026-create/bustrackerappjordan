@@ -118,15 +118,11 @@ class _DriverMapTabState extends State<DriverMapTab>
       if (bearing == 0.0 && position.speed > 0) bearing = _currentBearing;
       setState(() => _currentBearing = bearing);
 
-      mapboxMap?.setCamera(
-        CameraOptions(
-          center: Point(
-            coordinates: Position(position.longitude, position.latitude),
-          ),
-          zoom: 15,
-          bearing: bearing,
-          pitch: 45,
-        ),
+      // خريطة مسطحة مثل جوجل — بدون pitch أو تدوير الكاميرا
+      await flyToFlat(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        zoom: 16,
       );
       await _updateUserMarker(position.latitude, position.longitude, bearing);
 
@@ -140,12 +136,13 @@ class _DriverMapTabState extends State<DriverMapTab>
         double newBearing = pos.heading;
         if (newBearing == 0.0 && pos.speed > 0) newBearing = _currentBearing;
         setState(() => _currentBearing = newBearing);
+        // أثناء التتبع: نحرّك المركز فقط بدون ميلان/تدوير للشاشة
         mapboxMap?.setCamera(
           CameraOptions(
             center: Point(coordinates: Position(pos.longitude, pos.latitude)),
-            zoom: 15,
-            bearing: newBearing,
-            pitch: 45,
+            zoom: 16,
+            pitch: 0,
+            bearing: 0,
           ),
         );
         _updateUserMarker(pos.latitude, pos.longitude, newBearing);
@@ -165,13 +162,10 @@ class _DriverMapTabState extends State<DriverMapTab>
       MapUtils.showSnackBar(context, '⚠️ لا يوجد موقع محدد.', isError: true);
       return;
     }
-    mapboxMap?.setCamera(
-      CameraOptions(
-        center: Point(coordinates: Position(pos.longitude, pos.latitude)),
-        zoom: 16,
-        bearing: _currentBearing,
-        pitch: 45,
-      ),
+    flyToFlat(
+      latitude: pos.latitude,
+      longitude: pos.longitude,
+      zoom: 16.5,
     );
   }
 
@@ -181,7 +175,7 @@ class _DriverMapTabState extends State<DriverMapTab>
       context,
       mapboxMap,
       query,
-      _currentBearing,
+      0, // لا ندوّر الكاميرا حسب الاتجاه
       _locationService,
     );
   }
@@ -195,10 +189,13 @@ class _DriverMapTabState extends State<DriverMapTab>
           onMapCreated: (map) async {
             mapboxMap = map;
             await initAnnotationManager();
+            await applyGoogleLikeCameraBehavior();
             mapboxMap?.setCamera(
               CameraOptions(
                 center: Point(coordinates: Position(35.9106, 31.9522)),
                 zoom: 12,
+                pitch: 0,
+                bearing: 0,
               ),
             );
             applyMapConstraints();
@@ -233,6 +230,13 @@ class _DriverMapTabState extends State<DriverMapTab>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              FloatingActionButton.small(
+                heroTag: 'driver_compass',
+                onPressed: resetNorth,
+                backgroundColor: Colors.white,
+                child: const Icon(Icons.explore_outlined),
+              ),
+              const SizedBox(height: 10),
               FloatingActionButton(
                 heroTag: 'driver_recenter',
                 onPressed: _recenterCamera,
