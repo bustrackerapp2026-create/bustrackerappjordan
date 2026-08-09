@@ -15,28 +15,29 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
   final PickupPointService _service = PickupPointService();
   final Set<String> _processingIds = {};
 
+  void _showMessage(String message, {bool isError = false}) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Future<void> _approvePoint(String id, String name) async {
     if (_processingIds.contains(id)) return;
     setState(() => _processingIds.add(id));
 
     try {
       await _service.approvePickupPoint(id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ تم الموافقة على النقطة "$name" بنجاح!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+      _showMessage('✅ تم الموافقة على النقطة "$name" بنجاح!');
     } catch (e) {
       debugPrint('❌ خطأ في الموافقة على النقطة: $e');
-      if (mounted) {
-        final errorMessage = _getUserFriendlyErrorMessage(e);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
-        );
-      }
+      _showMessage(_getUserFriendlyErrorMessage(e), isError: true);
     } finally {
       if (mounted) {
         setState(() => _processingIds.remove(id));
@@ -50,25 +51,80 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
 
     try {
       await _service.rejectPickupPoint(id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('🗑️ تم رفض النقطة "$name" بنجاح.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
+      _showMessage('🗑️ تم رفض النقطة "$name" بنجاح.');
     } catch (e) {
       debugPrint('❌ خطأ في رفض النقطة: $e');
-      if (mounted) {
-        final errorMessage = _getUserFriendlyErrorMessage(e);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
-        );
-      }
+      _showMessage(_getUserFriendlyErrorMessage(e), isError: true);
     } finally {
       if (mounted) {
         setState(() => _processingIds.remove(id));
+      }
+    }
+  }
+
+  /// تعديل اسم النقطة مع حماية من استخدام context بعد تعطيل الودجت
+  Future<void> _editPoint(PickupPointModel point) async {
+    if (_processingIds.contains(point.id)) return;
+    if (!mounted) return;
+
+    final controller = TextEditingController(text: point.name);
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تعديل النقطة'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'اسم النقطة',
+          ),
+          textDirection: TextDirection.rtl,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = controller.text.trim();
+              if (text.isEmpty) return;
+              Navigator.pop(dialogContext, text);
+            },
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
+
+    // تخلص من المتحكم بعد إغلاق الحوار
+    controller.dispose();
+
+    if (!mounted) return;
+    if (result == null || result.isEmpty) return;
+
+    setState(() => _processingIds.add(point.id));
+
+    try {
+      await _service.updatePickupPoint(
+        pointId: point.id,
+        data: {
+          'name': result,
+          'status': 'pending',
+          'suggestedEdit': 'تم تعديلها من لوحة الإدارة',
+        },
+      );
+
+      if (!mounted) return;
+      _showMessage('✅ تم تعديل النقطة "$result"');
+    } catch (e) {
+      debugPrint('❌ فشل تعديل النقطة: $e');
+      if (!mounted) return;
+      _showMessage(_getUserFriendlyErrorMessage(e), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _processingIds.remove(point.id));
       }
     }
   }
@@ -77,18 +133,18 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
     if (error is PickupPointServiceException) {
       return '⚠️ ${error.message}';
     }
-    if (error.toString().contains('permission') ||
-        error.toString().contains('PERMISSION_DENIED')) {
+    final text = error.toString();
+    if (text.contains('permission') || text.contains('PERMISSION_DENIED')) {
       return '⚠️ ليس لديك صلاحية لإجراء هذه العملية.';
     }
-    if (error.toString().contains('not found') ||
-        error.toString().contains('NOT_FOUND')) {
+    if (text.contains('not found') || text.contains('NOT_FOUND')) {
       return '⚠️ النقطة غير موجودة أو تم حذفها.';
     }
     return '❌ فشلت العملية، يرجى المحاولة لاحقاً.';
   }
 
-  void _showRejectDialog(BuildContext context, String id, String name) {
+  void _showRejectDialog(String id, String name) {
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -195,12 +251,12 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ─── رأس البطاقة ──────────────────────────────────
                       Row(
                         children: [
                           const CircleAvatar(
                             backgroundColor: Colors.orange,
-                            child: Icon(Icons.location_on, color: Colors.white),
+                            child:
+                                Icon(Icons.location_on, color: Colors.white),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -239,8 +295,6 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                         ],
                       ),
                       const SizedBox(height: 8),
-
-                      // ─── معلومات إضافية ──────────────────────────────
                       Row(
                         children: [
                           const Icon(Icons.person_outline,
@@ -263,8 +317,6 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                         ],
                       ),
                       const Divider(height: 24),
-
-                      // ─── أزرار الموافقة والرفض ──────────────────────
                       Row(
                         children: [
                           Expanded(
@@ -297,8 +349,8 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                             child: ElevatedButton.icon(
                               onPressed: isProcessing
                                   ? null
-                                  : () => _showRejectDialog(
-                                      context, point.id, point.name),
+                                  : () =>
+                                      _showRejectDialog(point.id, point.name),
                               icon: isProcessing
                                   ? const SizedBox(
                                       width: 18,
@@ -322,95 +374,11 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                         ],
                       ),
                       const SizedBox(height: 8),
-
-                      // ─── زر التعديل وإرسال المراجعة ──────────────────
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
-                          onPressed: isProcessing
-                              ? null
-                              : () async {
-                                  if (!mounted) return;
-
-                                  final controller = TextEditingController(
-                                    text: point.name,
-                                  );
-
-                                  final result = await showDialog<String>(
-                                    context: context,
-                                    builder: (dialogContext) => AlertDialog(
-                                      title: const Text('تعديل النقطة'),
-                                      content: TextField(
-                                        controller: controller,
-                                        decoration: const InputDecoration(
-                                          labelText: 'اسم النقطة',
-                                        ),
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(dialogContext),
-                                          child: const Text('إلغاء'),
-                                        ),
-                                        ElevatedButton(
-                                          onPressed: () => Navigator.pop(
-                                            dialogContext,
-                                            controller.text.trim(),
-                                          ),
-                                          child: const Text('حفظ'),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-
-                                  if (!mounted) return;
-
-                                  if (result == null || result.isEmpty) {
-                                    return;
-                                  }
-
-                                  setState(() => _processingIds.add(point.id));
-
-                                  try {
-                                    await _service.updatePickupPoint(
-                                      pointId: point.id,
-                                      data: {
-                                        'name': result,
-                                        'status': 'pending',
-                                        'suggestedEdit':
-                                            'تم تعديلها من لوحة الإدارة',
-                                      },
-                                    );
-
-                                    if (!mounted) return;
-
-                                    // ✅ تجاهل التحذير هنا (السطر 397)
-                                    // ignore: use_build_context_synchronously
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          '✅ تم تعديل النقطة "$result"',
-                                        ),
-                                      ),
-                                    );
-                                  } catch (e) {
-                                    if (!mounted) return;
-
-                                    // ✅ تجاهل التحذير هنا (السطر 408)
-                                    // ignore: use_build_context_synchronously
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('❌ فشل التعديل: $e'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  } finally {
-                                    if (mounted) {
-                                      setState(() =>
-                                          _processingIds.remove(point.id));
-                                    }
-                                  }
-                                },
+                          onPressed:
+                              isProcessing ? null : () => _editPoint(point),
                           icon: const Icon(Icons.edit_note_outlined),
                           label: const Text('تعديل وإرسالها للمراجعة مرة أخرى'),
                         ),
