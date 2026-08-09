@@ -1,70 +1,152 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
+import 'package:provider/provider.dart';
+
+import '../../features/auth/providers/auth_provider.dart';
+import '../../models/pickup_point_model.dart';
 import '../map/map_core.dart';
 import '../map/map_utils.dart';
-import '../pickup/pickup_point_manager.dart';
-import '../pickup/pickup_point_dialog.dart';
-import '../../features/auth/providers/auth_provider.dart';
-import '../../map/utils/map_helpers.dart';
+import 'pickup_marker_helper.dart';
+import 'pickup_point_dialog.dart';
+import 'pickup_point_manager.dart';
 
+/// مكسين مشترك لعرض وإدارة نقاط التجمع على خرائط السائق (وأي خريطة تستخدم MapCore).
+///
+/// - يستمع فقط للنقاط المعتمدة (approved) لمزامنة فورية مع الأدمن.
+/// - يرسم علامات مميزة: باصات (برتقالي) / ركاب (نيلي).
 mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final PickupPointManager _pickupManager = PickupPointManager();
   final Map<String, PointAnnotation> _pickupAnnotations = {};
   final Map<String, String> _pickupAnnotationToPointId = {};
+  final Map<String, Uint8List> _markerImageCache = {};
   StreamSubscription<QuerySnapshot>? _pickupPointsSubscription;
   bool _isAddingPickupPoint = false;
 
   bool get isAddingPickupPoint => _isAddingPickupPoint;
 
+  Map<String, PointAnnotation> get pickupAnnotations => _pickupAnnotations;
+
   void toggleAddingPickupPoint() {
     _isAddingPickupPoint = !_isAddingPickupPoint;
   }
 
+  /// الاستماع اللحظي لنقاط التجمع المعتمدة من Firestore
   void listenToPickupPoints() {
     _pickupPointsSubscription?.cancel();
 
     _pickupPointsSubscription = FirebaseFirestore.instance
         .collection('pickupPoints')
+        .where('status', isEqualTo: 'approved')
         .snapshots()
-        .listen((snapshot) async {
-      // ✅ التأكد من أن المدير جاهز
-      if (!mounted || pointAnnotationManager == null) return;
-
-      // ✅ نسخ القيم قبل التكرار لتجنب ConcurrentModificationError
-      final annotationsToRemove = _pickupAnnotations.values.toList();
-      for (final annotation in annotationsToRemove) {
-        await pointAnnotationManager?.delete(annotation);
-      }
-      _pickupAnnotations.clear();
-      _pickupAnnotationToPointId.clear();
-
-      for (final doc in snapshot.docs) {
-        final point = doc.data();
-        final latitude = (point['latitude'] as num?)?.toDouble();
-        final longitude = (point['longitude'] as num?)?.toDouble();
-        if (latitude == null || longitude == null) continue;
-
-        // ✅ يمكن إضافة فلتر حسب الحالة هنا إذا أردت (مثل status == 'approved')
-        // if (point['status'] != 'approved') continue;
-
-        final options = PointAnnotationOptions(
-          geometry: Point(coordinates: Position(longitude, latitude)),
-          image: await MapHelpers.createUserMarkerBytes(),
-          iconSize: 0.8,
-          iconAnchor: IconAnchor.BOTTOM,
+        .listen(
+      (snapshot) {
+        MapUtils.log(
+          '📦 [Pickup] استلام ${snapshot.docs.length} نقطة معتمدة',
+          tag: 'PickupMixin',
         );
-        final annotation = await pointAnnotationManager?.create(options);
-        if (annotation != null) {
-          _pickupAnnotations[doc.id] = annotation;
-          _pickupAnnotationToPointId[annotation.id] = doc.id;
-        }
+        _syncPickupMarkers(snapshot);
+      },
+      onError: (error) {
+        MapUtils.log('⚠️ خطأ في جلب نقاط التجمع: $error', tag: 'PickupMixin');
+      },
+    );
+  }
+
+  Future<void> _syncPickupMarkers(QuerySnapshot snapshot) async {
+    // إذا لم يكن المدير جاهزاً بعد، ننتظر قليلاً ثم نعيد المحاولة
+    if (!mounted) return;
+    if (pointAnnotationManager == null) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      if (!mounted || pointAnnotationManager == null) return;
+    }
+
+    final incomingIds = snapshot.docs.map((d) => d.id).toSet();
+    final existingIds = _pickupAnnotations.keys.toSet();
+
+    // حذف النقاط التي أُزيلت أو لم تعد معتمدة
+    for (final id in existingIds.difference(incomingIds)) {
+      final annotation = _pickupAnnotations.remove(id);
+      if (annotation != null) {
+        try {
+          await pointAnnotationManager?.delete(annotation);
+        } catch (_) {}
+        _pickupAnnotationToPointId.remove(annotation.id);
       }
-    }, onError: (error) {
-      MapUtils.log('⚠️ خطأ في جلب نقاط التجمع: $error', tag: 'PickupMixin');
-    });
+    }
+
+    for (final doc in snapshot.docs) {
+      if (!mounted) return;
+      try {
+        final point = PickupPointModel.fromFirestore(doc);
+        if (point.latitude == 0.0 && point.longitude == 0.0) continue;
+
+        await _upsertPickupMarker(point);
+      } catch (e) {
+        MapUtils.log(
+          '⚠️ خطأ في معالجة نقطة ${doc.id}: $e',
+          tag: 'PickupMixin',
+        );
+      }
+    }
+
+    MapUtils.log(
+      '✅ [Pickup] معروض ${_pickupAnnotations.length} نقطة على الخريطة',
+      tag: 'PickupMixin',
+    );
+  }
+
+  Future<void> _upsertPickupMarker(PickupPointModel point) async {
+    if (pointAnnotationManager == null || !mounted) return;
+
+    // إزالة القديمة إن وُجدت ثم إعادة الإنشاء بصورة محدّثة
+    final existing = _pickupAnnotations.remove(point.id);
+    if (existing != null) {
+      try {
+        await pointAnnotationManager?.delete(existing);
+      } catch (_) {}
+      _pickupAnnotationToPointId.remove(existing.id);
+    }
+
+    final bytes = await _markerBytesFor(point);
+    if (bytes == null || !mounted) return;
+
+    final options = PointAnnotationOptions(
+      geometry: Point(
+        coordinates: Position(point.longitude, point.latitude),
+      ),
+      image: bytes,
+      iconSize: 1.05,
+      iconAnchor: IconAnchor.BOTTOM,
+    );
+
+    final annotation = await pointAnnotationManager?.create(options);
+    if (annotation != null) {
+      _pickupAnnotations[point.id] = annotation;
+      _pickupAnnotationToPointId[annotation.id] = point.id;
+    }
+  }
+
+  Future<Uint8List?> _markerBytesFor(PickupPointModel point) async {
+    final key =
+        '${point.id}_${point.pointType}_${point.name.hashCode}_${point.confirmationCount}';
+    final cached = _markerImageCache[key];
+    if (cached != null) return cached;
+
+    final bytes = await PickupMarkerHelper.createMarkerBytes(
+      name: point.name,
+      pointType: point.pointType,
+      confirmationCount: point.confirmationCount,
+    );
+    if (bytes != null) _markerImageCache[key] = bytes;
+    return bytes;
+  }
+
+  String? findPickupIdByAnnotation(PointAnnotation annotation) {
+    return _pickupAnnotationToPointId[annotation.id];
   }
 
   Future<void> showPickupPointSheet(String pickupId) async {
@@ -76,6 +158,9 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final action = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
@@ -83,18 +168,55 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(point.name,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text(point.pointType == 'passenger' ? 'تجمع ركاب' : 'تجمع باصات'),
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: PickupMarkerHelper.primaryColorFor(
+                      point.pointType,
+                    ).withValues(alpha: 0.15),
+                    child: Icon(
+                      PickupMarkerHelper.iconFor(point.pointType),
+                      color: PickupMarkerHelper.primaryColorFor(point.pointType),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          point.name,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          point.pointType == 'passenger'
+                              ? '🚶 تجمع ركاب'
+                              : '🚌 تجمع باصات',
+                          style: TextStyle(
+                            color: PickupMarkerHelper.primaryColorFor(
+                              point.pointType,
+                            ),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
               if (point.reviewNote.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text('ملاحظات المراجعة: ${point.reviewNote}',
-                      style: const TextStyle(color: Colors.orange)),
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    'ملاحظات المراجعة: ${point.reviewNote}',
+                    style: const TextStyle(color: Colors.orange),
+                  ),
                 ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
@@ -129,10 +251,15 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (action == 'confirm' && user != null) {
       try {
         await _pickupManager.confirmPickupPoint(
-            pointId: pickupId, userId: user);
+          pointId: pickupId,
+          userId: user,
+        );
         if (!mounted) return;
-        MapUtils.showSnackBar(context, '✅ تم تأكيد هذه النقطة للمراجعة.',
-            isError: false);
+        MapUtils.showSnackBar(
+          context,
+          '✅ تم تأكيد هذه النقطة للمراجعة.',
+          isError: false,
+        );
       } catch (e) {
         if (!mounted) return;
         MapUtils.showSnackBar(context, '❌ فشل تأكيد النقطة.', isError: true);
@@ -150,16 +277,19 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             controller: controller,
             maxLines: 3,
             decoration: const InputDecoration(
-                hintText: 'اكتب ما تحتاجه من تعديل أو ملاحظة'),
+              hintText: 'اكتب ما تحتاجه من تعديل أو ملاحظة',
+            ),
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('إلغاء')),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
             ElevatedButton(
-                onPressed: () =>
-                    Navigator.pop(dialogContext, controller.text.trim()),
-                child: const Text('إرسال')),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('إرسال'),
+            ),
           ],
         ),
       );
@@ -174,12 +304,18 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           },
         );
         if (!mounted) return;
-        MapUtils.showSnackBar(context, '📝 تم إرسال اقتراح التعديل للمراجعة.',
-            isError: false);
+        MapUtils.showSnackBar(
+          context,
+          '📝 تم إرسال اقتراح التعديل للمراجعة.',
+          isError: false,
+        );
       } catch (e) {
         if (!mounted) return;
-        MapUtils.showSnackBar(context, '❌ فشل إرسال اقتراح التعديل.',
-            isError: true);
+        MapUtils.showSnackBar(
+          context,
+          '❌ فشل إرسال اقتراح التعديل.',
+          isError: true,
+        );
       }
     }
   }
@@ -192,9 +328,11 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final userId = authProvider.userId;
     final userData = authProvider.userData;
     if (userId == null || userData == null) {
-      if (!mounted) return;
-      MapUtils.showSnackBar(context, '⚠️ يرجى تسجيل الدخول أولاً.',
-          isError: true);
+      MapUtils.showSnackBar(
+        context,
+        '⚠️ يرجى تسجيل الدخول أولاً.',
+        isError: true,
+      );
       _isAddingPickupPoint = false;
       return;
     }
@@ -216,8 +354,13 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         pointType: result.pointType,
       );
       if (!mounted) return;
-      MapUtils.showSnackBar(context, '✅ تم إرسال النقطة للمراجعة.',
-          isError: false);
+      MapUtils.showSnackBar(
+        context,
+        userData.userType == 'admin'
+            ? '✅ تم إضافة النقطة وظهرت على الخرائط.'
+            : '✅ تم إرسال النقطة للمراجعة.',
+        isError: false,
+      );
     } catch (e) {
       if (!mounted) return;
       MapUtils.log('❌ فشل إضافة النقطة: $e', tag: 'PickupMixin');
@@ -231,5 +374,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _pickupPointsSubscription?.cancel();
     _pickupAnnotations.clear();
     _pickupAnnotationToPointId.clear();
+    _markerImageCache.clear();
   }
 }
