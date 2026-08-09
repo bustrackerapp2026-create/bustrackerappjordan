@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
@@ -10,13 +11,16 @@ import '../../../../core/pickup/pickup_point_dialog.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../services/location_service.dart';
 import '../../../../map/widgets/search_bar_widget.dart';
+import '../admin_dashboard.dart';
 import 'mixins/driver_manager_mixin.dart';
 import 'mixins/passenger_manager_mixin.dart';
 import 'mixins/route_manager_mixin.dart';
 import 'mixins/pickup_point_mixin.dart';
 
 class AdminMapTab extends StatefulWidget {
-  const AdminMapTab({super.key});
+  final AdminMapFocusRequest? focusRequest;
+
+  const AdminMapTab({super.key, this.focusRequest});
 
   @override
   State<AdminMapTab> createState() => _AdminMapTabState();
@@ -34,25 +38,57 @@ class _AdminMapTabState extends State<AdminMapTab>
   bool _isAddingPickupPoint = false;
   bool _isLoadingLocation = false;
   StreamSubscription<Position>? _locationSubscription;
+  int? _lastHandledFocusToken;
 
   @override
   void initState() {
     super.initState();
   }
 
-  /// بعد جاهزية الخريطة نبدأ الاستماع — يضمن ظهور النقاط فوراً
+  @override
+  void didUpdateWidget(covariant AdminMapTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _tryApplyFocusRequest();
+  }
+
   @override
   void onMapCreated(MapboxMap map) {
     super.onMapCreated(map);
-    // تأخير بسيط حتى يكتمل initAnnotationManager داخل super
     Future<void>.delayed(const Duration(milliseconds: 300), () {
       if (!mounted) return;
       listenToActiveDrivers();
       listenToActivePassengers();
       listenToRoutes();
       listenToPickupPoints();
+      _tryApplyFocusRequest();
       MapUtils.log('✅ تم تهيئة جميع ميزات خريطة الأدمن', tag: 'AdminMap');
     });
+  }
+
+  void _tryApplyFocusRequest() {
+    final focus = widget.focusRequest;
+    if (focus == null) return;
+    if (_lastHandledFocusToken == focus.token) return;
+    if (mapboxMap == null) return;
+
+    _lastHandledFocusToken = focus.token;
+
+    mapboxMap?.setCamera(
+      CameraOptions(
+        center: Point(
+          coordinates: Position(focus.longitude, focus.latitude),
+        ),
+        zoom: 16.5,
+        pitch: 45.0,
+      ),
+    );
+
+    if (mounted) {
+      MapUtils.showSnackBar(
+        context,
+        '📍 تم التوجيه إلى: ${focus.pointName}',
+      );
+    }
   }
 
   @override
@@ -77,7 +113,6 @@ class _AdminMapTabState extends State<AdminMapTab>
 
     final selectedPickupId = _findPickupIdByAnnotation(annotation);
     if (selectedPickupId != null) {
-      handlePickupTap(selectedPickupId);
       _showPickupActionsSheet(selectedPickupId);
       return;
     }
@@ -113,6 +148,38 @@ class _AdminMapTabState extends State<AdminMapTab>
       '🔄 جاري تحميل بيانات السائق (ID: $driverId)...',
       duration: const Duration(seconds: 2),
     );
+  }
+
+  String _userTypeLabel(String type) {
+    switch (type) {
+      case 'driver':
+        return 'سائق';
+      case 'passenger':
+        return 'راكب';
+      case 'admin':
+        return 'أدمن';
+      case 'service':
+        return 'سرفيس';
+      case 'bus_company':
+        return 'شركة باصات';
+      default:
+        return type;
+    }
+  }
+
+  Future<String> _loadAdderName(String userId) async {
+    if (userId.isEmpty) return 'غير معروف';
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+      final name = doc.data()?['fullName'] as String?;
+      if (name != null && name.trim().isNotEmpty) return name.trim();
+      return 'بدون اسم';
+    } catch (_) {
+      return 'تعذر جلب الاسم';
+    }
   }
 
   void _startAddPickupPoint() {
@@ -261,11 +328,6 @@ class _AdminMapTabState extends State<AdminMapTab>
     }
   }
 
-  @override
-  void handlePickupTap(String pickupId) {
-    // يُستدعى أيضاً من handleAnnotationTap لفتح ورقة الإجراءات
-  }
-
   Future<void> _showPickupActionsSheet(String pickupId) async {
     if (!mounted) return;
 
@@ -273,47 +335,108 @@ class _AdminMapTabState extends State<AdminMapTab>
     if (!mounted) return;
     if (point == null) return;
 
+    final adderNameFuture = _loadAdderName(point.addedBy);
+
     final action = await showModalBottomSheet<String>(
       context: context,
-      isScrollControlled: false,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  point.name,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+        return FutureBuilder<String>(
+          future: adderNameFuture,
+          builder: (context, adderSnap) {
+            final adderName = adderSnap.data ?? 'جاري التحميل...';
+            final count = point.confirmationCount;
+            final confirmLabel = count == 0
+                ? 'لم يؤكدها أحد بعد'
+                : count == 1
+                    ? 'أكدها شخص واحد'
+                    : 'أكدها $count أشخاص';
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      point.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      point.pointType == 'passenger'
+                          ? '🚶 تجمع ركاب'
+                          : '🚌 تجمع باصات',
+                      style: const TextStyle(color: Colors.grey, fontSize: 14),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.green.shade100),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.verified_user,
+                              color: Colors.green.shade700),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              confirmLabel,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: Colors.green.shade900,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '$count',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.person_outline),
+                      title: const Text('أضافها'),
+                      subtitle: Text(
+                        '$adderName · ${_userTypeLabel(point.addedByUserType)}',
+                      ),
+                    ),
+                    const Divider(height: 20),
+                    ListTile(
+                      leading: const Icon(Icons.edit_rounded,
+                          color: AppTheme.primaryColor),
+                      title: const Text('تعديل النقطة'),
+                      onTap: () => Navigator.pop(sheetContext, 'edit'),
+                    ),
+                    ListTile(
+                      leading:
+                          const Icon(Icons.delete_rounded, color: Colors.red),
+                      title: const Text('حذف النقطة'),
+                      onTap: () => Navigator.pop(sheetContext, 'delete'),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  point.pointType == 'passenger' ? '🚶 تجمع ركاب' : '🚌 تجمع باصات',
-                  style: const TextStyle(color: Colors.grey, fontSize: 14),
-                ),
-                const SizedBox(height: 16),
-                ListTile(
-                  leading: const Icon(Icons.edit_rounded,
-                      color: AppTheme.primaryColor),
-                  title: const Text('تعديل النقطة'),
-                  onTap: () => Navigator.pop(sheetContext, 'edit'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.delete_rounded, color: Colors.red),
-                  title: const Text('حذف النقطة'),
-                  onTap: () => Navigator.pop(sheetContext, 'delete'),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
