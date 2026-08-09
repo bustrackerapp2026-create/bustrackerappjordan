@@ -52,7 +52,7 @@ class PickupMarkerHelper {
       // مساحة كافية للأيقونة + فقاعة الاسم
       const double width = 140.0;
       const double height = 120.0;
-      final Offset pinCenter = const Offset(width / 2, 42);
+      const Offset pinCenter = Offset(width / 2, 42);
 
       canvas.drawColor(Colors.transparent, BlendMode.clear);
 
@@ -151,9 +151,8 @@ class PickupMarkerHelper {
       );
 
       // فقاعة الاسم
-      final displayName = safeName.length > 16
-          ? '${safeName.substring(0, 15)}…'
-          : safeName;
+      final displayName =
+          safeName.length > 16 ? '${safeName.substring(0, 15)}…' : safeName;
 
       final namePainter = TextPainter(
         text: TextSpan(
@@ -172,7 +171,7 @@ class PickupMarkerHelper {
       namePainter.layout(maxWidth: width - 20);
 
       final bubbleWidth = (namePainter.width + 20).clamp(48.0, width - 8);
-      final bubbleHeight = 26.0;
+      const bubbleHeight = 26.0;
       final bubbleLeft = (width - bubbleWidth) / 2;
       final bubbleTop = height - bubbleHeight - 4;
 
