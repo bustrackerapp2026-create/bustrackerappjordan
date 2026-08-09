@@ -4,6 +4,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import '../../core/theme/app_theme.dart';
 import '../../map/utils/map_helpers.dart';
 import 'map_constants.dart';
+import 'map_layer_controller.dart';
 import 'map_utils.dart';
 
 mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
@@ -17,6 +18,9 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   String currentMapStyle = MapboxStyles.MAPBOX_STREETS;
   bool isMapReady = false;
 
+  /// عند true يتم تجاهل نقر المعالم (مثلاً أثناء إضافة نقطة تجمع)
+  bool get suppressPoiTap => false;
+
   void onMapCreated(MapboxMap map) {
     mapboxMap = map;
     _initializeMap();
@@ -27,6 +31,8 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     await initPolylineManager();
     applyMapConstraints();
     _setDefaultCamera();
+    // بعد اكتمال الستايل نطبّق الفلاتر
+    await Future<void>.delayed(const Duration(milliseconds: 400));
     await applyLabelLayersFilter();
     if (mounted) setState(() => isMapReady = true);
     MapUtils.log('✅ تم إنشاء الخريطة بنجاح');
@@ -109,7 +115,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
 
   Future<void> applyLabelLayersFilter() async {
     if (mapboxMap == null) return;
-    await MapHelpers.applyLabelLayersFilter(
+    await MapLayerController.applyLabelFilters(
       mapboxMap: mapboxMap!,
       showPlaceLabels: showPlaceLabels,
       showPoiLabels: showPoiLabels,
@@ -122,17 +128,22 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     try {
       if (mounted) setState(() => currentMapStyle = styleUri);
       await mapboxMap?.loadStyleURI(styleUri);
+      // انتظار تحميل طبقات الستايل الجديد
+      await Future<void>.delayed(const Duration(milliseconds: 500));
       await initAnnotationManager();
       await initPolylineManager();
       await applyLabelLayersFilter();
       applyMapConstraints();
+      onStyleChanged();
       MapUtils.log('✅ تم تغيير ستايل الخريطة إلى: $styleUri');
     } catch (e) {
       MapUtils.log('⚠️ خطأ في تغيير الستايل: $e');
     }
   }
 
-  // ✅ دالة hexToColor (هذه كانت مفقودة)
+  /// تُستدعى بعد تغيير الستايل لإعادة رسم بيانات التطبيق (مسارات...)
+  void onStyleChanged() {}
+
   Color hexToColor(String hex) {
     try {
       final hexCode = hex.replaceAll('#', '');
@@ -149,6 +160,21 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   }
 
   void handleAnnotationTap(PointAnnotation annotation) {}
+
+  /// نقر عام على الخريطة: معالم Mapbox (مطاعم/مستشفيات...) إن لم تُلغَ
+  Future<void> handleMapBackgroundTap(MapContentGestureContext gesture) async {
+    if (!mounted || mapboxMap == null) return;
+    if (suppressPoiTap) return;
+
+    final poi = await MapLayerController.queryPoiAt(
+      mapboxMap: mapboxMap!,
+      screenCoordinate: gesture.touchPosition,
+    );
+    if (!mounted) return;
+    if (poi == null) return;
+
+    MapLayerController.showPoiSheet(context, poi);
+  }
 
   Widget buildLocationButton({
     required VoidCallback onPressed,
@@ -179,6 +205,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   void showMapSettingsSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -186,7 +213,12 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         return StatefulBuilder(
           builder: (sheetContext, setSheetState) {
             return Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 24,
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -241,35 +273,44 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
                     'تخصيص الأسماء والمعالم:',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'عند الإيقاف تختفي التسميات من الخريطة فوراً',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
                   const SizedBox(height: 8),
                   SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
                     title: const Text('📍 المدن والأماكن الكبرى'),
                     value: showPlaceLabels,
                     activeThumbColor: AppTheme.primaryColor,
-                    onChanged: (val) {
+                    onChanged: (val) async {
                       setState(() => showPlaceLabels = val);
                       setSheetState(() {});
-                      applyLabelLayersFilter();
+                      await applyLabelLayersFilter();
                     },
                   ),
                   SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
                     title: const Text('🏛️ معالم الجذب (POI)'),
+                    subtitle: const Text('مطاعم، مستشفيات، مدارس...'),
                     value: showPoiLabels,
                     activeThumbColor: AppTheme.primaryColor,
-                    onChanged: (val) {
+                    onChanged: (val) async {
                       setState(() => showPoiLabels = val);
                       setSheetState(() {});
-                      applyLabelLayersFilter();
+                      await applyLabelLayersFilter();
                     },
                   ),
                   SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
                     title: const Text('🛣️ أسماء الشوارع'),
                     value: showRoadLabels,
                     activeThumbColor: AppTheme.primaryColor,
-                    onChanged: (val) {
+                    onChanged: (val) async {
                       setState(() => showRoadLabels = val);
                       setSheetState(() {});
-                      applyLabelLayersFilter();
+                      await applyLabelLayersFilter();
                     },
                   ),
                 ],
