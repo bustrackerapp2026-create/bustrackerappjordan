@@ -38,30 +38,31 @@ class _AdminMapTabState extends State<AdminMapTab>
   @override
   void initState() {
     super.initState();
-    _initializeMapFeatures();
   }
 
-  void _initializeMapFeatures() {
-    MapUtils.log('✅ AdminMapTab: بدء تهيئة ميزات الخريطة', tag: 'AdminMap');
-    listenToActiveDrivers();
-    listenToActivePassengers();
-    listenToRoutes();
-    listenToPickupPoints();
-    MapUtils.log('✅ تم تهيئة جميع ميزات الخريطة بنجاح', tag: 'AdminMap');
+  /// بعد جاهزية الخريطة نبدأ الاستماع — يضمن ظهور النقاط فوراً
+  @override
+  void onMapCreated(MapboxMap map) {
+    super.onMapCreated(map);
+    // تأخير بسيط حتى يكتمل initAnnotationManager داخل super
+    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      listenToActiveDrivers();
+      listenToActivePassengers();
+      listenToRoutes();
+      listenToPickupPoints();
+      MapUtils.log('✅ تم تهيئة جميع ميزات خريطة الأدمن', tag: 'AdminMap');
+    });
   }
 
   @override
   void dispose() {
     _locationSubscription?.cancel();
-    _disposeMapFeatures();
-    super.dispose();
-  }
-
-  void _disposeMapFeatures() {
     disposePickupPoints();
     disposeRoutes();
     disposePassengers();
     disposeDrivers();
+    super.dispose();
   }
 
   @override
@@ -77,6 +78,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     final selectedPickupId = _findPickupIdByAnnotation(annotation);
     if (selectedPickupId != null) {
       handlePickupTap(selectedPickupId);
+      _showPickupActionsSheet(selectedPickupId);
       return;
     }
 
@@ -134,8 +136,6 @@ class _AdminMapTabState extends State<AdminMapTab>
     );
   }
 
-  // ─── تحديد الموقع ──────────────────────────────────────────────────
-
   Future<void> _goToMyLocation() async {
     if (mapboxMap == null) return;
     if (!mounted) return;
@@ -144,7 +144,7 @@ class _AdminMapTabState extends State<AdminMapTab>
 
     try {
       final hasPermission = await _locationService.checkAndRequestPermission();
-      if (!mounted) return; // ✅ التحقق بعد await
+      if (!mounted) return;
       if (!hasPermission) {
         MapUtils.showSnackBar(context, '⚠️ يرجى تفعيل الموقع أولاً',
             isError: true);
@@ -152,7 +152,7 @@ class _AdminMapTabState extends State<AdminMapTab>
       }
 
       final position = await _locationService.getCurrentPosition();
-      if (!mounted) return; // ✅ التحقق بعد await
+      if (!mounted) return;
       if (position == null) {
         MapUtils.showSnackBar(context, '⚠️ تعذر الحصول على الموقع الحالي',
             isError: true);
@@ -171,7 +171,7 @@ class _AdminMapTabState extends State<AdminMapTab>
         MapUtils.showSnackBar(context, '📍 تم تحديد موقعك الحالي');
       }
     } catch (e) {
-      if (!mounted) return; // ✅ التحقق قبل استخدام context
+      if (!mounted) return;
       MapUtils.log('❌ خطأ تحديد الموقع: $e', tag: 'AdminMap');
       MapUtils.showSnackBar(context, '❌ تعذر تحديد موقعك', isError: true);
     } finally {
@@ -179,14 +179,12 @@ class _AdminMapTabState extends State<AdminMapTab>
     }
   }
 
-  // ─── البحث عن مكان ──────────────────────────────────────────────────
-
   Future<void> _searchPlace(String query) async {
     if (query.trim().isEmpty) return;
     if (!mounted) return;
 
     final result = await _locationService.searchPlace(query);
-    if (!mounted) return; // ✅ التحقق بعد await
+    if (!mounted) return;
     if (result == null) {
       MapUtils.showSnackBar(context, '⚠️ لم يتم العثور على المكان',
           isError: true);
@@ -205,13 +203,10 @@ class _AdminMapTabState extends State<AdminMapTab>
     }
   }
 
-  // ─── إضافة نقطة تجمع ──────────────────────────────────────────────
-
   void _handleMapTap(Point point) async {
     if (!_isAddingPickupPoint) return;
     if (!mounted) return;
 
-    // ✅ أخذ بيانات المصادقة قبل أي await
     final authProvider = context.read<AuthProvider>();
     final userId = authProvider.userId;
     final userData = authProvider.userData;
@@ -230,7 +225,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     final double lng = point.coordinates.lng.toDouble();
 
     final result = await showPickupPointPickerDialog(context: context);
-    if (!mounted) return; // ✅ التحقق بعد await
+    if (!mounted) return;
 
     if (result == null || result.name.trim().isEmpty) {
       setState(() => _isAddingPickupPoint = false);
@@ -247,14 +242,14 @@ class _AdminMapTabState extends State<AdminMapTab>
         pointType: result.pointType,
       );
 
-      if (!mounted) return; // ✅ التحقق بعد await
+      if (!mounted) return;
 
       MapUtils.showSnackBar(
         context,
-        '✅ تم إضافة النقطة "${result.name.trim()}" بنجاح',
+        '✅ تم إضافة النقطة "${result.name.trim()}" وستظهر فوراً للسائق والراكب',
       );
     } catch (e) {
-      if (!mounted) return; // ✅ التحقق قبل استخدام context
+      if (!mounted) return;
       MapUtils.log('❌ فشل إضافة النقطة: $e', tag: 'AdminMap');
       MapUtils.showSnackBar(
         context,
@@ -266,18 +261,16 @@ class _AdminMapTabState extends State<AdminMapTab>
     }
   }
 
-  // ─── التعامل مع نقاط التجمع (عرض / تعديل / حذف) ────────────────────
-
   @override
   void handlePickupTap(String pickupId) {
-    _showPickupActionsSheet(pickupId);
+    // يُستدعى أيضاً من handleAnnotationTap لفتح ورقة الإجراءات
   }
 
   Future<void> _showPickupActionsSheet(String pickupId) async {
     if (!mounted) return;
 
     final point = await _pickupManager.getPickupPoint(pointId: pickupId);
-    if (!mounted) return; // ✅ التحقق بعد await
+    if (!mounted) return;
     if (point == null) return;
 
     final action = await showModalBottomSheet<String>(
@@ -303,7 +296,7 @@ class _AdminMapTabState extends State<AdminMapTab>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  point.pointType == 'passenger' ? 'تجمع ركاب' : 'تجمع باصات',
+                  point.pointType == 'passenger' ? '🚶 تجمع ركاب' : '🚌 تجمع باصات',
                   style: const TextStyle(color: Colors.grey, fontSize: 14),
                 ),
                 const SizedBox(height: 16),
@@ -325,9 +318,7 @@ class _AdminMapTabState extends State<AdminMapTab>
       },
     );
 
-    if (!mounted) return; // ✅ التحقق بعد await
-
-    // ─── تعديل النقطة ──────────────────────────────────────────────────
+    if (!mounted) return;
 
     if (action == 'edit') {
       final updated = await showPickupPointPickerDialog(
@@ -335,7 +326,7 @@ class _AdminMapTabState extends State<AdminMapTab>
         initialName: point.name,
         initialPointType: point.pointType,
       );
-      if (!mounted) return; // ✅ التحقق بعد await
+      if (!mounted) return;
       if (updated == null || updated.name.trim().isEmpty) return;
 
       try {
@@ -346,16 +337,14 @@ class _AdminMapTabState extends State<AdminMapTab>
             'pointType': updated.pointType,
           },
         );
-        if (!mounted) return; // ✅ التحقق بعد await
+        if (!mounted) return;
         MapUtils.showSnackBar(context, '✅ تم تعديل النقطة');
       } catch (e) {
-        if (!mounted) return; // ✅ التحقق قبل استخدام context
+        if (!mounted) return;
         MapUtils.showSnackBar(context, '❌ فشل تعديل النقطة', isError: true);
       }
       return;
     }
-
-    // ─── حذف النقطة ──────────────────────────────────────────────────
 
     if (action == 'delete') {
       final confirm = await showDialog<bool>(
@@ -377,21 +366,19 @@ class _AdminMapTabState extends State<AdminMapTab>
         ),
       );
 
-      if (!mounted) return; // ✅ التحقق بعد await
+      if (!mounted) return;
       if (confirm != true) return;
 
       try {
         await _pickupManager.deletePickupPoint(pointId: pickupId);
-        if (!mounted) return; // ✅ التحقق بعد await
+        if (!mounted) return;
         MapUtils.showSnackBar(context, '🗑️ تم حذف النقطة');
       } catch (e) {
-        if (!mounted) return; // ✅ التحقق قبل استخدام context
+        if (!mounted) return;
         MapUtils.showSnackBar(context, '❌ فشل حذف النقطة', isError: true);
       }
     }
   }
-
-  // ─── واجهة المستخدم ──────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
