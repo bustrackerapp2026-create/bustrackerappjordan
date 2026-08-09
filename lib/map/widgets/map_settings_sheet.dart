@@ -16,6 +16,7 @@ void showMapSettingsSheet({
 }) {
   showModalBottomSheet(
     context: context,
+    isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
@@ -23,7 +24,12 @@ void showMapSettingsSheet({
       return StatefulBuilder(
         builder: (BuildContext context, StateSetter setSheetState) {
           return Padding(
-            padding: const EdgeInsets.all(24.0),
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -33,8 +39,7 @@ void showMapSettingsSheet({
                   children: [
                     const Text(
                       '⚙️ إعدادات طبقات الخريطة',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close),
@@ -86,31 +91,41 @@ void showMapSettingsSheet({
                 const SizedBox(height: 24),
                 const Text('تخصيص الأسماء والمعالم:',
                     style: TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
+                Text(
+                  'عند الإيقاف تختفي التسميات من الخريطة فوراً',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
                 SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
                   title: const Text('📍 المدن والأماكن الكبرى'),
                   value: showPlaceLabels,
                   activeThumbColor: AppTheme.primaryColor,
                   onChanged: (val) {
                     onTogglePlaceLabels(val);
+                    setSheetState(() {});
                     onApplyFilters();
                   },
                 ),
                 SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
                   title: const Text('🏛️ معالم الجذب (POI)'),
+                  subtitle: const Text('مطاعم، مستشفيات، مدارس...'),
                   value: showPoiLabels,
                   activeThumbColor: AppTheme.primaryColor,
                   onChanged: (val) {
                     onTogglePoiLabels(val);
+                    setSheetState(() {});
                     onApplyFilters();
                   },
                 ),
                 SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
                   title: const Text('🛣️ أسماء الشوارع'),
                   value: showRoadLabels,
                   activeThumbColor: AppTheme.primaryColor,
                   onChanged: (val) {
                     onToggleRoadLabels(val);
+                    setSheetState(() {});
                     onApplyFilters();
                   },
                 ),
@@ -150,19 +165,16 @@ Widget _buildStyleOption({
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              color: isSelected ? AppTheme.primaryColor : Colors.grey.shade600,
-              size: 22,
-            ),
+            Icon(icon,
+                color: isSelected ? AppTheme.primaryColor : Colors.grey.shade600,
+                size: 22),
             const SizedBox(height: 4),
             Text(
               title,
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
-                color:
-                    isSelected ? AppTheme.primaryColor : Colors.grey.shade700,
+                color: isSelected ? AppTheme.primaryColor : Colors.grey.shade700,
               ),
             ),
           ],
