@@ -144,33 +144,33 @@ class _DriverMapTabState extends State<DriverMapTab>
       );
       await _updateUserMarker(position.latitude, position.longitude, bearing);
 
-      if (mounted) {
-        context.read<DriverProvider>().updatePosition(position);
-      }
+      if (!mounted) return;
+      context.read<DriverProvider>().updatePosition(position);
 
       _locationSubscription = _locationService
           .getPositionStream(distanceFilter: 5)
           .listen((geo.Position pos) {
-        if (mounted) {
-          double newBearing = pos.heading;
-          if (newBearing == 0.0 && pos.speed > 0) newBearing = _currentBearing;
-          setState(() => _currentBearing = newBearing);
+        if (!mounted) return;
 
-          mapboxMap?.setCamera(
-            CameraOptions(
-              center: Point(coordinates: Position(pos.longitude, pos.latitude)),
-              zoom: 15.0,
-              bearing: newBearing,
-              pitch: 45.0,
-            ),
-          );
-          _updateUserMarker(pos.latitude, pos.longitude, newBearing);
-          context.read<DriverProvider>().updatePosition(pos);
-        }
+        double newBearing = pos.heading;
+        if (newBearing == 0.0 && pos.speed > 0) newBearing = _currentBearing;
+        setState(() => _currentBearing = newBearing);
+
+        mapboxMap?.setCamera(
+          CameraOptions(
+            center: Point(coordinates: Position(pos.longitude, pos.latitude)),
+            zoom: 15.0,
+            bearing: newBearing,
+            pitch: 45.0,
+          ),
+        );
+        _updateUserMarker(pos.latitude, pos.longitude, newBearing);
+        context.read<DriverProvider>().updatePosition(pos);
       }, onError: (error) {
         MapUtils.log('⚠️ خطأ في تحديث الموقع: $error', tag: 'DriverMap');
       });
 
+      if (!mounted) return;
       MapUtils.showSnackBar(context, '📍 تم تحديد موقعك.', isError: false);
     } catch (e) {
       if (!mounted) return;
@@ -203,6 +203,7 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   // ─── البحث عن مكان ───────────────────────────────────────────────────
   Future<void> _searchPlace(String query) async {
+    if (!mounted) return;
     await MapUtils.searchPlace(
         context, mapboxMap, query, _currentBearing, _locationService);
   }

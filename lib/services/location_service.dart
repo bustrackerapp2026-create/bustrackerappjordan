@@ -118,11 +118,9 @@ class LocationService {
       // ─── المرحلة 2: Medium Accuracy (سريعة وموثوقة) ───
       try {
         final medium = await Geolocator.getCurrentPosition(
-          locationSettings: LocationSettings(
+          locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.medium,
-            timeLimit: const Duration(seconds: 8),
-            // على أندرويد: استخدام LocationManager التقليدي أحياناً أكثر استقراراً
-            forceAndroidLocationManager: false,
+            timeLimit: Duration(seconds: 8),
           ),
         );
         bestPosition = medium;
@@ -217,7 +215,8 @@ class LocationService {
     final client = HttpClient();
     try {
       final request = await client.getUrl(uri);
-      final response = await request.close().timeout(const Duration(seconds: 10));
+      final response =
+          await request.close().timeout(const Duration(seconds: 10));
       if (response.statusCode != HttpStatus.ok) return null;
 
       final body = await response.transform(utf8.decoder).join();
