@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/pickup_point_model.dart';
@@ -5,7 +6,15 @@ import '../../../services/pickup_point_service.dart';
 import '../../../services/pickup_point_service_exception.dart';
 
 class PendingPointsTab extends StatefulWidget {
-  const PendingPointsTab({super.key});
+  /// يُستدعى لفتح خريطة الأدمن عند موقع النقطة
+  final void Function({
+    required double latitude,
+    required double longitude,
+    required String pointName,
+    String? pointId,
+  })? onShowOnMap;
+
+  const PendingPointsTab({super.key, this.onShowOnMap});
 
   @override
   State<PendingPointsTab> createState() => _PendingPointsTabState();
@@ -25,6 +34,196 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
         backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
         behavior: SnackBarBehavior.floating,
       ),
+    );
+  }
+
+  String _userTypeLabel(String type) {
+    switch (type) {
+      case 'driver':
+        return 'سائق';
+      case 'passenger':
+        return 'راكب';
+      case 'admin':
+        return 'أدمن';
+      case 'service':
+        return 'سرفيس';
+      case 'bus_company':
+        return 'شركة باصات';
+      default:
+        return type;
+    }
+  }
+
+  Future<Map<String, String>> _loadAdderInfo(String userId) async {
+    if (userId.isEmpty) {
+      return {'name': 'غير معروف', 'email': '', 'phone': ''};
+    }
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+      if (!doc.exists || doc.data() == null) {
+        return {'name': 'مستخدم محذوف', 'email': '', 'phone': ''};
+      }
+      final data = doc.data()!;
+      return {
+        'name': (data['fullName'] as String?)?.trim().isNotEmpty == true
+            ? data['fullName'] as String
+            : 'بدون اسم',
+        'email': (data['email'] as String?) ?? '',
+        'phone': (data['phoneNumber'] as String?) ?? '',
+      };
+    } catch (_) {
+      return {'name': 'تعذر الجلب', 'email': '', 'phone': ''};
+    }
+  }
+
+  Future<void> _showPointDetails(PickupPointModel point) async {
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return FutureBuilder<Map<String, String>>(
+          future: _loadAdderInfo(point.addedBy),
+          builder: (context, snapshot) {
+            final adder = snapshot.data;
+            final loading = snapshot.connectionState == ConnectionState.waiting;
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      point.name,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      point.pointType == 'passenger'
+                          ? '🚶 تجمع ركاب · قيد المراجعة'
+                          : '🚌 تجمع باصات · قيد المراجعة',
+                      style: TextStyle(
+                        color: Colors.orange.shade800,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'من أضاف النقطة',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (loading)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else ...[
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          backgroundColor: AppTheme.primaryColor
+                              .withValues(alpha: 0.15),
+                          child: Icon(
+                            point.addedByUserType == 'driver'
+                                ? Icons.directions_bus
+                                : Icons.person,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                        title: Text(adder?['name'] ?? 'غير معروف'),
+                        subtitle: Text(
+                          [
+                            _userTypeLabel(point.addedByUserType),
+                            if ((adder?['phone'] ?? '').isNotEmpty)
+                              adder!['phone'],
+                            if ((adder?['email'] ?? '').isNotEmpty)
+                              adder!['email'],
+                          ].join(' · '),
+                        ),
+                      ),
+                    ],
+                    const Divider(height: 24),
+                    Row(
+                      children: [
+                        const Icon(Icons.thumb_up_alt_outlined, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'أكد صحتها ${point.confirmationCount} شخص',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'الإحداثيات: ${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)}',
+                      style: const TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                    if (point.suggestedEdit.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'اقتراح تعديل: ${point.suggestedEdit}',
+                        style: const TextStyle(color: Colors.orange),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(sheetContext);
+                          widget.onShowOnMap?.call(
+                            latitude: point.latitude,
+                            longitude: point.longitude,
+                            pointName: point.name,
+                            pointId: point.id,
+                          );
+                        },
+                        icon: const Icon(Icons.map_outlined),
+                        label: const Text('عرض الموقع على الخريطة'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -66,7 +265,6 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
     if (_processingIds.contains(point.id)) return;
     if (!mounted) return;
 
-    // الحوار يملك الـ controller ويتخلص منه بأمان داخل State الخاص به
     final result = await showDialog<String>(
       context: context,
       builder: (dialogContext) => _EditPointNameDialog(
@@ -219,144 +417,151 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const CircleAvatar(
-                            backgroundColor: Colors.orange,
-                            child:
-                                Icon(Icons.location_on, color: Colors.white),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  point.name,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'الموقع: ${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)}',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                                if (point.reviewNote.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4.0),
-                                    child: Text(
-                                      'ملاحظات المراجع: ${point.reviewNote}',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.orange,
-                                      ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => _showPointDetails(point),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const CircleAvatar(
+                              backgroundColor: Colors.orange,
+                              child: Icon(Icons.location_on,
+                                  color: Colors.white),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    point.name,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Icon(Icons.person_outline,
-                              size: 16, color: Colors.grey),
-                          const SizedBox(width: 4),
-                          Text(
-                            'أضافها: ${point.addedByUserType == 'driver' ? 'سائق' : 'راكب'}',
-                            style: const TextStyle(
-                                fontSize: 13, color: Colors.grey),
-                          ),
-                          const SizedBox(width: 16),
-                          const Icon(Icons.thumb_up,
-                              size: 16, color: Colors.grey),
-                          const SizedBox(width: 4),
-                          Text(
-                            'التأكيدات: ${point.confirmationCount}',
-                            style: const TextStyle(
-                                fontSize: 13, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 24),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: isProcessing
-                                  ? null
-                                  : () => _approvePoint(point.id, point.name),
-                              icon: isProcessing
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(Icons.check),
-                              label: Text(isProcessing ? 'جاري...' : 'موافقة'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primaryColor,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'الموقع: ${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)}',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'اضغط لعرض من أضافها والموقع على الخريطة',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.blue.shade700,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: isProcessing
-                                  ? null
-                                  : () =>
-                                      _showRejectDialog(point.id, point.name),
-                              icon: isProcessing
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(Icons.close),
-                              label: Text(isProcessing ? 'جاري...' : 'رفض'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed:
-                              isProcessing ? null : () => _editPoint(point),
-                          icon: const Icon(Icons.edit_note_outlined),
-                          label: const Text('تعديل وإرسالها للمراجعة مرة أخرى'),
+                            Icon(Icons.chevron_left,
+                                color: Colors.grey.shade400),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.person_outline,
+                                size: 16, color: Colors.grey),
+                            const SizedBox(width: 4),
+                            Text(
+                              'أضافها: ${_userTypeLabel(point.addedByUserType)}',
+                              style: const TextStyle(
+                                  fontSize: 13, color: Colors.grey),
+                            ),
+                            const SizedBox(width: 16),
+                            const Icon(Icons.thumb_up,
+                                size: 16, color: Colors.grey),
+                            const SizedBox(width: 4),
+                            Text(
+                              'التأكيدات: ${point.confirmationCount}',
+                              style: const TextStyle(
+                                  fontSize: 13, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 24),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: isProcessing
+                                    ? null
+                                    : () =>
+                                        _approvePoint(point.id, point.name),
+                                icon: isProcessing
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(Icons.check),
+                                label:
+                                    Text(isProcessing ? 'جاري...' : 'موافقة'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryColor,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: isProcessing
+                                    ? null
+                                    : () => _showRejectDialog(
+                                        point.id, point.name),
+                                icon: isProcessing
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(Icons.close),
+                                label: Text(isProcessing ? 'جاري...' : 'رفض'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: isProcessing
+                                ? null
+                                : () => _editPoint(point),
+                            icon: const Icon(Icons.edit_note_outlined),
+                            label:
+                                const Text('تعديل وإرسالها للمراجعة مرة أخرى'),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -368,7 +573,6 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
   }
 }
 
-/// حوار تعديل اسم النقطة — يملك TextEditingController ويتخلص منه في dispose فقط
 class _EditPointNameDialog extends StatefulWidget {
   final String initialName;
 

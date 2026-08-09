@@ -4,9 +4,26 @@ import 'package:provider/provider.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import 'tabs/verify_drivers_tab.dart';
 import 'tabs/pending_points_tab.dart';
-import 'tabs/admin_map_tab.dart'; // ✅ استيراد تبويب الخريطة
-import 'tabs/settings_tab.dart'; // ✅ استيراد تبويب الإعدادات
+import 'tabs/admin_map_tab.dart';
+import 'tabs/settings_tab.dart';
 import '../widgets/admin_bottom_nav_bar.dart';
+
+/// طلب انتقال الكاميرا على خريطة الأدمن إلى نقطة معينة
+class AdminMapFocusRequest {
+  final double latitude;
+  final double longitude;
+  final String pointName;
+  final String? pointId;
+  final int token; // لتكرار نفس الإحداثيات يُحدّث الواجهة
+
+  const AdminMapFocusRequest({
+    required this.latitude,
+    required this.longitude,
+    required this.pointName,
+    this.pointId,
+    required this.token,
+  });
+}
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -17,14 +34,27 @@ class AdminDashboard extends StatefulWidget {
 
 class _AdminDashboardState extends State<AdminDashboard> {
   int _currentIndex = 0;
+  AdminMapFocusRequest? _mapFocus;
+  int _focusToken = 0;
 
-  // ✅ التبويبات الأربعة (التحقق، النقاط، الخريطة، الإعدادات)
-  final List<Widget> _tabs = const [
-    VerifyDriversTab(), // 0: التحقق
-    PendingPointsTab(), // 1: النقاط
-    AdminMapTab(), // 2: الخريطة (جديد)
-    SettingsTab(), // 3: الإعدادات (جديد)
-  ];
+  void _showPointOnMap({
+    required double latitude,
+    required double longitude,
+    required String pointName,
+    String? pointId,
+  }) {
+    setState(() {
+      _focusToken++;
+      _mapFocus = AdminMapFocusRequest(
+        latitude: latitude,
+        longitude: longitude,
+        pointName: pointName,
+        pointId: pointId,
+        token: _focusToken,
+      );
+      _currentIndex = 2; // تبويب الخريطة
+    });
+  }
 
   void _showLogoutDialog(BuildContext context, AuthProvider authProvider) {
     showDialog(
@@ -81,6 +111,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
 
+    final tabs = [
+      const VerifyDriversTab(),
+      PendingPointsTab(onShowOnMap: _showPointOnMap),
+      AdminMapTab(focusRequest: _mapFocus),
+      const SettingsTab(),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -106,7 +143,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
       body: IndexedStack(
         index: _currentIndex,
-        children: _tabs,
+        children: tabs,
       ),
       bottomNavigationBar: AdminBottomNavBar(
         currentIndex: _currentIndex,
