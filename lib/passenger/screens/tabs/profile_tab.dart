@@ -36,15 +36,18 @@ class _ProfileTabState extends State<ProfileTab> {
   @override
   void initState() {
     super.initState();
-    _loadPrefs();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPrefs());
   }
 
   String _photoKeyFor(String? uid) => '$_kPhotoPathPrefix${uid ?? 'guest'}';
 
   Future<void> _loadPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final uid = context.read<AuthProvider>().userId;
     if (!mounted) return;
+    final uid = context.read<AuthProvider>().userId;
+
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+
     setState(() {
       _notificationsEnabled = prefs.getBool(_kNotifications) ?? true;
       _shareLocationEnabled = prefs.getBool(_kShareLocation) ?? false;
@@ -64,11 +67,13 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 
   Future<void> _setShareLocation(bool value) async {
+    if (!mounted) return;
+    final uid = context.read<AuthProvider>().userId;
+
     setState(() => _shareLocationEnabled = value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kShareLocation, value);
 
-    final uid = context.read<AuthProvider>().userId;
     if (uid != null) {
       try {
         await FirestoreService().updateUserData(uid, {
@@ -91,88 +96,21 @@ class _ProfileTabState extends State<ProfileTab> {
     );
   }
 
-  Future<void> _pickProfilePhoto() async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            const Text(
-              'صورة الملف الشخصي',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined,
-                  color: AppTheme.primaryColor),
-              title: const Text('اختيار من المعرض'),
-              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined,
-                  color: AppTheme.primaryColor),
-              title: const Text('التقاط صورة'),
-              onTap: () => Navigator.pop(ctx, ImageSource.camera),
-            ),
-            if (_localPhotoPath != null)
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('إزالة الصورة'),
-                onTap: () => Navigator.pop(ctx, null),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-
-    // إزالة الصورة
-    if (source == null && _localPhotoPath != null) {
-      // إذا أغلق المستخدم الورقة بدون اختيار — لا نحذف
-      // نميّز الحذف عبر قائمة «إزالة» التي ترجع null مع وجود صورة:
-      // نعيد فتح منطق الحذف فقط عند الضغط على إزالة (source null من ListTile).
-      // لتبسيط: إن أُغلقت الورقة بدون اختيار لا نفعل شيئاً.
-      // لذلك نستخدم قيمة خاصة عبر showModal — هنا نتحقق عبر dialog منفصل.
-      return;
-    }
-
-    if (source == null) return;
-
-    try {
-      final xfile = await _picker.pickImage(
-        source: source,
-        maxWidth: 800,
-        maxHeight: 800,
-        imageQuality: 85,
-      );
-      if (xfile == null || !mounted) return;
-
-      final uid = context.read<AuthProvider>().userId;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_photoKeyFor(uid), xfile.path);
-
-      if (!mounted) return;
-      setState(() => _localPhotoPath = xfile.path);
-      _snack('✅ تم تحديث الصورة الشخصية');
-    } catch (e) {
-      _snack('❌ تعذر اختيار الصورة');
-    }
-  }
-
   Future<void> _removeProfilePhoto() async {
+    if (!mounted) return;
     final uid = context.read<AuthProvider>().userId;
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_photoKeyFor(uid));
+
     if (!mounted) return;
     setState(() => _localPhotoPath = null);
     _snack('تم إزالة الصورة الشخصية');
   }
 
   Future<void> _showPhotoOptions() async {
+    if (!mounted) return;
+
     await showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -191,27 +129,27 @@ class _ProfileTabState extends State<ProfileTab> {
               leading: const Icon(Icons.photo_library_outlined,
                   color: AppTheme.primaryColor),
               title: const Text('اختيار من المعرض'),
-              onTap: () async {
+              onTap: () {
                 Navigator.pop(ctx);
-                await _pickFrom(ImageSource.gallery);
+                _pickFrom(ImageSource.gallery);
               },
             ),
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined,
                   color: AppTheme.primaryColor),
               title: const Text('التقاط صورة'),
-              onTap: () async {
+              onTap: () {
                 Navigator.pop(ctx);
-                await _pickFrom(ImageSource.camera);
+                _pickFrom(ImageSource.camera);
               },
             ),
             if (_localPhotoPath != null)
               ListTile(
                 leading: const Icon(Icons.delete_outline, color: Colors.red),
                 title: const Text('إزالة الصورة'),
-                onTap: () async {
+                onTap: () {
                   Navigator.pop(ctx);
-                  await _removeProfilePhoto();
+                  _removeProfilePhoto();
                 },
               ),
             const SizedBox(height: 8),
@@ -239,11 +177,13 @@ class _ProfileTabState extends State<ProfileTab> {
       setState(() => _localPhotoPath = xfile.path);
       _snack('✅ تم تحديث الصورة الشخصية');
     } catch (e) {
+      if (!mounted) return;
       _snack('❌ تعذر اختيار الصورة. تأكد من صلاحيات الكاميرا/المعرض.');
     }
   }
 
   Future<void> _logout() async {
+    if (!mounted) return;
     final auth = context.read<AuthProvider>();
     final messenger = ScaffoldMessenger.of(context);
 
@@ -273,21 +213,22 @@ class _ProfileTabState extends State<ProfileTab> {
       ),
     );
 
-    if (confirm == true) {
-      try {
-        await auth.signOut();
-      } catch (e) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('حدث خطأ أثناء تسجيل الخروج: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    if (confirm != true) return;
+
+    try {
+      await auth.signOut();
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('حدث خطأ أثناء تسجيل الخروج: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
   Future<void> _editProfile() async {
+    if (!mounted) return;
     final auth = context.read<AuthProvider>();
     final user = auth.userData;
     if (user == null) return;
@@ -333,12 +274,11 @@ class _ProfileTabState extends State<ProfileTab> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 20),
-                  // صورة داخل ورقة التعديل
                   Center(
                     child: GestureDetector(
-                      onTap: () async {
+                      onTap: () {
                         Navigator.pop(ctx, false);
-                        await _showPhotoOptions();
+                        _showPhotoOptions();
                       },
                       child: Stack(
                         alignment: Alignment.bottomLeft,
@@ -462,21 +402,23 @@ class _ProfileTabState extends State<ProfileTab> {
         'email': email,
       };
 
-      // تحديث البريد في Firebase Auth إن تغيّر
       final fbUser = firebase_auth.FirebaseAuth.instance.currentUser;
-      if (fbUser != null &&
-          email.toLowerCase() != (user.email).toLowerCase()) {
+      final emailChanged =
+          email.toLowerCase() != user.email.toLowerCase();
+
+      if (fbUser != null && emailChanged) {
         try {
           await fbUser.verifyBeforeUpdateEmail(email);
+          if (!mounted) return;
           _snack(
             '📧 تم إرسال رابط تأكيد للبريد الجديد. أكّده ثم سجّل الدخول مجدداً.',
           );
         } on firebase_auth.FirebaseAuthException catch (e) {
+          if (!mounted) return;
           if (e.code == 'requires-recent-login') {
             _snack(
               '🔒 لتغيير البريد، سجّل الخروج ثم الدخول مجدداً وحاول مرة أخرى.',
             );
-            // نحفظ الاسم والهاتف فقط
             updates.remove('email');
           } else if (e.code == 'email-already-in-use') {
             _snack('⚠️ هذا البريد مستخدم بالفعل');
@@ -490,13 +432,12 @@ class _ProfileTabState extends State<ProfileTab> {
 
       await FirestoreService().updateUserData(user.uid, updates);
       await auth.refreshUserData();
-      if (mounted && updates.containsKey('email') == false ||
-          email.toLowerCase() == user.email.toLowerCase()) {
+
+      if (!mounted) return;
+
+      final emailStillInUpdates = updates.containsKey('email');
+      if (!emailChanged || !emailStillInUpdates) {
         _snack('✅ تم تحديث الملف الشخصي');
-      } else if (mounted && updates.containsKey('email')) {
-        // تم إرسال التحقق مسبقاً
-      } else if (mounted) {
-        _snack('✅ تم تحديث البيانات');
       }
     } catch (e) {
       if (mounted) _snack('❌ فشل التحديث');
@@ -506,6 +447,7 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 
   void _showLanguagePicker() {
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -552,8 +494,8 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 
   Widget _buildAvatar({required String initial, double size = 64}) {
-    final hasPhoto = _localPhotoPath != null &&
-        File(_localPhotoPath!).existsSync();
+    final hasPhoto =
+        _localPhotoPath != null && File(_localPhotoPath!).existsSync();
 
     return Container(
       width: size,
@@ -614,7 +556,6 @@ class _ProfileTabState extends State<ProfileTab> {
             ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
               children: [
-                // ── رأس الملف ───────────────────────────────────
                 _sectionCard(
                   child: Row(
                     children: [
@@ -690,8 +631,6 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                 ),
                 const SizedBox(height: 14),
-
-                // ── الحساب ──────────────────────────────────────
                 _sectionTitle('الحساب'),
                 _sectionCard(
                   padding: EdgeInsets.zero,
@@ -715,8 +654,6 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                 ),
                 const SizedBox(height: 14),
-
-                // ── الرحلات ─────────────────────────────────────
                 _sectionTitle('الرحلات والاستخدام'),
                 _sectionCard(
                   padding: EdgeInsets.zero,
@@ -741,8 +678,6 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                 ),
                 const SizedBox(height: 14),
-
-                // ── الإعدادات ───────────────────────────────────
                 _sectionTitle('الإعدادات'),
                 _sectionCard(
                   padding: EdgeInsets.zero,
@@ -805,8 +740,6 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                 ),
                 const SizedBox(height: 14),
-
-                // ── الدعم ───────────────────────────────────────
                 _sectionTitle('الدعم والمعلومات'),
                 _sectionCard(
                   padding: EdgeInsets.zero,
@@ -837,7 +770,6 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                 ),
                 const SizedBox(height: 20),
-
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
