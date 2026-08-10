@@ -230,11 +230,9 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     try {
       final annotation = await currentManager.create(options);
       if (!mounted) return;
-      if (annotation != null) {
-        _pickupAnnotations[point.id] = annotation;
-        _pickupAnnotationToPointId[annotation.id] = point.id;
-        _markerVisualKey[point.id] = visualKey;
-      }
+      _pickupAnnotations[point.id] = annotation;
+      _pickupAnnotationToPointId[annotation.id] = point.id;
+      _markerVisualKey[point.id] = visualKey;
     } catch (e) {
       MapUtils.log('⚠️ create marker failed: $e', tag: 'PickupMixin');
     }

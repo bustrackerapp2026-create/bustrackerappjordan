@@ -173,7 +173,7 @@ class PickupMarkerHelper {
       final bubbleWidth = (namePainter.width + 20).clamp(48.0, width - 8);
       const bubbleHeight = 26.0;
       final bubbleLeft = (width - bubbleWidth) / 2;
-      final bubbleTop = height - bubbleHeight - 4;
+      const bubbleTop = height - bubbleHeight - 4;
 
       final bubbleRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(bubbleLeft, bubbleTop, bubbleWidth, bubbleHeight),
