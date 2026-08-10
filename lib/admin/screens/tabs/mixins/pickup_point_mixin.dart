@@ -10,63 +10,109 @@ import '../../../../core/map/map_utils.dart';
 import '../../../../core/pickup/pickup_marker_helper.dart';
 import '../../../../models/pickup_point_model.dart';
 
-/// مكسين إدارة نقاط التجمع لخريطة الأدمن (نفس الشكل المستخدم في السائق والراكب).
+/// مكسين نقاط التجمع لخريطة الأدمن — يعرض كل النقاط المعتمدة.
 mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final Map<String, PointAnnotation> _pickupAnnotations = {};
   final Map<String, Uint8List> _pickupMarkerCache = {};
   StreamSubscription<QuerySnapshot>? _pickupSubscription;
+  QuerySnapshot? _pendingSnapshot;
+  bool _isUpdating = false;
+  bool _resyncScheduled = false;
 
   Map<String, PointAnnotation> get pickupAnnotations => _pickupAnnotations;
+
+  bool _isApprovedDoc(Map<String, dynamic> data) {
+    final status = data['status']?.toString();
+    final isApprovedFlag = data['isApproved'] == true;
+
+    if (status == 'rejected') return false;
+    if (status == 'approved' || isApprovedFlag) return true;
+    if (status == 'pending') return false;
+
+    if (status == null || status.isEmpty) {
+      final lat = (data['latitude'] as num?)?.toDouble();
+      final lng = (data['longitude'] as num?)?.toDouble();
+      if (lat != null && lng != null && (lat != 0.0 || lng != 0.0)) {
+        if (data.containsKey('isApproved') && data['isApproved'] != true) {
+          return false;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
 
   void listenToPickupPoints() {
     _pickupSubscription?.cancel();
     _pickupSubscription = FirebaseFirestore.instance
         .collection('pickupPoints')
-        .where('status', isEqualTo: 'approved')
         .snapshots()
         .listen(
       (snapshot) {
         MapUtils.log(
-          '📦 تم استلام ${snapshot.docs.length} نقطة تجمع موثقة',
-          tag: 'PickupMixin',
+          '📦 نقاط التجمع: ${snapshot.docs.length} مستند',
+          tag: 'AdminPickup',
         );
-        _updatePickupMarkers(snapshot);
+        _pendingSnapshot = snapshot;
+        _updatePickupMarkers();
       },
       onError: (error) => MapUtils.log(
         '❌ خطأ في جلب نقاط التجمع: $error',
-        tag: 'PickupMixin',
+        tag: 'AdminPickup',
       ),
     );
   }
 
-  Future<void> _updatePickupMarkers(QuerySnapshot snapshot) async {
-    if (!mounted) return;
+  void _scheduleResync() {
+    if (_resyncScheduled) return;
+    _resyncScheduled = true;
+    Future<void>.delayed(const Duration(milliseconds: 450), () {
+      _resyncScheduled = false;
+      if (mounted) _updatePickupMarkers();
+    });
+  }
+
+  Future<void> _updatePickupMarkers() async {
+    if (!mounted || _isUpdating) return;
+    final snapshot = _pendingSnapshot;
+    if (snapshot == null) return;
+
     if (pointAnnotationManager == null) {
-      // الخريطة قد لا تكون جاهزة بعد — ننتظر ثم نعيد المحاولة
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      if (!mounted || pointAnnotationManager == null) return;
+      _scheduleResync();
+      return;
     }
 
-    final newPickupIds = snapshot.docs.map((doc) => doc.id).toSet();
-    final currentPickupIds = _pickupAnnotations.keys.toSet();
-    final toRemove = currentPickupIds.difference(newPickupIds);
+    _isUpdating = true;
+    try {
+      final approved = <PickupPointModel>[];
 
-    for (final id in toRemove) {
-      final annotation = _pickupAnnotations[id];
-      if (annotation != null) {
+      for (final doc in snapshot.docs) {
         try {
-          await pointAnnotationManager?.delete(annotation);
-        } catch (_) {}
-        _pickupAnnotations.remove(id);
-        _pickupMarkerCache.remove(id);
+          final data = doc.data() as Map<String, dynamic>? ?? {};
+          if (!_isApprovedDoc(data)) continue;
+          final point = PickupPointModel.fromFirestore(doc);
+          if (point.latitude == 0.0 && point.longitude == 0.0) continue;
+          approved.add(point);
+        } catch (e) {
+          MapUtils.log('⚠️ تخطي ${doc.id}: $e', tag: 'AdminPickup');
+        }
       }
-    }
 
-    for (final doc in snapshot.docs) {
-      if (!mounted) return;
-      try {
-        final point = PickupPointModel.fromFirestore(doc);
-        if (point.latitude == 0.0 && point.longitude == 0.0) continue;
+      final newIds = approved.map((p) => p.id).toSet();
+      final toRemove = _pickupAnnotations.keys.toSet().difference(newIds);
+
+      for (final id in toRemove) {
+        final annotation = _pickupAnnotations.remove(id);
+        if (annotation != null) {
+          try {
+            await pointAnnotationManager?.delete(annotation);
+          } catch (_) {}
+          _pickupMarkerCache.remove(id);
+        }
+      }
+
+      for (final point in approved) {
+        if (!mounted) return;
         await _createOrUpdatePickupMarker(
           pickupId: point.id,
           lat: point.latitude,
@@ -75,18 +121,18 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           pointType: point.pointType,
           confirmationCount: point.confirmationCount,
         );
-      } catch (e) {
-        MapUtils.log(
-          '⚠️ خطأ في معالجة نقطة ${doc.id}: $e',
-          tag: 'PickupMixin',
-        );
+      }
+
+      MapUtils.log(
+        '✅ معروض ${_pickupAnnotations.length} نقطة معتمدة',
+        tag: 'AdminPickup',
+      );
+    } finally {
+      _isUpdating = false;
+      if (_pendingSnapshot != snapshot && mounted) {
+        _scheduleResync();
       }
     }
-
-    MapUtils.log(
-      '✅ تم تحديث نقاط التجمع، يوجد ${_pickupAnnotations.length} نقطة',
-      tag: 'PickupMixin',
-    );
   }
 
   Future<void> _createOrUpdatePickupMarker({
@@ -148,11 +194,12 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   void handlePickupTap(String pickupId) {
-    MapUtils.log('📍 تم الضغط على نقطة تجمع: $pickupId', tag: 'PickupMixin');
+    MapUtils.log('📍 تم الضغط على نقطة تجمع: $pickupId', tag: 'AdminPickup');
   }
 
   void disposePickupPoints() {
     _pickupSubscription?.cancel();
+    _pendingSnapshot = null;
     _pickupAnnotations.clear();
     _pickupMarkerCache.clear();
   }
