@@ -17,9 +17,6 @@ import 'pickup_point_dialog.dart';
 import 'pickup_point_manager.dart';
 
 /// مكسين مشترك لعرض نقاط التجمع على خرائط السائق والراكب.
-///
-/// يعرض **كل النقاط المعتمدة** بغض النظر عن تاريخ إنشاء الحساب،
-/// ويدعم الحقول القديمة (isApproved) والجديدة (status).
 mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final PickupPointManager _pickupManager = PickupPointManager();
   final Map<String, PointAnnotation> _pickupAnnotations = {};
@@ -40,47 +37,50 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _isAddingPickupPoint = !_isAddingPickupPoint;
   }
 
-  /// هل المستند معتمد للعرض على الخريطة؟
+  void _safeSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red.shade700 : null,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   bool _isApprovedDoc(Map<String, dynamic> data) {
     final status = data['status']?.toString();
     final isApprovedFlag = data['isApproved'] == true;
 
-    // مرفوض صراحةً
     if (status == 'rejected') return false;
-
-    // معتمد بالحقل الجديد أو القديم
     if (status == 'approved' || isApprovedFlag) return true;
-
-    // معلق فقط
     if (status == 'pending') return false;
 
-    // بيانات قديمة بلا status: اعتبرها معتمدة إن وُجدت إحداثيات صالحة
-    // (بعض النقاط القديمة لم تُكتب لها status)
     if (status == null || status.isEmpty) {
       final lat = (data['latitude'] as num?)?.toDouble();
       final lng = (data['longitude'] as num?)?.toDouble();
       if (lat != null && lng != null && (lat != 0.0 || lng != 0.0)) {
-        // إن وُجد isApproved=false صراحةً لا نعرض
         if (data.containsKey('isApproved') && data['isApproved'] != true) {
           return false;
         }
         return true;
       }
     }
-
     return false;
   }
 
   void listenToPickupPoints() {
     _pickupPointsSubscription?.cancel();
 
-    // نجلب المجموعة كاملة ونصفّي محلياً لدعم النقاط القديمة
-    // (status / isApproved) دون الحاجة لفهرس مركّب.
     _pickupPointsSubscription = FirebaseFirestore.instance
         .collection('pickupPoints')
         .snapshots()
         .listen(
       (snapshot) {
+        if (!mounted) return;
         MapUtils.log(
           '📦 [Pickup] مستندات: ${snapshot.docs.length} '
           '(تغيّرات: ${snapshot.docChanges.length})',
@@ -114,7 +114,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (snapshot == null) return;
 
     if (pointAnnotationManager == null) {
-      // الخريطة ليست جاهزة بعد — أعد المحاولة قريباً
       _scheduleResync();
       return;
     }
@@ -150,7 +149,14 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       for (final point in approvedPoints) {
         if (!mounted) return;
-        await _upsertPickupMarker(point);
+        try {
+          await _upsertPickupMarker(point);
+        } catch (e) {
+          MapUtils.log(
+            '⚠️ فشل رسم نقطة ${point.id}: $e',
+            tag: 'PickupMixin',
+          );
+        }
       }
 
       MapUtils.log(
@@ -160,8 +166,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       );
     } finally {
       _isSyncingMarkers = false;
-
-      // إن وصل snapshot أحدث أثناء المزامنة
       if (_pendingSnapshot != snapshot && mounted) {
         _scheduleResync();
       }
@@ -180,7 +184,9 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   Future<void> _upsertPickupMarker(PickupPointModel point) async {
-    if (pointAnnotationManager == null || !mounted) return;
+    if (!mounted) return;
+    final manager = pointAnnotationManager;
+    if (manager == null) return;
 
     final visualKey =
         '${point.pointType}_${point.name.hashCode}_${point.confirmationCount}';
@@ -191,7 +197,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         coordinates: Position(point.longitude, point.latitude),
       );
       try {
-        await pointAnnotationManager?.update(existing);
+        await manager.update(existing);
       } catch (_) {}
       return;
     }
@@ -199,13 +205,18 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (existing != null) {
       _pickupAnnotations.remove(point.id);
       try {
-        await pointAnnotationManager?.delete(existing);
+        await manager.delete(existing);
       } catch (_) {}
       _pickupAnnotationToPointId.remove(existing.id);
     }
 
+    if (!mounted) return;
+
     final bytes = await _markerBytesFor(point, visualKey);
     if (bytes == null || !mounted) return;
+
+    final currentManager = pointAnnotationManager;
+    if (currentManager == null) return;
 
     final options = PointAnnotationOptions(
       geometry: Point(
@@ -216,11 +227,16 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       iconAnchor: IconAnchor.BOTTOM,
     );
 
-    final annotation = await pointAnnotationManager?.create(options);
-    if (annotation != null) {
-      _pickupAnnotations[point.id] = annotation;
-      _pickupAnnotationToPointId[annotation.id] = point.id;
-      _markerVisualKey[point.id] = visualKey;
+    try {
+      final annotation = await currentManager.create(options);
+      if (!mounted) return;
+      if (annotation != null) {
+        _pickupAnnotations[point.id] = annotation;
+        _pickupAnnotationToPointId[annotation.id] = point.id;
+        _markerVisualKey[point.id] = visualKey;
+      }
+    } catch (e) {
+      MapUtils.log('⚠️ create marker failed: $e', tag: 'PickupMixin');
     }
   }
 
@@ -254,7 +270,9 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final point = await _pickupManager.getPickupPoint(pointId: pickupId);
     if (!mounted || point == null) return;
 
-    final user = context.read<AuthProvider>().userId;
+    // اقرأ القيم قبل أي await لاحق
+    final userId = context.read<AuthProvider>().userId;
+
     final adderName = await PickupPointSheet.loadAdderName(point.addedBy);
     if (!mounted) return;
 
@@ -265,28 +283,25 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       adderName: adderName,
     );
 
-    if (!mounted || action == null || action == PickupSheetAction.close) return;
+    if (!mounted || action == null || action == PickupSheetAction.close) {
+      return;
+    }
 
-    if (action == PickupSheetAction.confirm && user != null) {
+    if (action == PickupSheetAction.confirm && userId != null) {
       try {
         await _pickupManager.confirmPickupPoint(
           pointId: pickupId,
-          userId: user,
+          userId: userId,
         );
-        if (!mounted) return;
-        MapUtils.showSnackBar(
-          context,
-          '✅ تم تأكيد هذه النقطة للمراجعة.',
-          isError: false,
-        );
-      } catch (e) {
-        if (!mounted) return;
-        MapUtils.showSnackBar(context, '❌ فشل تأكيد النقطة.', isError: true);
+        _safeSnack('✅ تم تأكيد هذه النقطة للمراجعة.');
+      } catch (_) {
+        _safeSnack('❌ فشل تأكيد النقطة.', isError: true);
       }
       return;
     }
 
-    if (action == PickupSheetAction.suggestEdit && user != null) {
+    if (action == PickupSheetAction.suggestEdit && userId != null) {
+      if (!mounted) return;
       final controller = TextEditingController();
       final suggested = await showDialog<String>(
         context: context,
@@ -331,8 +346,10 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           ],
         ),
       );
+
       if (!mounted) return;
       if (suggested == null || suggested.isEmpty) return;
+
       try {
         await _pickupManager.updatePickupPoint(
           pointId: pickupId,
@@ -341,19 +358,9 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             'suggestedEdit': suggested,
           },
         );
-        if (!mounted) return;
-        MapUtils.showSnackBar(
-          context,
-          '📝 تم إرسال اقتراح التعديل للمراجعة.',
-          isError: false,
-        );
-      } catch (e) {
-        if (!mounted) return;
-        MapUtils.showSnackBar(
-          context,
-          '❌ فشل إرسال اقتراح التعديل.',
-          isError: true,
-        );
+        _safeSnack('📝 تم إرسال اقتراح التعديل للمراجعة.');
+      } catch (_) {
+        _safeSnack('❌ فشل إرسال اقتراح التعديل.', isError: true);
       }
     }
   }
@@ -364,19 +371,17 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     final authProvider = context.read<AuthProvider>();
     final userId = authProvider.userId;
-    final userData = authProvider.userData;
-    if (userId == null || userData == null) {
-      MapUtils.showSnackBar(
-        context,
-        '⚠️ يرجى تسجيل الدخول أولاً.',
-        isError: true,
-      );
+    final userType = authProvider.userData?.userType;
+
+    if (userId == null || userType == null) {
+      _safeSnack('⚠️ يرجى تسجيل الدخول أولاً.', isError: true);
       _isAddingPickupPoint = false;
       return;
     }
 
     final result = await showPickupPointPickerDialog(context: context);
     if (!mounted) return;
+
     if (result == null || result.name.trim().isEmpty) {
       _isAddingPickupPoint = false;
       return;
@@ -388,21 +393,17 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         latitude: point.coordinates.lat.toDouble(),
         longitude: point.coordinates.lng.toDouble(),
         userId: userId,
-        userType: userData.userType,
+        userType: userType,
         pointType: result.pointType,
       );
-      if (!mounted) return;
-      MapUtils.showSnackBar(
-        context,
-        userData.userType == 'admin'
+      _safeSnack(
+        userType == 'admin'
             ? '✅ تم إضافة النقطة وظهرت على الخرائط.'
             : '✅ تم إرسال النقطة للمراجعة.',
-        isError: false,
       );
     } catch (e) {
-      if (!mounted) return;
       MapUtils.log('❌ فشل إضافة النقطة: $e', tag: 'PickupMixin');
-      MapUtils.showSnackBar(context, '❌ فشل إضافة النقطة.', isError: true);
+      _safeSnack('❌ فشل إضافة النقطة.', isError: true);
     } finally {
       if (mounted) _isAddingPickupPoint = false;
     }
