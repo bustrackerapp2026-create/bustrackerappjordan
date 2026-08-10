@@ -42,6 +42,11 @@ class _AdminMapTabState extends State<AdminMapTab>
   @override
   bool get suppressPoiTap => _isAddingPickupPoint;
 
+  void _safeSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    MapUtils.showSnackBar(context, message, isError: isError);
+  }
+
   @override
   void onStyleChanged() {
     redrawRoutes();
@@ -88,9 +93,7 @@ class _AdminMapTabState extends State<AdminMapTab>
       pitch: 0,
       bearing: 0,
     ));
-    if (mounted) {
-      MapUtils.showSnackBar(context, '📍 تم التوجيه إلى: ${focus.pointName}');
-    }
+    _safeSnack('📍 تم التوجيه إلى: ${focus.pointName}');
   }
 
   @override
@@ -108,8 +111,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     if (!mounted) return;
     final driverId = _findId(driverAnnotations, annotation);
     if (driverId != null) {
-      MapUtils.showSnackBar(
-          context, '🔄 جاري تحميل بيانات السائق (ID: $driverId)...');
+      _safeSnack('🔄 جاري تحميل بيانات السائق (ID: $driverId)...');
       return;
     }
     final pickupId = _findId(pickupAnnotations, annotation);
@@ -125,39 +127,42 @@ class _AdminMapTabState extends State<AdminMapTab>
 
   void _startAddPickupPoint() {
     setState(() => _isAddingPickupPoint = true);
-    MapUtils.showSnackBar(context, '📍 اضغط على الخريطة لتحديد موقع النقطة');
+    _safeSnack('📍 اضغط على الخريطة لتحديد موقع النقطة');
   }
 
   void _cancelAddPickupPoint() {
     setState(() => _isAddingPickupPoint = false);
-    MapUtils.showSnackBar(context, '❌ تم إلغاء إضافة النقطة', isError: true);
+    _safeSnack('❌ تم إلغاء إضافة النقطة', isError: true);
   }
 
   Future<void> _goToMyLocation() async {
     if (mapboxMap == null || !mounted) return;
     setState(() => _isLoadingLocation = true);
     try {
-      if (!await _locationService.checkAndRequestPermission()) {
-        if (mounted) {
-          MapUtils.showSnackBar(context, '⚠️ يرجى تفعيل الموقع أولاً',
-              isError: true);
-        }
+      final hasPermission =
+          await _locationService.checkAndRequestPermission();
+      if (!mounted) return;
+
+      if (!hasPermission) {
+        _safeSnack('⚠️ يرجى تفعيل الموقع أولاً', isError: true);
         return;
       }
+
       final position = await _locationService.getCurrentPosition();
-      if (!mounted || position == null) {
-        if (mounted) {
-          MapUtils.showSnackBar(context, '⚠️ تعذر الحصول على الموقع',
-              isError: true);
-        }
+      if (!mounted) return;
+
+      if (position == null) {
+        _safeSnack('⚠️ تعذر الحصول على الموقع', isError: true);
         return;
       }
+
       await flyToFlat(
         latitude: position.latitude,
         longitude: position.longitude,
         zoom: 15,
       );
-      if (mounted) MapUtils.showSnackBar(context, '📍 تم تحديد موقعك الحالي');
+      if (!mounted) return;
+      _safeSnack('📍 تم تحديد موقعك الحالي');
     } finally {
       if (mounted) setState(() => _isLoadingLocation = false);
     }
@@ -167,48 +172,55 @@ class _AdminMapTabState extends State<AdminMapTab>
     if (query.trim().isEmpty) return;
     final result = await _locationService.searchPlace(query);
     if (!mounted) return;
+
     if (result == null) {
-      MapUtils.showSnackBar(context, '⚠️ لم يتم العثور على المكان',
-          isError: true);
+      _safeSnack('⚠️ لم يتم العثور على المكان', isError: true);
       return;
     }
+
     await flyToFlat(
       latitude: result.latitude,
       longitude: result.longitude,
       zoom: 15,
     );
-    MapUtils.showSnackBar(context, '🔎 تم الانتقال إلى ${result.name}');
+    if (!mounted) return;
+    _safeSnack('🔎 تم الانتقال إلى ${result.name}');
   }
 
   Future<void> _handleMapTap(Point point) async {
     if (!_isAddingPickupPoint || !mounted) return;
+
     final auth = context.read<AuthProvider>();
-    if (auth.userId == null || auth.userData == null) {
-      MapUtils.showSnackBar(context, '⚠️ يرجى تسجيل الدخول أولاً',
-          isError: true);
+    final userId = auth.userId;
+    final userData = auth.userData;
+
+    if (userId == null || userData == null) {
+      _safeSnack('⚠️ يرجى تسجيل الدخول أولاً', isError: true);
       setState(() => _isAddingPickupPoint = false);
       return;
     }
+
     final result = await showPickupPointPickerDialog(context: context);
     if (!mounted) return;
+
     if (result == null || result.name.trim().isEmpty) {
       setState(() => _isAddingPickupPoint = false);
       return;
     }
+
     try {
       await _pickupManager.addPickupPoint(
         name: result.name.trim(),
         latitude: point.coordinates.lat.toDouble(),
         longitude: point.coordinates.lng.toDouble(),
-        userId: auth.userId!,
-        userType: auth.userData!.userType,
+        userId: userId,
+        userType: userData.userType,
         pointType: result.pointType,
       );
-      if (mounted) MapUtils.showSnackBar(context, '✅ تم إضافة النقطة');
+      if (!mounted) return;
+      _safeSnack('✅ تم إضافة النقطة');
     } catch (_) {
-      if (mounted) {
-        MapUtils.showSnackBar(context, '❌ فشل إضافة النقطة', isError: true);
-      }
+      _safeSnack('❌ فشل إضافة النقطة', isError: true);
     } finally {
       if (mounted) setState(() => _isAddingPickupPoint = false);
     }
@@ -231,6 +243,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     if (!mounted || action == null || action == PickupSheetAction.close) return;
 
     if (action == PickupSheetAction.edit) {
+      if (!mounted) return;
       final updated = await showPickupPointPickerDialog(
         context: context,
         initialName: point.name,
@@ -241,22 +254,26 @@ class _AdminMapTabState extends State<AdminMapTab>
         pointId: pickupId,
         data: {'name': updated.name.trim(), 'pointType': updated.pointType},
       );
-      if (mounted) MapUtils.showSnackBar(context, '✅ تم تعديل النقطة');
+      if (!mounted) return;
+      _safeSnack('✅ تم تعديل النقطة');
     } else if (action == PickupSheetAction.delete) {
       await _pickupManager.deletePickupPoint(pointId: pickupId);
-      if (mounted) MapUtils.showSnackBar(context, '🗑️ تم حذف النقطة');
+      if (!mounted) return;
+      _safeSnack('🗑️ تم حذف النقطة');
     } else if (action == PickupSheetAction.approve) {
       await _pickupManager.updatePickupPoint(
         pointId: pickupId,
         data: {'status': 'approved'},
       );
-      if (mounted) MapUtils.showSnackBar(context, '✅ تم اعتماد النقطة');
+      if (!mounted) return;
+      _safeSnack('✅ تم اعتماد النقطة');
     } else if (action == PickupSheetAction.reject) {
       await _pickupManager.updatePickupPoint(
         pointId: pickupId,
         data: {'status': 'rejected'},
       );
-      if (mounted) MapUtils.showSnackBar(context, '🚫 تم رفض النقطة');
+      if (!mounted) return;
+      _safeSnack('🚫 تم رفض النقطة');
     }
   }
 
