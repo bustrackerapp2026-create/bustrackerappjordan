@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/change_password_sheet.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/firestore_service.dart';
 
@@ -94,6 +95,15 @@ class _ProfileTabState extends State<ProfileTab> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
+  }
+
+  Future<void> _changePassword() async {
+    if (!mounted) return;
+    final ok = await ChangePasswordSheet.show(context);
+    if (!mounted) return;
+    if (ok) {
+      _snack('✅ تم تغيير كلمة المرور بنجاح');
+    }
   }
 
   Future<void> _removeProfilePhoto() async {
@@ -403,8 +413,7 @@ class _ProfileTabState extends State<ProfileTab> {
       };
 
       final fbUser = firebase_auth.FirebaseAuth.instance.currentUser;
-      final emailChanged =
-          email.toLowerCase() != user.email.toLowerCase();
+      final emailChanged = email.toLowerCase() != user.email.toLowerCase();
 
       if (fbUser != null && emailChanged) {
         try {
@@ -646,9 +655,8 @@ class _ProfileTabState extends State<ProfileTab> {
                       _tile(
                         icon: Icons.lock_outline,
                         title: 'تغيير كلمة المرور',
-                        subtitle: 'قريباً',
-                        onTap: () =>
-                            _snack('🔜 سيتم تفعيل تغيير كلمة المرور قريباً'),
+                        subtitle: 'تحديث كلمة المرور عبر Firebase',
+                        onTap: _changePassword,
                       ),
                     ],
                   ),
