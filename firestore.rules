@@ -15,7 +15,6 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    /// قراءة مستند المستخدم الحالي من مجموعة users
     function userDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
@@ -40,22 +39,23 @@ service cloud.firestore {
       return userExists() && userType() == 'passenger';
     }
 
-    /// أنواع الحساب المسموح إنشاؤها من التطبيق (لا يمكن إنشاء admin من العميل)
     function isAllowedSelfUserType(t) {
       return t in ['passenger', 'driver', 'service', 'bus_company'];
     }
 
-    /// حقول الموقع/التواجد التي يمكن للمستخدم تحديثها بنفسه
+    /// حقول يمكن للمستخدم تحديثها بنفسه (ملف شخصي + موقع)
     function onlySelfServiceFields() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly([
           'fullName',
           'phoneNumber',
+          'email',
           'busNumber',
           'route',
           'currentLatitude',
           'currentLongitude',
           'isOnline',
+          'isSharingLocation',
           'lastUpdated',
           'locationUpdatedAt',
           'updatedAt'
@@ -67,40 +67,30 @@ service cloud.firestore {
     // ═══════════════════════════════════════════════════════════
 
     match /users/{userId} {
-      // القراءة: أي مستخدم مسجّل (مطلوب لخريطة الأدمن وإحصائيات السائقين)
       allow read: if isSignedIn();
 
-      // إنشاء الحساب عند التسجيل: فقط على مستنده، وبدون منح نفسه صلاحية admin
       allow create: if isOwner(userId)
         && request.resource.data.uid == userId
         && isAllowedSelfUserType(request.resource.data.userType)
         && request.resource.data.isVerified == false
         && request.resource.data.get('isRejected', false) == false;
 
-      // تحديث الملف الشخصي / الموقع: المالك لحقول محدودة فقط
-      // أو الأدمن لاعتماد/رفض السائقين وتعديل البيانات الإدارية
       allow update: if isOwner(userId) && onlySelfServiceFields()
-        // منع تغيير النوع أو حالة الاعتماد من العميل
         && request.resource.data.userType == resource.data.userType
         && request.resource.data.isVerified == resource.data.isVerified
         && request.resource.data.get('isRejected', false) == resource.data.get('isRejected', false)
       || isAdmin();
 
-      // الحذف: الأدمن فقط (أو المالك إن رغبت لاحقاً)
       allow delete: if isAdmin();
     }
 
     // ═══════════════════════════════════════════════════════════
-    // pickupPoints — نقاط التجمع
+    // pickupPoints
     // ═══════════════════════════════════════════════════════════
 
     match /pickupPoints/{pointId} {
-      // القراءة: أي مستخدم مسجّل (الخرائط تعرض المعتمدة؛ الأدمن يعرض المعلقة أيضاً)
       allow read: if isSignedIn();
 
-      // الإضافة:
-      // - الأدمن: معتمدة مباشرة
-      // - غير الأدمن: معلقة فقط + addedBy = نفسه
       allow create: if isSignedIn()
         && request.resource.data.addedBy == request.auth.uid
         && request.resource.data.pointType in ['bus', 'passenger']
@@ -110,15 +100,11 @@ service cloud.firestore {
           (!isAdmin() && request.resource.data.status == 'pending')
         );
 
-      // التحديث:
-      // - الأدمن: كامل (اعتماد / رفض / تعديل / حذف منطقي عبر الحقول)
-      // - أي مستخدم مسجّل: تأكيد النقطة أو اقتراح تعديل فقط
       allow update: if isAdmin()
         || (
           isSignedIn()
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['confirmations', 'confirmationCount', 'reviewNote', 'suggestedEdit', 'updatedAt'])
-          // لا يغيّر الحالة أو الموقع أو المالك
           && request.resource.data.status == resource.data.status
           && request.resource.data.latitude == resource.data.latitude
           && request.resource.data.longitude == resource.data.longitude
@@ -129,7 +115,7 @@ service cloud.firestore {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // trips — الرحلات
+    // trips
     // ═══════════════════════════════════════════════════════════
 
     match /trips/{tripId} {
@@ -137,19 +123,15 @@ service cloud.firestore {
         isAdmin()
         || resource.data.driverId == request.auth.uid
         || resource.data.passengerId == request.auth.uid
-        // رحلات قيد الانتظار يمكن أن يراها السائقون المعتمدون لاستقبال الطلبات
         || (isDriver() && resource.data.status == 'pending')
       );
 
-      // إنشاء رحلة: السائق أو الراكب المرتبط بها
       allow create: if isSignedIn()
         && (
           request.resource.data.driverId == request.auth.uid
           || request.resource.data.passengerId == request.auth.uid
         );
 
-      // تحديث: سائق الرحلة أو الأدمن
-      // قبول رحلة معلّقة: سائق يضع نفسه كـ driverId
       allow update: if isAdmin()
         || (isSignedIn() && resource.data.driverId == request.auth.uid)
         || (
@@ -163,7 +145,7 @@ service cloud.firestore {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // routes — خطوط السير
+    // routes
     // ═══════════════════════════════════════════════════════════
 
     match /routes/{routeId} {
@@ -176,15 +158,9 @@ service cloud.firestore {
       }
     }
 
-    // إحداثيات المسارات (chunks)
     match /routeCoordinates/{chunkId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // أي مجموعة أخرى: مرفوضة افتراضياً (أضف قواعد صريحة عند الحاجة)
-    // ═══════════════════════════════════════════════════════════
-    // لا تضع match /{document=**} مفتوحاً هنا
   }
 }
