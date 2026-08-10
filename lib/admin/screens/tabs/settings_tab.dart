@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../features/auth/providers/auth_provider.dart';
+import '../../../services/pickup_point_service.dart';
 
 class SettingsTab extends StatefulWidget {
   const SettingsTab({super.key});
@@ -11,18 +12,14 @@ class SettingsTab extends StatefulWidget {
 }
 
 class _SettingsTabState extends State<SettingsTab> {
-  // ✅ حالة وهمية للمظهر (لن نطبقها الآن، لكن نجهز المكان)
   bool _isDarkMode = false;
-
-  // ✅ حالة وهمية للغة
   String _selectedLanguage = 'العربية';
+  bool _isMigrating = false;
 
-  // ✅ دالة تسجيل الخروج
   Future<void> _logout(BuildContext context) async {
     final authProvider = context.read<AuthProvider>();
     final messenger = ScaffoldMessenger.of(context);
 
-    // ✅ حوار تأكيد الخروج
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -61,6 +58,62 @@ class _SettingsTabState extends State<SettingsTab> {
     }
   }
 
+  Future<void> _runStatusMigration() async {
+    if (_isMigrating) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('توحيد حالات النقاط'),
+        content: const Text(
+          'سيتم ضبط كل النقاط في Firestore:
+'
+          '• المعتمدة / القديمة بإحداثيات → status: approved\n'
+          '• المعلقة → pending\n'
+          '• المرفوضة → rejected\n\n'
+          'هل تريد المتابعة؟',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('تنفيذ'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() => _isMigrating = true);
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      final result = await PickupPointService().migrateNormalizeStatuses();
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('✅ تم التوحيد\n$result'),
+          duration: const Duration(seconds: 5),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('❌ فشل الترحيل: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isMigrating = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
@@ -73,9 +126,6 @@ class _SettingsTabState extends State<SettingsTab> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // ============================================
-            // ✅ قسم الملف الشخصي (Card مميز)
-            // ============================================
             Card(
               elevation: 4,
               shape: RoundedRectangleBorder(
@@ -152,9 +202,6 @@ class _SettingsTabState extends State<SettingsTab> {
             ),
             const SizedBox(height: 16),
 
-            // ============================================
-            // ✅ قسم الإعدادات
-            // ============================================
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(
@@ -162,7 +209,6 @@ class _SettingsTabState extends State<SettingsTab> {
               ),
               child: Column(
                 children: [
-                  // ✅ خيار المظهر
                   SwitchListTile(
                     title: const Text(
                       'الوضع الليلي',
@@ -172,10 +218,7 @@ class _SettingsTabState extends State<SettingsTab> {
                     value: _isDarkMode,
                     activeThumbColor: AppTheme.primaryColor,
                     onChanged: (value) {
-                      setState(() {
-                        _isDarkMode = value;
-                      });
-                      // ✅ هنا يمكنك إضافة منطق تغيير الثيم لاحقاً
+                      setState(() => _isDarkMode = value);
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('🔜 سيتم تفعيل الوضع الليلي قريباً'),
@@ -185,8 +228,6 @@ class _SettingsTabState extends State<SettingsTab> {
                     },
                   ),
                   const Divider(height: 1),
-
-                  // ✅ خيار اللغة
                   ListTile(
                     leading: const Icon(Icons.language,
                         color: AppTheme.primaryColor),
@@ -196,14 +237,9 @@ class _SettingsTabState extends State<SettingsTab> {
                     ),
                     subtitle: Text(_selectedLanguage),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () {
-                      // ✅ عرض حوار اختيار اللغة
-                      _showLanguageDialog(context);
-                    },
+                    onTap: () => _showLanguageDialog(context),
                   ),
                   const Divider(height: 1),
-
-                  // ✅ خيار عرض الإصدار
                   ListTile(
                     leading: const Icon(Icons.info_outline,
                         color: AppTheme.primaryColor),
@@ -212,47 +248,32 @@ class _SettingsTabState extends State<SettingsTab> {
                       style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                     subtitle: const Text('1.0.0+1'),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('📱 الإصدار 1.0.0+1 (آخر تحديث)'),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    },
                   ),
                   const Divider(height: 1),
-
-                  // ✅ خيار إعادة تحميل البيانات
                   ListTile(
-                    leading:
-                        const Icon(Icons.refresh, color: AppTheme.primaryColor),
+                    leading: _isMigrating
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.sync_problem,
+                            color: AppTheme.primaryColor),
                     title: const Text(
-                      'تحديث البيانات',
+                      'توحيد حالات النقاط (status)',
                       style: TextStyle(fontWeight: FontWeight.w500),
                     ),
-                    subtitle:
-                        const Text('إعادة تحميل جميع البيانات من السيرفر'),
+                    subtitle: const Text(
+                      'ضبط كل النقاط المعتمدة إلى status: approved',
+                    ),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('🔄 جاري تحديث البيانات...'),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                      // ✅ يمكنك هنا إضافة منطق لتحديث الـ Providers
-                    },
+                    onTap: _isMigrating ? null : _runStatusMigration,
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
 
-            // ============================================
-            // ✅ زر تسجيل الخروج (كامل العرض)
-            // ============================================
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -274,8 +295,6 @@ class _SettingsTabState extends State<SettingsTab> {
             ),
 
             const SizedBox(height: 16),
-
-            // ✅ نص حقوق النشر في الأسفل
             Center(
               child: Text(
                 '© 2026 Bus Tracker Jordan - جميع الحقوق محفوظة',
@@ -291,7 +310,6 @@ class _SettingsTabState extends State<SettingsTab> {
     );
   }
 
-  // ✅ دالة عرض حوار اختيار اللغة
   void _showLanguageDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -306,29 +324,13 @@ class _SettingsTabState extends State<SettingsTab> {
               onTap: () {
                 setState(() => _selectedLanguage = 'العربية');
                 Navigator.pop(dialogContext);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('🌐 تم تغيير اللغة إلى العربية'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
               },
             ),
             ListTile(
               title: const Text('English'),
-              leading: Icon(Icons.check,
-                  color: _selectedLanguage == 'English'
-                      ? AppTheme.primaryColor
-                      : Colors.transparent),
               onTap: () {
                 setState(() => _selectedLanguage = 'English');
                 Navigator.pop(dialogContext);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('🌐 Language changed to English'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
               },
             ),
           ],
