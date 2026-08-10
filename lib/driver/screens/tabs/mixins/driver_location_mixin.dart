@@ -16,7 +16,6 @@ import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../map/utils/map_helpers.dart';
 import '../../../../services/location_service.dart';
 
-/// تتبع موقع السائق + تنبؤ حركة بين قراءات GPS (أوفر بطارية + علامة أسلس).
 mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PointAnnotation? _driverUserAnnotation;
   Uint8List? _cachedDriverMarkerBytes;
@@ -127,6 +126,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
+  /// زر موقعي — مثل جوجل: عرض فوري ثم تحسين
   Future<void> goToMyLocation() async {
     if (mapboxMap == null || !mounted) return;
 
@@ -144,17 +144,30 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
       if (!mounted) return;
 
-      final quick = await _driverLocationService.getPositionFast();
-      if (quick != null && mounted) {
-        await _applyPosition(quick, moveCamera: true, forceUpload: false);
-      }
+      var gotAnyFix = false;
 
-      final position = await _driverLocationService.getCurrentPosition(
-        preferHighAccuracy: true,
+      final position = await _driverLocationService.locateProgressive(
+        quickTimeout: const Duration(seconds: 3),
+        preciseTimeout: const Duration(seconds: 7),
+        onProgress: (pos, stage) {
+          if (!mounted) return;
+          gotAnyFix = true;
+          // أول تحديث: حرّك الكاميرا فوراً (cached/quick)
+          final moveCam = stage == LocationFixStage.cached ||
+              stage == LocationFixStage.quick;
+          unawaited(
+            _applyPosition(
+              pos,
+              moveCamera: moveCam || followDriverCamera,
+              forceUpload: stage == LocationFixStage.precise,
+            ),
+          );
+        },
       );
+
       if (!mounted) return;
 
-      if (position == null) {
+      if (position == null && !gotAnyFix) {
         MapUtils.showSnackBar(
           context,
           '⚠️ تعذر الحصول على الموقع.',
@@ -163,7 +176,13 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         return;
       }
 
-      await _applyPosition(position, moveCamera: true, forceUpload: true);
+      if (position != null) {
+        await _applyPosition(
+          position,
+          moveCamera: true,
+          forceUpload: true,
+        );
+      }
 
       if (_shouldTrackContinuously) {
         await ensureDriverTrackingRunning();
@@ -198,9 +217,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _predictionTimer = Timer.periodic(_predictionTick, (_) {
       if (!mounted || !_shouldTrackContinuously) return;
       final predicted = _predictor.predictAt(DateTime.now());
-      if (predicted == null) return;
-      // لا نحرّك الكاميرا من التنبؤ إلا إذا المتابعة مفعّلة وثقة جيدة
-      if (predicted.confidence < 0.25) return;
+      if (predicted == null || predicted.confidence < 0.25) return;
 
       currentDriverBearing = predicted.headingDeg;
       unawaited(
@@ -292,7 +309,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _pendingMoveCamera = false;
     _pendingForceUpload = false;
 
-    // تغذية خوارزمية التنبؤ بالقراءة الحقيقية
     final filtered = _predictor.update(
       latitude: pos.latitude,
       longitude: pos.longitude,

@@ -10,7 +10,6 @@ import '../../../../core/map/map_utils.dart';
 import '../../../../map/utils/map_helpers.dart';
 import '../../../../services/location_service.dart';
 
-/// مكسين موقع الراكب موفّر للبطارية.
 mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PointAnnotation? _passengerUserAnnotation;
   Uint8List? _cachedPassengerMarkerBytes;
@@ -62,6 +61,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     MapUtils.showSnackBar(context, message, isError: isError);
   }
 
+  /// زر موقعي — عرض فوري ثم تحسين (مثل جوجل ماب)
   Future<void> goToMyLocation() async {
     if (mapboxMap == null || !mounted) return;
 
@@ -103,37 +103,44 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       _passengerLocationSubscription?.cancel();
 
-      final lastKnown =
-          await _passengerLocationService.getLastKnownPosition();
-      if (lastKnown != null && mounted) {
-        await _applyPosition(lastKnown, moveCamera: true);
-      }
-      if (!mounted) return;
+      var gotAnyFix = false;
 
-      final position = await _passengerLocationService.getCurrentPosition(
-        preferHighAccuracy: true,
-        timeout: const Duration(seconds: 15),
+      final position = await _passengerLocationService.locateProgressive(
+        quickTimeout: const Duration(seconds: 3),
+        preciseTimeout: const Duration(seconds: 7),
+        onProgress: (pos, stage) {
+          if (!mounted) return;
+          gotAnyFix = true;
+          final moveCam = stage == LocationFixStage.cached ||
+              stage == LocationFixStage.quick ||
+              stage == LocationFixStage.precise;
+          unawaited(_applyPosition(pos, moveCamera: moveCam));
+        },
       );
 
       if (!mounted) return;
 
-      if (position == null) {
+      if (position == null && !gotAnyFix) {
         _safeSnack(
-          '❌ تعذر تحديد موقعك. تأكد من تفعيل GPS والخروج لمكان مفتوح إن أمكن.',
+          '❌ تعذر تحديد موقعك. تأكد من تفعيل GPS.',
           isError: true,
         );
         return;
       }
 
-      await _applyPosition(position, moveCamera: true);
+      if (position != null) {
+        await _applyPosition(position, moveCamera: true);
+      }
+
       if (!mounted) return;
 
+      // تتبع خفيف بعد التثبيت (اختياري للراكب)
       isPassengerTrackingActive = true;
       _passengerLocationSubscription = _passengerLocationService
           .getPositionStreamForProfile(LocationTrackingProfile.passengerBrowse)
           .listen((geo.Position pos) {
         if (mounted) {
-          _applyPosition(pos, moveCamera: false);
+          unawaited(_applyPosition(pos, moveCamera: false));
         }
       }, onError: (error) {
         MapUtils.log('خطأ في تحديث الموقع: $error', tag: 'PassengerLocation');
@@ -156,19 +163,28 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (bearing == 0.0 && position.speed > 0) {
       bearing = currentPassengerBearing;
     }
-
-    if (mounted && (currentPassengerBearing - bearing).abs() > 1) {
-      setState(() => currentPassengerBearing = bearing);
-    } else {
-      currentPassengerBearing = bearing;
-    }
+    currentPassengerBearing = bearing;
 
     if (moveCamera) {
-      await flyToFlat(
-        latitude: position.latitude,
-        longitude: position.longitude,
-        zoom: 15.5,
-      );
+      // setCamera أسرع من flyTo عند التحديثات المتتالية
+      try {
+        await mapboxMap?.setCamera(
+          CameraOptions(
+            center: Point(
+              coordinates: Position(position.longitude, position.latitude),
+            ),
+            zoom: 15.5,
+            pitch: 0,
+            bearing: 0,
+          ),
+        );
+      } catch (_) {
+        await flyToFlat(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          zoom: 15.5,
+        );
+      }
     }
 
     await updatePassengerMarker(
@@ -185,8 +201,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('تفعيل الموقع'),
         content: const Text(
-          'لتحديد موقعك بدقة مثل خرائط جوجل، نحتاج إلى صلاحية الموقع.\n\n'
-          'يمكنك السماح عند استخدام التطبيق أو فتح الإعدادات ومنح الصلاحية يدوياً.',
+          'لتحديد موقعك نحتاج إلى صلاحية الموقع.',
         ),
         actions: [
           TextButton(
@@ -204,14 +219,12 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   Future<void> searchPassengerPlace(String query) async {
     if (!mounted) return;
-    final map = mapboxMap;
-    final service = _passengerLocationService;
     await MapUtils.searchPlace(
       context,
-      map,
+      mapboxMap,
       query,
       0,
-      service,
+      _passengerLocationService,
     );
   }
 
