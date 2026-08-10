@@ -13,7 +13,7 @@ import '../../../driver/providers/driver_provider.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import 'mixins/driver_location_mixin.dart';
 
-/// خريطة السائق — واجهة خفيفة + عزل إعادة الرسم عن الخريطة.
+/// خريطة السائق — عزل إعادة الرسم + Selector لتقليل rebuilds
 class DriverMapTab extends StatefulWidget {
   const DriverMapTab({super.key});
 
@@ -99,14 +99,6 @@ class _DriverMapTabState extends State<DriverMapTab>
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // عزل طبقة الخريطة عن إعادة رسم الأزرار واللوحة السفلية
-        const RepaintBoundary(
-          child: _DriverMapSurface(),
-        ),
-
-        // تُمرَّر الاستدعاءات عبر Inherited/Mixin من الـ State الأب
-        // لذلك نبني الخريطة هنا مع نفس المنطق ولكن داخل RepaintBoundary فعلياً أدناه
-        // ملاحظة: MapWidget يحتاج State الحالي — نستخدم النسخة المباشرة مع Boundary:
         RepaintBoundary(
           child: MapWidget(
             key: const ValueKey('driver_map'),
@@ -139,7 +131,6 @@ class _DriverMapTabState extends State<DriverMapTab>
             },
           ),
         ),
-
         Positioned(
           top: 16,
           left: 16,
@@ -153,7 +144,6 @@ class _DriverMapTabState extends State<DriverMapTab>
             ),
           ),
         ),
-
         Positioned(
           bottom: 140,
           right: 16,
@@ -248,7 +238,6 @@ class _DriverMapTabState extends State<DriverMapTab>
             ),
           ),
         ),
-
         Positioned(
           bottom: 20,
           left: 16,
@@ -259,7 +248,6 @@ class _DriverMapTabState extends State<DriverMapTab>
               selector: (_, p) =>
                   (isOnline: p.isOnline, isTripActive: p.isTripActive),
               builder: (context, state, _) {
-                // فقط اسم المستخدم — لا watch كامل لـ AuthProvider
                 final userName = context.select<AuthProvider, String>(
                   (a) => a.userData?.fullName ?? 'السائق',
                 );
@@ -320,12 +308,4 @@ class _DriverMapTabState extends State<DriverMapTab>
       ],
     );
   }
-}
-
-/// عنصر وهمي لتجنب أخطاء const — الخريطة الحقيقية أعلاه
-class _DriverMapSurface extends StatelessWidget {
-  const _DriverMapSurface();
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.expand();
 }
