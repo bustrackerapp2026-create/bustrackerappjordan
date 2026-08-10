@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-import '../../features/auth/providers/auth_provider.dart';
+
+import '../../core/widgets/app_top_bar.dart';
 import 'tabs/verify_drivers_tab.dart';
 import 'tabs/pending_points_tab.dart';
 import 'tabs/admin_map_tab.dart';
@@ -14,7 +14,7 @@ class AdminMapFocusRequest {
   final double longitude;
   final String pointName;
   final String? pointId;
-  final int token; // لتكرار نفس الإحداثيات يُحدّث الواجهة
+  final int token;
 
   const AdminMapFocusRequest({
     required this.latitude,
@@ -52,35 +52,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
         pointId: pointId,
         token: _focusToken,
       );
-      _currentIndex = 2; // تبويب الخريطة
+      _currentIndex = 2;
     });
-  }
-
-  void _showLogoutDialog(BuildContext context, AuthProvider authProvider) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('تسجيل الخروج'),
-        content: const Text('هل أنت متأكد من رغبتك في تسجيل الخروج؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(dialogContext);
-              await authProvider.signOut();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('تأكيد الخروج'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -109,8 +82,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-
     final tabs = [
       const VerifyDriversTab(),
       PendingPointsTab(onShowOnMap: _showPointOnMap),
@@ -119,28 +90,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'لوحة التحكم - الأدمن',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: Colors.blue.shade700,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        toolbarHeight: kToolbarHeight,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () => _showLogoutDialog(context, authProvider),
-            tooltip: 'تسجيل الخروج',
-          ),
-        ],
-      ),
+      appBar: AppTopBar.admin(title: 'لوحة التحكم - الأدمن'),
       body: IndexedStack(
         index: _currentIndex,
         children: tabs,
