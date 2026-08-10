@@ -16,8 +16,10 @@ import 'pickup_marker_helper.dart';
 import 'pickup_point_dialog.dart';
 import 'pickup_point_manager.dart';
 
-/// مكسين مشترك لعرض وإدارة نقاط التجمع.
-/// محسّن للاستهلاك: يعالج docChanges فقط ويعيد الرسم عند تغيّر الشكل لا الموقع فقط.
+/// مكسين مشترك لعرض نقاط التجمع على خرائط السائق والراكب.
+///
+/// يعرض **كل النقاط المعتمدة** بغض النظر عن تاريخ إنشاء الحساب،
+/// ويدعم الحقول القديمة (isApproved) والجديدة (status).
 mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final PickupPointManager _pickupManager = PickupPointManager();
   final Map<String, PointAnnotation> _pickupAnnotations = {};
@@ -27,6 +29,8 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   StreamSubscription<QuerySnapshot>? _pickupPointsSubscription;
   bool _isAddingPickupPoint = false;
   bool _isSyncingMarkers = false;
+  QuerySnapshot? _pendingSnapshot;
+  bool _resyncScheduled = false;
 
   bool get isAddingPickupPoint => _isAddingPickupPoint;
 
@@ -36,89 +40,131 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _isAddingPickupPoint = !_isAddingPickupPoint;
   }
 
+  /// هل المستند معتمد للعرض على الخريطة؟
+  bool _isApprovedDoc(Map<String, dynamic> data) {
+    final status = data['status']?.toString();
+    final isApprovedFlag = data['isApproved'] == true;
+
+    // مرفوض صراحةً
+    if (status == 'rejected') return false;
+
+    // معتمد بالحقل الجديد أو القديم
+    if (status == 'approved' || isApprovedFlag) return true;
+
+    // معلق فقط
+    if (status == 'pending') return false;
+
+    // بيانات قديمة بلا status: اعتبرها معتمدة إن وُجدت إحداثيات صالحة
+    // (بعض النقاط القديمة لم تُكتب لها status)
+    if (status == null || status.isEmpty) {
+      final lat = (data['latitude'] as num?)?.toDouble();
+      final lng = (data['longitude'] as num?)?.toDouble();
+      if (lat != null && lng != null && (lat != 0.0 || lng != 0.0)) {
+        // إن وُجد isApproved=false صراحةً لا نعرض
+        if (data.containsKey('isApproved') && data['isApproved'] != true) {
+          return false;
+        }
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   void listenToPickupPoints() {
     _pickupPointsSubscription?.cancel();
 
+    // نجلب المجموعة كاملة ونصفّي محلياً لدعم النقاط القديمة
+    // (status / isApproved) دون الحاجة لفهرس مركّب.
     _pickupPointsSubscription = FirebaseFirestore.instance
         .collection('pickupPoints')
-        .where('status', isEqualTo: 'approved')
         .snapshots()
         .listen(
       (snapshot) {
         MapUtils.log(
-          '📦 [Pickup] تغيّر: ${snapshot.docChanges.length} / إجمالي ${snapshot.docs.length}',
+          '📦 [Pickup] مستندات: ${snapshot.docs.length} '
+          '(تغيّرات: ${snapshot.docChanges.length})',
           tag: 'PickupMixin',
         );
-        _syncPickupMarkers(snapshot);
+        _pendingSnapshot = snapshot;
+        _syncPickupMarkers();
       },
       onError: (error) {
-        MapUtils.log('⚠️ خطأ في جلب نقاط التجمع: $error', tag: 'PickupMixin');
+        MapUtils.log(
+          '⚠️ خطأ في جلب نقاط التجمع: $error',
+          tag: 'PickupMixin',
+        );
       },
     );
   }
 
-  Future<void> _syncPickupMarkers(QuerySnapshot snapshot) async {
-    if (!mounted || _isSyncingMarkers) return;
-    _isSyncingMarkers = true;
+  void _scheduleResync() {
+    if (_resyncScheduled) return;
+    _resyncScheduled = true;
+    Future<void>.delayed(const Duration(milliseconds: 450), () {
+      _resyncScheduled = false;
+      if (mounted) _syncPickupMarkers();
+    });
+  }
 
+  Future<void> _syncPickupMarkers() async {
+    if (!mounted || _isSyncingMarkers) return;
+
+    final snapshot = _pendingSnapshot;
+    if (snapshot == null) return;
+
+    if (pointAnnotationManager == null) {
+      // الخريطة ليست جاهزة بعد — أعد المحاولة قريباً
+      _scheduleResync();
+      return;
+    }
+
+    _isSyncingMarkers = true;
     try {
-      if (pointAnnotationManager == null) {
-        await Future<void>.delayed(const Duration(milliseconds: 400));
-        if (!mounted || pointAnnotationManager == null) return;
+      final approvedPoints = <PickupPointModel>[];
+
+      for (final doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>? ?? {};
+          if (!_isApprovedDoc(data)) continue;
+
+          final point = PickupPointModel.fromFirestore(doc);
+          if (point.latitude == 0.0 && point.longitude == 0.0) continue;
+          approvedPoints.add(point);
+        } catch (e) {
+          MapUtils.log(
+            '⚠️ تخطي نقطة ${doc.id}: $e',
+            tag: 'PickupMixin',
+          );
+        }
       }
 
-      // أول تحميل كامل أو إعادة مزامنة
-      final isInitial =
-          snapshot.metadata.isFromCache == false && _pickupAnnotations.isEmpty ||
-              snapshot.docChanges.isEmpty && snapshot.docs.isNotEmpty &&
-                  _pickupAnnotations.isEmpty;
+      final newIds = approvedPoints.map((p) => p.id).toSet();
+      final currentIds = _pickupAnnotations.keys.toSet();
+      final toRemove = currentIds.difference(newIds);
 
-      if (isInitial || _pickupAnnotations.isEmpty) {
-        for (final doc in snapshot.docs) {
-          if (!mounted) return;
-          try {
-            final point = PickupPointModel.fromFirestore(doc);
-            if (point.latitude == 0.0 && point.longitude == 0.0) continue;
-            await _upsertPickupMarker(point);
-          } catch (e) {
-            MapUtils.log(
-              '⚠️ خطأ في معالجة نقطة ${doc.id}: $e',
-              tag: 'PickupMixin',
-            );
-          }
-        }
-      } else {
-        for (final change in snapshot.docChanges) {
-          if (!mounted) return;
-          final doc = change.doc;
+      for (final id in toRemove) {
+        if (!mounted) return;
+        await _removePickupMarker(id);
+      }
 
-          if (change.type == DocumentChangeType.removed) {
-            await _removePickupMarker(doc.id);
-            continue;
-          }
-
-          try {
-            final point = PickupPointModel.fromFirestore(doc);
-            if (point.latitude == 0.0 && point.longitude == 0.0) {
-              await _removePickupMarker(point.id);
-              continue;
-            }
-            await _upsertPickupMarker(point);
-          } catch (e) {
-            MapUtils.log(
-              '⚠️ خطأ في تحديث نقطة ${doc.id}: $e',
-              tag: 'PickupMixin',
-            );
-          }
-        }
+      for (final point in approvedPoints) {
+        if (!mounted) return;
+        await _upsertPickupMarker(point);
       }
 
       MapUtils.log(
-        '✅ [Pickup] معروض ${_pickupAnnotations.length} نقطة',
+        '✅ [Pickup] معروض ${_pickupAnnotations.length} / '
+        'معتمدة ${approvedPoints.length} من أصل ${snapshot.docs.length}',
         tag: 'PickupMixin',
       );
     } finally {
       _isSyncingMarkers = false;
+
+      // إن وصل snapshot أحدث أثناء المزامنة
+      if (_pendingSnapshot != snapshot && mounted) {
+        _scheduleResync();
+      }
     }
   }
 
@@ -140,7 +186,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         '${point.pointType}_${point.name.hashCode}_${point.confirmationCount}';
     final existing = _pickupAnnotations[point.id];
 
-    // نفس الشكل المرئي → حدّث الإحداثيات فقط (أوفر بكثير)
     if (existing != null && _markerVisualKey[point.id] == visualKey) {
       existing.geometry = Point(
         coordinates: Position(point.longitude, point.latitude),
@@ -193,7 +238,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       confirmationCount: point.confirmationCount,
     );
     if (bytes != null) {
-      // حافظ على حجم الكاش معقولاً
       if (_markerImageCache.length > 80) {
         _markerImageCache.clear();
       }
@@ -366,6 +410,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   void disposePickupPoints() {
     _pickupPointsSubscription?.cancel();
+    _pendingSnapshot = null;
     _pickupAnnotations.clear();
     _pickupAnnotationToPointId.clear();
     _markerImageCache.clear();
