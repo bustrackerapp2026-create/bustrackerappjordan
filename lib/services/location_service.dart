@@ -18,18 +18,22 @@ class PlaceSearchResult {
   });
 }
 
-/// ملفات تتبع موفّرة للبطارية حسب حالة الاستخدام.
+/// مراحل تثبيت الموقع (مثل جوجل ماب: فوري → تقريبي → دقيق)
+enum LocationFixStage {
+  /// من الذاكرة / آخر موقع معروف للنظام — فوري تقريباً
+  cached,
+
+  /// أول تثبيت سريع من مزوّد الموقع
+  quick,
+
+  /// تثبيت أدق بعد التحسين
+  precise,
+}
+
 enum LocationTrackingProfile {
-  /// راكب يتصفح فقط
   passengerBrowse,
-
-  /// سائق متاح بدون رحلة
   driverIdle,
-
-  /// سائق أثناء رحلة
   driverTrip,
-
-  /// قراءة لمرة واحدة (زر موقعي)
   preciseOnce,
 }
 
@@ -37,11 +41,11 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
   LocationAccuracy get accuracy {
     switch (this) {
       case LocationTrackingProfile.passengerBrowse:
-        return LocationAccuracy.low;
-      case LocationTrackingProfile.driverIdle:
-        return LocationAccuracy.low;
-      case LocationTrackingProfile.driverTrip:
         return LocationAccuracy.medium;
+      case LocationTrackingProfile.driverIdle:
+        return LocationAccuracy.medium;
+      case LocationTrackingProfile.driverTrip:
+        return LocationAccuracy.high;
       case LocationTrackingProfile.preciseOnce:
         return LocationAccuracy.high;
     }
@@ -50,40 +54,39 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
   int get distanceFilterMeters {
     switch (this) {
       case LocationTrackingProfile.passengerBrowse:
-        return 40;
+        return 25;
       case LocationTrackingProfile.driverIdle:
-        return 45;
+        return 30;
       case LocationTrackingProfile.driverTrip:
-        return 20;
+        return 15;
       case LocationTrackingProfile.preciseOnce:
-        return 8;
+        return 5;
     }
   }
 
   Duration get throttleDuration {
     switch (this) {
       case LocationTrackingProfile.passengerBrowse:
-        return const Duration(seconds: 3);
+        return const Duration(seconds: 2);
       case LocationTrackingProfile.driverIdle:
-        return const Duration(seconds: 4);
+        return const Duration(seconds: 3);
       case LocationTrackingProfile.driverTrip:
-        return const Duration(seconds: 1);
+        return const Duration(milliseconds: 800);
       case LocationTrackingProfile.preciseOnce:
-        return const Duration(milliseconds: 500);
+        return const Duration(milliseconds: 400);
     }
   }
 
-  /// فاصل أندرويد بين طلبات الموقع (يوفر بطارية بشكل كبير)
   Duration get androidInterval {
     switch (this) {
       case LocationTrackingProfile.passengerBrowse:
-        return const Duration(seconds: 8);
+        return const Duration(seconds: 5);
       case LocationTrackingProfile.driverIdle:
-        return const Duration(seconds: 10);
+        return const Duration(seconds: 7);
       case LocationTrackingProfile.driverTrip:
-        return const Duration(seconds: 3);
-      case LocationTrackingProfile.preciseOnce:
         return const Duration(seconds: 2);
+      case LocationTrackingProfile.preciseOnce:
+        return const Duration(seconds: 1);
     }
   }
 
@@ -119,7 +122,7 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
         accuracy: accuracy,
         distanceFilter: distanceFilterMeters,
         intervalDuration: androidInterval,
-        // يوقف التحديثات عند ثبات الجهاز قدر الإمكان
+        // Fused Location Provider — أسرع مثل تطبيقات جوجل
         forceLocationManager: false,
       );
     }
@@ -131,7 +134,7 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
         distanceFilter: distanceFilterMeters,
         activityType: this == LocationTrackingProfile.driverTrip
             ? ActivityType.automotiveNavigation
-            : ActivityType.other,
+            : ActivityType.otherNavigation,
         pauseLocationUpdatesAutomatically: true,
         showBackgroundLocationIndicator: false,
       );
@@ -151,12 +154,24 @@ class LocationService {
 
   Position? _lastKnownPosition;
   DateTime? _lastEmitTime;
+  bool? _permissionGrantedCache;
+  DateTime? _permissionCheckedAt;
+
+  static const Duration _permissionCacheTtl = Duration(seconds: 45);
 
   Future<bool> checkAndRequestPermission() async {
     try {
+      final now = DateTime.now();
+      if (_permissionGrantedCache == true &&
+          _permissionCheckedAt != null &&
+          now.difference(_permissionCheckedAt!) < _permissionCacheTtl) {
+        return true;
+      }
+
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        debugPrint('⚠️ خدمة الموقع غير مفعّلة');
+        _permissionGrantedCache = false;
+        _permissionCheckedAt = now;
         return false;
       }
 
@@ -164,13 +179,12 @@ class LocationService {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return false;
-      }
 
-      return permission == LocationPermission.whileInUse ||
+      final granted = permission == LocationPermission.whileInUse ||
           permission == LocationPermission.always;
+      _permissionGrantedCache = granted;
+      _permissionCheckedAt = now;
+      return granted;
     } catch (e) {
       debugPrint('❌ صلاحيات الموقع: $e');
       return false;
@@ -187,67 +201,162 @@ class LocationService {
 
   Future<Position?> getLastKnownPosition() async {
     try {
+      // ذاكرة التطبيق أولاً (فوري)
+      if (_lastKnownPosition != null) {
+        // حدّث من النظام في الخلفية دون انتظار النتيجة للمسار السريع
+        unawaited(_refreshSystemLastKnown());
+        return _lastKnownPosition;
+      }
       final position = await Geolocator.getLastKnownPosition();
       if (position != null) _lastKnownPosition = position;
-      return position ?? _lastKnownPosition;
+      return position;
     } catch (e) {
       return _lastKnownPosition;
     }
   }
 
-  /// قراءة لمرة واحدة — تفضّل الدقة المنخفضة أولاً لتوفير البطارية
-  Future<Position?> getCurrentPosition({
-    bool preferHighAccuracy = false,
-    Duration timeout = const Duration(seconds: 12),
-  }) async {
+  Future<void> _refreshSystemLastKnown() async {
     try {
-      final hasPermission = await checkAndRequestPermission();
-      if (!hasPermission) return _lastKnownPosition;
+      final position = await Geolocator.getLastKnownPosition();
+      if (position != null) _lastKnownPosition = position;
+    } catch (_) {}
+  }
 
-      Position? best = await getLastKnownPosition();
+  Position? _preferBetter(Position? current, Position candidate) {
+    if (current == null) return candidate;
+    // دقة أصغر رقم = أفضل
+    final ca = current.accuracy;
+    final na = candidate.accuracy;
+    if (!na.isFinite) return current;
+    if (!ca.isFinite) return candidate;
+    if (na + 5 < ca) return candidate;
+    // أحدث بكثير مع دقة مقبولة
+    if (candidate.timestamp.isAfter(current.timestamp) && na <= ca + 25) {
+      return candidate;
+    }
+    return current;
+  }
 
-      // 1) دقة منخفضة/متوسطة أولاً (أوفر للبطارية)
+  LocationSettings _androidOrDefault({
+    required LocationAccuracy accuracy,
+    required Duration timeLimit,
+    int distanceFilter = 0,
+  }) {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return AndroidSettings(
+        accuracy: accuracy,
+        distanceFilter: distanceFilter,
+        forceLocationManager: false,
+        timeLimit: timeLimit,
+      );
+    }
+    return LocationSettings(
+      accuracy: accuracy,
+      distanceFilter: distanceFilter,
+      timeLimit: timeLimit,
+    );
+  }
+
+  /// تحديد موقع بأسلوب Google Maps:
+  /// 1) cached فوري → 2) quick سريع → 3) precise تحسين
+  /// [onProgress] يُستدعى فور كل تحسّن لعرض العلامة فوراً على الخريطة.
+  Future<Position?> locateProgressive({
+    void Function(Position position, LocationFixStage stage)? onProgress,
+    bool refineToPrecise = true,
+    Duration quickTimeout = const Duration(seconds: 3),
+    Duration preciseTimeout = const Duration(seconds: 7),
+  }) async {
+    final hasPermission = await checkAndRequestPermission();
+    if (!hasPermission) return _lastKnownPosition;
+
+    Position? best;
+
+    // ── 1) فوري: آخر موقع معروف ───────────────────────────
+    final cached = await getLastKnownPosition();
+    if (cached != null) {
+      best = cached;
+      _lastKnownPosition = cached;
+      onProgress?.call(cached, LocationFixStage.cached);
+    }
+
+    // ── 2) سريع: high عبر Fused (غالباً يعيد كاش النظام خلال <1ث) ──
+    try {
+      final quick = await Geolocator.getCurrentPosition(
+        locationSettings: _androidOrDefault(
+          accuracy: LocationAccuracy.high,
+          timeLimit: quickTimeout,
+        ),
+      );
+      best = _preferBetter(best, quick);
+      _lastKnownPosition = best;
+      onProgress?.call(quick, LocationFixStage.quick);
+
+      // إن كانت الدقة جيدة كفاية نتخطى الانتظار الطويل
+      if (!refineToPrecise || quick.accuracy <= 40) {
+        // حسّن في الخلفية بدون حجب الإرجاع
+        if (refineToPrecise && quick.accuracy > 15) {
+          unawaited(_refineInBackground(onProgress));
+        }
+        return best;
+      }
+    } catch (e) {
+      debugPrint('⚠️ [Location] quick fix: $e');
+    }
+
+    // ── 3) أدق عند الحاجة ─────────────────────────────────
+    if (refineToPrecise) {
       try {
-        final medium = await Geolocator.getCurrentPosition(
-          locationSettings: LocationSettings(
-            accuracy: preferHighAccuracy
-                ? LocationAccuracy.medium
-                : LocationAccuracy.low,
-            timeLimit: const Duration(seconds: 6),
+        final precise = await Geolocator.getCurrentPosition(
+          locationSettings: _androidOrDefault(
+            accuracy: LocationAccuracy.best,
+            timeLimit: preciseTimeout,
           ),
         );
-        best = medium;
-        _lastKnownPosition = medium;
-        if (!preferHighAccuracy || medium.accuracy <= 80) {
-          return medium;
-        }
-      } catch (_) {}
-
-      // 2) عالية فقط عند الحاجة
-      if (preferHighAccuracy) {
-        try {
-          final high = await Geolocator.getCurrentPosition(
-            locationSettings: LocationSettings(
-              accuracy: LocationAccuracy.high,
-              timeLimit: timeout,
-            ),
-          );
-          _lastKnownPosition = high;
-          return high;
-        } catch (_) {}
+        best = _preferBetter(best, precise);
+        _lastKnownPosition = best;
+        onProgress?.call(precise, LocationFixStage.precise);
+      } catch (e) {
+        debugPrint('⚠️ [Location] precise fix: $e');
       }
-
-      return best ?? _lastKnownPosition;
-    } catch (e) {
-      debugPrint('❌ getCurrentPosition: $e');
-      return _lastKnownPosition;
     }
+
+    return best ?? _lastKnownPosition;
+  }
+
+  Future<void> _refineInBackground(
+    void Function(Position position, LocationFixStage stage)? onProgress,
+  ) async {
+    try {
+      final precise = await Geolocator.getCurrentPosition(
+        locationSettings: _androidOrDefault(
+          accuracy: LocationAccuracy.best,
+          timeLimit: const Duration(seconds: 8),
+        ),
+      );
+      _lastKnownPosition = _preferBetter(_lastKnownPosition, precise);
+      onProgress?.call(precise, LocationFixStage.precise);
+    } catch (_) {}
+  }
+
+  /// للتوافق مع الاستدعاءات القديمة — يستخدم المسار السريع
+  Future<Position?> getCurrentPosition({
+    bool preferHighAccuracy = true,
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    return locateProgressive(
+      refineToPrecise: preferHighAccuracy,
+      quickTimeout: const Duration(seconds: 3),
+      preciseTimeout: timeout,
+    );
   }
 
   Future<Position?> getPositionFast() async {
     final last = await getLastKnownPosition();
     if (last != null) return last;
-    return getCurrentPosition(preferHighAccuracy: false);
+    return locateProgressive(
+      refineToPrecise: false,
+      quickTimeout: const Duration(seconds: 2),
+    );
   }
 
   Future<PlaceSearchResult?> searchPlace(String query) async {
@@ -298,7 +407,7 @@ class LocationService {
 
   Stream<Position> getPositionStream({
     int distanceFilter = 25,
-    LocationAccuracy accuracy = LocationAccuracy.low,
+    LocationAccuracy accuracy = LocationAccuracy.medium,
     Duration throttleDuration = const Duration(seconds: 2),
     LocationSettings? settings,
   }) {
