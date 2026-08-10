@@ -5,23 +5,30 @@ import 'package:flutter/foundation.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../core/map/map_core.dart';
-import '../../../../core/map/map_utils.dart'; // ✅ إضافة الاستيراد
+import '../../../../core/map/map_utils.dart';
 
 mixin PassengerManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final Map<String, PointAnnotation> _passengerAnnotations = {};
   final Map<String, Uint8List> _passengerMarkerCache = {};
   StreamSubscription<QuerySnapshot>? _passengersSubscription;
   bool showPassengers = true;
+  bool _isUpdatingPassengers = false;
 
   void listenToActivePassengers() {
     _passengersSubscription?.cancel();
+
+    // ملاحظة: التصفية الزمنية تتم محلياً لأن فهرس locationUpdatedAt
+    // قد لا يكون جاهزاً لكل الوثائق القديمة. لاحقاً يُفضّل حقل isSharingLocation.
     _passengersSubscription = FirebaseFirestore.instance
         .collection('users')
         .where('userType', isEqualTo: 'passenger')
         .snapshots()
         .listen(
       (snapshot) {
-        _log('📦 تم استلام ${snapshot.docs.length} راكب من Firestore');
+        if (!showPassengers) return;
+        _log(
+          '📦 ركاب: تغيّرات ${snapshot.docChanges.length} / ${snapshot.docs.length}',
+        );
         _updatePassengerMarkers(snapshot);
       },
       onError: (error) => _log('❌ خطأ في جلب الركاب: $error'),
@@ -32,67 +39,67 @@ mixin PassengerManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (!showPassengers || pointAnnotationManager == null || !mounted) {
       return;
     }
+    if (_isUpdatingPassengers) return;
+    _isUpdatingPassengers = true;
 
-    final now = DateTime.now();
-    final newPassengerIds = <String>{};
-    final validPassengers = <Map<String, dynamic>>[];
+    try {
+      final now = DateTime.now();
+      final newPassengerIds = <String>{};
+      final validPassengers = <Map<String, dynamic>>[];
 
-    for (final doc in snapshot.docs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final id = doc.id;
-      // ✅ استخدام MapUtils.safeToDouble
-      final lat = MapUtils.safeToDouble(data['currentLatitude']);
-      final lng = MapUtils.safeToDouble(data['currentLongitude']);
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final id = doc.id;
+        final lat = MapUtils.safeToDouble(data['currentLatitude']);
+        final lng = MapUtils.safeToDouble(data['currentLongitude']);
 
-      if (lat == null || lng == null) {
-        continue;
-      }
+        if (lat == null || lng == null) continue;
 
-      final lastUpdate = data['locationUpdatedAt'] as Timestamp?;
-      if (lastUpdate != null) {
+        final lastUpdate = data['locationUpdatedAt'] as Timestamp?;
+        if (lastUpdate == null) continue;
+
         final diff = now.difference(lastUpdate.toDate()).inMinutes;
-        if (diff > 5) {
-          continue;
+        if (diff > 5) continue;
+
+        newPassengerIds.add(id);
+        validPassengers.add({'id': id, ...data});
+      }
+
+      final currentPassengerIds = _passengerAnnotations.keys.toSet();
+      final toRemove = currentPassengerIds.difference(newPassengerIds);
+
+      for (final id in toRemove) {
+        final annotation = _passengerAnnotations[id];
+        if (annotation != null) {
+          await pointAnnotationManager?.delete(annotation);
+          _passengerAnnotations.remove(id);
         }
-      } else {
-        continue;
       }
 
-      newPassengerIds.add(id);
-      validPassengers.add({'id': id, ...data});
-    }
-
-    final currentPassengerIds = _passengerAnnotations.keys.toSet();
-    final toRemove = currentPassengerIds.difference(newPassengerIds);
-
-    for (final id in toRemove) {
-      final annotation = _passengerAnnotations[id];
-      if (annotation != null) {
-        await pointAnnotationManager?.delete(annotation);
-        _passengerAnnotations.remove(id);
-        _passengerMarkerCache.remove(id);
+      for (final passenger in validPassengers) {
+        final id = passenger['id'] as String;
+        final lat = MapUtils.safeToDouble(passenger['currentLatitude'])!;
+        final lng = MapUtils.safeToDouble(passenger['currentLongitude'])!;
+        await _createOrUpdatePassengerMarker(
+          passengerId: id,
+          lat: lat,
+          lng: lng,
+        );
       }
-    }
 
-    for (final passenger in validPassengers) {
-      final id = passenger['id'] as String;
-      final lat = MapUtils.safeToDouble(passenger['currentLatitude'])!;
-      final lng = MapUtils.safeToDouble(passenger['currentLongitude'])!;
-      await _createOrUpdatePassengerMarker(passengerId: id, lat: lat, lng: lng);
+      _log('✅ ركاب نشطون على الخريطة: ${_passengerAnnotations.length}');
+    } finally {
+      _isUpdatingPassengers = false;
     }
-
-    _log('✅ تم تحديث الركاب، يوجد ${_passengerAnnotations.length} راكب نشط');
   }
 
-  // ... باقي الدوال كما هي (لم تتغير)
   Future<void> _createOrUpdatePassengerMarker({
     required String passengerId,
     required double lat,
     required double lng,
   }) async {
-    if (pointAnnotationManager == null || !mounted) {
-      return;
-    }
+    if (pointAnnotationManager == null || !mounted) return;
+
     final point = Point(coordinates: Position(lng, lat));
     if (_passengerAnnotations.containsKey(passengerId)) {
       final annotation = _passengerAnnotations[passengerId]!;
@@ -100,10 +107,10 @@ mixin PassengerManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       await pointAnnotationManager?.update(annotation);
       return;
     }
+
     final markerBytes = await _createPassengerMarkerImage();
-    if (markerBytes == null || !mounted) {
-      return;
-    }
+    if (markerBytes == null || !mounted) return;
+
     final options = PointAnnotationOptions(
       geometry: point,
       image: markerBytes,
@@ -172,30 +179,27 @@ mixin PassengerManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   void togglePassengersVisibility() {
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      showPassengers = !showPassengers;
-    });
+    if (!mounted) return;
+    setState(() => showPassengers = !showPassengers);
+
     if (showPassengers) {
       listenToActivePassengers();
       _log('👥 إظهار الركاب');
     } else {
+      // إيقاف البث فوراً لتوفير البيانات
+      _passengersSubscription?.cancel();
+      _passengersSubscription = null;
       _clearPassengerMarkers();
-      _log('👥 إخفاء الركاب');
+      _log('👥 إخفاء الركاب وإيقاف المستمع');
     }
   }
 
   Future<void> _clearPassengerMarkers() async {
-    if (pointAnnotationManager == null) {
-      return;
-    }
+    if (pointAnnotationManager == null) return;
     for (final annotation in _passengerAnnotations.values) {
       await pointAnnotationManager?.delete(annotation);
     }
     _passengerAnnotations.clear();
-    _passengerMarkerCache.clear();
   }
 
   void disposePassengers() {
