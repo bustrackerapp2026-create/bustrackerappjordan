@@ -16,17 +16,17 @@ import 'pickup_marker_helper.dart';
 import 'pickup_point_dialog.dart';
 import 'pickup_point_manager.dart';
 
-/// مكسين مشترك لعرض وإدارة نقاط التجمع على خرائط السائق (وأي خريطة تستخدم MapCore).
-///
-/// - يستمع فقط للنقاط المعتمدة (approved) لمزامنة فورية مع الأدمن.
-/// - يرسم علامات مميزة: باصات (برتقالي) / ركاب (نيلي).
+/// مكسين مشترك لعرض وإدارة نقاط التجمع.
+/// محسّن للاستهلاك: يعالج docChanges فقط ويعيد الرسم عند تغيّر الشكل لا الموقع فقط.
 mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final PickupPointManager _pickupManager = PickupPointManager();
   final Map<String, PointAnnotation> _pickupAnnotations = {};
   final Map<String, String> _pickupAnnotationToPointId = {};
   final Map<String, Uint8List> _markerImageCache = {};
+  final Map<String, String> _markerVisualKey = {};
   StreamSubscription<QuerySnapshot>? _pickupPointsSubscription;
   bool _isAddingPickupPoint = false;
+  bool _isSyncingMarkers = false;
 
   bool get isAddingPickupPoint => _isAddingPickupPoint;
 
@@ -36,7 +36,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _isAddingPickupPoint = !_isAddingPickupPoint;
   }
 
-  /// الاستماع اللحظي لنقاط التجمع المعتمدة من Firestore
   void listenToPickupPoints() {
     _pickupPointsSubscription?.cancel();
 
@@ -47,7 +46,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         .listen(
       (snapshot) {
         MapUtils.log(
-          '📦 [Pickup] استلام ${snapshot.docs.length} نقطة معتمدة',
+          '📦 [Pickup] تغيّر: ${snapshot.docChanges.length} / إجمالي ${snapshot.docs.length}',
           tag: 'PickupMixin',
         );
         _syncPickupMarkers(snapshot);
@@ -59,58 +58,108 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   Future<void> _syncPickupMarkers(QuerySnapshot snapshot) async {
-    if (!mounted) return;
-    if (pointAnnotationManager == null) {
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-      if (!mounted || pointAnnotationManager == null) return;
-    }
+    if (!mounted || _isSyncingMarkers) return;
+    _isSyncingMarkers = true;
 
-    final incomingIds = snapshot.docs.map((d) => d.id).toSet();
-    final existingIds = _pickupAnnotations.keys.toSet();
-
-    for (final id in existingIds.difference(incomingIds)) {
-      final annotation = _pickupAnnotations.remove(id);
-      if (annotation != null) {
-        try {
-          await pointAnnotationManager?.delete(annotation);
-        } catch (_) {}
-        _pickupAnnotationToPointId.remove(annotation.id);
+    try {
+      if (pointAnnotationManager == null) {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        if (!mounted || pointAnnotationManager == null) return;
       }
-    }
 
-    for (final doc in snapshot.docs) {
-      if (!mounted) return;
-      try {
-        final point = PickupPointModel.fromFirestore(doc);
-        if (point.latitude == 0.0 && point.longitude == 0.0) continue;
+      // أول تحميل كامل أو إعادة مزامنة
+      final isInitial =
+          snapshot.metadata.isFromCache == false && _pickupAnnotations.isEmpty ||
+              snapshot.docChanges.isEmpty && snapshot.docs.isNotEmpty &&
+                  _pickupAnnotations.isEmpty;
 
-        await _upsertPickupMarker(point);
-      } catch (e) {
-        MapUtils.log(
-          '⚠️ خطأ في معالجة نقطة ${doc.id}: $e',
-          tag: 'PickupMixin',
-        );
+      if (isInitial || _pickupAnnotations.isEmpty) {
+        for (final doc in snapshot.docs) {
+          if (!mounted) return;
+          try {
+            final point = PickupPointModel.fromFirestore(doc);
+            if (point.latitude == 0.0 && point.longitude == 0.0) continue;
+            await _upsertPickupMarker(point);
+          } catch (e) {
+            MapUtils.log(
+              '⚠️ خطأ في معالجة نقطة ${doc.id}: $e',
+              tag: 'PickupMixin',
+            );
+          }
+        }
+      } else {
+        for (final change in snapshot.docChanges) {
+          if (!mounted) return;
+          final doc = change.doc;
+
+          if (change.type == DocumentChangeType.removed) {
+            await _removePickupMarker(doc.id);
+            continue;
+          }
+
+          try {
+            final point = PickupPointModel.fromFirestore(doc);
+            if (point.latitude == 0.0 && point.longitude == 0.0) {
+              await _removePickupMarker(point.id);
+              continue;
+            }
+            await _upsertPickupMarker(point);
+          } catch (e) {
+            MapUtils.log(
+              '⚠️ خطأ في تحديث نقطة ${doc.id}: $e',
+              tag: 'PickupMixin',
+            );
+          }
+        }
       }
-    }
 
-    MapUtils.log(
-      '✅ [Pickup] معروض ${_pickupAnnotations.length} نقطة على الخريطة',
-      tag: 'PickupMixin',
-    );
+      MapUtils.log(
+        '✅ [Pickup] معروض ${_pickupAnnotations.length} نقطة',
+        tag: 'PickupMixin',
+      );
+    } finally {
+      _isSyncingMarkers = false;
+    }
   }
 
-  Future<void> _upsertPickupMarker(PickupPointModel point) async {
-    if (pointAnnotationManager == null || !mounted) return;
-
-    final existing = _pickupAnnotations.remove(point.id);
+  Future<void> _removePickupMarker(String pointId) async {
+    final existing = _pickupAnnotations.remove(pointId);
     if (existing != null) {
       try {
         await pointAnnotationManager?.delete(existing);
       } catch (_) {}
       _pickupAnnotationToPointId.remove(existing.id);
     }
+    _markerVisualKey.remove(pointId);
+  }
 
-    final bytes = await _markerBytesFor(point);
+  Future<void> _upsertPickupMarker(PickupPointModel point) async {
+    if (pointAnnotationManager == null || !mounted) return;
+
+    final visualKey =
+        '${point.pointType}_${point.name.hashCode}_${point.confirmationCount}';
+    final existing = _pickupAnnotations[point.id];
+
+    // نفس الشكل المرئي → حدّث الإحداثيات فقط (أوفر بكثير)
+    if (existing != null && _markerVisualKey[point.id] == visualKey) {
+      existing.geometry = Point(
+        coordinates: Position(point.longitude, point.latitude),
+      );
+      try {
+        await pointAnnotationManager?.update(existing);
+      } catch (_) {}
+      return;
+    }
+
+    if (existing != null) {
+      _pickupAnnotations.remove(point.id);
+      try {
+        await pointAnnotationManager?.delete(existing);
+      } catch (_) {}
+      _pickupAnnotationToPointId.remove(existing.id);
+    }
+
+    final bytes = await _markerBytesFor(point, visualKey);
     if (bytes == null || !mounted) return;
 
     final options = PointAnnotationOptions(
@@ -126,13 +175,16 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (annotation != null) {
       _pickupAnnotations[point.id] = annotation;
       _pickupAnnotationToPointId[annotation.id] = point.id;
+      _markerVisualKey[point.id] = visualKey;
     }
   }
 
-  Future<Uint8List?> _markerBytesFor(PickupPointModel point) async {
-    final key =
-        '${point.id}_${point.pointType}_${point.name.hashCode}_${point.confirmationCount}';
-    final cached = _markerImageCache[key];
+  Future<Uint8List?> _markerBytesFor(
+    PickupPointModel point,
+    String visualKey,
+  ) async {
+    final cacheKey = '${point.id}_$visualKey';
+    final cached = _markerImageCache[cacheKey];
     if (cached != null) return cached;
 
     final bytes = await PickupMarkerHelper.createMarkerBytes(
@@ -140,7 +192,13 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       pointType: point.pointType,
       confirmationCount: point.confirmationCount,
     );
-    if (bytes != null) _markerImageCache[key] = bytes;
+    if (bytes != null) {
+      // حافظ على حجم الكاش معقولاً
+      if (_markerImageCache.length > 80) {
+        _markerImageCache.clear();
+      }
+      _markerImageCache[cacheKey] = bytes;
+    }
     return bytes;
   }
 
@@ -148,7 +206,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return _pickupAnnotationToPointId[annotation.id];
   }
 
-  /// عرض البطاقة الموحّدة الجميلة لنقطة التجمع
   Future<void> showPickupPointSheet(String pickupId) async {
     final point = await _pickupManager.getPickupPoint(pointId: pickupId);
     if (!mounted || point == null) return;
@@ -312,5 +369,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _pickupAnnotations.clear();
     _pickupAnnotationToPointId.clear();
     _markerImageCache.clear();
+    _markerVisualKey.clear();
   }
 }
