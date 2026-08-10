@@ -11,7 +11,6 @@ import '../../../core/trip/trip_manager_mixin.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import '../../../driver/providers/driver_provider.dart';
 import '../../../features/auth/providers/auth_provider.dart';
-import '../../../services/location_service.dart';
 import 'mixins/driver_location_mixin.dart';
 
 /// خريطة السائق — واجهة خفيفة تعتمد على المكسينات المشتركة + مكسين الموقع.
