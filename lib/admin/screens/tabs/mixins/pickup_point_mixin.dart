@@ -10,7 +10,7 @@ import '../../../../core/map/map_utils.dart';
 import '../../../../core/pickup/pickup_marker_helper.dart';
 import '../../../../models/pickup_point_model.dart';
 
-/// مكسين نقاط التجمع لخريطة الأدمن — يعرض كل النقاط المعتمدة.
+/// مكسين نقاط التجمع لخريطة الأدمن — يعرض النقاط ذات status=approved فقط.
 mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final Map<String, PointAnnotation> _pickupAnnotations = {};
   final Map<String, Uint8List> _pickupMarkerCache = {};
@@ -22,35 +22,20 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Map<String, PointAnnotation> get pickupAnnotations => _pickupAnnotations;
 
   bool _isApprovedDoc(Map<String, dynamic> data) {
-    final status = data['status']?.toString();
-    final isApprovedFlag = data['isApproved'] == true;
-
-    if (status == 'rejected') return false;
-    if (status == 'approved' || isApprovedFlag) return true;
-    if (status == 'pending') return false;
-
-    if (status == null || status.isEmpty) {
-      final lat = (data['latitude'] as num?)?.toDouble();
-      final lng = (data['longitude'] as num?)?.toDouble();
-      if (lat != null && lng != null && (lat != 0.0 || lng != 0.0)) {
-        if (data.containsKey('isApproved') && data['isApproved'] != true) {
-          return false;
-        }
-        return true;
-      }
-    }
-    return false;
+    final status = data['status']?.toString().trim().toLowerCase();
+    return status == 'approved';
   }
 
   void listenToPickupPoints() {
     _pickupSubscription?.cancel();
     _pickupSubscription = FirebaseFirestore.instance
         .collection('pickupPoints')
+        .where('status', isEqualTo: 'approved')
         .snapshots()
         .listen(
       (snapshot) {
         MapUtils.log(
-          '📦 نقاط التجمع: ${snapshot.docs.length} مستند',
+          '📦 نقاط معتمدة: ${snapshot.docs.length}',
           tag: 'AdminPickup',
         );
         _pendingSnapshot = snapshot;
