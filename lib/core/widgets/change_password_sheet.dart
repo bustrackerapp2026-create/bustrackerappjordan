@@ -12,6 +12,8 @@ class ChangePasswordSheet {
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => const _ChangePasswordBody(),
     );
@@ -45,6 +47,11 @@ class _ChangePasswordBodyState extends State<_ChangePasswordBody> {
     super.dispose();
   }
 
+  void _cancel() {
+    if (_saving) return;
+    Navigator.pop(context, false);
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (!mounted) return;
@@ -58,6 +65,7 @@ class _ChangePasswordBodyState extends State<_ChangePasswordBody> {
         newPassword: _newCtrl.text,
       );
       if (!mounted) return;
+      // true = نجحت العملية (سيتم إنهاء الجلسة تلقائياً من AuthProvider)
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
@@ -102,21 +110,55 @@ class _ChangePasswordBodyState extends State<_ChangePasswordBody> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                const Icon(Icons.lock_reset, size: 40, color: AppTheme.primaryColor),
                 const SizedBox(height: 8),
-                const Text(
-                  'تغيير كلمة المرور',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                // رأس مع زر إغلاق
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: _cancel,
+                      icon: const Icon(Icons.close),
+                      tooltip: 'إلغاء',
+                    ),
+                    const Expanded(
+                      child: Text(
+                        'تغيير كلمة المرور',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 48),
+                  ],
                 ),
-                const SizedBox(height: 6),
+                const Icon(Icons.lock_reset,
+                    size: 40, color: AppTheme.primaryColor),
+                const SizedBox(height: 8),
                 Text(
                   'أدخل كلمة المرور الحالية ثم الجديدة',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Text(
+                    '🔒 بعد التغيير سيتم تسجيل خروجك تلقائياً لأمان الجلسة، ثم سجّل الدخول بكلمة المرور الجديدة.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.orange.shade900,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 TextFormField(
                   controller: _currentCtrl,
                   obscureText: _obscureCurrent,
@@ -158,7 +200,8 @@ class _ChangePasswordBodyState extends State<_ChangePasswordBody> {
                             ? Icons.visibility_outlined
                             : Icons.visibility_off_outlined,
                       ),
-                      onPressed: () => setState(() => _obscureNew = !_obscureNew),
+                      onPressed: () =>
+                          setState(() => _obscureNew = !_obscureNew),
                     ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -231,10 +274,21 @@ class _ChangePasswordBodyState extends State<_ChangePasswordBody> {
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
                 ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _saving ? null : () => Navigator.pop(context, false),
-                  child: const Text('إلغاء'),
+                const SizedBox(height: 10),
+                OutlinedButton(
+                  onPressed: _saving ? null : _cancel,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.grey.shade800,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: BorderSide(color: Colors.grey.shade300),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'إلغاء',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ),
               ],
             ),
