@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
@@ -17,18 +18,18 @@ class PlaceSearchResult {
   });
 }
 
-/// ملف تتبع الموقع حسب حالة الاستخدام — لتقليل البطارية والبيانات.
+/// ملفات تتبع موفّرة للبطارية حسب حالة الاستخدام.
 enum LocationTrackingProfile {
-  /// راكب يتصفح الخريطة: دقة متوسطة ومسافة أكبر
+  /// راكب يتصفح فقط
   passengerBrowse,
 
   /// سائق متاح بدون رحلة
   driverIdle,
 
-  /// سائق أثناء رحلة نشطة
+  /// سائق أثناء رحلة
   driverTrip,
 
-  /// أقصى دقة عند الطلب لمرة واحدة (زر موقعي)
+  /// قراءة لمرة واحدة (زر موقعي)
   preciseOnce,
 }
 
@@ -36,75 +37,113 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
   LocationAccuracy get accuracy {
     switch (this) {
       case LocationTrackingProfile.passengerBrowse:
-        return LocationAccuracy.medium;
+        return LocationAccuracy.low;
       case LocationTrackingProfile.driverIdle:
-        return LocationAccuracy.medium;
+        return LocationAccuracy.low;
       case LocationTrackingProfile.driverTrip:
-        return LocationAccuracy.high;
+        return LocationAccuracy.medium;
       case LocationTrackingProfile.preciseOnce:
         return LocationAccuracy.high;
     }
   }
 
-  /// الحد الأدنى للمسافة بين تحديثات الـ stream (أمتار)
   int get distanceFilterMeters {
     switch (this) {
       case LocationTrackingProfile.passengerBrowse:
-        return 20;
+        return 40;
       case LocationTrackingProfile.driverIdle:
-        return 25;
+        return 45;
       case LocationTrackingProfile.driverTrip:
-        return 12;
+        return 20;
       case LocationTrackingProfile.preciseOnce:
-        return 5;
+        return 8;
     }
   }
 
-  /// الحد الأدنى الزمني بين بثّين للتطبيق
   Duration get throttleDuration {
     switch (this) {
       case LocationTrackingProfile.passengerBrowse:
-        return const Duration(seconds: 1);
+        return const Duration(seconds: 3);
       case LocationTrackingProfile.driverIdle:
-        return const Duration(seconds: 2);
+        return const Duration(seconds: 4);
       case LocationTrackingProfile.driverTrip:
-        return const Duration(milliseconds: 800);
+        return const Duration(seconds: 1);
       case LocationTrackingProfile.preciseOnce:
-        return const Duration(milliseconds: 400);
+        return const Duration(milliseconds: 500);
     }
   }
 
-  /// الحد الأدنى بين كتابات الموقع إلى Firestore (بيانات)
+  /// فاصل أندرويد بين طلبات الموقع (يوفر بطارية بشكل كبير)
+  Duration get androidInterval {
+    switch (this) {
+      case LocationTrackingProfile.passengerBrowse:
+        return const Duration(seconds: 8);
+      case LocationTrackingProfile.driverIdle:
+        return const Duration(seconds: 10);
+      case LocationTrackingProfile.driverTrip:
+        return const Duration(seconds: 3);
+      case LocationTrackingProfile.preciseOnce:
+        return const Duration(seconds: 2);
+    }
+  }
+
   Duration get firestoreMinInterval {
     switch (this) {
       case LocationTrackingProfile.passengerBrowse:
-        return const Duration(seconds: 45);
+        return const Duration(seconds: 90);
       case LocationTrackingProfile.driverIdle:
-        return const Duration(seconds: 20);
+        return const Duration(seconds: 40);
       case LocationTrackingProfile.driverTrip:
-        return const Duration(seconds: 10);
-      case LocationTrackingProfile.preciseOnce:
         return const Duration(seconds: 15);
+      case LocationTrackingProfile.preciseOnce:
+        return const Duration(seconds: 20);
     }
   }
 
-  /// الحد الأدنى للمسافة قبل إعادة الكتابة إلى Firestore
   double get firestoreMinDistanceMeters {
     switch (this) {
       case LocationTrackingProfile.passengerBrowse:
-        return 80;
+        return 120;
       case LocationTrackingProfile.driverIdle:
-        return 50;
+        return 80;
       case LocationTrackingProfile.driverTrip:
-        return 35;
-      case LocationTrackingProfile.preciseOnce:
         return 40;
+      case LocationTrackingProfile.preciseOnce:
+        return 50;
     }
+  }
+
+  LocationSettings toLocationSettings() {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return AndroidSettings(
+        accuracy: accuracy,
+        distanceFilter: distanceFilterMeters,
+        intervalDuration: androidInterval,
+        // يوقف التحديثات عند ثبات الجهاز قدر الإمكان
+        forceLocationManager: false,
+      );
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      return AppleSettings(
+        accuracy: accuracy,
+        distanceFilter: distanceFilterMeters,
+        activityType: this == LocationTrackingProfile.driverTrip
+            ? ActivityType.automotiveNavigation
+            : ActivityType.other,
+        pauseLocationUpdatesAutomatically: true,
+        showBackgroundLocationIndicator: false,
+      );
+    }
+
+    return LocationSettings(
+      accuracy: accuracy,
+      distanceFilter: distanceFilterMeters,
+    );
   }
 }
 
-/// خدمة الموقع الجغرافي الاحترافية
-/// استراتيجية موثوقة: LastKnown → Medium Accuracy → High Accuracy مع Fallback
 class LocationService {
   static final LocationService _instance = LocationService._internal();
   factory LocationService() => _instance;
@@ -113,36 +152,27 @@ class LocationService {
   Position? _lastKnownPosition;
   DateTime? _lastEmitTime;
 
-  // ─── الصلاحيات ──────────────────────────────────────────────
-
   Future<bool> checkAndRequestPermission() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        debugPrint('⚠️ خدمة الموقع الجغرافي غير مفعّلة في الجهاز.');
+        debugPrint('⚠️ خدمة الموقع غير مفعّلة');
         return false;
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
-
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-
-      if (permission == LocationPermission.denied) {
-        debugPrint('⚠️ تم رفض صلاحية الموقع.');
-        return false;
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        debugPrint('⚠️ تم رفض صلاحية الموقع نهائياً من إعدادات النظام.');
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
         return false;
       }
 
       return permission == LocationPermission.whileInUse ||
           permission == LocationPermission.always;
     } catch (e) {
-      debugPrint('❌ خطأ في التحقق من صلاحيات الموقع: $e');
+      debugPrint('❌ صلاحيات الموقع: $e');
       return false;
     }
   }
@@ -155,98 +185,61 @@ class LocationService {
   Future<void> openAppSettings() => Geolocator.openAppSettings();
   Future<void> openLocationSettings() => Geolocator.openLocationSettings();
 
-  // ─── جلب الموقع ─────────────────────────────────────────────
-
   Future<Position?> getLastKnownPosition() async {
     try {
       final position = await Geolocator.getLastKnownPosition();
-      if (position != null) {
-        _lastKnownPosition = position;
-      }
+      if (position != null) _lastKnownPosition = position;
       return position ?? _lastKnownPosition;
     } catch (e) {
-      debugPrint('❌ خطأ في جلب آخر موقع معروف: $e');
       return _lastKnownPosition;
     }
   }
 
+  /// قراءة لمرة واحدة — تفضّل الدقة المنخفضة أولاً لتوفير البطارية
   Future<Position?> getCurrentPosition({
-    bool preferHighAccuracy = true,
-    Duration timeout = const Duration(seconds: 15),
+    bool preferHighAccuracy = false,
+    Duration timeout = const Duration(seconds: 12),
   }) async {
     try {
       final hasPermission = await checkAndRequestPermission();
-      if (!hasPermission) {
-        debugPrint('⚠️ لا توجد صلاحية موقع — إرجاع آخر موقع معروف إن وُجد');
-        return _lastKnownPosition;
-      }
+      if (!hasPermission) return _lastKnownPosition;
 
-      Position? bestPosition = await getLastKnownPosition();
-      if (bestPosition != null) {
-        debugPrint(
-            '📍 [Location] LastKnown: ${bestPosition.latitude}, ${bestPosition.longitude}');
-      }
+      Position? best = await getLastKnownPosition();
 
+      // 1) دقة منخفضة/متوسطة أولاً (أوفر للبطارية)
       try {
         final medium = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.medium,
-            timeLimit: Duration(seconds: 8),
+          locationSettings: LocationSettings(
+            accuracy: preferHighAccuracy
+                ? LocationAccuracy.medium
+                : LocationAccuracy.low,
+            timeLimit: const Duration(seconds: 6),
           ),
         );
-        bestPosition = medium;
+        best = medium;
         _lastKnownPosition = medium;
-        debugPrint(
-            '📍 [Location] Medium: ${medium.latitude}, ${medium.longitude} (±${medium.accuracy}m)');
-
-        if (!preferHighAccuracy || medium.accuracy <= 50) {
+        if (!preferHighAccuracy || medium.accuracy <= 80) {
           return medium;
         }
-      } catch (e) {
-        debugPrint('⚠️ [Location] فشل Medium accuracy: $e');
-      }
+      } catch (_) {}
 
+      // 2) عالية فقط عند الحاجة
       if (preferHighAccuracy) {
         try {
           final high = await Geolocator.getCurrentPosition(
             locationSettings: LocationSettings(
               accuracy: LocationAccuracy.high,
               timeLimit: timeout,
-              distanceFilter: 0,
             ),
           );
-          bestPosition = high;
           _lastKnownPosition = high;
-          debugPrint(
-              '📍 [Location] High: ${high.latitude}, ${high.longitude} (±${high.accuracy}m)');
           return high;
-        } catch (e) {
-          debugPrint('⚠️ [Location] فشل High accuracy: $e');
-        }
+        } catch (_) {}
       }
 
-      if (bestPosition != null) {
-        debugPrint('📍 [Location] استخدام أفضل نتيجة متاحة (Fallback)');
-        return bestPosition;
-      }
-
-      try {
-        final low = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.low,
-            timeLimit: Duration(seconds: 6),
-          ),
-        );
-        _lastKnownPosition = low;
-        debugPrint(
-            '📍 [Location] Low (Network): ${low.latitude}, ${low.longitude}');
-        return low;
-      } catch (e) {
-        debugPrint('❌ [Location] فشل جميع المحاولات: $e');
-        return _lastKnownPosition;
-      }
+      return best ?? _lastKnownPosition;
     } catch (e) {
-      debugPrint('❌ خطأ عام أثناء جلب الموقع الحالي: $e');
+      debugPrint('❌ getCurrentPosition: $e');
       return _lastKnownPosition;
     }
   }
@@ -257,8 +250,6 @@ class LocationService {
     return getCurrentPosition(preferHighAccuracy: false);
   }
 
-  // ─── البحث عن أماكن ─────────────────────────────────────────
-
   Future<PlaceSearchResult?> searchPlace(String query) async {
     if (query.trim().isEmpty) return null;
 
@@ -267,10 +258,7 @@ class LocationService {
     } catch (_) {}
 
     final token = dotenv.env['MAPBOX_ACCESS_TOKEN'] ?? '';
-    if (token.isEmpty) {
-      debugPrint('⚠️ لا يوجد MAPBOX_ACCESS_TOKEN للبحث عن الأماكن');
-      return null;
-    }
+    if (token.isEmpty) return null;
 
     final encodedQuery = Uri.encodeComponent(query.trim());
     final uri = Uri.parse(
@@ -293,7 +281,6 @@ class LocationService {
       final feature = features.first as Map<String, dynamic>;
       final center = feature['center'] as List<dynamic>?;
       final placeName = feature['place_name'] as String? ?? query.trim();
-
       if (center == null || center.length < 2) return null;
 
       return PlaceSearchResult(
@@ -302,25 +289,25 @@ class LocationService {
         latitude: (center[1] as num).toDouble(),
       );
     } catch (e) {
-      debugPrint('❌ فشل البحث عن المكان: $e');
+      debugPrint('❌ searchPlace: $e');
       return null;
     } finally {
       client.close(force: true);
     }
   }
 
-  // ─── البث المباشر مع Throttle + ملفات التتبع ────────────────
-
   Stream<Position> getPositionStream({
-    int distanceFilter = 5,
-    LocationAccuracy accuracy = LocationAccuracy.high,
-    Duration throttleDuration = const Duration(milliseconds: 400),
+    int distanceFilter = 25,
+    LocationAccuracy accuracy = LocationAccuracy.low,
+    Duration throttleDuration = const Duration(seconds: 2),
+    LocationSettings? settings,
   }) {
     return Geolocator.getPositionStream(
-      locationSettings: LocationSettings(
-        accuracy: accuracy,
-        distanceFilter: distanceFilter,
-      ),
+      locationSettings: settings ??
+          LocationSettings(
+            accuracy: accuracy,
+            distanceFilter: distanceFilter,
+          ),
     ).transform(
       StreamTransformer<Position, Position>.fromHandlers(
         handleData: (position, sink) {
@@ -333,7 +320,6 @@ class LocationService {
           }
         },
         handleError: (error, stackTrace, sink) {
-          debugPrint('⚠️ خطأ في Stream الموقع: $error');
           if (_lastKnownPosition != null) {
             sink.add(_lastKnownPosition!);
           } else {
@@ -344,7 +330,6 @@ class LocationService {
     );
   }
 
-  /// بث موقع حسب ملف الاستخدام (موفّر للبطارية)
   Stream<Position> getPositionStreamForProfile(
     LocationTrackingProfile profile,
   ) {
@@ -352,44 +337,8 @@ class LocationService {
       distanceFilter: profile.distanceFilterMeters,
       accuracy: profile.accuracy,
       throttleDuration: profile.throttleDuration,
+      settings: profile.toLocationSettings(),
     );
-  }
-
-  Stream<Position> getPositionStreamWithRetry({
-    int distanceFilter = 5,
-    LocationAccuracy accuracy = LocationAccuracy.high,
-    Duration throttleDuration = const Duration(milliseconds: 400),
-    int maxRetries = 3,
-  }) {
-    return Stream.multi((controller) {
-      int retryCount = 0;
-      StreamSubscription<Position>? sub;
-
-      void start() {
-        sub?.cancel();
-        sub = getPositionStream(
-          distanceFilter: distanceFilter,
-          accuracy: accuracy,
-          throttleDuration: throttleDuration,
-        ).listen(
-          controller.add,
-          onError: (e, st) {
-            if (retryCount < maxRetries) {
-              retryCount++;
-              debugPrint(
-                  '🔄 إعادة محاولة Stream الموقع ($retryCount/$maxRetries)');
-              Future.delayed(Duration(seconds: retryCount), start);
-            } else {
-              controller.addError(e, st);
-            }
-          },
-          onDone: controller.close,
-        );
-      }
-
-      controller.onCancel = () => sub?.cancel();
-      start();
-    });
   }
 
   bool get hasLocation => _lastKnownPosition != null;

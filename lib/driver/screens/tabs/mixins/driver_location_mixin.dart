@@ -15,10 +15,10 @@ import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../map/utils/map_helpers.dart';
 import '../../../../services/location_service.dart';
 
-/// مكسين موقع السائق — أداء عالٍ:
-/// - لا setState عند كل نبضة GPS (تحديث العلامة/الكاميرا فقط)
-/// - تخفيف تحديثات العلامة والكاميرا
-/// - رفع Firestore بحدود زمنية/مسافية
+/// تتبع موقع السائق موفّر للبطارية:
+/// - بث مستمر فقط عند (متصل أو رحلة نشطة)
+/// - زر موقعي = قراءة لمرة واحدة بدون إبقاء GPS مفتوحاً
+/// - إيقاف فوري عند الإيقاف المؤقت / عدم الحاجة
 mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PointAnnotation? _driverUserAnnotation;
   Uint8List? _cachedDriverMarkerBytes;
@@ -27,8 +27,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   bool isLoadingDriverLocation = false;
   double currentDriverBearing = 0.0;
-
-  /// عند true تتحرك الكاميرا مع السائق
   bool followDriverCamera = false;
 
   DateTime? _lastFirestoreLocationWrite;
@@ -36,7 +34,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   double? _lastUploadedLng;
   bool _isWritingLocation = false;
 
-  // تخفيف تحديثات الطبقة الرسومية
   DateTime? _lastMarkerUpdateAt;
   DateTime? _lastCameraUpdateAt;
   double? _lastMarkerLat;
@@ -47,12 +44,18 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool _pendingMoveCamera = false;
   bool _pendingForceUpload = false;
 
-  static const Duration _minMarkerInterval = Duration(milliseconds: 120);
-  static const Duration _minCameraInterval = Duration(milliseconds: 250);
-  static const double _minMarkerMoveMeters = 2.0;
-  static const double _minBearingDelta = 3.0;
+  static const Duration _minMarkerInterval = Duration(milliseconds: 200);
+  static const Duration _minCameraInterval = Duration(milliseconds: 400);
+  static const double _minMarkerMoveMeters = 3.0;
+  static const double _minBearingDelta = 5.0;
 
   LocationService get locationService => _driverLocationService;
+
+  bool get _shouldTrackContinuously {
+    if (!mounted) return false;
+    final driver = context.read<DriverProvider>();
+    return driver.isOnline || driver.isTripActive;
+  }
 
   LocationTrackingProfile get _activeProfile {
     final driver = context.read<DriverProvider>();
@@ -75,9 +78,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     final now = DateTime.now();
     if (!force && _lastMarkerUpdateAt != null) {
-      if (now.difference(_lastMarkerUpdateAt!) < _minMarkerInterval) {
-        return;
-      }
+      if (now.difference(_lastMarkerUpdateAt!) < _minMarkerInterval) return;
     }
 
     if (!force && _lastMarkerLat != null && _lastMarkerLng != null) {
@@ -118,12 +119,13 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _lastMarkerLng = lng;
       _lastMarkerBearing = bearing;
     } catch (e) {
-      MapUtils.log('⚠️ تحديث علامة السائق: $e', tag: 'DriverLocation');
+      MapUtils.log('⚠️ علامة السائق: $e', tag: 'DriverLocation');
     } finally {
       _markerUpdateInFlight = false;
     }
   }
 
+  /// زر موقعي: قراءة لمرة واحدة. البث المستمر فقط إن كان التتبع مطلوباً.
   Future<void> goToMyLocation() async {
     if (mapboxMap == null || !mounted) return;
 
@@ -141,7 +143,11 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
       if (!mounted) return;
 
-      await _restartLocationStream();
+      // آخر موقع معروف أولاً (بلا GPS ثقيل)
+      final quick = await _driverLocationService.getPositionFast();
+      if (quick != null && mounted) {
+        await _applyPosition(quick, moveCamera: true, forceUpload: false);
+      }
 
       final position = await _driverLocationService.getCurrentPosition(
         preferHighAccuracy: true,
@@ -159,6 +165,13 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       await _applyPosition(position, moveCamera: true, forceUpload: true);
 
+      // لا نفتح GPS المستمر إلا عند الحاجة الفعلية
+      if (_shouldTrackContinuously) {
+        await ensureDriverTrackingRunning();
+      } else {
+        await stopDriverTracking();
+      }
+
       if (!mounted) return;
       MapUtils.showSnackBar(context, '📍 تم تحديد موقعك.');
     } finally {
@@ -166,16 +179,41 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
+  Future<void> ensureDriverTrackingRunning() async {
+    if (!_shouldTrackContinuously) {
+      await stopDriverTracking();
+      return;
+    }
+    if (_driverLocationSubscription != null) {
+      // أعد الملف إن تغيّرت حالة الرحلة
+      await _restartLocationStream();
+      return;
+    }
+    await _restartLocationStream();
+  }
+
+  Future<void> stopDriverTracking() async {
+    await _driverLocationSubscription?.cancel();
+    _driverLocationSubscription = null;
+  }
+
   Future<void> _restartLocationStream() async {
     await _driverLocationSubscription?.cancel();
+    _driverLocationSubscription = null;
+
+    if (!_shouldTrackContinuously) return;
 
     final profile = _activeProfile;
+    MapUtils.log(
+      '📡 تتبع GPS: $profile',
+      tag: 'DriverLocation',
+    );
+
     _driverLocationSubscription = _driverLocationService
         .getPositionStreamForProfile(profile)
         .listen(
       (pos) {
         if (!mounted) return;
-        // لا ننتظر — نجدول التحديث بدون حظر الـ stream
         unawaited(
           _applyPosition(
             pos,
@@ -185,7 +223,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         );
       },
       onError: (e) {
-        MapUtils.log('⚠️ stream موقع السائق: $e', tag: 'DriverLocation');
+        MapUtils.log('⚠️ stream موقع: $e', tag: 'DriverLocation');
       },
     );
   }
@@ -195,7 +233,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     required bool moveCamera,
     required bool forceUpload,
   }) async {
-    // دمج التحديثات السريعة: احتفظ بآخر موضع فقط
     _pendingPosition = position;
     _pendingMoveCamera = _pendingMoveCamera || moveCamera;
     _pendingForceUpload = _pendingForceUpload || forceUpload;
@@ -212,22 +249,18 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _pendingForceUpload = false;
 
     double bearing = pos.heading;
-    if ((bearing == 0.0) && pos.speed > 0.5) {
+    if (bearing == 0.0 && pos.speed > 0.5) {
       bearing = currentDriverBearing;
     }
-    // بدون setState — الاتجاه يخص العلامة فقط
     currentDriverBearing = bearing;
 
-    // كاميرا مخفّفة
     if (doMove && mapboxMap != null) {
       final now = DateTime.now();
-      final canMoveCamera = doForce ||
+      final canMove = doForce ||
           _lastCameraUpdateAt == null ||
           now.difference(_lastCameraUpdateAt!) >= _minCameraInterval;
-
-      if (canMoveCamera) {
+      if (canMove) {
         _lastCameraUpdateAt = now;
-        // setCamera أخف من flyTo أثناء التتبع المستمر
         try {
           await mapboxMap!.setCamera(
             CameraOptions(
@@ -251,13 +284,9 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     );
 
     if (!mounted) return;
-
-    // Provider قد يُعلم المستمعين — لا يعتمد على setState هنا
     context.read<DriverProvider>().updatePosition(pos);
-
     unawaited(_maybeUploadDriverLocation(pos, force: doForce));
 
-    // إن وصل موضع أحدث أثناء التحديث، طبّقه
     if (_pendingPosition != null && mounted) {
       unawaited(
         _applyPosition(
@@ -273,8 +302,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     geo.Position position, {
     bool force = false,
   }) async {
-    if (_isWritingLocation) return;
-    if (!mounted) return;
+    if (_isWritingLocation || !mounted) return;
 
     final driver = context.read<DriverProvider>();
     if (!driver.isOnline && !force) return;
@@ -315,7 +343,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _lastUploadedLat = position.latitude;
       _lastUploadedLng = position.longitude;
     } catch (e) {
-      MapUtils.log('⚠️ فشل رفع موقع السائق: $e', tag: 'DriverLocation');
+      MapUtils.log('⚠️ رفع الموقع: $e', tag: 'DriverLocation');
     } finally {
       _isWritingLocation = false;
     }
@@ -347,11 +375,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   void recenterDriverCamera() {
     final pos = context.read<DriverProvider>().currentPosition;
     if (pos == null) {
-      MapUtils.showSnackBar(
-        context,
-        '⚠️ لا يوجد موقع محدد.',
-        isError: true,
-      );
+      MapUtils.showSnackBar(context, '⚠️ لا يوجد موقع محدد.', isError: true);
       return;
     }
     flyToFlat(
@@ -361,32 +385,38 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     );
   }
 
+  /// يُستدعى بعد تبديل الاتصال أو الرحلة
   Future<void> refreshDriverTrackingProfile() async {
-    if (_driverLocationSubscription == null) return;
-    await _restartLocationStream();
+    if (_shouldTrackContinuously) {
+      await ensureDriverTrackingRunning();
+    } else {
+      await stopDriverTracking();
+      // إيقاف متابعة الكاميرا أيضاً لتوفير الرسم
+      if (followDriverCamera && mounted) {
+        setState(() => followDriverCamera = false);
+      }
+    }
   }
 
   void onDriverLocationLifecycle(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // استئناف التتبع إن كان السائق متصلاً أو في رحلة
-      if (!mounted) return;
-      final driver = context.read<DriverProvider>();
-      if (driver.isOnline || driver.isTripActive) {
-        unawaited(_restartLocationStream());
+      if (_shouldTrackContinuously) {
+        unawaited(ensureDriverTrackingRunning());
       }
       return;
     }
 
-    if (state == AppLifecycleState.detached ||
-        state == AppLifecycleState.paused) {
-      _driverLocationSubscription?.cancel();
-      _driverLocationSubscription = null;
+    // أي خروج للخلفية: أوقف GPS فوراً (الأوفر للبطارية)
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      unawaited(stopDriverTracking());
     }
   }
 
   void disposeDriverLocation() {
-    _driverLocationSubscription?.cancel();
-    _driverLocationSubscription = null;
+    unawaited(stopDriverTracking());
     _driverUserAnnotation = null;
     _pendingPosition = null;
   }
