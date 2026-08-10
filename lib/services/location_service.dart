@@ -17,6 +17,92 @@ class PlaceSearchResult {
   });
 }
 
+/// ملف تتبع الموقع حسب حالة الاستخدام — لتقليل البطارية والبيانات.
+enum LocationTrackingProfile {
+  /// راكب يتصفح الخريطة: دقة متوسطة ومسافة أكبر
+  passengerBrowse,
+
+  /// سائق متاح بدون رحلة
+  driverIdle,
+
+  /// سائق أثناء رحلة نشطة
+  driverTrip,
+
+  /// أقصى دقة عند الطلب لمرة واحدة (زر موقعي)
+  preciseOnce,
+}
+
+extension LocationTrackingProfileX on LocationTrackingProfile {
+  LocationAccuracy get accuracy {
+    switch (this) {
+      case LocationTrackingProfile.passengerBrowse:
+        return LocationAccuracy.medium;
+      case LocationTrackingProfile.driverIdle:
+        return LocationAccuracy.medium;
+      case LocationTrackingProfile.driverTrip:
+        return LocationAccuracy.high;
+      case LocationTrackingProfile.preciseOnce:
+        return LocationAccuracy.high;
+    }
+  }
+
+  /// الحد الأدنى للمسافة بين تحديثات الـ stream (أمتار)
+  int get distanceFilterMeters {
+    switch (this) {
+      case LocationTrackingProfile.passengerBrowse:
+        return 20;
+      case LocationTrackingProfile.driverIdle:
+        return 25;
+      case LocationTrackingProfile.driverTrip:
+        return 12;
+      case LocationTrackingProfile.preciseOnce:
+        return 5;
+    }
+  }
+
+  /// الحد الأدنى الزمني بين بثّين للتطبيق
+  Duration get throttleDuration {
+    switch (this) {
+      case LocationTrackingProfile.passengerBrowse:
+        return const Duration(seconds: 1);
+      case LocationTrackingProfile.driverIdle:
+        return const Duration(seconds: 2);
+      case LocationTrackingProfile.driverTrip:
+        return const Duration(milliseconds: 800);
+      case LocationTrackingProfile.preciseOnce:
+        return const Duration(milliseconds: 400);
+    }
+  }
+
+  /// الحد الأدنى بين كتابات الموقع إلى Firestore (بيانات)
+  Duration get firestoreMinInterval {
+    switch (this) {
+      case LocationTrackingProfile.passengerBrowse:
+        return const Duration(seconds: 45);
+      case LocationTrackingProfile.driverIdle:
+        return const Duration(seconds: 20);
+      case LocationTrackingProfile.driverTrip:
+        return const Duration(seconds: 10);
+      case LocationTrackingProfile.preciseOnce:
+        return const Duration(seconds: 15);
+    }
+  }
+
+  /// الحد الأدنى للمسافة قبل إعادة الكتابة إلى Firestore
+  double get firestoreMinDistanceMeters {
+    switch (this) {
+      case LocationTrackingProfile.passengerBrowse:
+        return 80;
+      case LocationTrackingProfile.driverIdle:
+        return 50;
+      case LocationTrackingProfile.driverTrip:
+        return 35;
+      case LocationTrackingProfile.preciseOnce:
+        return 40;
+    }
+  }
+}
+
 /// خدمة الموقع الجغرافي الاحترافية
 /// استراتيجية موثوقة: LastKnown → Medium Accuracy → High Accuracy مع Fallback
 class LocationService {
@@ -29,7 +115,6 @@ class LocationService {
 
   // ─── الصلاحيات ──────────────────────────────────────────────
 
-  /// التحقق من تفعيل خدمة الموقع + طلب الصلاحيات بشكل صحيح
   Future<bool> checkAndRequestPermission() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -54,7 +139,6 @@ class LocationService {
         return false;
       }
 
-      // whileInUse أو always مقبولان
       return permission == LocationPermission.whileInUse ||
           permission == LocationPermission.always;
     } catch (e) {
@@ -63,7 +147,6 @@ class LocationService {
     }
   }
 
-  /// هل يجب فتح إعدادات التطبيق؟ (deniedForever)
   Future<bool> isPermissionDeniedForever() async {
     final permission = await Geolocator.checkPermission();
     return permission == LocationPermission.deniedForever;
@@ -72,9 +155,8 @@ class LocationService {
   Future<void> openAppSettings() => Geolocator.openAppSettings();
   Future<void> openLocationSettings() => Geolocator.openLocationSettings();
 
-  // ─── جلب الموقع (الاستراتيجية الاحترافية) ───────────────────
+  // ─── جلب الموقع ─────────────────────────────────────────────
 
-  /// جلب آخر موقع معروف بسرعة (لا يستهلك بطارية)
   Future<Position?> getLastKnownPosition() async {
     try {
       final position = await Geolocator.getLastKnownPosition();
@@ -88,15 +170,6 @@ class LocationService {
     }
   }
 
-  ///
-  /// ⭐ الدالة الرئيسية لتحديد الموقع الحالي — موثوقة وسريعة
-  ///
-  /// الاستراتيجية:
-  /// 1. محاولة LastKnown فورية (تجربة مستخدم فورية)
-  /// 2. محاولة Medium accuracy (سريعة وموثوقة في معظم الحالات)
-  /// 3. محاولة High accuracy مع timeout أطول
-  /// 4. إرجاع أفضل نتيجة متاحة + تحديث الكاش
-  ///
   Future<Position?> getCurrentPosition({
     bool preferHighAccuracy = true,
     Duration timeout = const Duration(seconds: 15),
@@ -108,14 +181,12 @@ class LocationService {
         return _lastKnownPosition;
       }
 
-      // ─── المرحلة 1: Last Known (فوري) ───
       Position? bestPosition = await getLastKnownPosition();
       if (bestPosition != null) {
         debugPrint(
             '📍 [Location] LastKnown: ${bestPosition.latitude}, ${bestPosition.longitude}');
       }
 
-      // ─── المرحلة 2: Medium Accuracy (سريعة وموثوقة) ───
       try {
         final medium = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
@@ -128,15 +199,13 @@ class LocationService {
         debugPrint(
             '📍 [Location] Medium: ${medium.latitude}, ${medium.longitude} (±${medium.accuracy}m)');
 
-        // إذا كانت الدقة جيدة بما فيه الكفاية، نرجع فوراً
-        if (medium.accuracy <= 50) {
+        if (!preferHighAccuracy || medium.accuracy <= 50) {
           return medium;
         }
       } catch (e) {
         debugPrint('⚠️ [Location] فشل Medium accuracy: $e');
       }
 
-      // ─── المرحلة 3: High Accuracy (إذا طُلب) ───
       if (preferHighAccuracy) {
         try {
           final high = await Geolocator.getCurrentPosition(
@@ -156,13 +225,11 @@ class LocationService {
         }
       }
 
-      // ─── المرحلة 4: Fallback نهائي ───
       if (bestPosition != null) {
         debugPrint('📍 [Location] استخدام أفضل نتيجة متاحة (Fallback)');
         return bestPosition;
       }
 
-      // محاولة أخيرة بدقة منخفضة جداً (Network-based)
       try {
         final low = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
@@ -184,7 +251,6 @@ class LocationService {
     }
   }
 
-  /// نسخة سريعة جداً للاستخدام عند فتح الخريطة (لا تنتظر GPS)
   Future<Position?> getPositionFast() async {
     final last = await getLastKnownPosition();
     if (last != null) return last;
@@ -243,7 +309,7 @@ class LocationService {
     }
   }
 
-  // ─── البث المباشر مع Throttle ──────────────────────────────
+  // ─── البث المباشر مع Throttle + ملفات التتبع ────────────────
 
   Stream<Position> getPositionStream({
     int distanceFilter = 5,
@@ -275,6 +341,17 @@ class LocationService {
           }
         },
       ),
+    );
+  }
+
+  /// بث موقع حسب ملف الاستخدام (موفّر للبطارية)
+  Stream<Position> getPositionStreamForProfile(
+    LocationTrackingProfile profile,
+  ) {
+    return getPositionStream(
+      distanceFilter: profile.distanceFilterMeters,
+      accuracy: profile.accuracy,
+      throttleDuration: profile.throttleDuration,
     );
   }
 
@@ -314,8 +391,6 @@ class LocationService {
       start();
     });
   }
-
-  // ─── دوال مساعدة ────────────────────────────────────────────
 
   bool get hasLocation => _lastKnownPosition != null;
 
