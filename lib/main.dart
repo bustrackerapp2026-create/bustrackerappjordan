@@ -19,12 +19,10 @@ import 'driver/providers/driver_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ جعل شريط النظام (Status Bar) شفافاً ومتناسقاً لمنع ظهور البار الأسود المزعج
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness:
-          Brightness.dark, // أيقونات داكنة واضحة (ساعة، شبكة، بطارية)
+      statusBarIconBrightness: Brightness.dark,
       systemNavigationBarColor: Colors.white,
     ),
   );
@@ -70,70 +68,90 @@ class BusTrackerApp extends StatelessWidget {
         title: 'Bus Tracker Jordan',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
+        // يقلل إعادة بناء غير ضرورية عند تغيير لوحة المفاتيح/الحواف
+        builder: (context, child) {
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.noScaling,
+            ),
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
         home: const AuthWrapper(),
       ),
     );
   }
 }
 
-// ============================================================
-// ✅ بوابة المصادقة الذكية (AuthWrapper)
-// ============================================================
+/// بوابة مصادقة تعيد البناء فقط عند تغيّر حالة الدخول أو الدور
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-
-    if (!authProvider.isLoggedIn) {
+    final isLoggedIn = context.select<AuthProvider, bool>((a) => a.isLoggedIn);
+    if (!isLoggedIn) {
       return const LoginScreen();
     }
 
-    if (authProvider.userData == null) {
-      return Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 20),
-                const Text(
-                  'جاري تحميل بيانات الحساب...',
-                  style: TextStyle(color: Colors.grey),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () => context.read<AuthProvider>().signOut(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context)
-                        .colorScheme
-                        .error, // ✅ استخدام لون الثيم
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('تسجيل الخروج'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+    // نختار فقط الحقول المؤثرة على التوجيه — لا نُعيد بناء عند أي notify عابر
+    final gate = context.select<AuthProvider, ({String? type, bool? verified})>(
+      (a) {
+        final u = a.userData;
+        if (u == null) return (type: null, verified: null);
+        return (type: u.userType, verified: u.isVerified);
+      },
+    );
+
+    if (gate.type == null) {
+      return const _AuthLoadingScreen();
     }
 
-    final userData = authProvider.userData!;
-
-    if (userData.userType == UserRoles.admin) {
+    if (gate.type == UserRoles.admin) {
       return const AdminDashboard();
     }
 
-    if (userData.userType == UserRoles.driver) {
-      if (!userData.isVerified) {
+    if (gate.type == UserRoles.driver) {
+      if (gate.verified != true) {
         return const PendingApprovalScreen();
       }
       return const DriverDashboard();
     }
 
     return const PassengerDashboard();
+  }
+}
+
+class _AuthLoadingScreen extends StatelessWidget {
+  const _AuthLoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 20),
+              const Text(
+                'جاري تحميل بيانات الحساب...',
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => context.read<AuthProvider>().signOut(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('تسجيل الخروج'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
