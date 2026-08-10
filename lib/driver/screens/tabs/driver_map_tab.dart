@@ -13,15 +13,7 @@ import '../../../driver/providers/driver_provider.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import 'mixins/driver_location_mixin.dart';
 
-/// خريطة السائق — واجهة خفيفة تعتمد على المكسينات المشتركة + مكسين الموقع.
-///
-/// الصلاحيات:
-/// - MapCoreMixin: خريطة، طبقات، معالم POI، ستايل
-/// - PickupPointMixin: عرض/إضافة نقاط التجمع + تأكيد/اقتراح تعديل
-/// - TripManagerMixin: بدء/إنهاء الرحلة ورسم المسار
-/// - DriverLocationMixin: GPS + ماركر السائق
-///
-/// لا يشمل صلاحيات الأدمن (إدارة سائقين، ركاب، مسارات، حذف نقاط).
+/// خريطة السائق — واجهة خفيفة + تتبع موفّر للبطارية.
 class DriverMapTab extends StatefulWidget {
   const DriverMapTab({super.key});
 
@@ -64,7 +56,6 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   @override
   void onStyleChanged() {
-    // بعد تغيير ستايل الخريطة نعيد رسم نقاط التجمع
     listenToPickupPoints();
   }
 
@@ -86,6 +77,23 @@ class _DriverMapTabState extends State<DriverMapTab>
       0,
       locationService,
     );
+  }
+
+  Future<void> _onTripButtonPressed({required bool isTripActive}) async {
+    if (isProcessingTrip) return;
+
+    if (isTripActive) {
+      await endTrip();
+      if (!mounted) return;
+      setState(() => followDriverCamera = false);
+    } else {
+      await startTrip();
+      if (!mounted) return;
+      // أثناء الرحلة: دقة أعلى + متابعة كاميرا اختيارية
+      setState(() => followDriverCamera = true);
+    }
+
+    await refreshDriverTrackingProfile();
   }
 
   @override
@@ -123,7 +131,6 @@ class _DriverMapTabState extends State<DriverMapTab>
           },
         ),
 
-        // شريط البحث
         Positioned(
           top: 16,
           left: 16,
@@ -136,7 +143,6 @@ class _DriverMapTabState extends State<DriverMapTab>
           ),
         ),
 
-        // أزرار التحكم
         Positioned(
           bottom: 140,
           right: 16,
@@ -149,6 +155,28 @@ class _DriverMapTabState extends State<DriverMapTab>
                 backgroundColor: Colors.white,
                 foregroundColor: AppTheme.textColor,
                 child: const Icon(Icons.explore_outlined),
+              ),
+              const SizedBox(height: 10),
+              FloatingActionButton.small(
+                heroTag: 'driver_follow',
+                onPressed: () {
+                  toggleFollowDriverCamera();
+                  MapUtils.showSnackBar(
+                    context,
+                    followDriverCamera
+                        ? '📡 متابعة الكاميرا مفعّلة'
+                        : '✋ متابعة الكاميرا متوقفة',
+                  );
+                },
+                backgroundColor:
+                    followDriverCamera ? AppTheme.primaryColor : Colors.white,
+                foregroundColor:
+                    followDriverCamera ? Colors.white : AppTheme.textColor,
+                child: Icon(
+                  followDriverCamera
+                      ? Icons.gps_fixed
+                      : Icons.gps_not_fixed,
+                ),
               ),
               const SizedBox(height: 10),
               FloatingActionButton(
@@ -206,7 +234,6 @@ class _DriverMapTabState extends State<DriverMapTab>
           ),
         ),
 
-        // لوحة حالة السائق والرحلة
         Positioned(
           bottom: 20,
           left: 16,
@@ -253,7 +280,9 @@ class _DriverMapTabState extends State<DriverMapTab>
                           child: ElevatedButton(
                             onPressed: isProcessingTrip
                                 ? null
-                                : (state.isTripActive ? endTrip : startTrip),
+                                : () => _onTripButtonPressed(
+                                      isTripActive: state.isTripActive,
+                                    ),
                             child: Text(
                               state.isTripActive ? 'إنهاء' : 'بدء الرحلة',
                             ),
