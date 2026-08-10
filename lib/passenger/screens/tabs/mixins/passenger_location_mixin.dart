@@ -11,8 +11,6 @@ import '../../../../map/utils/map_helpers.dart';
 import '../../../../services/location_service.dart';
 
 /// مكسين موقع الراكب موفّر للبطارية.
-/// - الكاميرا تتحرك فقط عند الضغط على «موقعي»
-/// - التتبع المستمر يستخدم ملف passengerBrowse (دقة متوسطة)
 mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PointAnnotation? _passengerUserAnnotation;
   Uint8List? _cachedPassengerMarkerBytes;
@@ -59,6 +57,11 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     );
   }
 
+  void _safeSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    MapUtils.showSnackBar(context, message, isError: isError);
+  }
+
   Future<void> goToMyLocation() async {
     if (mapboxMap == null || !mounted) return;
 
@@ -72,27 +75,27 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (!hasPermission) {
         final deniedForever =
             await _passengerLocationService.isPermissionDeniedForever();
+        if (!mounted) return;
+
         if (deniedForever) {
           final shouldOpen = await _showPermissionDialog();
+          if (!mounted) return;
           if (shouldOpen == true) {
             await _passengerLocationService.openAppSettings();
           }
         } else {
           final serviceEnabled =
               await geo.Geolocator.isLocationServiceEnabled();
+          if (!mounted) return;
+
           if (!serviceEnabled) {
-            MapUtils.showSnackBar(
-              context,
+            _safeSnack(
               '⚠️ يرجى تفعيل خدمة الموقع من إعدادات الجهاز.',
               isError: true,
             );
             await _passengerLocationService.openLocationSettings();
           } else {
-            MapUtils.showSnackBar(
-              context,
-              '⚠️ يرجى السماح بصلاحية الموقع.',
-              isError: true,
-            );
+            _safeSnack('⚠️ يرجى السماح بصلاحية الموقع.', isError: true);
           }
         }
         return;
@@ -105,6 +108,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (lastKnown != null && mounted) {
         await _applyPosition(lastKnown, moveCamera: true);
       }
+      if (!mounted) return;
 
       final position = await _passengerLocationService.getCurrentPosition(
         preferHighAccuracy: true,
@@ -114,8 +118,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (!mounted) return;
 
       if (position == null) {
-        MapUtils.showSnackBar(
-          context,
+        _safeSnack(
           '❌ تعذر تحديد موقعك. تأكد من تفعيل GPS والخروج لمكان مفتوح إن أمكن.',
           isError: true,
         );
@@ -123,8 +126,8 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       await _applyPosition(position, moveCamera: true);
+      if (!mounted) return;
 
-      // تتبع خفيف بعد تحديد الموقع — يحدّث الماركر فقط بدون تحريك الكاميرا
       isPassengerTrackingActive = true;
       _passengerLocationSubscription = _passengerLocationService
           .getPositionStreamForProfile(LocationTrackingProfile.passengerBrowse)
@@ -136,18 +139,10 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         MapUtils.log('خطأ في تحديث الموقع: $error', tag: 'PassengerLocation');
       });
 
-      if (mounted) {
-        MapUtils.showSnackBar(context, '📍 تم تحديد موقعك بنجاح.');
-      }
+      _safeSnack('📍 تم تحديد موقعك بنجاح.');
     } catch (e) {
-      if (mounted) {
-        MapUtils.showSnackBar(
-          context,
-          '❌ تعذر تحديد موقعك. حاول مرة أخرى.',
-          isError: true,
-        );
-        MapUtils.log('خطأ تحديد الموقع: $e', tag: 'PassengerLocation');
-      }
+      _safeSnack('❌ تعذر تحديد موقعك. حاول مرة أخرى.', isError: true);
+      MapUtils.log('خطأ تحديد الموقع: $e', tag: 'PassengerLocation');
     } finally {
       if (mounted) setState(() => isLoadingPassengerLocation = false);
     }
@@ -209,12 +204,14 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   Future<void> searchPassengerPlace(String query) async {
     if (!mounted) return;
+    final map = mapboxMap;
+    final service = _passengerLocationService;
     await MapUtils.searchPlace(
       context,
-      mapboxMap,
+      map,
       query,
       0,
-      _passengerLocationService,
+      service,
     );
   }
 
