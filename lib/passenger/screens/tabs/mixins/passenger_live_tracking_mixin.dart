@@ -28,13 +28,11 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final canvas = Canvas(recorder);
     const size = 88.0;
 
-    // ظل
     final shadow = Paint()
       ..color = Colors.black.withValues(alpha: 0.2)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
     canvas.drawCircle(const Offset(size / 2, size / 2 + 2), 18, shadow);
 
-    // جسم
     final body = Paint()..color = const Color(0xFF1565C0);
     final rrect = RRect.fromRectAndRadius(
       Rect.fromCenter(
@@ -46,7 +44,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     );
     canvas.drawRRect(rrect, body);
 
-    // نافذة
     final window = Paint()..color = Colors.white.withValues(alpha: 0.9);
     canvas.drawRRect(
       RRect.fromRectAndRadius(
@@ -60,7 +57,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       window,
     );
 
-    // عجلات
     final wheel = Paint()..color = Colors.black87;
     canvas.drawCircle(const Offset(size / 2 - 9, size / 2 + 16), 4, wheel);
     canvas.drawCircle(const Offset(size / 2 + 9, size / 2 + 16), 4, wheel);
@@ -72,7 +68,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return _busMarkerBytes!;
   }
 
-  /// ابدأ الاستماع للسائقين المتصلين.
   void startLiveDriverTracking({String? routeFilter}) {
     _routeFilterForTracking = routeFilter;
     _liveDriversSub?.cancel();
@@ -122,10 +117,10 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
               iconAnchor: IconAnchor.CENTER,
               iconRotate: d.heading ?? 0,
               textField: d.displayLabel,
-              textSize: 11,
-              textOffset: [0, 1.8],
-              textColor: Colors.blue.shade900.toARGB32(),
-              textHaloColor: Colors.white.toARGB32(),
+              textSize: 11.0,
+              textOffset: [0.0, 1.8],
+              textColor: const Color(0xFF0D47A1).value,
+              textHaloColor: const Color(0xFFFFFFFF).value,
               textHaloWidth: 1.2,
             ),
           );
@@ -138,7 +133,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
     }
 
-    // حذف السائقين الذين اختفوا
     final toRemove = _driverAnnotations.keys
         .where((id) => !seen.contains(id))
         .toList();

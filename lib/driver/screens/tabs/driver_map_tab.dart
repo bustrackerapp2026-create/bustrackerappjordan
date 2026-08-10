@@ -11,6 +11,7 @@ import '../../../core/trip/trip_manager_mixin.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import '../../../driver/providers/driver_provider.dart';
 import '../../../features/auth/providers/auth_provider.dart';
+import '../../../services/live_tracking_service.dart';
 import 'mixins/driver_location_mixin.dart';
 
 class DriverMapTab extends StatefulWidget {
@@ -104,7 +105,40 @@ class _DriverMapTabState extends State<DriverMapTab>
   }
 
   Future<void> _onToggleOnline() async {
-    context.read<DriverProvider>().toggleOnlineStatus();
+    final driver = context.read<DriverProvider>();
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userId;
+    if (uid == null) return;
+
+    driver.toggleOnlineStatus();
+    final isOnline = driver.isOnline;
+    final pos = driver.currentPosition;
+
+    try {
+      await LiveTrackingService().setDriverOnlineStatus(
+        uid: uid,
+        isOnline: isOnline,
+        latitude: pos?.latitude,
+        longitude: pos?.longitude,
+      );
+      if (!mounted) return;
+      MapUtils.showSnackBar(
+        context,
+        isOnline
+            ? '🟢 أنت متصل — يظهر موقعك للركاب الآن'
+            : '⚪ تم إيقاف المشاركة',
+      );
+    } catch (e) {
+      // أرجع الحالة محلياً عند فشل الكتابة
+      driver.toggleOnlineStatus();
+      if (!mounted) return;
+      MapUtils.showSnackBar(
+        context,
+        'تعذر تحديث حالة الاتصال',
+        isError: true,
+      );
+    }
+
     await refreshDriverTrackingProfile();
   }
 
@@ -356,14 +390,14 @@ class _DriverStatusPanel extends StatelessWidget {
             '🚗 مرحباً $userName',
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          Text(isOnline ? 'متاح' : 'غير متاح'),
+          Text(isOnline ? '🟢 متصل — يظهر موقعك للركاب' : '⚪ غير متصل'),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: ElevatedButton(
                   onPressed: onToggleOnline,
-                  child: Text(isOnline ? 'متصل' : 'توصيل'),
+                  child: Text(isOnline ? 'قطع الاتصال' : 'اتصال'),
                 ),
               ),
               const SizedBox(width: 8),

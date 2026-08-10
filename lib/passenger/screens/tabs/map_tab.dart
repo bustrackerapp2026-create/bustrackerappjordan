@@ -8,15 +8,9 @@ import '../../../core/map/map_utils.dart';
 import '../../../core/pickup/pickup_point_mixin.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import 'mixins/passenger_location_mixin.dart';
+import 'mixins/passenger_live_tracking_mixin.dart';
 
-/// خريطة الراكب — واجهة خفيفة تعتمد على المكسينات المشتركة + مكسين الموقع.
-///
-/// الصلاحيات:
-/// - MapCoreMixin: خريطة، طبقات، معالم POI، ستايل
-/// - PickupPointMixin: عرض/إضافة نقاط التجمع + تأكيد/اقتراح تعديل
-/// - PassengerLocationMixin: GPS + ماركر الراكب + البحث
-///
-/// لا يشمل صلاحيات الأدمن أو السائق (إدارة، رحلات، حذف نقاط).
+/// خريطة الراكب مع تتبع حي للباصات المتصلة.
 class MapTab extends StatefulWidget {
   const MapTab({super.key});
 
@@ -29,7 +23,8 @@ class _MapTabState extends State<MapTab>
         WidgetsBindingObserver,
         MapCoreMixin<MapTab>,
         PickupPointMixin<MapTab>,
-        PassengerLocationMixin<MapTab> {
+        PassengerLocationMixin<MapTab>,
+        PassengerLiveTrackingMixin<MapTab> {
   String _selectedRoute = AppConstants.jordanRoutes.first;
 
   @override
@@ -45,6 +40,7 @@ class _MapTabState extends State<MapTab>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    disposeLiveTracking();
     disposePassengerLocation();
     disposePickupPoints();
     super.dispose();
@@ -53,11 +49,18 @@ class _MapTabState extends State<MapTab>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     onPassengerLocationLifecycle(state);
+    if (state == AppLifecycleState.resumed) {
+      startLiveDriverTracking(routeFilter: _selectedRoute);
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      stopLiveDriverTracking();
+    }
   }
 
   @override
   void onStyleChanged() {
     listenToPickupPoints();
+    startLiveDriverTracking(routeFilter: _selectedRoute);
   }
 
   @override
@@ -91,6 +94,7 @@ class _MapTabState extends State<MapTab>
             await Future<void>.delayed(const Duration(milliseconds: 400));
             await applyLabelLayersFilter();
             listenToPickupPoints();
+            startLiveDriverTracking(routeFilter: _selectedRoute);
             if (mounted) setState(() => isMapReady = true);
           },
           styleUri: currentMapStyle,
@@ -103,8 +107,6 @@ class _MapTabState extends State<MapTab>
             }
           },
         ),
-
-        // شريط البحث
         Positioned(
           top: 16,
           left: 16,
@@ -114,6 +116,7 @@ class _MapTabState extends State<MapTab>
             routes: AppConstants.jordanRoutes,
             onRouteChanged: (newRoute) {
               setState(() => _selectedRoute = newRoute);
+              updateLiveTrackingRouteFilter(newRoute);
               MapUtils.showSnackBar(
                 context,
                 '🔄 تم تصفية الخط: $newRoute',
@@ -122,8 +125,6 @@ class _MapTabState extends State<MapTab>
             onSearchSubmitted: searchPassengerPlace,
           ),
         ),
-
-        // أزرار التحكم
         Positioned(
           bottom: 120,
           right: 16,
@@ -186,8 +187,6 @@ class _MapTabState extends State<MapTab>
             ],
           ),
         ),
-
-        // شريط ترحيب الراكب
         Positioned(
           bottom: 30,
           left: 16,
@@ -226,7 +225,7 @@ class _MapTabState extends State<MapTab>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Text(
-                          '🚌 مرحباً أيها الراكب',
+                          '🚌 تتبع حي',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
@@ -235,7 +234,9 @@ class _MapTabState extends State<MapTab>
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'زاوية الاتجاه: ${currentPassengerBearing.toStringAsFixed(1)}°',
+                          liveDriversCount > 0
+                              ? '$liveDriversCount باص متصل الآن'
+                              : 'لا يوجد باصات متصلة حالياً',
                           style: const TextStyle(
                             fontSize: 11,
                             color: Colors.grey,
