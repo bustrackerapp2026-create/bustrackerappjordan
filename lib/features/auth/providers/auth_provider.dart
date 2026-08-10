@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
-// ✅ استخدام Package Import الموحد
 import 'package:jordan_bus_tracker_new/models/user_model.dart';
 import 'package:jordan_bus_tracker_new/services/firestore_service.dart';
 
@@ -69,7 +68,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ✅ دالة signUp تحتوي صراحة على المعامل phoneNumber
   Future<void> signUp({
     required String email,
     required String password,
@@ -106,6 +104,44 @@ class AuthProvider extends ChangeNotifier {
       }
     } on firebase_auth.FirebaseAuthException catch (e) {
       throw Exception(_getAuthErrorMessage(e.code));
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  /// تغيير كلمة المرور بعد التحقق من كلمة المرور الحالية (Firebase Auth).
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null || user.email == null) {
+      throw Exception('⚠️ يجب تسجيل الدخول أولاً');
+    }
+
+    if (newPassword.length < 6) {
+      throw Exception('⚠️ كلمة السر الجديدة يجب أن تكون 6 أحرف على الأقل');
+    }
+
+    if (currentPassword == newPassword) {
+      throw Exception('⚠️ كلمة السر الجديدة يجب أن تختلف عن الحالية');
+    }
+
+    try {
+      _setLoading(true);
+
+      final credential = firebase_auth.EmailAuthProvider.credential(
+        email: user.email!,
+        password: currentPassword,
+      );
+
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      throw Exception(_getAuthErrorMessage(e.code));
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('⚠️ فشل تغيير كلمة المرور: $e');
     } finally {
       _setLoading(false);
     }
@@ -156,13 +192,15 @@ class AuthProvider extends ChangeNotifier {
         return '⚠️ لم يتم العثور على مستخدم بهذا البريد';
       case 'wrong-password':
       case 'invalid-credential':
-        return '⚠️ بيانات الدخول غير صحيحة';
+        return '⚠️ كلمة المرور الحالية غير صحيحة';
       case 'email-already-in-use':
         return '⚠️ هذا البريد مستخدم بالفعل';
       case 'invalid-email':
         return '⚠️ صيغة البريد الإلكتروني غير صحيحة';
       case 'weak-password':
         return '⚠️ كلمة السر ضعيفة جداً (يجب أن تكون 6 أحرف على الأقل)';
+      case 'requires-recent-login':
+        return '🔒 لأسباب أمنية، سجّل الخروج ثم الدخول مجدداً وحاول تغيير كلمة المرور';
       case 'too-many-requests':
         return '⚠️ تم إرسال العديد من الطلبات. حاول لاحقاً';
       default:
