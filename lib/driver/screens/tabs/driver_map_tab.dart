@@ -13,7 +13,6 @@ import '../../../driver/providers/driver_provider.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import 'mixins/driver_location_mixin.dart';
 
-/// خريطة السائق — أداء محسّن (عزل الرسم + أقل setState)
 class DriverMapTab extends StatefulWidget {
   const DriverMapTab({super.key});
 
@@ -97,13 +96,16 @@ class _DriverMapTabState extends State<DriverMapTab>
     );
     applyMapConstraints();
 
-    // تهيئة الطبقات بدون setState غير ضروري
     await Future<void>.delayed(const Duration(milliseconds: 300));
     if (!mounted) return;
     await applyLabelLayersFilter();
     listenToPickupPoints();
-    // لا setState هنا — isMapReady غير مستخدم في build
     isMapReady = true;
+  }
+
+  Future<void> _onToggleOnline() async {
+    context.read<DriverProvider>().toggleOnlineStatus();
+    await refreshDriverTrackingProfile();
   }
 
   Future<void> _onTripButtonPressed({required bool isTripActive}) async {
@@ -126,7 +128,6 @@ class _DriverMapTabState extends State<DriverMapTab>
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // الخريطة معزولة عن إعادة رسم الأزرار
         RepaintBoundary(
           child: MapWidget(
             key: const ValueKey('driver_map'),
@@ -142,7 +143,6 @@ class _DriverMapTabState extends State<DriverMapTab>
             },
           ),
         ),
-
         Positioned(
           top: 16,
           left: 16,
@@ -156,7 +156,6 @@ class _DriverMapTabState extends State<DriverMapTab>
             ),
           ),
         ),
-
         Positioned(
           bottom: 140,
           right: 16,
@@ -191,7 +190,6 @@ class _DriverMapTabState extends State<DriverMapTab>
             ),
           ),
         ),
-
         Positioned(
           bottom: 20,
           left: 16,
@@ -213,8 +211,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                   isOnline: state.isOnline,
                   isTripActive: state.isTripActive,
                   isProcessingTrip: isProcessingTrip,
-                  onToggleOnline: () =>
-                      context.read<DriverProvider>().toggleOnlineStatus(),
+                  onToggleOnline: _onToggleOnline,
                   onTripPressed: () => _onTripButtonPressed(
                     isTripActive: state.isTripActive,
                   ),
@@ -228,7 +225,6 @@ class _DriverMapTabState extends State<DriverMapTab>
   }
 }
 
-/// أزرار الخريطة كودجت مستقل لتقليل بناء الشجرة
 class _DriverMapFabColumn extends StatelessWidget {
   final bool followDriverCamera;
   final bool isLoadingLocation;
