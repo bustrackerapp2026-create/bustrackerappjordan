@@ -10,8 +10,9 @@ import '../../../../core/map/map_utils.dart';
 import '../../../../map/utils/map_helpers.dart';
 import '../../../../services/location_service.dart';
 
-/// مكسين موقع الراكب: تتبع GPS + ماركر المستخدم + البحث عن الأماكن.
-/// ضمن صلاحيات الراكب فقط.
+/// مكسين موقع الراكب موفّر للبطارية.
+/// - الكاميرا تتحرك فقط عند الضغط على «موقعي»
+/// - التتبع المستمر يستخدم ملف passengerBrowse (دقة متوسطة)
 mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PointAnnotation? _passengerUserAnnotation;
   Uint8List? _cachedPassengerMarkerBytes;
@@ -20,6 +21,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   bool isLoadingPassengerLocation = false;
   double currentPassengerBearing = 0.0;
+  bool isPassengerTrackingActive = false;
 
   LocationService get locationService => _passengerLocationService;
 
@@ -101,7 +103,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final lastKnown =
           await _passengerLocationService.getLastKnownPosition();
       if (lastKnown != null && mounted) {
-        await _moveCameraAndMarker(lastKnown);
+        await _applyPosition(lastKnown, moveCamera: true);
       }
 
       final position = await _passengerLocationService.getCurrentPosition(
@@ -120,13 +122,15 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         return;
       }
 
-      await _moveCameraAndMarker(position);
+      await _applyPosition(position, moveCamera: true);
 
+      // تتبع خفيف بعد تحديد الموقع — يحدّث الماركر فقط بدون تحريك الكاميرا
+      isPassengerTrackingActive = true;
       _passengerLocationSubscription = _passengerLocationService
-          .getPositionStream(distanceFilter: 5)
+          .getPositionStreamForProfile(LocationTrackingProfile.passengerBrowse)
           .listen((geo.Position pos) {
         if (mounted) {
-          _moveCameraAndMarker(pos);
+          _applyPosition(pos, moveCamera: false);
         }
       }, onError: (error) {
         MapUtils.log('خطأ في تحديث الموقع: $error', tag: 'PassengerLocation');
@@ -149,21 +153,28 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  Future<void> _moveCameraAndMarker(geo.Position position) async {
+  Future<void> _applyPosition(
+    geo.Position position, {
+    required bool moveCamera,
+  }) async {
     double bearing = position.heading;
     if (bearing == 0.0 && position.speed > 0) {
       bearing = currentPassengerBearing;
     }
 
-    if (mounted) {
+    if (mounted && (currentPassengerBearing - bearing).abs() > 1) {
       setState(() => currentPassengerBearing = bearing);
+    } else {
+      currentPassengerBearing = bearing;
     }
 
-    await flyToFlat(
-      latitude: position.latitude,
-      longitude: position.longitude,
-      zoom: 15.5,
-    );
+    if (moveCamera) {
+      await flyToFlat(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        zoom: 15.5,
+      );
+    }
 
     await updatePassengerMarker(
       position.latitude,
@@ -207,18 +218,24 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     );
   }
 
+  void stopPassengerTracking() {
+    _passengerLocationSubscription?.cancel();
+    _passengerLocationSubscription = null;
+    isPassengerTrackingActive = false;
+  }
+
   void onPassengerLocationLifecycle(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && isLoadingPassengerLocation) {
       goToMyLocation();
     }
     if (state == AppLifecycleState.detached ||
         state == AppLifecycleState.paused) {
-      _passengerLocationSubscription?.cancel();
+      stopPassengerTracking();
     }
   }
 
   void disposePassengerLocation() {
-    _passengerLocationSubscription?.cancel();
+    stopPassengerTracking();
     _passengerUserAnnotation = null;
   }
 }
