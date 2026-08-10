@@ -51,39 +51,25 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     );
   }
 
+  /// المعيار الوحيد للظهور على الخريطة: status == approved
   bool _isApprovedDoc(Map<String, dynamic> data) {
-    final status = data['status']?.toString();
-    final isApprovedFlag = data['isApproved'] == true;
-
-    if (status == 'rejected') return false;
-    if (status == 'approved' || isApprovedFlag) return true;
-    if (status == 'pending') return false;
-
-    if (status == null || status.isEmpty) {
-      final lat = (data['latitude'] as num?)?.toDouble();
-      final lng = (data['longitude'] as num?)?.toDouble();
-      if (lat != null && lng != null && (lat != 0.0 || lng != 0.0)) {
-        if (data.containsKey('isApproved') && data['isApproved'] != true) {
-          return false;
-        }
-        return true;
-      }
-    }
-    return false;
+    final status = data['status']?.toString().trim().toLowerCase();
+    return status == 'approved';
   }
 
   void listenToPickupPoints() {
     _pickupPointsSubscription?.cancel();
 
+    // استعلام مباشر للمعتمدة فقط (أداء أفضل + توحيد البيانات)
     _pickupPointsSubscription = FirebaseFirestore.instance
         .collection('pickupPoints')
+        .where('status', isEqualTo: 'approved')
         .snapshots()
         .listen(
       (snapshot) {
         if (!mounted) return;
         MapUtils.log(
-          '📦 [Pickup] مستندات: ${snapshot.docs.length} '
-          '(تغيّرات: ${snapshot.docChanges.length})',
+          '📦 [Pickup] معتمدة: ${snapshot.docs.length}',
           tag: 'PickupMixin',
         );
         _pendingSnapshot = snapshot;
@@ -160,8 +146,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       MapUtils.log(
-        '✅ [Pickup] معروض ${_pickupAnnotations.length} / '
-        'معتمدة ${approvedPoints.length} من أصل ${snapshot.docs.length}',
+        '✅ [Pickup] معروض ${_pickupAnnotations.length} نقطة معتمدة',
         tag: 'PickupMixin',
       );
     } finally {
@@ -270,7 +255,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final point = await _pickupManager.getPickupPoint(pointId: pickupId);
     if (!mounted || point == null) return;
 
-    // اقرأ القيم قبل أي await لاحق
     final userId = context.read<AuthProvider>().userId;
 
     final adderName = await PickupPointSheet.loadAdderName(point.addedBy);

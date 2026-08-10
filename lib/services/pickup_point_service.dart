@@ -3,21 +3,37 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/pickup_point_model.dart';
 import 'pickup_point_service_exception.dart';
 
+/// نتيجة ترحيل توحيد حالات النقاط
+class PickupStatusMigrationResult {
+  final int total;
+  final int setApproved;
+  final int setPending;
+  final int setRejected;
+  final int unchanged;
+  final int failed;
+
+  const PickupStatusMigrationResult({
+    required this.total,
+    required this.setApproved,
+    required this.setPending,
+    required this.setRejected,
+    required this.unchanged,
+    required this.failed,
+  });
+
+  @override
+  String toString() =>
+      'إجمالي: $total | معتمدة: $setApproved | معلقة: $setPending | مرفوضة: $setRejected | دون تغيير: $unchanged | فشل: $failed';
+}
+
 /// خدمة إدارة نقاط التجمع مع Timeout و Retry
 class PickupPointService {
-  // ✅ توحيد اسم المجموعة (pickupPoints)
   final CollectionReference _collection =
       FirebaseFirestore.instance.collection('pickupPoints');
 
-  // ✅ ثوابت Timeout و Retry
   static const Duration _defaultTimeout = Duration(seconds: 10);
   static const int _maxRetries = 3;
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // 1. دوال مساعدة
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /// ✅ دالة مساعدة لتكرار العمليات مع Timeout و Retry
   Future<T> _withRetryAndTimeout<T>(
     Future<T> Function() operation, {
     Duration timeout = _defaultTimeout,
@@ -33,7 +49,6 @@ class PickupPointService {
         attempt++;
         if (attempt >= retries) {
           if (e is PickupPointServiceException) rethrow;
-          // ❌ لا يمكن استخدام const هنا (لأن الرسالة تحتوي على متغيرات)
           throw PickupPointServiceException(
             'فشلت العملية بعد $retries محاولات: $e',
           );
@@ -44,21 +59,14 @@ class PickupPointService {
     }
   }
 
-  /// ✅ تحويل DocumentSnapshot إلى PickupPointModel (مع التحقق من null)
   PickupPointModel _docToModel(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>?;
     if (data == null) {
-      // ✅ يمكن استخدام const هنا لأن الرسالة ثابتة
       throw const PickupPointServiceException('بيانات النقطة غير موجودة');
     }
     return PickupPointModel.fromMap(data, doc.id);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // 2. Streams (قراءة البيانات)
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /// ✅ دالة لجلب النقاط المعلقة (pending)
   Stream<List<PickupPointModel>> getPendingPointsStream() {
     return _collection
         .where('status', isEqualTo: 'pending')
@@ -66,7 +74,6 @@ class PickupPointService {
         .map((snapshot) => snapshot.docs.map(_docToModel).toList());
   }
 
-  /// ✅ دالة لجلب النقاط الموافق عليها (approved)
   Stream<List<PickupPointModel>> getApprovedPointsStream() {
     return _collection
         .where('status', isEqualTo: 'approved')
@@ -74,7 +81,6 @@ class PickupPointService {
         .map((snapshot) => snapshot.docs.map(_docToModel).toList());
   }
 
-  /// ✅ جلب نقطة تجمع بواسطة المعرف
   Future<PickupPointModel?> getPickupPoint(String id) async {
     try {
       final doc = await _collection.doc(id).get();
@@ -87,18 +93,12 @@ class PickupPointService {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // 3. عمليات الكتابة (CRUD)
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /// ✅ إضافة نقطة جديدة (معرف محدد مسبقاً)
   Future<void> addPickupPoint(PickupPointModel point) async {
     await _withRetryAndTimeout(() async {
       await _collection.doc(point.id).set(point.toMap());
     });
   }
 
-  /// ✅ إضافة نقطة جديدة مع تعيين الحالة حسب نوع المستخدم
   Future<String> addPickupPointWithRole({
     required PickupPointModel point,
     required String userId,
@@ -116,8 +116,10 @@ class PickupPointService {
 
       if (userType == 'admin') {
         data['status'] = 'approved';
+        data['isApproved'] = true;
       } else {
         data['status'] = 'pending';
+        data['isApproved'] = false;
       }
 
       await docRef.set(data);
@@ -127,7 +129,6 @@ class PickupPointService {
     }
   }
 
-  /// ✅ تحديث نقطة تجمع موجودة
   Future<void> updatePickupPoint({
     required String pointId,
     required Map<String, dynamic> data,
@@ -138,28 +139,33 @@ class PickupPointService {
     });
   }
 
-  /// ✅ الموافقة على نقطة (تغيير الحالة إلى approved)
+  /// الموافقة: توحيد الحقول إلى status=approved
   Future<void> approvePickupPoint(String id) async {
     await _withRetryAndTimeout(() async {
-      await _collection.doc(id).update({'status': 'approved'});
+      await _collection.doc(id).update({
+        'status': 'approved',
+        'isApproved': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
     });
   }
 
-  /// ✅ رفض نقطة (تغيير الحالة إلى rejected)
   Future<void> rejectPickupPoint(String id) async {
     await _withRetryAndTimeout(() async {
-      await _collection.doc(id).update({'status': 'rejected'});
+      await _collection.doc(id).update({
+        'status': 'rejected',
+        'isApproved': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
     });
   }
 
-  /// ✅ حذف نقطة
   Future<void> deletePickupPoint(String id) async {
     await _withRetryAndTimeout(() async {
       await _collection.doc(id).delete();
     });
   }
 
-  /// ✅ تأكيد نقطة تجمع (زيادة عدد التأكيدات)
   Future<void> confirmPickupPoint({
     required String pointId,
     required String userId,
@@ -170,7 +176,6 @@ class PickupPointService {
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           final doc = await transaction.get(docRef);
           if (!doc.exists) {
-            // ✅ يمكن استخدام const هنا لأن الرسالة ثابتة
             throw const PickupPointServiceException('نقطة التجمع غير موجودة');
           }
 
@@ -193,11 +198,109 @@ class PickupPointService {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // 4. إحصائيات
-  // ─────────────────────────────────────────────────────────────────────────────
+  /// ترحيل لمرة واحدة: توحيد status لكل المستندات في pickupPoints.
+  /// - pending / rejected تبقى كما هي (مع ضبط isApproved).
+  /// - approved أو isApproved=true أو بدون status بإحداثيات صالحة → approved.
+  /// للأدمن فقط (عبر قواعد Firestore).
+  Future<PickupStatusMigrationResult> migrateNormalizeStatuses() async {
+    final snapshot = await _collection.get();
+    var setApproved = 0;
+    var setPending = 0;
+    var setRejected = 0;
+    var unchanged = 0;
+    var failed = 0;
 
-  /// ✅ عدد النقاط المعلقة
+    // دفعات كتابة (حد Firestore ~500 عملية/batch)
+    WriteBatch? batch = FirebaseFirestore.instance.batch();
+    var opsInBatch = 0;
+
+    Future<void> commitIfNeeded({bool force = false}) async {
+      if (batch == null) return;
+      if (opsInBatch == 0) return;
+      if (!force && opsInBatch < 400) return;
+      await batch!.commit();
+      batch = FirebaseFirestore.instance.batch();
+      opsInBatch = 0;
+    }
+
+    for (final doc in snapshot.docs) {
+      try {
+        final data = doc.data() as Map<String, dynamic>? ?? {};
+        final rawStatus = data['status']?.toString().trim().toLowerCase();
+        final isApprovedFlag = data['isApproved'] == true;
+
+        String target;
+        if (rawStatus == 'rejected') {
+          target = 'rejected';
+        } else if (rawStatus == 'pending') {
+          target = 'pending';
+        } else if (rawStatus == 'approved' || isApprovedFlag) {
+          target = 'approved';
+        } else if (rawStatus == null || rawStatus.isEmpty) {
+          // بيانات قديمة بلا status: إن وُجدت إحداثيات صالحة نعتبرها معتمدة
+          final lat = (data['latitude'] as num?)?.toDouble();
+          final lng = (data['longitude'] as num?)?.toDouble();
+          if (lat != null &&
+              lng != null &&
+              (lat != 0.0 || lng != 0.0) &&
+              data['isApproved'] != false) {
+            target = 'approved';
+          } else {
+            target = 'pending';
+          }
+        } else {
+          // قيم غريبة → pending للمراجعة
+          target = 'pending';
+        }
+
+        final alreadyOk = rawStatus == target &&
+            (target == 'approved'
+                ? isApprovedFlag == true
+                : data['isApproved'] != true || target != 'approved');
+
+        // نحدّث دائماً إذا status غير مطابق أو isApproved غير متسق
+        final needUpdate = rawStatus != target ||
+            (target == 'approved' && !isApprovedFlag) ||
+            (target != 'approved' && isApprovedFlag);
+
+        if (!needUpdate) {
+          unchanged++;
+          continue;
+        }
+
+        batch!.update(doc.reference, {
+          'status': target,
+          'isApproved': target == 'approved',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        opsInBatch++;
+
+        if (target == 'approved') {
+          setApproved++;
+        } else if (target == 'pending') {
+          setPending++;
+        } else {
+          setRejected++;
+        }
+
+        await commitIfNeeded();
+      } catch (_) {
+        failed++;
+      }
+    }
+
+    await commitIfNeeded(force: true);
+
+    return PickupStatusMigrationResult(
+      total: snapshot.docs.length,
+      setApproved: setApproved,
+      setPending: setPending,
+      setRejected: setRejected,
+      unchanged: unchanged,
+      failed: failed,
+    );
+  }
+
   Future<int> getPendingCount() async {
     try {
       final snapshot =
@@ -208,7 +311,6 @@ class PickupPointService {
     }
   }
 
-  /// ✅ عدد النقاط المعتمدة
   Future<int> getApprovedCount() async {
     try {
       final snapshot = await _collection
@@ -221,7 +323,6 @@ class PickupPointService {
     }
   }
 
-  /// ✅ عدد النقاط المرفوضة
   Future<int> getRejectedCount() async {
     try {
       final snapshot = await _collection
