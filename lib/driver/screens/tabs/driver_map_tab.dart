@@ -1,8 +1,5 @@
-import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
-import 'package:geolocator/geolocator.dart' as geo;
 import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_theme.dart';
@@ -12,13 +9,23 @@ import '../../../core/map/map_utils.dart';
 import '../../../core/pickup/pickup_point_mixin.dart';
 import '../../../core/trip/trip_manager_mixin.dart';
 import '../../../map/widgets/search_bar_widget.dart';
-import '../../../map/utils/map_helpers.dart';
 import '../../../driver/providers/driver_provider.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/location_service.dart';
+import 'mixins/driver_location_mixin.dart';
 
+/// خريطة السائق — واجهة خفيفة تعتمد على المكسينات المشتركة + مكسين الموقع.
+///
+/// الصلاحيات:
+/// - MapCoreMixin: خريطة، طبقات، معالم POI، ستايل
+/// - PickupPointMixin: عرض/إضافة نقاط التجمع + تأكيد/اقتراح تعديل
+/// - TripManagerMixin: بدء/إنهاء الرحلة ورسم المسار
+/// - DriverLocationMixin: GPS + ماركر السائق
+///
+/// لا يشمل صلاحيات الأدمن (إدارة سائقين، ركاب، مسارات، حذف نقاط).
 class DriverMapTab extends StatefulWidget {
   const DriverMapTab({super.key});
+
   @override
   State<DriverMapTab> createState() => _DriverMapTabState();
 }
@@ -28,14 +35,9 @@ class _DriverMapTabState extends State<DriverMapTab>
         WidgetsBindingObserver,
         MapCoreMixin<DriverMapTab>,
         PickupPointMixin<DriverMapTab>,
-        TripManagerMixin<DriverMapTab> {
-  PointAnnotation? _userAnnotation;
-  Uint8List? _cachedUserMarkerBytes;
-  bool _isLoadingLocation = false;
+        TripManagerMixin<DriverMapTab>,
+        DriverLocationMixin<DriverMapTab> {
   String _selectedRoute = AppConstants.jordanRoutes.first;
-  StreamSubscription<geo.Position>? _locationSubscription;
-  double _currentBearing = 0.0;
-  final LocationService _locationService = LocationService();
 
   @override
   bool get suppressPoiTap => isAddingPickupPoint;
@@ -44,17 +46,13 @@ class _DriverMapTabState extends State<DriverMapTab>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadMarkerImage();
-  }
-
-  Future<void> _loadMarkerImage() async {
-    _cachedUserMarkerBytes = await MapUtils.preloadMarkerImage();
+    preloadDriverMarker();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _locationSubscription?.cancel();
+    disposeDriverLocation();
     disposePickupPoints();
     disposeTripManager();
     super.dispose();
@@ -62,109 +60,22 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _isLoadingLocation) {
-      _goToMyLocation();
-    }
-    if (state == AppLifecycleState.detached) {
-      _locationSubscription?.cancel();
-    }
+    onDriverLocationLifecycle(state);
   }
 
-  Future<void> _updateUserMarker(double lat, double lng, double bearing) async {
-    if (pointAnnotationManager == null) return;
-    final point = Point(coordinates: Position(lng, lat));
-    if (_userAnnotation != null) {
-      _userAnnotation!.geometry = point;
-      _userAnnotation!.iconRotate = bearing;
-      await pointAnnotationManager?.update(_userAnnotation!);
-      return;
-    }
-    _cachedUserMarkerBytes ??= await MapHelpers.createUserMarkerBytes();
-    if (_cachedUserMarkerBytes == null) return;
-    _userAnnotation = await pointAnnotationManager?.create(
-      PointAnnotationOptions(
-        geometry: point,
-        image: _cachedUserMarkerBytes!,
-        iconSize: 1.0,
-        iconAnchor: IconAnchor.CENTER,
-        iconRotate: bearing,
-      ),
-    );
+  @override
+  void onStyleChanged() {
+    // بعد تغيير ستايل الخريطة نعيد رسم نقاط التجمع
+    listenToPickupPoints();
   }
 
-  Future<void> _goToMyLocation() async {
-    if (mapboxMap == null || !mounted) return;
-    setState(() => _isLoadingLocation = true);
-    try {
-      if (!await _locationService.checkAndRequestPermission()) {
-        if (!mounted) return;
-        MapUtils.showSnackBar(context, '⚠️ يرجى تفعيل خدمة الموقع.',
-            isError: true);
-        return;
-      }
-      if (!mounted) return;
-
-      _locationSubscription?.cancel();
-      final position = await _locationService.getCurrentPosition();
-      if (!mounted) return;
-
-      if (position == null) {
-        MapUtils.showSnackBar(context, '⚠️ تعذر الحصول على الموقع.',
-            isError: true);
-        return;
-      }
-
-      double bearing = position.heading;
-      if (bearing == 0.0 && position.speed > 0) bearing = _currentBearing;
-      setState(() => _currentBearing = bearing);
-
-      await flyToFlat(
-        latitude: position.latitude,
-        longitude: position.longitude,
-        zoom: 16,
-      );
-      await _updateUserMarker(position.latitude, position.longitude, bearing);
-
-      if (!mounted) return;
-      context.read<DriverProvider>().updatePosition(position);
-
-      _locationSubscription = _locationService
-          .getPositionStream(distanceFilter: 5)
-          .listen((pos) {
-        if (!mounted) return;
-        double newBearing = pos.heading;
-        if (newBearing == 0.0 && pos.speed > 0) newBearing = _currentBearing;
-        setState(() => _currentBearing = newBearing);
-        mapboxMap?.setCamera(
-          CameraOptions(
-            center: Point(coordinates: Position(pos.longitude, pos.latitude)),
-            zoom: 16,
-            pitch: 0,
-            bearing: 0,
-          ),
-        );
-        _updateUserMarker(pos.latitude, pos.longitude, newBearing);
-        context.read<DriverProvider>().updatePosition(pos);
-      });
-
-      if (!mounted) return;
-      MapUtils.showSnackBar(context, '📍 تم تحديد موقعك.');
-    } finally {
-      if (mounted) setState(() => _isLoadingLocation = false);
+  @override
+  void handleAnnotationTap(PointAnnotation annotation) {
+    if (!mounted) return;
+    final pickupId = findPickupIdByAnnotation(annotation);
+    if (pickupId != null) {
+      showPickupPointSheet(pickupId);
     }
-  }
-
-  void _recenterCamera() {
-    final pos = context.read<DriverProvider>().currentPosition;
-    if (pos == null) {
-      MapUtils.showSnackBar(context, '⚠️ لا يوجد موقع محدد.', isError: true);
-      return;
-    }
-    flyToFlat(
-      latitude: pos.latitude,
-      longitude: pos.longitude,
-      zoom: 16.5,
-    );
   }
 
   Future<void> _searchPlace(String query) async {
@@ -174,7 +85,7 @@ class _DriverMapTabState extends State<DriverMapTab>
       mapboxMap,
       query,
       0,
-      _locationService,
+      locationService,
     );
   }
 
@@ -200,6 +111,7 @@ class _DriverMapTabState extends State<DriverMapTab>
             await Future<void>.delayed(const Duration(milliseconds: 400));
             await applyLabelLayersFilter();
             listenToPickupPoints();
+            if (mounted) setState(() => isMapReady = true);
           },
           styleUri: currentMapStyle,
           // ignore: deprecated_member_use
@@ -211,6 +123,8 @@ class _DriverMapTabState extends State<DriverMapTab>
             }
           },
         ),
+
+        // شريط البحث
         Positioned(
           top: 16,
           left: 16,
@@ -222,6 +136,8 @@ class _DriverMapTabState extends State<DriverMapTab>
             onSearchSubmitted: _searchPlace,
           ),
         ),
+
+        // أزرار التحكم
         Positioned(
           bottom: 140,
           right: 16,
@@ -238,7 +154,7 @@ class _DriverMapTabState extends State<DriverMapTab>
               const SizedBox(height: 10),
               FloatingActionButton(
                 heroTag: 'driver_recenter',
-                onPressed: _recenterCamera,
+                onPressed: recenterDriverCamera,
                 backgroundColor: Colors.blue.shade700,
                 foregroundColor: Colors.white,
                 child: const Icon(Icons.center_focus_strong),
@@ -246,10 +162,10 @@ class _DriverMapTabState extends State<DriverMapTab>
               const SizedBox(height: 10),
               FloatingActionButton(
                 heroTag: 'driver_my_location',
-                onPressed: _goToMyLocation,
+                onPressed: goToMyLocation,
                 backgroundColor: Colors.white,
                 foregroundColor: AppTheme.primaryColor,
-                child: _isLoadingLocation
+                child: isLoadingDriverLocation
                     ? const SizedBox(
                         width: 22,
                         height: 22,
@@ -290,6 +206,8 @@ class _DriverMapTabState extends State<DriverMapTab>
             ],
           ),
         ),
+
+        // لوحة حالة السائق والرحلة
         Positioned(
           bottom: 20,
           left: 16,
@@ -304,6 +222,13 @@ class _DriverMapTabState extends State<DriverMapTab>
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.98),
                   borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -313,6 +238,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     Text(state.isOnline ? 'متاح' : 'غير متاح'),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
