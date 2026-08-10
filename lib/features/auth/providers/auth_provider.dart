@@ -109,7 +109,8 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// تغيير كلمة المرور بعد التحقق من كلمة المرور الحالية (Firebase Auth).
+  /// تغيير كلمة المرور ثم إنهاء الجلسة الحالية لأمان أعلى.
+  /// يجب على المستخدم تسجيل الدخول مجدداً بكلمة المرور الجديدة.
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -135,8 +136,19 @@ class AuthProvider extends ChangeNotifier {
         password: currentPassword,
       );
 
+      // 1) التحقق من الهوية بكلمة المرور الحالية
       await user.reauthenticateWithCredential(credential);
+
+      // 2) تحديث كلمة المرور في Firebase Auth
       await user.updatePassword(newPassword);
+
+      // 3) تأمين الجلسة: إنهاء الجلسة الحالية فوراً
+      // حتى لا تبقى رموز الدخول القديمة فعالة على هذا الجهاز
+      await _auth.signOut();
+      _cancelUserDataSubscription();
+      _user = null;
+      _userData = null;
+      notifyListeners();
     } on firebase_auth.FirebaseAuthException catch (e) {
       throw Exception(_getAuthErrorMessage(e.code));
     } catch (e) {
