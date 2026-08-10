@@ -16,6 +16,13 @@ class _SettingsTabState extends State<SettingsTab> {
   String _selectedLanguage = 'العربية';
   bool _isMigrating = false;
 
+  static const String _migrationDialogMessage =
+      'سيتم ضبط كل النقاط في Firestore:\n'
+      '• المعتمدة / القديمة بإحداثيات → status: approved\n'
+      '• المعلقة → pending\n'
+      '• المرفوضة → rejected\n\n'
+      'هل تريد المتابعة؟';
+
   Future<void> _logout(BuildContext context) async {
     final authProvider = context.read<AuthProvider>();
     final messenger = ScaffoldMessenger.of(context);
@@ -65,14 +72,7 @@ class _SettingsTabState extends State<SettingsTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('توحيد حالات النقاط'),
-        content: const Text(
-          'سيتم ضبط كل النقاط في Firestore:
-'
-          '• المعتمدة / القديمة بإحداثيات → status: approved\n'
-          '• المعلقة → pending\n'
-          '• المرفوضة → rejected\n\n'
-          'هل تريد المتابعة؟',
-        ),
+        content: const Text(_migrationDialogMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -201,7 +201,6 @@ class _SettingsTabState extends State<SettingsTab> {
               ),
             ),
             const SizedBox(height: 16),
-
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(
@@ -229,8 +228,10 @@ class _SettingsTabState extends State<SettingsTab> {
                   ),
                   const Divider(height: 1),
                   ListTile(
-                    leading: const Icon(Icons.language,
-                        color: AppTheme.primaryColor),
+                    leading: const Icon(
+                      Icons.language,
+                      color: AppTheme.primaryColor,
+                    ),
                     title: const Text(
                       'اللغة',
                       style: TextStyle(fontWeight: FontWeight.w500),
@@ -240,14 +241,16 @@ class _SettingsTabState extends State<SettingsTab> {
                     onTap: () => _showLanguageDialog(context),
                   ),
                   const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.info_outline,
-                        color: AppTheme.primaryColor),
-                    title: const Text(
+                  const ListTile(
+                    leading: Icon(
+                      Icons.info_outline,
+                      color: AppTheme.primaryColor,
+                    ),
+                    title: Text(
                       'الإصدار',
                       style: TextStyle(fontWeight: FontWeight.w500),
                     ),
-                    subtitle: const Text('1.0.0+1'),
+                    subtitle: Text('1.0.0+1'),
                   ),
                   const Divider(height: 1),
                   ListTile(
@@ -257,8 +260,10 @@ class _SettingsTabState extends State<SettingsTab> {
                             height: 24,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.sync_problem,
-                            color: AppTheme.primaryColor),
+                        : const Icon(
+                            Icons.sync_problem,
+                            color: AppTheme.primaryColor,
+                          ),
                     title: const Text(
                       'توحيد حالات النقاط (status)',
                       style: TextStyle(fontWeight: FontWeight.w500),
@@ -273,7 +278,6 @@ class _SettingsTabState extends State<SettingsTab> {
               ),
             ),
             const SizedBox(height: 16),
-
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -293,7 +297,6 @@ class _SettingsTabState extends State<SettingsTab> {
                 ),
               ),
             ),
-
             const SizedBox(height: 16),
             Center(
               child: Text(

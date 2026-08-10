@@ -139,7 +139,6 @@ class PickupPointService {
     });
   }
 
-  /// الموافقة: توحيد الحقول إلى status=approved
   Future<void> approvePickupPoint(String id) async {
     await _withRetryAndTimeout(() async {
       await _collection.doc(id).update({
@@ -199,9 +198,6 @@ class PickupPointService {
   }
 
   /// ترحيل لمرة واحدة: توحيد status لكل المستندات في pickupPoints.
-  /// - pending / rejected تبقى كما هي (مع ضبط isApproved).
-  /// - approved أو isApproved=true أو بدون status بإحداثيات صالحة → approved.
-  /// للأدمن فقط (عبر قواعد Firestore).
   Future<PickupStatusMigrationResult> migrateNormalizeStatuses() async {
     final snapshot = await _collection.get();
     var setApproved = 0;
@@ -210,15 +206,13 @@ class PickupPointService {
     var unchanged = 0;
     var failed = 0;
 
-    // دفعات كتابة (حد Firestore ~500 عملية/batch)
-    WriteBatch? batch = FirebaseFirestore.instance.batch();
+    WriteBatch batch = FirebaseFirestore.instance.batch();
     var opsInBatch = 0;
 
     Future<void> commitIfNeeded({bool force = false}) async {
-      if (batch == null) return;
       if (opsInBatch == 0) return;
       if (!force && opsInBatch < 400) return;
-      await batch!.commit();
+      await batch.commit();
       batch = FirebaseFirestore.instance.batch();
       opsInBatch = 0;
     }
@@ -229,7 +223,7 @@ class PickupPointService {
         final rawStatus = data['status']?.toString().trim().toLowerCase();
         final isApprovedFlag = data['isApproved'] == true;
 
-        String target;
+        final String target;
         if (rawStatus == 'rejected') {
           target = 'rejected';
         } else if (rawStatus == 'pending') {
@@ -237,7 +231,6 @@ class PickupPointService {
         } else if (rawStatus == 'approved' || isApprovedFlag) {
           target = 'approved';
         } else if (rawStatus == null || rawStatus.isEmpty) {
-          // بيانات قديمة بلا status: إن وُجدت إحداثيات صالحة نعتبرها معتمدة
           final lat = (data['latitude'] as num?)?.toDouble();
           final lng = (data['longitude'] as num?)?.toDouble();
           if (lat != null &&
@@ -249,16 +242,9 @@ class PickupPointService {
             target = 'pending';
           }
         } else {
-          // قيم غريبة → pending للمراجعة
           target = 'pending';
         }
 
-        final alreadyOk = rawStatus == target &&
-            (target == 'approved'
-                ? isApprovedFlag == true
-                : data['isApproved'] != true || target != 'approved');
-
-        // نحدّث دائماً إذا status غير مطابق أو isApproved غير متسق
         final needUpdate = rawStatus != target ||
             (target == 'approved' && !isApprovedFlag) ||
             (target != 'approved' && isApprovedFlag);
@@ -268,7 +254,7 @@ class PickupPointService {
           continue;
         }
 
-        batch!.update(doc.reference, {
+        batch.update(doc.reference, {
           'status': target,
           'isApproved': target == 'approved',
           'updatedAt': FieldValue.serverTimestamp(),
