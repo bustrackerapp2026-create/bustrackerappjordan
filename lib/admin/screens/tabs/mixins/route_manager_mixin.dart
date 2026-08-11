@@ -12,10 +12,11 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
   final Map<String, List<GeoPoint>> routeCoordinates = {};
   StreamSubscription<List<RouteModel>>? _routesSubscription;
 
-  /// 'الكل' أو اسم المسار المعروض في القائمة
+  /// يُحدَّث عند تغيّر قائمة المسارات فقط — لتحديث الواجهة دون لمس الكاميرا
+  final ValueNotifier<int> routesUiTick = ValueNotifier<int>(0);
+
   String selectedRouteName = 'الكل';
 
-  /// أسماء المسارات للقائمة المنسدلة (تبدأ بـ الكل)
   List<String> get routeDropdownItems {
     final names = routes.map((r) => r.name).toList();
     return ['الكل', ...names];
@@ -28,18 +29,25 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
     _routesSubscription = routeService.getActiveRoutesStream().listen(
       (list) {
         if (!mounted) return;
-        _log('📦 تم استلام ${list.length} مسار نشط');
+
+        final oldIds = routes.map((r) => r.id).join(',');
+        final newIds = list.map((r) => r.id).join(',');
+
         routes
           ..clear()
           ..addAll(list);
 
-        // إن كان المسار المختار لم يعد موجوداً، ارجع للكل
         if (selectedRouteName != 'الكل' &&
             !routes.any((r) => r.name == selectedRouteName)) {
           selectedRouteName = 'الكل';
         }
 
-        setState(() {});
+        // لا نستدعي setState على شاشة الخريطة كاملة — يمنع رجّة الزوم
+        if (oldIds != newIds) {
+          routesUiTick.value++;
+        }
+
+        _log('📦 تم استلام ${list.length} مسار نشط');
         _loadRouteCoordinates();
       },
       onError: (error) {
@@ -51,46 +59,33 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
   Future<void> _loadRouteCoordinates() async {
     final routeService = RouteService();
 
-    for (final route in routes) {
+    for (final route in List<RouteModel>.from(routes)) {
       if (!mounted) return;
       try {
         final coords = await routeService.fetchRouteCoordinates(route.id);
         if (coords.isNotEmpty) {
           routeCoordinates[route.id] = coords;
           _log('✅ تم تحميل ${coords.length} نقطة للمسار ${route.name}');
-        } else {
-          _log('⚠️ لا إحداثيات للمسار ${route.name} (${route.id})');
         }
       } catch (e) {
-        _log('⚠️ خطأ في تحميل إحداثيات المسار ${route.id}: $e');
+        _log('⚠️ خطأ في تحميل إحداثيات ${route.id}: $e');
       }
     }
 
-    if (mounted) {
-      await drawRoutes();
-    }
+    if (mounted) await drawRoutes();
   }
 
   Future<void> drawRoutes() async {
     if (!mounted) return;
 
-    // انتظر جاهزية مدير الخطوط قليلاً إن لزم
     if (polylineAnnotationManager == null) {
-      _log('⏳ مدير الخطوط غير جاهز بعد — إعادة المحاولة...');
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-      if (polylineAnnotationManager == null || !mounted) {
-        _log('❌ تعذر رسم المسارات: لا يوجد PolylineAnnotationManager');
-        return;
-      }
-    }
-
-    if (routes.isEmpty) {
-      await polylineAnnotationManager?.deleteAll();
-      _log('ℹ️ لا مسارات نشطة للرسم');
-      return;
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (polylineAnnotationManager == null || !mounted) return;
     }
 
     await polylineAnnotationManager?.deleteAll();
+
+    if (routes.isEmpty) return;
 
     final toDraw = selectedRouteName == 'الكل'
         ? routes
@@ -99,14 +94,12 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
     for (final route in toDraw) {
       if (!mounted) return;
       final coords = routeCoordinates[route.id];
-      if (coords == null || coords.isEmpty) continue;
+      if (coords == null || coords.length < 2) continue;
 
       final positions =
           coords.map((geo) => Position(geo.longitude, geo.latitude)).toList();
-      if (positions.length < 2) continue;
 
       final color = hexToColor(route.routeColor);
-
       final options = PolylineAnnotationOptions(
         geometry: LineString(coordinates: positions),
         lineColor: color.toARGB32(),
@@ -116,21 +109,25 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
 
       try {
         await polylineAnnotationManager?.create(options);
-        _log('✅ تم رسم المسار: ${route.name}');
       } catch (e) {
-        _log('⚠️ خطأ في رسم المسار ${route.id}: $e');
+        _log('⚠️ خطأ في رسم ${route.id}: $e');
       }
     }
   }
 
   void onRouteFilterChanged(String name) {
     selectedRouteName = name;
-    setState(() {});
+    routesUiTick.value++;
     drawRoutes();
 
-    // ركّز الكاميرا على المسار المختار
     if (name != 'الكل') {
-      final route = routes.where((r) => r.name == name).firstOrNull;
+      RouteModel? route;
+      for (final r in routes) {
+        if (r.name == name) {
+          route = r;
+          break;
+        }
+      }
       if (route != null) {
         final coords = routeCoordinates[route.id];
         if (coords != null && coords.isNotEmpty) {
@@ -146,20 +143,17 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
   }
 
   void redrawRoutes() {
-    if (mounted) {
-      drawRoutes();
-    }
+    if (mounted) drawRoutes();
   }
 
   void disposeRoutes() {
     _routesSubscription?.cancel();
+    routesUiTick.dispose();
     routes.clear();
     routeCoordinates.clear();
   }
 
   void _log(String message) {
-    if (kDebugMode) {
-      debugPrint('📌 [AdminMap] $message');
-    }
+    if (kDebugMode) debugPrint('📌 [AdminMap] $message');
   }
 }

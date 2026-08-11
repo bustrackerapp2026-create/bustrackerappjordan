@@ -14,10 +14,13 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   bool showPlaceLabels = true;
   bool showPoiLabels = true;
   bool showRoadLabels = true;
-  String currentMapStyle = MapboxStyles.MAPBOX_STREETS;
+
+  /// يُحمَّل الستايل برمجياً فقط — لا نمرّر styleUri متغيّر في build
+  /// حتى لا تُعاد تهيئة الخريطة عند كل setState.
+  static const String initialMapStyle = MapboxStyles.MAPBOX_STREETS;
+  String currentMapStyle = initialMapStyle;
   bool isMapReady = false;
 
-  /// عند true يتم تجاهل نقر المعالم (مثلاً أثناء إضافة نقطة تجمع)
   bool get suppressPoiTap => false;
 
   void onMapCreated(MapboxMap map) {
@@ -25,50 +28,69 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     _initializeMap();
   }
 
-  void _initializeMap() async {
+  Future<void> _initializeMap() async {
     await initAnnotationManager();
     await initPolylineManager();
-    await applyGoogleLikeCameraBehavior();
-    await applyMapConstraints();
+    await applyStableGestures();
+    await applyZoomLimitsOnly();
     _setDefaultCamera();
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     await applyLabelLayersFilter();
     if (mounted) setState(() => isMapReady = true);
     MapUtils.log('✅ تم إنشاء الخريطة بنجاح');
   }
 
-  /// سلوك مستقر للتكبير/التحريك بدون رجّة
-  Future<void> applyGoogleLikeCameraBehavior() async {
+  /// إيماءات بسيطة ومستقرة — بدون تدوير/ميلان/quickZoom
+  Future<void> applyStableGestures() async {
     if (mapboxMap == null) return;
     try {
       await mapboxMap!.gestures.updateSettings(
         GesturesSettings(
           pitchEnabled: false,
-          // التدوير أثناء الـ pinch يسبب تعارضًا ورجّة على بعض الأجهزة
           rotateEnabled: false,
           scrollEnabled: true,
           pinchToZoomEnabled: true,
           doubleTapToZoomInEnabled: true,
           doubleTouchToZoomOutEnabled: true,
-          // quickZoom (سحب بإصبع واحد بعد ضغط مزدوج) غالبًا يسبب قفزات سريعة
           quickZoomEnabled: false,
           simultaneousRotateAndPinchToZoomEnabled: false,
-          pinchPanEnabled: true,
-          focalPoint: null,
-        ),
-      );
-
-      // تثبيت الميلان والاتجاه مرة واحدة عند التهيئة فقط (بدون مقاطعة الإيماءات لاحقًا)
-      await mapboxMap!.setCamera(
-        CameraOptions(
-          pitch: 0.0,
-          bearing: 0.0,
+          pinchPanEnabled: false,
+          pinchToZoomDecelerationEnabled: true,
+          scrollDecelerationEnabled: true,
+          rotateDecelerationEnabled: false,
         ),
       );
     } catch (e) {
-      MapUtils.log('⚠️ تعذر ضبط إيماءات الكاميرا: $e');
+      MapUtils.log('⚠️ تعذر ضبط الإيماءات: $e');
     }
   }
+
+  /// حدود زوم فقط — بدون قيود جغرافية صارمة (سبب شائع للرجّة)
+  Future<void> applyZoomLimitsOnly() async {
+    if (mapboxMap == null) return;
+    try {
+      await mapboxMap!.setBounds(
+        CameraBoundsOptions(
+          bounds: CoordinateBounds(
+            southwest: Point(coordinates: Position(-180.0, -85.0)),
+            northeast: Point(coordinates: Position(180.0, 85.0)),
+            infiniteBounds: true,
+          ),
+          minZoom: MapConstants.minZoom,
+          maxZoom: MapConstants.maxZoom,
+          maxPitch: 0.0,
+          minPitch: 0.0,
+        ),
+      );
+      MapUtils.log('✅ تم ضبط حدود الزوم فقط (بدون قيود جغرافية)');
+    } catch (e) {
+      MapUtils.log('⚠️ خطأ في حدود الزوم: $e');
+    }
+  }
+
+  /// توافق مع الاستدعاءات القديمة
+  Future<void> applyGoogleLikeCameraBehavior() => applyStableGestures();
+  Future<void> applyMapConstraints() => applyZoomLimitsOnly();
 
   Future<void> flyToFlat({
     required double latitude,
@@ -84,7 +106,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         pitch: 0.0,
         bearing: 0.0,
       ),
-      MapAnimationOptions(duration: 900, startDelay: 0),
+      MapAnimationOptions(duration: 800, startDelay: 0),
     );
   }
 
@@ -98,7 +120,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         pitch: 0.0,
         bearing: 0.0,
       ),
-      MapAnimationOptions(duration: 400, startDelay: 0),
+      MapAnimationOptions(duration: 350, startDelay: 0),
     );
   }
 
@@ -113,40 +135,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         bearing: 0.0,
       ),
     );
-  }
-
-  /// حدود مرنة + min/max zoom لتقليل صراع الحدود مع الـ pinch
-  Future<void> applyMapConstraints() async {
-    if (mapboxMap == null) return;
-    try {
-      await mapboxMap!.setBounds(
-        CameraBoundsOptions(
-          bounds: CoordinateBounds(
-            southwest: Point(
-              coordinates: Position(
-                MapConstants.minLng,
-                MapConstants.minLat,
-              ),
-            ),
-            northeast: Point(
-              coordinates: Position(
-                MapConstants.maxLng,
-                MapConstants.maxLat,
-              ),
-            ),
-            // true يقلل «الشدّ» القاسي الذي يسبب رجّة عند حافة الحدود
-            infiniteBounds: true,
-          ),
-          minZoom: MapConstants.minZoom,
-          maxZoom: MapConstants.maxZoom,
-          maxPitch: 0.0,
-          minPitch: 0.0,
-        ),
-      );
-      MapUtils.log('✅ تم ضبط حدود/تكبير الكاميرا بشكل مستقر');
-    } catch (e) {
-      MapUtils.log('⚠️ خطأ في تطبيق الحدود: $e');
-    }
   }
 
   Future<void> initAnnotationManager() async {
@@ -167,10 +155,9 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
             handleAnnotationTap(annotation);
           },
         );
-        MapUtils.log('✅ مدير العلامات جاهز');
       }
     } catch (e) {
-      MapUtils.log('❌ خطأ في تهيئة PointAnnotationManager: $e');
+      MapUtils.log('❌ خطأ في PointAnnotationManager: $e');
     }
   }
 
@@ -185,9 +172,8 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
       }
       polylineAnnotationManager =
           await mapboxMap?.annotations.createPolylineAnnotationManager();
-      MapUtils.log('✅ مدير الخطوط جاهز');
     } catch (e) {
-      MapUtils.log('❌ خطأ في تهيئة PolylineAnnotationManager: $e');
+      MapUtils.log('❌ خطأ في PolylineAnnotationManager: $e');
     }
   }
 
@@ -204,16 +190,17 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   Future<void> changeMapStyle(String styleUri) async {
     if (mapboxMap == null) return;
     try {
-      if (mounted) setState(() => currentMapStyle = styleUri);
+      currentMapStyle = styleUri;
       await mapboxMap?.loadStyleURI(styleUri);
       await Future<void>.delayed(const Duration(milliseconds: 500));
       await initAnnotationManager();
       await initPolylineManager();
-      await applyGoogleLikeCameraBehavior();
+      await applyStableGestures();
       await applyLabelLayersFilter();
-      await applyMapConstraints();
+      await applyZoomLimitsOnly();
       onStyleChanged();
-      MapUtils.log('✅ تم تغيير ستايل الخريطة إلى: $styleUri');
+      if (mounted) setState(() {});
+      MapUtils.log('✅ تم تغيير ستايل الخريطة');
     } catch (e) {
       MapUtils.log('⚠️ خطأ في تغيير الستايل: $e');
     }
@@ -231,7 +218,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         return Color(int.parse(hexCode, radix: 16));
       }
     } catch (e) {
-      MapUtils.log('⚠️ خطأ في تحويل اللون الهكس: $e');
+      MapUtils.log('⚠️ خطأ في تحويل اللون: $e');
     }
     return Colors.blue;
   }
@@ -246,9 +233,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
       mapboxMap: mapboxMap!,
       screenCoordinate: gesture.touchPosition,
     );
-    if (!mounted) return;
-    if (poi == null) return;
-
+    if (!mounted || poi == null) return;
     MapLayerController.showPoiSheet(context, poi);
   }
 
@@ -360,11 +345,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
                     'تخصيص الأسماء والمعالم:',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'عند الإيقاف تختفي التسميات من الخريطة فوراً',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
                   const SizedBox(height: 8),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
@@ -380,7 +360,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('🏛️ معالم الجذب (POI)'),
-                    subtitle: const Text('مطاعم، مستشفيات، مدارس...'),
                     value: showPoiLabels,
                     activeThumbColor: AppTheme.primaryColor,
                     onChanged: (val) async {
@@ -459,14 +438,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget buildMapWidget({Key? key}) {
-    return MapWidget(
-      key: key ?? const ValueKey('map_widget'),
-      onMapCreated: onMapCreated,
-      styleUri: currentMapStyle,
     );
   }
 }
