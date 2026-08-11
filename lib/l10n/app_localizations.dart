@@ -66,6 +66,8 @@ class AppLocalizations {
   String get approve => _t('موافقة', 'Approve');
   String get reject => _t('رفض', 'Reject');
   String get live => _t('مباشر', 'Live');
+  String get searchHint =>
+      _t('ابحث عن وجهة أو خط...', 'Search destination or route...');
 
   // ── تسجيل الدخول ─────────────────────────────────
   String get login => _t('تسجيل الدخول', 'Log in');
@@ -362,6 +364,17 @@ class AppLocalizations {
   String get dbConnectionFailed =>
       _t('تعذر الاتصال بقاعدة البيانات', 'Could not connect to database');
   String get retryRefresh => _t('إعادة التحديث', 'Refresh again');
+  String get labelBus => _t('باص', 'Bus');
+  String get labelService => _t('سرفيس', 'Service');
+  String get labelBusCompany => _t('باص شركة', 'Company bus');
+  String get labelBuses => _t('الباصات', 'Buses');
+  String get labelPassengers => _t('الركاب', 'Passengers');
+  String get labelServices => _t('السرافيس', 'Services');
+  String get labelOthers => _t('أخرى', 'Others');
+  String get labelPending => _t('المعلقون', 'Pending');
+  String get labelVerified => _t('الموثقون', 'Verified');
+  String get labelRejected => _t('المرفوضون', 'Rejected');
+  String get labelApproved => _t('موثقة', 'Approved');
 }
 
 class _AppLocalizationsDelegate
