@@ -7,6 +7,7 @@ import '../../../core/map/map_core.dart';
 import '../../../core/map/map_utils.dart';
 import '../../../core/pickup/pickup_point_mixin.dart';
 import '../../../map/widgets/search_bar_widget.dart';
+import '../../../l10n/app_localizations.dart';
 import 'mixins/passenger_location_mixin.dart';
 import 'mixins/passenger_live_tracking_mixin.dart';
 
@@ -107,6 +108,8 @@ class _MapTabState extends State<MapTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final l10n = AppLocalizations.of(context);
+
     return Stack(
       children: [
         RepaintBoundary(
@@ -139,7 +142,7 @@ class _MapTabState extends State<MapTab>
                 updateLiveTrackingRouteFilter(newRoute);
                 MapUtils.showSnackBar(
                   context,
-                  '🔄 تم تصفية الخط: $newRoute',
+                  l10n.routeFiltered(newRoute),
                 );
               },
               onSearchSubmitted: searchPassengerPlace,
@@ -189,8 +192,8 @@ class _MapTabState extends State<MapTab>
                     MapUtils.showSnackBar(
                       context,
                       isAddingPickupPoint
-                          ? '📍 اضغط على الخريطة لإضافة نقطة جديدة'
-                          : '❌ تم إلغاء إضافة النقطة',
+                          ? l10n.tapMapAddNewPoint
+                          : l10n.cancelAddPoint,
                       isError: !isAddingPickupPoint,
                     );
                     setState(() {});
@@ -223,6 +226,7 @@ class _MapTabState extends State<MapTab>
                 return _LiveStatusBar(
                   routeName: _selectedRoute,
                   liveCount: count,
+                  l10n: l10n,
                 );
               },
             ),
@@ -236,10 +240,12 @@ class _MapTabState extends State<MapTab>
 class _LiveStatusBar extends StatelessWidget {
   final String routeName;
   final int liveCount;
+  final AppLocalizations l10n;
 
   const _LiveStatusBar({
     required this.routeName,
     required this.liveCount,
+    required this.l10n,
   });
 
   @override
@@ -276,9 +282,9 @@ class _LiveStatusBar extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
-                    '🚌 تتبع حي',
-                    style: TextStyle(
+                  Text(
+                    l10n.liveTracking,
+                    style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: AppTheme.textColor,
@@ -287,8 +293,8 @@ class _LiveStatusBar extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     liveCount > 0
-                        ? '$liveCount باص متصل الآن'
-                        : 'لا يوجد باصات متصلة حالياً',
+                        ? l10n.liveBusesCount(liveCount)
+                        : l10n.noLiveBuses,
                     style: const TextStyle(
                       fontSize: 11,
                       color: Colors.grey,
