@@ -100,7 +100,7 @@ class _AdminMapTabState extends State<AdminMapTab>
 
   @override
   void dispose() {
-    _zoomLogDebounce?.cancel();
+    disposeMapDebug();
     _locationSubscription?.cancel();
     disposePickupPoints();
     disposeRoutes();
