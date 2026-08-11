@@ -39,7 +39,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     final shadow = Paint()
       ..color = Colors.black.withValues(alpha: 0.2)
-      ..maskFilter const MaskFilter.blur(BlurStyle.normal, 6);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
     canvas.drawCircle(const Offset(size / 2, size / 2 + 2), 18, shadow);
 
     final body = Paint()..color = const Color(0xFF1565C0);
@@ -188,11 +188,8 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
     } finally {
       _updatingMarkers = false;
-      // إن وصلت تحديثات أثناء العمل
       final pending = _pendingDrivers;
-      if (pending != null &&
-          pending.length != drivers.length &&
-          mounted) {
+      if (pending != null && pending.length != drivers.length && mounted) {
         _updateThrottle?.cancel();
         _updateThrottle = Timer(const Duration(milliseconds: 200), () {
           unawaited(_applyDriverMarkers(pending));
