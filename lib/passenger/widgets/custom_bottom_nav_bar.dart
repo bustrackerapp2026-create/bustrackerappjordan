@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../l10n/app_localizations.dart';
 
 class CustomBottomNavBar extends StatelessWidget {
   final int currentIndex;
-  final ValueChanged<int>
-      onTap; // ✅ استخدام ValueChanged لتوافق أفضّل في Flutter
+  final ValueChanged<int> onTap;
 
   const CustomBottomNavBar({
     super.key,
@@ -14,29 +14,31 @@ class CustomBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     return BottomNavigationBar(
       currentIndex: currentIndex,
       onTap: onTap,
-      selectedItemColor: AppTheme.primaryColor, // ✅ لون ثيم التطبيق
+      selectedItemColor: AppTheme.primaryColor,
       unselectedItemColor: Colors.grey,
       selectedFontSize: 13,
       unselectedFontSize: 12,
-      type: BottomNavigationBarType.fixed, // يضمن عدم اهتزاز شريط التنقل
-      items: const [
+      type: BottomNavigationBarType.fixed,
+      items: [
         BottomNavigationBarItem(
-          icon: Icon(Icons.map_outlined),
-          activeIcon: Icon(Icons.map),
-          label: 'الخريطة',
+          icon: const Icon(Icons.map_outlined),
+          activeIcon: const Icon(Icons.map),
+          label: l10n.navMap,
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.history_outlined),
-          activeIcon: Icon(Icons.history),
-          label: 'رحلاتي',
+          icon: const Icon(Icons.history_outlined),
+          activeIcon: const Icon(Icons.history),
+          label: l10n.navMyTrips,
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.person_outlined),
-          activeIcon: Icon(Icons.person),
-          label: 'حسابي',
+          icon: const Icon(Icons.person_outlined),
+          activeIcon: const Icon(Icons.person),
+          label: l10n.navMyAccount,
         ),
       ],
     );
