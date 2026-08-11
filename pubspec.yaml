@@ -18,6 +18,7 @@ dependencies:
   firebase_core: ^3.8.0
   cloud_firestore: ^5.5.0
   firebase_auth: ^5.3.3
+  firebase_storage: ^12.3.7
 
   # Location & Maps
   geolocator: ^13.0.1
@@ -44,5 +45,5 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/app_icon.png"
-  adaptive_icon_background: "#1A73E8"   # ✅ تم التفعيل (لون الخلفية)
-  adaptive_icon_foreground: "assets/images/app_icon.png"  # ✅ تم التفعيل
+  adaptive_icon_background: "#1A73E8"
+  adaptive_icon_foreground: "assets/images/app_icon.png"

@@ -43,7 +43,7 @@ service cloud.firestore {
       return t in ['passenger', 'driver', 'service', 'bus_company'];
     }
 
-    /// حقول يمكن للمستخدم تحديثها بنفسه (ملف شخصي + موقع)
+    /// حقول يمكن للمستخدم تحديثها بنفسه (ملف شخصي + موقع + صورة)
     function onlySelfServiceFields() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly([
@@ -52,6 +52,7 @@ service cloud.firestore {
           'email',
           'busNumber',
           'route',
+          'photoUrl',
           'currentLatitude',
           'currentLongitude',
           'isOnline',

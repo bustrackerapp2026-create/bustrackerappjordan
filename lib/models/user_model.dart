@@ -8,6 +8,7 @@ class UserModel {
   final String? phoneNumber;
   final String? busNumber;
   final String? route;
+  final String? photoUrl;
   final bool isVerified;
   final bool isRejected;
   final DateTime? createdAt;
@@ -22,6 +23,7 @@ class UserModel {
     this.phoneNumber,
     this.busNumber,
     this.route,
+    this.photoUrl,
     this.isVerified = false,
     this.isRejected = false,
     this.createdAt,
@@ -39,6 +41,7 @@ class UserModel {
       phoneNumber: _safePhoneNumber(map['phoneNumber']),
       busNumber: map['busNumber'] as String?,
       route: map['route'] as String?,
+      photoUrl: map['photoUrl'] as String?,
       isVerified: map['isVerified'] == true,
       isRejected: map['isRejected'] == true,
       createdAt: _parseOptionalDate(map['createdAt']),
@@ -63,6 +66,7 @@ class UserModel {
       'phoneNumber': phoneNumber,
       'busNumber': busNumber,
       'route': route,
+      'photoUrl': photoUrl,
       'isVerified': isVerified,
       'isRejected': isRejected,
     };
@@ -80,6 +84,7 @@ class UserModel {
       'phoneNumber': phoneNumber,
       'busNumber': busNumber,
       'route': route,
+      'photoUrl': photoUrl,
       'isVerified': isVerified,
       'isRejected': isRejected,
       'createdAt': createdAt?.toIso8601String(),
@@ -96,6 +101,7 @@ class UserModel {
       phoneNumber: json['phoneNumber'] as String?,
       busNumber: json['busNumber'] as String?,
       route: json['route'] as String?,
+      photoUrl: json['photoUrl'] as String?,
       isVerified: json['isVerified'] ?? false,
       isRejected: json['isRejected'] ?? false,
       createdAt:
@@ -113,6 +119,7 @@ class UserModel {
     String? phoneNumber,
     String? busNumber,
     String? route,
+    String? photoUrl,
     bool? isVerified,
     bool? isRejected,
     DateTime? createdAt,
@@ -125,6 +132,7 @@ class UserModel {
       phoneNumber: phoneNumber ?? this.phoneNumber,
       busNumber: busNumber ?? this.busNumber,
       route: route ?? this.route,
+      photoUrl: photoUrl ?? this.photoUrl,
       isVerified: isVerified ?? this.isVerified,
       isRejected: isRejected ?? this.isRejected,
       createdAt: createdAt ?? this.createdAt,
@@ -136,6 +144,8 @@ class UserModel {
   String get displayName => fullName.isNotEmpty ? fullName : 'مستخدم';
   String get displayPhone =>
       phoneNumber?.isNotEmpty == true ? phoneNumber! : 'غير محدد';
+  bool get hasPhoto => photoUrl != null && photoUrl!.isNotEmpty;
+
   String get displayUserType {
     switch (userType) {
       case 'admin':
