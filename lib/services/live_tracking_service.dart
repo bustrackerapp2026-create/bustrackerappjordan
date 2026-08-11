@@ -11,11 +11,6 @@ class LiveTrackingService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   /// سائقون متصلون بموقع صالح (للخريطة الحية).
-  ///
-  /// يعتمد على حقول users:
-  /// - userType == driver
-  /// - isOnline == true
-  /// - currentLatitude / currentLongitude
   Stream<List<LiveDriverLocation>> watchOnlineDrivers({String? routeFilter}) {
     Query<Map<String, dynamic>> q = _db
         .collection('users')
@@ -33,8 +28,6 @@ class LiveTrackingService {
             live.route != null &&
             live.route!.isNotEmpty &&
             live.route != routeFilter) {
-          // إن كان للسائق خط محدد مختلف عن الفلتر نتخطاه
-          // (إن لم يكن للسائق خط نعرضه للجميع)
           continue;
         }
         list.add(live);
@@ -53,12 +46,13 @@ class LiveTrackingService {
     });
   }
 
-  /// تحديث حالة الاتصال + مشاركة الموقع للسائق الحالي.
+  /// تحديث حالة الاتصال + مشاركة الموقع (+ الخط اختياري).
   Future<void> setDriverOnlineStatus({
     required String uid,
     required bool isOnline,
     double? latitude,
     double? longitude,
+    String? route,
   }) async {
     final data = <String, dynamic>{
       'isOnline': isOnline,
@@ -69,6 +63,9 @@ class LiveTrackingService {
       data['currentLatitude'] = latitude;
       data['currentLongitude'] = longitude;
       data['locationUpdatedAt'] = FieldValue.serverTimestamp();
+    }
+    if (route != null && route.isNotEmpty) {
+      data['route'] = route;
     }
     if (!isOnline) {
       data['isSharingLocation'] = false;
