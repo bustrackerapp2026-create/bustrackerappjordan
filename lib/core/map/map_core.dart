@@ -93,6 +93,12 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     });
   }
 
+  /// إلغاء مؤقت التشخيص — يُستدعى من dispose للشاشات التي تستخدم الـ mixin
+  void disposeMapDebug() {
+    _zoomLogDebounce?.cancel();
+    _zoomLogDebounce = null;
+  }
+
   Future<void> flyToFlat({
     required double latitude,
     required double longitude,
