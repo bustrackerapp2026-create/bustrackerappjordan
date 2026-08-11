@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/theme_provider.dart';
 import '../../../core/widgets/change_password_sheet.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/firestore_service.dart';
@@ -44,8 +45,6 @@ class _ProfileTabState extends State<ProfileTab> {
 
   Future<void> _loadPrefs() async {
     if (!mounted) return;
-    final uid = context.read<AuthProvider>().userId;
-
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
 
@@ -55,13 +54,6 @@ class _ProfileTabState extends State<ProfileTab> {
       _language = prefs.getString(_kLanguage) ?? 'العربية';
       _prefsLoaded = true;
     });
-
-    // مزامنة تفضيل مشاركة الموقع مع Firestore إن لزم
-    if (uid != null) {
-      try {
-        // لا نعيد الكتابة إلا عند الحاجة — القيمة المحلية كافية للعرض
-      } catch (_) {}
-    }
   }
 
   Future<void> _setNotifications(bool value) async {
@@ -274,6 +266,8 @@ class _ProfileTabState extends State<ProfileTab> {
     final nameCtrl = TextEditingController(text: user.fullName);
     final phoneCtrl = TextEditingController(text: user.phoneNumber ?? '');
     final emailCtrl = TextEditingController(text: user.email);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetColor = isDark ? AppTheme.darkSurface : Colors.white;
 
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -285,9 +279,10 @@ class _ProfileTabState extends State<ProfileTab> {
             bottom: MediaQuery.of(ctx).viewInsets.bottom,
           ),
           child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+            decoration: BoxDecoration(
+              color: sheetColor,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(22)),
             ),
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
             child: SingleChildScrollView(
@@ -300,7 +295,7 @@ class _ProfileTabState extends State<ProfileTab> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
+                        color: Colors.grey.shade400,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -346,10 +341,16 @@ class _ProfileTabState extends State<ProfileTab> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     'اضغط لتغيير الصورة',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.55),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -392,7 +393,13 @@ class _ProfileTabState extends State<ProfileTab> {
                   const SizedBox(height: 8),
                   Text(
                     'ملاحظة: تغيير البريد قد يتطلب إعادة تسجيل الدخول لأسباب أمنية.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.55),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
@@ -582,16 +589,19 @@ class _ProfileTabState extends State<ProfileTab> {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().userData;
+    final isDark = context.watch<ThemeProvider>().isDarkMode;
     final name = user?.fullName.trim().isNotEmpty == true
         ? user!.fullName.trim()
         : 'راكب';
     final initial = name.isNotEmpty ? name.characters.first : 'ر';
     final email = user?.email ?? '';
+    final bgColor = Theme.of(context).scaffoldBackgroundColor;
+    final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
 
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF5F7FA),
+        backgroundColor: bgColor,
         body: Stack(
           children: [
             ListView(
@@ -643,10 +653,7 @@ class _ProfileTabState extends State<ProfileTab> {
                               const SizedBox(height: 4),
                               Text(
                                 email,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey.shade600,
-                                ),
+                                style: TextStyle(fontSize: 13, color: muted),
                               ),
                             ],
                             const SizedBox(height: 6),
@@ -767,18 +774,22 @@ class _ProfileTabState extends State<ProfileTab> {
                       ),
                       _divider(),
                       SwitchListTile(
-                        secondary: const Icon(
-                          Icons.dark_mode_outlined,
+                        secondary: Icon(
+                          isDark ? Icons.dark_mode : Icons.light_mode_outlined,
                           color: AppTheme.primaryColor,
                         ),
                         title: const Text(
                           'الوضع الليلي',
                           style: TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        subtitle: const Text('قريباً'),
-                        value: false,
+                        subtitle: Text(
+                          isDark ? 'المظهر الداكن مفعّل' : 'تفعيل المظهر الداكن',
+                        ),
+                        value: isDark,
                         activeThumbColor: AppTheme.primaryColor,
-                        onChanged: (_) => _snack('🔜 الوضع الليلي قريباً'),
+                        onChanged: (value) {
+                          context.read<ThemeProvider>().setDarkMode(value);
+                        },
                       ),
                     ],
                   ),
@@ -839,8 +850,13 @@ class _ProfileTabState extends State<ProfileTab> {
                 Center(
                   child: Text(
                     '© 2026 Bus Tracker Jordan',
-                    style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.45),
+                    ),
                   ),
                 ),
               ],
@@ -881,22 +897,23 @@ class _ProfileTabState extends State<ProfileTab> {
         style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w700,
-          color: Colors.grey.shade700,
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
         ),
       ),
     );
   }
 
   Widget _sectionCard({required Widget child, EdgeInsetsGeometry? padding}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       padding: padding ?? const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? AppTheme.darkCard : Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -912,14 +929,27 @@ class _ProfileTabState extends State<ProfileTab> {
     String? subtitle,
     required VoidCallback onTap,
   }) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return ListTile(
       leading: Icon(icon, color: AppTheme.primaryColor),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: subtitle != null ? Text(subtitle) : null,
-      trailing: Icon(Icons.chevron_left, color: Colors.grey.shade400),
+      title: Text(
+        title,
+        style: TextStyle(fontWeight: FontWeight.w600, color: onSurface),
+      ),
+      subtitle: subtitle != null
+          ? Text(
+              subtitle,
+              style: TextStyle(color: onSurface.withValues(alpha: 0.6)),
+            )
+          : null,
+      trailing: Icon(
+        Icons.chevron_left,
+        color: onSurface.withValues(alpha: 0.35),
+      ),
       onTap: onTap,
     );
   }
 
-  Widget _divider() => Divider(height: 1, color: Colors.grey.shade200);
+  Widget _divider() =>
+      Divider(height: 1, color: Theme.of(context).dividerColor);
 }
