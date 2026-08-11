@@ -24,12 +24,16 @@ class DriverMapTab extends StatefulWidget {
 class _DriverMapTabState extends State<DriverMapTab>
     with
         WidgetsBindingObserver,
+        AutomaticKeepAliveClientMixin,
         MapCoreMixin<DriverMapTab>,
         PickupPointMixin<DriverMapTab>,
         TripManagerMixin<DriverMapTab>,
         DriverLocationMixin<DriverMapTab> {
   String _selectedRoute = AppConstants.jordanRoutes.first;
   bool _mapInitialized = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   bool get suppressPoiTap => isAddingPickupPoint;
@@ -43,6 +47,7 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   @override
   void dispose() {
+    disposeMapDebug();
     WidgetsBinding.instance.removeObserver(this);
     disposeDriverLocation();
     disposePickupPoints();
@@ -85,8 +90,10 @@ class _DriverMapTabState extends State<DriverMapTab>
     _mapInitialized = true;
 
     mapboxMap = map;
-    await initAnnotationManager();
-    await applyGoogleLikeCameraBehavior();
+    await Future.wait([
+      initAnnotationManager(),
+      applyStableGestures(),
+    ]);
     await mapboxMap?.setCamera(
       CameraOptions(
         center: Point(coordinates: Position(35.9106, 31.9522)),
@@ -95,13 +102,12 @@ class _DriverMapTabState extends State<DriverMapTab>
         bearing: 0,
       ),
     );
-    applyMapConstraints();
 
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await Future<void>.delayed(const Duration(milliseconds: 120));
     if (!mounted) return;
     await applyLabelLayersFilter();
     listenToPickupPoints();
-    isMapReady = true;
+    if (mounted) setState(() => isMapReady = true);
   }
 
   Future<void> _onToggleOnline() async {
@@ -129,7 +135,6 @@ class _DriverMapTabState extends State<DriverMapTab>
             : '⚪ تم إيقاف المشاركة',
       );
     } catch (e) {
-      // أرجع الحالة محلياً عند فشل الكتابة
       driver.toggleOnlineStatus();
       if (!mounted) return;
       MapUtils.showSnackBar(
@@ -160,12 +165,15 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Stack(
       children: [
         RepaintBoundary(
           child: MapWidget(
             key: const ValueKey('driver_map'),
+            textureView: true,
             onMapCreated: _onMapCreated,
+            onCameraChangeListener: onCameraChangedForDebug,
             styleUri: currentMapStyle,
             // ignore: deprecated_member_use
             onTapListener: (event) {

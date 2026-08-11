@@ -28,6 +28,9 @@ class MapPoiInfo {
 class MapLayerController {
   MapLayerController._();
 
+  /// كاش معرّفات الطبقات لكل styleUri لتفادي إعادة المسح الكامل
+  static final Map<String, _LayerIdCache> _layerCache = {};
+
   static const List<String> _placeKeywords = [
     'settlement',
     'place-label',
@@ -90,51 +93,74 @@ class MapLayerController {
     'tunnel-label',
   ];
 
+  /// يُستدعى عند تغيير الستايل لمسح الكاش
+  static void invalidateCache([String? styleUri]) {
+    if (styleUri == null) {
+      _layerCache.clear();
+    } else {
+      _layerCache.remove(styleUri);
+    }
+  }
+
   static Future<void> applyLabelFilters({
     required MapboxMap mapboxMap,
     required bool showPlaceLabels,
     required bool showPoiLabels,
     required bool showRoadLabels,
+    String styleKey = 'default',
   }) async {
     try {
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-
       final style = mapboxMap.style;
-      final layers = await style.getStyleLayers();
+      var cache = _layerCache[styleKey];
 
-      final placeIds = <String>{};
-      final poiIds = <String>{};
-      final roadIds = <String>{};
+      if (cache == null) {
+        // تأخير قصير مرة واحدة فقط حتى تكتمل الطبقات
+        await Future<void>.delayed(const Duration(milliseconds: 60));
 
-      for (final layer in layers) {
-        final rawId = layer?.id;
-        if (rawId == null || rawId.isEmpty) continue;
-        final id = rawId;
-        final lower = id.toLowerCase();
+        final layers = await style.getStyleLayers();
+        final placeIds = <String>{};
+        final poiIds = <String>{};
+        final roadIds = <String>{};
 
-        if (_isBaseGeometryLayer(lower)) continue;
+        for (final layer in layers) {
+          final rawId = layer?.id;
+          if (rawId == null || rawId.isEmpty) continue;
+          final lower = rawId.toLowerCase();
 
-        if (_matchesAny(lower, _placeKeywords)) {
-          placeIds.add(id);
-        } else if (_matchesAny(lower, _poiKeywords)) {
-          poiIds.add(id);
-        } else if (_matchesAny(lower, _roadKeywords)) {
-          roadIds.add(id);
+          if (_isBaseGeometryLayer(lower)) continue;
+
+          if (_matchesAny(lower, _placeKeywords)) {
+            placeIds.add(rawId);
+          } else if (_matchesAny(lower, _poiKeywords)) {
+            poiIds.add(rawId);
+          } else if (_matchesAny(lower, _roadKeywords)) {
+            roadIds.add(rawId);
+          }
         }
+
+        if (placeIds.isEmpty) placeIds.addAll(_fallbackPlace);
+        if (poiIds.isEmpty) poiIds.addAll(_fallbackPoi);
+        if (roadIds.isEmpty) roadIds.addAll(_fallbackRoad);
+
+        cache = _LayerIdCache(
+          placeIds: placeIds,
+          poiIds: poiIds,
+          roadIds: roadIds,
+        );
+        _layerCache[styleKey] = cache;
       }
 
-      if (placeIds.isEmpty) placeIds.addAll(_fallbackPlace);
-      if (poiIds.isEmpty) poiIds.addAll(_fallbackPoi);
-      if (roadIds.isEmpty) roadIds.addAll(_fallbackRoad);
+      final results = await Future.wait([
+        _setVisibilityBatch(style, cache.placeIds, showPlaceLabels),
+        _setVisibilityBatch(style, cache.poiIds, showPoiLabels),
+        _setVisibilityBatch(style, cache.roadIds, showRoadLabels),
+      ]);
 
-      var changed = 0;
-      changed += await _setVisibilityBatch(style, placeIds, showPlaceLabels);
-      changed += await _setVisibilityBatch(style, poiIds, showPoiLabels);
-      changed += await _setVisibilityBatch(style, roadIds, showRoadLabels);
-
+      final changed = results.fold<int>(0, (a, b) => a + b);
       _log(
         'طبقات محدّثة: $changed '
-        '(أماكن: ${placeIds.length}, POI: ${poiIds.length}, شوارع: ${roadIds.length})',
+        '(أماكن: ${cache.placeIds.length}, POI: ${cache.poiIds.length}, '
+        'شوارع: ${cache.roadIds.length}, كاش: نعم)',
       );
     } catch (e, st) {
       _log('فشل تطبيق فلاتر الطبقات: $e');
@@ -149,12 +175,12 @@ class MapLayerController {
     try {
       final box = ScreenBox(
         min: ScreenCoordinate(
-          x: screenCoordinate.x - 28,
-          y: screenCoordinate.y - 28,
+          x: screenCoordinate.x - 24,
+          y: screenCoordinate.y - 24,
         ),
         max: ScreenCoordinate(
-          x: screenCoordinate.x + 28,
-          y: screenCoordinate.y + 28,
+          x: screenCoordinate.x + 24,
+          y: screenCoordinate.y + 24,
         ),
       );
 
@@ -222,7 +248,6 @@ class MapLayerController {
     }
   }
 
-  /// يعرض البطاقة المخصصة من [PoiInfoCard]
   static void showPoiSheet(BuildContext context, MapPoiInfo info) {
     PoiInfoCard.show(context, info);
   }
@@ -242,13 +267,25 @@ class MapLayerController {
   ) async {
     var ok = 0;
     final value = visible ? 'visible' : 'none';
-    for (final id in layerIds) {
-      try {
-        final exists = await style.styleLayerExists(id);
-        if (!exists) continue;
-        await style.setStyleLayerProperty(id, 'visibility', value);
-        ok++;
-      } catch (_) {}
+    // دفعات صغيرة لتقليل حظر الـ UI thread
+    final list = layerIds.toList();
+    const batchSize = 8;
+    for (var i = 0; i < list.length; i += batchSize) {
+      final end = (i + batchSize > list.length) ? list.length : i + batchSize;
+      final batch = list.sublist(i, end);
+      final results = await Future.wait(batch.map((id) async {
+        try {
+          final exists = await style.styleLayerExists(id);
+          if (!exists) return 0;
+          await style.setStyleLayerProperty(id, 'visibility', value);
+          return 1;
+        } catch (_) {
+          return 0;
+        }
+      }));
+      for (final r in results) {
+        ok += r;
+      }
     }
     return ok;
   }
@@ -368,4 +405,16 @@ class MapLayerController {
   static void _log(String msg) {
     if (kDebugMode) debugPrint('🗺️ [MapLayers] $msg');
   }
+}
+
+class _LayerIdCache {
+  final Set<String> placeIds;
+  final Set<String> poiIds;
+  final Set<String> roadIds;
+
+  const _LayerIdCache({
+    required this.placeIds,
+    required this.poiIds,
+    required this.roadIds,
+  });
 }

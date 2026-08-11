@@ -20,9 +20,12 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   String currentMapStyle = initialMapStyle;
   bool isMapReady = false;
 
-  /// آخر مستوى زوم سُجّل (للتشخيص)
   double lastLoggedZoom = MapConstants.defaultZoom;
   Timer? _zoomLogDebounce;
+
+  /// لمنع استعلامات POI أثناء الحركة
+  bool _cameraMoving = false;
+  Timer? _cameraIdleTimer;
 
   bool get suppressPoiTap => false;
 
@@ -32,15 +35,18 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   }
 
   Future<void> _initializeMap() async {
-    await initAnnotationManager();
-    await initPolylineManager();
-    await applyStableGestures();
-    // مهم: لا نستدعي setBounds — على Android يسبب رجّة عند حد الزوم
+    // تهيئة متوازية قدر الإمكان
+    await Future.wait([
+      initAnnotationManager(),
+      initPolylineManager(),
+      applyStableGestures(),
+    ]);
     _setDefaultCamera();
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+    // تأخير أقصر قبل فلاتر الطبقات
+    await Future<void>.delayed(const Duration(milliseconds: 120));
     await applyLabelLayersFilter();
     if (mounted) setState(() => isMapReady = true);
-    MapUtils.log('✅ تم إنشاء الخريطة بنجاح (بدون setBounds)');
+    MapUtils.log('✅ تم إنشاء الخريطة بنجاح');
   }
 
   Future<void> applyStableGestures() async {
@@ -67,24 +73,27 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  /// لم يعد يُطبَّق — الإبقاء للتوافق مع الاستدعاءات القديمة
   Future<void> applyZoomLimitsOnly() async {
-    // متعمّد: لا setBounds على Android (رجّة عند حد الزوم)
     MapUtils.log('ℹ️ تم تخطي setBounds عمداً لثبات الزوم');
   }
 
   Future<void> applyGoogleLikeCameraBehavior() => applyStableGestures();
   Future<void> applyMapConstraints() => applyZoomLimitsOnly();
 
-  /// يُستدعى من onCameraChangeListener لتسجيل الزوم
+  /// يُستدعى من onCameraChangeListener
   void onCameraChangedForDebug(CameraChangedEventData data) {
+    _cameraMoving = true;
+    _cameraIdleTimer?.cancel();
+    _cameraIdleTimer = Timer(const Duration(milliseconds: 180), () {
+      _cameraMoving = false;
+    });
+
     if (!kDebugMode) return;
     final zoom = data.cameraState.zoom;
-    // سجّل فقط عند تغيّر ملحوظ لتجنّب إغراق الـ log
-    if ((zoom - lastLoggedZoom).abs() < 0.15) return;
+    if ((zoom - lastLoggedZoom).abs() < 0.2) return;
     lastLoggedZoom = zoom;
     _zoomLogDebounce?.cancel();
-    _zoomLogDebounce = Timer(const Duration(milliseconds: 80), () {
+    _zoomLogDebounce = Timer(const Duration(milliseconds: 120), () {
       debugPrint(
         '🔍 [MapZoom] zoom=${zoom.toStringAsFixed(2)} '
         'center=(${data.cameraState.center.coordinates.lat.toStringAsFixed(4)}, '
@@ -93,10 +102,11 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     });
   }
 
-  /// إلغاء مؤقت التشخيص — يُستدعى من dispose للشاشات التي تستخدم الـ mixin
   void disposeMapDebug() {
     _zoomLogDebounce?.cancel();
     _zoomLogDebounce = null;
+    _cameraIdleTimer?.cancel();
+    _cameraIdleTimer = null;
   }
 
   Future<void> flyToFlat({
@@ -113,7 +123,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         pitch: 0.0,
         bearing: 0.0,
       ),
-      MapAnimationOptions(duration: 800, startDelay: 0),
+      MapAnimationOptions(duration: 600, startDelay: 0),
     );
   }
 
@@ -127,7 +137,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         pitch: 0.0,
         bearing: 0.0,
       ),
-      MapAnimationOptions(duration: 350, startDelay: 0),
+      MapAnimationOptions(duration: 300, startDelay: 0),
     );
   }
 
@@ -191,6 +201,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
       showPlaceLabels: showPlaceLabels,
       showPoiLabels: showPoiLabels,
       showRoadLabels: showRoadLabels,
+      styleKey: currentMapStyle,
     );
   }
 
@@ -198,11 +209,14 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     if (mapboxMap == null) return;
     try {
       currentMapStyle = styleUri;
+      MapLayerController.invalidateCache(styleUri);
       await mapboxMap?.loadStyleURI(styleUri);
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      await initAnnotationManager();
-      await initPolylineManager();
-      await applyStableGestures();
+      await Future<void>.delayed(const Duration(milliseconds: 280));
+      await Future.wait([
+        initAnnotationManager(),
+        initPolylineManager(),
+        applyStableGestures(),
+      ]);
       await applyLabelLayersFilter();
       onStyleChanged();
       if (mounted) setState(() {});
@@ -234,6 +248,8 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   Future<void> handleMapBackgroundTap(MapContentGestureContext gesture) async {
     if (!mounted || mapboxMap == null) return;
     if (suppressPoiTap) return;
+    // لا تستعلم أثناء تحريك الكاميرا — يحسّن السلاسة
+    if (_cameraMoving) return;
 
     final poi = await MapLayerController.queryPoiAt(
       mapboxMap: mapboxMap!,

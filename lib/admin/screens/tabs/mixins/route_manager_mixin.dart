@@ -12,10 +12,14 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
   final Map<String, List<GeoPoint>> routeCoordinates = {};
   StreamSubscription<List<RouteModel>>? _routesSubscription;
 
-  /// يُحدَّث عند تغيّر قائمة المسارات فقط — لتحديث الواجهة دون لمس الكاميرا
   final ValueNotifier<int> routesUiTick = ValueNotifier<int>(0);
 
   String selectedRouteName = 'الكل';
+
+  /// يمنع إعادة الرسم المتكررة أثناء تحميل الإحداثيات
+  Timer? _drawDebounce;
+  bool _isDrawing = false;
+  int _drawGeneration = 0;
 
   List<String> get routeDropdownItems {
     final names = routes.map((r) => r.name).toList();
@@ -42,7 +46,6 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
           selectedRouteName = 'الكل';
         }
 
-        // لا نستدعي setState على شاشة الخريطة كاملة — يمنع رجّة الزوم
         if (oldIds != newIds) {
           routesUiTick.value++;
         }
@@ -58,9 +61,20 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
 
   Future<void> _loadRouteCoordinates() async {
     final routeService = RouteService();
+    final snapshot = List<RouteModel>.from(routes);
+    if (snapshot.isEmpty) {
+      if (mounted) await drawRoutes();
+      return;
+    }
 
-    for (final route in List<RouteModel>.from(routes)) {
+    // جلب متوازٍ بدل التسلسل — أسرع بكثير
+    await Future.wait(snapshot.map((route) async {
       if (!mounted) return;
+      // لا تعِد الجلب إن كانت الإحداثيات موجودة
+      if (routeCoordinates.containsKey(route.id) &&
+          (routeCoordinates[route.id]?.length ?? 0) >= 2) {
+        return;
+      }
       try {
         final coords = await routeService.fetchRouteCoordinates(route.id);
         if (coords.isNotEmpty) {
@@ -70,48 +84,67 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
       } catch (e) {
         _log('⚠️ خطأ في تحميل إحداثيات ${route.id}: $e');
       }
-    }
+    }));
 
-    if (mounted) await drawRoutes();
+    if (mounted) _scheduleDraw();
+  }
+
+  void _scheduleDraw() {
+    _drawDebounce?.cancel();
+    _drawDebounce = Timer(const Duration(milliseconds: 80), () {
+      if (mounted) drawRoutes();
+    });
   }
 
   Future<void> drawRoutes() async {
-    if (!mounted) return;
-
-    if (polylineAnnotationManager == null) {
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      if (polylineAnnotationManager == null || !mounted) return;
+    if (!mounted || _isDrawing) {
+      // جدول رسم لاحق إذا كان هناك رسم جارٍ
+      if (_isDrawing) _scheduleDraw();
+      return;
     }
+    _isDrawing = true;
+    final gen = ++_drawGeneration;
 
-    await polylineAnnotationManager?.deleteAll();
-
-    if (routes.isEmpty) return;
-
-    final toDraw = selectedRouteName == 'الكل'
-        ? routes
-        : routes.where((r) => r.name == selectedRouteName).toList();
-
-    for (final route in toDraw) {
-      if (!mounted) return;
-      final coords = routeCoordinates[route.id];
-      if (coords == null || coords.length < 2) continue;
-
-      final positions =
-          coords.map((geo) => Position(geo.longitude, geo.latitude)).toList();
-
-      final color = hexToColor(route.routeColor);
-      final options = PolylineAnnotationOptions(
-        geometry: LineString(coordinates: positions),
-        lineColor: color.toARGB32(),
-        lineWidth: 5.0,
-        lineOpacity: 0.9,
-      );
-
-      try {
-        await polylineAnnotationManager?.create(options);
-      } catch (e) {
-        _log('⚠️ خطأ في رسم ${route.id}: $e');
+    try {
+      if (polylineAnnotationManager == null) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        if (polylineAnnotationManager == null || !mounted) return;
       }
+
+      await polylineAnnotationManager?.deleteAll();
+      if (!mounted || gen != _drawGeneration) return;
+
+      if (routes.isEmpty) return;
+
+      final toDraw = selectedRouteName == 'الكل'
+          ? routes
+          : routes.where((r) => r.name == selectedRouteName).toList();
+
+      // إنشاء التعليقات بشكل متسلسل لكن بدون انتظار غير ضروري بين الفشل
+      for (final route in toDraw) {
+        if (!mounted || gen != _drawGeneration) return;
+        final coords = routeCoordinates[route.id];
+        if (coords == null || coords.length < 2) continue;
+
+        final positions =
+            coords.map((geo) => Position(geo.longitude, geo.latitude)).toList();
+
+        final color = hexToColor(route.routeColor);
+        final options = PolylineAnnotationOptions(
+          geometry: LineString(coordinates: positions),
+          lineColor: color.toARGB32(),
+          lineWidth: 5.0,
+          lineOpacity: 0.9,
+        );
+
+        try {
+          await polylineAnnotationManager?.create(options);
+        } catch (e) {
+          _log('⚠️ خطأ في رسم ${route.id}: $e');
+        }
+      }
+    } finally {
+      _isDrawing = false;
     }
   }
 
@@ -143,10 +176,11 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
   }
 
   void redrawRoutes() {
-    if (mounted) drawRoutes();
+    if (mounted) _scheduleDraw();
   }
 
   void disposeRoutes() {
+    _drawDebounce?.cancel();
     _routesSubscription?.cancel();
     routesUiTick.dispose();
     routes.clear();
