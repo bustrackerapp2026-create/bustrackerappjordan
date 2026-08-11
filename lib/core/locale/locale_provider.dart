@@ -5,6 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 class LocaleProvider extends ChangeNotifier {
   static const String _prefsKey = 'app_locale';
 
+  /// يُحدَّث مع كل تغيير لغة — للاستخدام في Validators بلا context.
+  static String languageCode = 'ar';
+
   Locale _locale = const Locale('ar');
   bool _loaded = false;
 
@@ -13,7 +16,6 @@ class LocaleProvider extends ChangeNotifier {
   bool get isEnglish => _locale.languageCode == 'en';
   bool get isLoaded => _loaded;
 
-  /// اسم معروض في واجهة الإعدادات
   String get displayName => isArabic ? 'العربية' : 'English';
 
   LocaleProvider() {
@@ -29,6 +31,7 @@ class LocaleProvider extends ChangeNotifier {
       } else if (code == 'ar') {
         _locale = const Locale('ar');
       }
+      languageCode = _locale.languageCode;
     } catch (_) {
       // العربية افتراضياً
     } finally {
@@ -40,6 +43,7 @@ class LocaleProvider extends ChangeNotifier {
   Future<void> setLocale(Locale locale) async {
     if (_locale.languageCode == locale.languageCode) return;
     _locale = locale;
+    languageCode = locale.languageCode;
     notifyListeners();
 
     try {
