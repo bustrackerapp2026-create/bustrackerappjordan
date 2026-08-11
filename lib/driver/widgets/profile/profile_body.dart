@@ -62,9 +62,6 @@ class ProfileBody extends StatelessWidget {
           children: [
             ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-              // cacheExtent متوافق مع إصدارات Flutter المستقرة
-              // (ScrollCacheExtent يحتاج Flutter 3.41+)
-              cacheExtent: 400,
               children: [
                 RepaintBoundary(
                   child: _HeaderCard(
