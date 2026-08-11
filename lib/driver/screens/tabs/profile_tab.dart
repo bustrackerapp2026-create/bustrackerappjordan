@@ -7,10 +7,10 @@ import '../../../core/widgets/change_password_sheet.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/firestore_service.dart';
 import '../../widgets/profile/edit_profile_sheet.dart';
+import '../../widgets/profile/profile_body.dart';
 import '../../widgets/profile/profile_photo_sheet.dart';
-import '../../widgets/profile/profile_ui.dart';
 
-/// تبويب حساب السائق — ينسّق الواجهة ويستدعي المكوّنات الفرعية.
+/// تبويب حساب السائق — منطق فقط؛ الواجهة في [ProfileBody].
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
 
@@ -108,10 +108,7 @@ class _ProfileTabState extends State<ProfileTab> {
         onRequestPhotoChange: _showPhotoOptions,
       );
       if (result == null || !mounted) return;
-
-      if (result.success) {
-        await auth.refreshUserData();
-      }
+      if (result.success) await auth.refreshUserData();
       if (mounted) _snack(result.message);
     } finally {
       if (mounted) setState(() => _savingProfile = false);
@@ -219,247 +216,21 @@ class _ProfileTabState extends State<ProfileTab> {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().userData;
-    final name = user?.fullName.trim().isNotEmpty == true
-        ? user!.fullName.trim()
-        : 'سائق';
-    final initial = name.isNotEmpty ? name.characters.first : 'س';
-    final email = user?.email ?? '';
-    final bus = user?.busNumber?.trim().isNotEmpty == true
-        ? user!.busNumber!.trim()
-        : 'غير محدد';
-    final route = user?.route?.trim().isNotEmpty == true
-        ? user!.route!.trim()
-        : 'غير محدد';
-    final verified = user?.isVerified == true;
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF5F7FA),
-        body: Stack(
-          children: [
-            ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-              children: [
-                ProfileUi.sectionCard(
-                  child: Row(
-                    children: [
-                      ProfileUi.avatarWithCamera(
-                        photoUrl: user?.photoUrl,
-                        initial: initial,
-                        onTap: _showPhotoOptions,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            if (email.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                email,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 4,
-                              children: [
-                                ProfileUi.chip(
-                                  '🚗 ${user?.displayUserType ?? 'سائق'}',
-                                  AppTheme.primaryColor,
-                                ),
-                                ProfileUi.chip(
-                                  verified ? '✅ معتمد' : '⏳ بانتظار الاعتماد',
-                                  verified
-                                      ? Colors.green.shade700
-                                      : Colors.orange.shade800,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                ProfileUi.sectionTitle('بيانات العمل'),
-                ProfileUi.sectionCard(
-                  child: Column(
-                    children: [
-                      ProfileUi.infoRow(
-                        Icons.directions_bus_outlined,
-                        'رقم الباص',
-                        bus,
-                      ),
-                      const SizedBox(height: 10),
-                      ProfileUi.infoRow(
-                        Icons.route_outlined,
-                        'المسار / الخط',
-                        route,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                ProfileUi.sectionTitle('الحساب'),
-                ProfileUi.sectionCard(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      ProfileUi.tile(
-                        icon: Icons.edit_outlined,
-                        title: 'تعديل الملف الشخصي',
-                        subtitle: 'الاسم · الهاتف · البريد · الباص · المسار',
-                        onTap: _editProfile,
-                      ),
-                      ProfileUi.divider(),
-                      ProfileUi.tile(
-                        icon: Icons.lock_outline,
-                        title: 'تغيير كلمة المرور',
-                        subtitle: 'تحديث كلمة المرور عبر Firebase',
-                        onTap: _changePassword,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                ProfileUi.sectionTitle('الإعدادات'),
-                ProfileUi.sectionCard(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      SwitchListTile(
-                        secondary: const Icon(
-                          Icons.notifications_outlined,
-                          color: AppTheme.primaryColor,
-                        ),
-                        title: const Text(
-                          'الإشعارات',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: const Text('تنبيهات الرحلات والطلبات'),
-                        value: _prefsLoaded ? _notificationsEnabled : true,
-                        activeThumbColor: AppTheme.primaryColor,
-                        onChanged: _setNotifications,
-                      ),
-                      ProfileUi.divider(),
-                      ProfileUi.tile(
-                        icon: Icons.language,
-                        title: 'اللغة',
-                        subtitle: _language,
-                        onTap: _showLanguagePicker,
-                      ),
-                      ProfileUi.divider(),
-                      SwitchListTile(
-                        secondary: const Icon(
-                          Icons.dark_mode_outlined,
-                          color: AppTheme.primaryColor,
-                        ),
-                        title: const Text(
-                          'الوضع الليلي',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: const Text('قريباً'),
-                        value: false,
-                        activeThumbColor: AppTheme.primaryColor,
-                        onChanged: (_) => _snack('🔜 الوضع الليلي قريباً'),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                ProfileUi.sectionTitle('الدعم والمعلومات'),
-                ProfileUi.sectionCard(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      ProfileUi.tile(
-                        icon: Icons.help_outline,
-                        title: 'المساعدة',
-                        subtitle: 'أسئلة شائعة ودعم',
-                        onTap: () => _snack('📬 الدعم قريباً'),
-                      ),
-                      ProfileUi.divider(),
-                      ProfileUi.tile(
-                        icon: Icons.info_outline,
-                        title: 'عن التطبيق',
-                        subtitle: 'الإصدار 1.0.0+1',
-                        onTap: () =>
-                            _snack('📱 Bus Tracker Jordan — 1.0.0+1'),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _logout,
-                    icon: const Icon(Icons.logout),
-                    label: const Text(
-                      'تسجيل الخروج',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade600,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      elevation: 0,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Center(
-                  child: Text(
-                    '© 2026 Bus Tracker Jordan',
-                    style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                  ),
-                ),
-              ],
-            ),
-            if (_savingProfile || _uploadingPhoto)
-              Container(
-                color: Colors.black26,
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const CircularProgressIndicator(),
-                      if (_uploadingPhoto) ...[
-                        const SizedBox(height: 16),
-                        const Text(
-                          'جاري رفع الصورة...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
+    return ProfileBody(
+      user: user,
+      notificationsEnabled: _notificationsEnabled,
+      prefsLoaded: _prefsLoaded,
+      language: _language,
+      savingProfile: _savingProfile,
+      uploadingPhoto: _uploadingPhoto,
+      onPhotoTap: _showPhotoOptions,
+      onEditProfile: _editProfile,
+      onChangePassword: _changePassword,
+      onNotificationsChanged: _setNotifications,
+      onLanguageTap: _showLanguagePicker,
+      onLogout: _logout,
+      onSnack: _snack,
     );
   }
 }
