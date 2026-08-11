@@ -28,6 +28,7 @@ class AdminMapTab extends StatefulWidget {
 
 class _AdminMapTabState extends State<AdminMapTab>
     with
+        AutomaticKeepAliveClientMixin,
         MapCoreMixin<AdminMapTab>,
         DriverManagerMixin<AdminMapTab>,
         PassengerManagerMixin<AdminMapTab>,
@@ -40,6 +41,9 @@ class _AdminMapTabState extends State<AdminMapTab>
   bool _isSeeding = false;
   StreamSubscription<Position>? _locationSubscription;
   int? _lastHandledFocusToken;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   bool get suppressPoiTap => _isAddingPickupPoint;
@@ -66,7 +70,7 @@ class _AdminMapTabState extends State<AdminMapTab>
   @override
   void onMapCreated(MapboxMap map) {
     super.onMapCreated(map);
-    Future<void>.delayed(const Duration(milliseconds: 450), () {
+    Future<void>.delayed(const Duration(milliseconds: 280), () {
       if (!mounted) return;
       listenToActiveDrivers();
       listenToActivePassengers();
@@ -333,23 +337,25 @@ class _AdminMapTabState extends State<AdminMapTab>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Stack(
       children: [
-        MapWidget(
-          key: const ValueKey('admin_map_widget'),
-          // Android: TextureView أكثر استقراراً مع Flutter
-          textureView: true,
-          onMapCreated: onMapCreated,
-          onCameraChangeListener: onCameraChangedForDebug,
-          // ignore: deprecated_member_use
-          onTapListener: (event) {
-            if (_isAddingPickupPoint) {
-              _handleMapTap(event.point);
-            } else {
-              handleMapBackgroundTap(event);
-            }
-          },
-          styleUri: MapCoreMixin.initialMapStyle,
+        RepaintBoundary(
+          child: MapWidget(
+            key: const ValueKey('admin_map_widget'),
+            textureView: true,
+            onMapCreated: onMapCreated,
+            onCameraChangeListener: onCameraChangedForDebug,
+            // ignore: deprecated_member_use
+            onTapListener: (event) {
+              if (_isAddingPickupPoint) {
+                _handleMapTap(event.point);
+              } else {
+                handleMapBackgroundTap(event);
+              }
+            },
+            styleUri: MapCoreMixin.initialMapStyle,
+          ),
         ),
         if (!isMapReady) const Center(child: CircularProgressIndicator()),
         Positioned(
