@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../l10n/app_localizations.dart';
 
 class SearchBarWidget extends StatelessWidget {
   final String selectedRoute;
@@ -17,7 +18,7 @@ class SearchBarWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ فحص أمان لمنع انهيار التطبيق إذا كانت القيمة المختارة غير موجودة
+    final l10n = AppLocalizations.of(context);
     final effectiveValue = routes.contains(selectedRoute)
         ? selectedRoute
         : (routes.isNotEmpty ? routes.first : null);
@@ -50,7 +51,7 @@ class SearchBarWidget extends StatelessWidget {
             Expanded(
               child: TextField(
                 decoration: InputDecoration(
-                  hintText: 'ابحث عن وجهة أو خط...',
+                  hintText: l10n.searchHint,
                   hintStyle: TextStyle(color: hintColor, fontSize: 14),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 12),
