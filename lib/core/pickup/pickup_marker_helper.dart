@@ -7,13 +7,12 @@ import 'package:flutter/material.dart';
 ///
 /// - تجمع باصات  → برتقالي + أيقونة باص
 /// - تجمع ركاب   → نيلي + أيقونة ركاب
-/// مع تسمية الاسم وعدد التأكيدات.
+/// بدون شارة حمراء لعدد التأكيدات.
 class PickupMarkerHelper {
   PickupMarkerHelper._();
 
   static final Map<String, Uint8List> _cache = {};
 
-  /// ألوان مميزة حسب النوع
   static Color primaryColorFor(String pointType) {
     return pointType == 'passenger'
         ? Colors.indigo.shade700
@@ -32,15 +31,15 @@ class PickupMarkerHelper {
         : Icons.directions_bus_rounded;
   }
 
-  /// إنشاء صورة PNG للعلامة (مع كاش حسب الاسم/النوع/العدد)
+  /// إنشاء صورة PNG للعلامة (بدون شارة التأكيدات الحمراء)
   static Future<Uint8List?> createMarkerBytes({
     required String name,
     required String pointType,
     int confirmationCount = 0,
   }) async {
     final safeName = name.trim().isEmpty ? 'نقطة' : name.trim();
-    final cacheKey =
-        'pickup_${pointType}_${safeName.hashCode}_$confirmationCount';
+    // لا نضمّن confirmationCount في المفتاح — الشارة لم تعد تُرسم
+    final cacheKey = 'pickup_${pointType}_${safeName.hashCode}';
 
     final cached = _cache[cacheKey];
     if (cached != null) return cached;
@@ -49,7 +48,6 @@ class PickupMarkerHelper {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
 
-      // مساحة كافية للأيقونة + فقاعة الاسم
       const double width = 140.0;
       const double height = 120.0;
       const Offset pinCenter = Offset(width / 2, 42);
@@ -98,43 +96,6 @@ class PickupMarkerHelper {
         ),
       );
 
-      // شارة عدد التأكيدات (إن وُجدت)
-      if (confirmationCount > 0) {
-        final badgeCenter = Offset(pinCenter.dx + 16, pinCenter.dy - 16);
-        final badgePaint = Paint()
-          ..color = Colors.red.shade600
-          ..style = PaintingStyle.fill;
-        canvas.drawCircle(badgeCenter, 11, badgePaint);
-
-        final borderPaint = Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2;
-        canvas.drawCircle(badgeCenter, 11, borderPaint);
-
-        final countText = confirmationCount > 99 ? '99+' : '$confirmationCount';
-        final countPainter = TextPainter(
-          text: TextSpan(
-            text: countText,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-          textAlign: TextAlign.center,
-        );
-        countPainter.layout();
-        countPainter.paint(
-          canvas,
-          Offset(
-            badgeCenter.dx - countPainter.width / 2,
-            badgeCenter.dy - countPainter.height / 2,
-          ),
-        );
-      }
-
       // رأس الدبوس السفلي
       final tipPath = Path()
         ..moveTo(pinCenter.dx - 10, pinCenter.dy + 16)
@@ -180,7 +141,6 @@ class PickupMarkerHelper {
         const Radius.circular(13),
       );
 
-      // ظل خفيف للفقاعة
       canvas.drawRRect(
         bubbleRect.shift(const Offset(0, 1.5)),
         Paint()..color = Colors.black.withValues(alpha: 0.12),

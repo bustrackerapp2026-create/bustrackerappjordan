@@ -18,10 +18,10 @@ enum PickupSheetAction {
 
 /// وضع العرض حسب الدور
 enum PickupSheetMode {
-  /// راكب / سائق: تأكيد + اقتراح تعديل
+  /// راكب / سائق: تأكيد + اقتراح تعديل (بدون اسم المُضيف)
   user,
 
-  /// أدمن: تعديل + حذف (+ اعتماد/رفض إن كانت معلقة)
+  /// أدمن: تعديل + حذف (+ اعتماد/رفض إن كانت معلقة) + اسم المُضيف
   admin,
 }
 
@@ -43,6 +43,7 @@ class PickupPointSheet {
 
     final statusColor = _statusColor(point.status);
     final statusLabel = _statusLabel(point.status);
+    final isAdmin = mode == PickupSheetMode.admin;
 
     return showModalBottomSheet<PickupSheetAction>(
       context: context,
@@ -75,7 +76,6 @@ class PickupPointSheet {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // شريط علوي ملون
                   Container(
                     height: 6,
                     decoration: BoxDecoration(
@@ -87,14 +87,12 @@ class PickupPointSheet {
                       ),
                     ),
                   ),
-
                   Padding(
                     padding: const EdgeInsets.fromLTRB(18, 14, 12, 18),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // مقبض
                         Center(
                           child: Container(
                             width: 40,
@@ -106,8 +104,6 @@ class PickupPointSheet {
                             ),
                           ),
                         ),
-
-                        // الرأس: أيقونة + اسم + نوع
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -189,10 +185,7 @@ class PickupPointSheet {
                             ),
                           ],
                         ),
-
                         const SizedBox(height: 16),
-
-                        // بطاقة الإحصائيات
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(14),
@@ -211,14 +204,18 @@ class PickupPointSheet {
                                     value: '${point.confirmationCount}',
                                     color: Colors.teal,
                                   ),
-                                  _divider(),
-                                  _statItem(
-                                    icon: Icons.person_outline_rounded,
-                                    label: 'أضافها',
-                                    value: adderName ??
-                                        _userTypeLabel(point.addedByUserType),
-                                    color: AppTheme.primaryColor,
-                                  ),
+                                  // اسم المُضيف يظهر للأدمن فقط
+                                  if (isAdmin) ...[
+                                    _divider(),
+                                    _statItem(
+                                      icon: Icons.person_outline_rounded,
+                                      label: 'أضافها',
+                                      value: adderName ??
+                                          _userTypeLabel(
+                                              point.addedByUserType),
+                                      color: AppTheme.primaryColor,
+                                    ),
+                                  ],
                                 ],
                               ),
                               if (point.latitude != 0 &&
@@ -248,8 +245,6 @@ class PickupPointSheet {
                             ],
                           ),
                         ),
-
-                        // ملاحظات المراجعة
                         if (point.reviewNote.isNotEmpty) ...[
                           const SizedBox(height: 12),
                           _noteBox(
@@ -259,7 +254,6 @@ class PickupPointSheet {
                             icon: Icons.notes_rounded,
                           ),
                         ],
-
                         if (point.suggestedEdit.isNotEmpty) ...[
                           const SizedBox(height: 10),
                           _noteBox(
@@ -269,10 +263,7 @@ class PickupPointSheet {
                             icon: Icons.edit_note_rounded,
                           ),
                         ],
-
                         const SizedBox(height: 18),
-
-                        // الأزرار حسب الوضع
                         if (mode == PickupSheetMode.user)
                           _userActions(ctx, color)
                         else
@@ -288,8 +279,6 @@ class PickupPointSheet {
       },
     );
   }
-
-  // ─── واجهة الأزرار ─────────────────────────────────────────────
 
   static Widget _userActions(BuildContext ctx, Color color) {
     return Row(
@@ -333,7 +322,8 @@ class PickupPointSheet {
                 ),
               ),
               style: OutlinedButton.styleFrom(
-                side: BorderSide(color: color.withValues(alpha: 0.5), width: 1.5),
+                side: BorderSide(
+                    color: color.withValues(alpha: 0.5), width: 1.5),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -454,8 +444,6 @@ class PickupPointSheet {
       ],
     );
   }
-
-  // ─── عناصر مساعدة ──────────────────────────────────────────────
 
   static Widget _chip({required String label, required Color color}) {
     return Container(
@@ -614,7 +602,6 @@ class PickupPointSheet {
     }
   }
 
-  /// جلب اسم مُضيف النقطة من Firestore (اختياري)
   static Future<String> loadAdderName(String userId) async {
     if (userId.isEmpty) return 'غير معروف';
     try {
