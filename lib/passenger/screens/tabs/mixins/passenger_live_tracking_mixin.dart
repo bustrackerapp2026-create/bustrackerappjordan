@@ -119,8 +119,8 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
               textField: d.displayLabel,
               textSize: 11.0,
               textOffset: [0.0, 1.8],
-              textColor: const Color(0xFF0D47A1).value,
-              textHaloColor: const Color(0xFFFFFFFF).value,
+              textColor: const Color(0xFF0D47A1).toARGB32(),
+              textHaloColor: const Color(0xFFFFFFFF).toARGB32(),
               textHaloWidth: 1.2,
             ),
           );
@@ -133,9 +133,8 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
     }
 
-    final toRemove = _driverAnnotations.keys
-        .where((id) => !seen.contains(id))
-        .toList();
+    final toRemove =
+        _driverAnnotations.keys.where((id) => !seen.contains(id)).toList();
     for (final id in toRemove) {
       final ann = _driverAnnotations.remove(id);
       if (ann != null) {
