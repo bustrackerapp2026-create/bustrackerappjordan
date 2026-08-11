@@ -173,7 +173,6 @@ class _AdminMapTabState extends State<AdminMapTab>
   Future<void> _searchPlace(String query) async {
     if (query.trim().isEmpty) return;
 
-    // ابحث أولاً ضمن أسماء المسارات المحمّلة
     final match = routes.where(
       (r) =>
           r.name.contains(query.trim()) ||
@@ -232,7 +231,6 @@ class _AdminMapTabState extends State<AdminMapTab>
       final msg = await RouteSeedService().seedJordanDemoRoutes();
       if (!mounted) return;
       _safeSnack('✅ $msg');
-      // أعد الاستماع لإجبار إعادة التحميل والرسم
       listenToRoutes();
     } catch (e) {
       if (!mounted) return;
@@ -336,6 +334,8 @@ class _AdminMapTabState extends State<AdminMapTab>
   Widget build(BuildContext context) {
     return Stack(
       children: [
+        // styleUri ثابت — تغيير الستايل يتم فقط عبر loadStyleURI
+        // حتى لا تُعاد تهيئة محرك الخريطة عند كل setState
         MapWidget(
           key: const ValueKey('admin_map_widget'),
           onMapCreated: onMapCreated,
@@ -347,77 +347,90 @@ class _AdminMapTabState extends State<AdminMapTab>
               handleMapBackgroundTap(event);
             }
           },
-          styleUri: currentMapStyle,
+          styleUri: MapCoreMixin.initialMapStyle,
         ),
         if (!isMapReady) const Center(child: CircularProgressIndicator()),
+        // شريط البحث يتحدّث عبر ValueListenable بدون إعادة بناء الخريطة
         Positioned(
           top: 16,
           left: 16,
           right: 16,
-          child: SearchBarWidget(
-            selectedRoute: selectedRouteName,
-            routes: routeDropdownItems,
-            onRouteChanged: onRouteFilterChanged,
-            onSearchSubmitted: _searchPlace,
+          child: ValueListenableBuilder<int>(
+            valueListenable: routesUiTick,
+            builder: (_, __, ___) {
+              return SearchBarWidget(
+                selectedRoute: selectedRouteName,
+                routes: routeDropdownItems,
+                onRouteChanged: onRouteFilterChanged,
+                onSearchSubmitted: _searchPlace,
+              );
+            },
           ),
         ),
-        // زر زرع المسارات — ظاهر مباشرة على الخريطة
         Positioned(
           top: 72,
           left: 16,
-          child: Material(
-            elevation: 4,
-            borderRadius: BorderRadius.circular(12),
-            color: Colors.white,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: _isSeeding ? null : _seedRoutesFromMap,
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_isSeeding)
-                      const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    else
-                      Icon(Icons.route, color: Colors.blue.shade700, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      routes.isEmpty ? 'زرع مسارات الأردن' : 'تحديث المسارات',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: Colors.blue.shade800,
-                      ),
-                    ),
-                    if (routes.isNotEmpty) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '${routes.length}',
+          child: ValueListenableBuilder<int>(
+            valueListenable: routesUiTick,
+            builder: (_, __, ___) {
+              return Material(
+                elevation: 4,
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.white,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: _isSeeding ? null : _seedRoutesFromMap,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_isSeeding)
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else
+                          Icon(Icons.route,
+                              color: Colors.blue.shade700, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          routes.isEmpty
+                              ? 'زرع مسارات الأردن'
+                              : 'تحديث المسارات',
                           style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green.shade800,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: Colors.blue.shade800,
                           ),
                         ),
-                      ),
-                    ],
-                  ],
+                        if (routes.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '${routes.length}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
         Positioned(
