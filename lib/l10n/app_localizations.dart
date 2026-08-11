@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 /// نظام ترجمة خفيف وقابل للتوسعة (عربي / إنجليزي).
-/// أضف مفاتيح جديدة هنا ثم استخدمها عبر AppLocalizations.of(context).
 class AppLocalizations {
   final Locale locale;
 
@@ -56,6 +55,14 @@ class AppLocalizations {
   String get points => _t('النقاط', 'Points');
   String get delete => _t('حذف', 'Delete');
   String get execute => _t('تنفيذ', 'Run');
+  String get refresh => _t('تحديث', 'Refresh');
+  String get retry => _t('إعادة المحاولة', 'Retry');
+  String get pleaseLogin =>
+      _t('يرجى تسجيل الدخول', 'Please sign in');
+  String get errorPrefix => _t('خطأ', 'Error');
+  String get processing => _t('جاري...', 'Working...');
+  String get now => _t('الآن', 'Just now');
+  String get dinar => _t('دينار', 'JOD');
 
   // ── تسجيل الدخول ─────────────────────────────────
   String get login => _t('تسجيل الدخول', 'Log in');
@@ -173,6 +180,108 @@ class AppLocalizations {
   String get favoritePickupPoints =>
       _t('نقاط التجمع المفضلة', 'Favorite pickup points');
   String get comingSoon => _t('قريباً', 'Coming soon');
+
+  // ── العمليات / الرحلات / الطلبات ──────────────────
+  String get operationsTitle => _t('📊 العمليات', '📊 Operations');
+  String get tabCurrent => _t('الحالية', 'Active');
+  String get tabPast => _t('السابقة', 'Past');
+  String get pleaseLoginOperations =>
+      _t('يرجى تسجيل الدخول لعرض العمليات', 'Please sign in to view operations');
+  String get pleaseLoginRequests =>
+      _t('يرجى تسجيل الدخول لعرض الطلبات', 'Please sign in to view requests');
+  String get pleaseLoginTrips =>
+      _t('يرجى تسجيل الدخول لعرض رحلاتك', 'Please sign in to view your trips');
+  String get noActiveTrips =>
+      _t('لا توجد رحلات نشطة حالياً', 'No active trips right now');
+  String get noActiveTripsHint =>
+      _t('ستظهر الرحلات التي قبلتها هنا.', 'Accepted trips will appear here.');
+  String get noPastTrips =>
+      _t('لا توجد رحلات سابقة', 'No past trips');
+  String get noPastTripsHint =>
+      _t('ستظهر الرحلات المكتملة أو الملغية هنا.',
+          'Completed or cancelled trips will appear here.');
+  String get noPastTripsPassengerHint =>
+      _t('سوف تظهر رحلاتك هنا بعد حجز أول رحلة.',
+          'Your trips will appear here after your first booking.');
+  String get statusCompleted => _t('✅ مكتملة', '✅ Completed');
+  String get statusCancelled => _t('❌ ملغية', '❌ Cancelled');
+  String get statusActive => _t('🚀 نشطة', '🚀 Active');
+  String get statusPending => _t('⏳ قيد الانتظار', '⏳ Pending');
+  String get statusInProgress => _t('🚀 قيد التنفيذ', '🚀 In progress');
+  String get passengerLabel => _t('الراكب', 'Passenger');
+  String get endTrip => _t('إنهاء الرحلة', 'End trip');
+  String get startTrip => _t('بدء الرحلة', 'Start trip');
+  String get tripEnded =>
+      _t('✅ تم إنهاء الرحلة بنجاح', '✅ Trip ended successfully');
+  String get tripCancelled =>
+      _t('🗑️ تم إلغاء الرحلة', '🗑️ Trip cancelled');
+  String get tripStatusUpdateFailed =>
+      _t('❌ فشل تحديث حالة الرحلة، يرجى المحاولة لاحقاً.',
+          '❌ Failed to update trip status. Try again later.');
+  String get incomingRequests =>
+      _t('📋 الطلبات الواردة', '📋 Incoming requests');
+  String get noIncomingRequests =>
+      _t('لا توجد طلبات واردة حالياً', 'No incoming requests');
+  String get noIncomingRequestsHint =>
+      _t('ستظهر طلبات الركاب هنا عند حجزهم لرحلة.',
+          'Passenger requests will appear here when they book.');
+  String get loadRequestsError =>
+      _t('حدث خطأ أثناء تحميل الطلبات.', 'Failed to load requests.');
+  String get loadTripsError =>
+      _t('حدث خطأ أثناء تحميل الرحلات.', 'Failed to load trips.');
+  String get acceptRequest => _t('✅ قبول الطلب', '✅ Accept request');
+  String get accepting => _t('جاري القبول...', 'Accepting...');
+  String acceptPassengerSuccess(String id) =>
+      _t('✅ تم قبول طلب الراكب $id بنجاح!', '✅ Accepted passenger $id successfully!');
+  String get tripNotFound =>
+      _t('⚠️ الرحلة غير موجودة أو تم حذفها.',
+          '⚠️ Trip not found or was deleted.');
+  String get tripTakenByOther =>
+      _t('⚠️ تم قبول هذه الرحلة من قبل سائق آخر.',
+          '⚠️ This trip was accepted by another driver.');
+  String get acceptRequestFailed =>
+      _t('❌ فشل قبول الطلب، يرجى المحاولة لاحقاً.',
+          '❌ Failed to accept request. Try again later.');
+
+  String daysAgo(int n) => isArabic
+      ? 'قبل $n يوم${n > 1 ? 'اً' : ''}'
+      : '$n day${n > 1 ? 's' : ''} ago';
+  String hoursAgo(int n) => isArabic
+      ? 'قبل $n ساعة${n > 1 ? 'اً' : ''}'
+      : '$n hour${n > 1 ? 's' : ''} ago';
+  String minutesAgo(int n) => isArabic
+      ? 'قبل $n دقيقة${n > 1 ? 'اً' : ''}'
+      : '$n min${n > 1 ? 's' : ''} ago';
+
+  // ── خريطة السائق ─────────────────────────────────
+  String get driverOnlineMsg =>
+      _t('🟢 أنت متصل — يظهر موقعك للركاب الآن',
+          '🟢 You are online — passengers can see you');
+  String get driverOfflineMsg =>
+      _t('⚪ تم إيقاف المشاركة', '⚪ Location sharing stopped');
+  String get onlineStatusFailed =>
+      _t('تعذر تحديث حالة الاتصال', 'Could not update online status');
+  String get followCameraOn =>
+      _t('📡 متابعة الكاميرا مفعّلة', '📡 Camera follow enabled');
+  String get followCameraOff =>
+      _t('✋ متابعة الكاميرا متوقفة', '✋ Camera follow disabled');
+  String get tapMapToAddPoint =>
+      _t('📍 اضغط على الخريطة لإضافة نقطة', '📍 Tap the map to add a point');
+  String get cancelled => _t('❌ تم الإلغاء', '❌ Cancelled');
+  String get connected => _t('متصل', 'Online');
+  String get disconnected => _t('غير متصل', 'Offline');
+  String get lineLabel => _t('الخط', 'Line');
+  String get goOnline => _t('اتصال', 'Go online');
+  String get goOffline => _t('قطع الاتصال', 'Go offline');
+  String get tripLabel => _t('رحلة', 'Trip');
+  String get activeTrip => _t('رحلة نشطة', 'Active trip');
+  String get tripWithFollow => _t('رحلة + متابعة', 'Trip + follow');
+  String speedKmh(String value) =>
+      _t('$value كم/س', '$value km/h');
+  String get speedPlaceholder => _t('-- كم/س', '-- km/h');
+  String onlineWithRoute(String route) =>
+      _t('🟢 متصل — الخط: $route', '🟢 Online — line: $route');
+  String get offlineStatus => _t('⚪ غير متصل', '⚪ Offline');
 }
 
 class _AppLocalizationsDelegate
