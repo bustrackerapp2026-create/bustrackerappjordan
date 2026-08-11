@@ -4,14 +4,11 @@ import '../models/route_model.dart';
 import '../models/route_stop_model.dart';
 
 /// خدمة إدارة خطوط السير (Routes)
-/// مسؤولة عن جلب البيانات من Firestore ومعالجتها
 class RouteService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // ─── 1. جلب قائمة المسارات النشطة (بيانات خفيفة) ──────────────
+  // ─── 1. جلب قائمة المسارات النشطة ─────────────────────────────
 
-  /// ✅ جلب جميع المسارات النشطة (isActive == true)
-  /// يتم جلب البيانات الأساسية فقط (بدون الإحداثيات الثقيلة)
   Stream<List<RouteModel>> getActiveRoutesStream() {
     return _firestore
         .collection('routes')
@@ -27,7 +24,6 @@ class RouteService {
     });
   }
 
-  /// ✅ جلب مسار واحد بواسطة ID (بيانات أساسية فقط)
   Future<RouteModel?> getRouteById(String routeId) async {
     try {
       final doc = await _firestore.collection('routes').doc(routeId).get();
@@ -43,20 +39,26 @@ class RouteService {
     }
   }
 
-  // ─── 2. جلب إحداثيات المسار (بيانات ثقيلة، مقسمة إلى Chunks) ──
+  // ─── 2. جلب إحداثيات المسار ───────────────────────────────────
 
-  /// ✅ جلب جميع إحداثيات مسار معين (مجموعة Chunks)
-  /// هذه الدالة تجمع الأجزاء (Chunks) لإعادة المسار الكامل
+  /// جلب كل أجزاء الإحداثيات ثم ترتيبها محلياً (بدون orderBy)
+  /// لتجنّب الحاجة لفهرس مركّب في Firestore.
   Future<List<GeoPoint>> fetchRouteCoordinates(String routeId) async {
     try {
       final querySnapshot = await _firestore
           .collection('routeCoordinates')
           .where('routeId', isEqualTo: routeId)
-          .orderBy('chunkIndex')
           .get();
 
-      List<GeoPoint> allCoordinates = [];
-      for (final doc in querySnapshot.docs) {
+      final docs = querySnapshot.docs.toList()
+        ..sort((a, b) {
+          final ai = (a.data()['chunkIndex'] as num?)?.toInt() ?? 0;
+          final bi = (b.data()['chunkIndex'] as num?)?.toInt() ?? 0;
+          return ai.compareTo(bi);
+        });
+
+      final List<GeoPoint> allCoordinates = [];
+      for (final doc in docs) {
         final data = doc.data();
         final chunkCoords = (data['coordinates'] as List<dynamic>?)
                 ?.map((e) => e as GeoPoint)
@@ -78,21 +80,18 @@ class RouteService {
     }
   }
 
-  /// ✅ جلب جزء واحد فقط (Chunk) من إحداثيات المسار
-  /// مفيد لتقليل استهلاك البيانات عند العرض الجزئي
+  /// جلب جزء واحد بالمعرّف المباشر (بدون استعلام مركّب)
   Future<List<GeoPoint>> fetchRouteCoordinatesChunk(
       String routeId, int chunkIndex) async {
     try {
-      final querySnapshot = await _firestore
+      final doc = await _firestore
           .collection('routeCoordinates')
-          .where('routeId', isEqualTo: routeId)
-          .where('chunkIndex', isEqualTo: chunkIndex)
-          .limit(1)
+          .doc('${routeId}_c$chunkIndex')
           .get();
 
-      if (querySnapshot.docs.isNotEmpty) {
-        final data = querySnapshot.docs.first.data();
-        return (data['coordinates'] as List<dynamic>?)
+      if (doc.exists) {
+        final data = doc.data();
+        return (data?['coordinates'] as List<dynamic>?)
                 ?.map((e) => e as GeoPoint)
                 .toList() ??
             [];
@@ -107,9 +106,8 @@ class RouteService {
     }
   }
 
-  // ─── 3. جلب محطات المسار (Subcollection) ──────────────────────
+  // ─── 3. جلب محطات المسار ─────────────────────────────────────
 
-  /// ✅ جلب محطات مسار معين (مثل مجمع الشمال، دوار المدينة)
   Stream<List<RouteStopModel>> getRouteStopsStream(String routeId) {
     return _firestore
         .collection('routes')
