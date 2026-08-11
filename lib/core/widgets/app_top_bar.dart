@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../theme/app_theme.dart';
 import '../../features/auth/providers/auth_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 /// نمط مظهر الشريط العلوي
 enum AppTopBarStyle {
@@ -15,60 +16,21 @@ enum AppTopBarStyle {
 }
 
 /// الشريط العلوي الموحّد للتطبيق — يُستخدم في كل الشاشات.
-///
-/// مثال:
-/// ```dart
-/// appBar: AppTopBar(
-///   title: 'لوحة الراكب',
-///   showUserName: true,
-///   showNotifications: true,
-///   showLogout: true,
-/// )
-/// ```
 class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
-  /// عنوان نصي (يُتجاهل إذا وُجد [titleWidget] أو [showUserName] بدون عنوان)
   final String? title;
-
-  /// عنوان مخصص بالكامل
   final Widget? titleWidget;
-
-  /// عرض اسم المستخدم + الحرف الأول
   final bool showUserName;
-
-  /// الحرف الافتراضي إذا لم يتوفر اسم
   final String fallbackInitial;
-
-  /// زر الإشعارات
   final bool showNotifications;
-
-  /// زر تسجيل الخروج
   final bool showLogout;
-
-  /// أزرار إضافية على اليمين (قبل الإشعارات/الخروج)
   final List<Widget>? actions;
-
-  /// ويدجت على اليسار (مثل زر رجوع)
   final Widget? leading;
-
-  /// إظهار زر الرجوع تلقائياً إن أمكن
   final bool automaticallyImplyLeading;
-
-  /// توسيط العنوان
   final bool centerTitle;
-
-  /// مظهر الشريط
   final AppTopBarStyle style;
-
-  /// ارتفاع اختياري
   final double height;
-
-  /// ظل خفيف
   final double elevation;
-
-  /// عند الضغط على الإشعارات (افتراضي: رسالة قريباً)
   final VoidCallback? onNotificationsTap;
-
-  /// عند تأكيد الخروج بعد الحوار (اختياري — الافتراضي signOut)
   final Future<void> Function()? onLogoutConfirmed;
 
   const AppTopBar({
@@ -90,7 +52,6 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
     this.onLogoutConfirmed,
   });
 
-  /// اختصار شائع للراكب/السائق
   factory AppTopBar.user({
     Key? key,
     String fallbackInitial = 'م',
@@ -110,7 +71,6 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  /// اختصار شائع للأدمن
   factory AppTopBar.admin({
     Key? key,
     String title = 'لوحة التحكم - الأدمن',
@@ -177,19 +137,20 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   List<Widget> _buildActions(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final list = <Widget>[...?(actions)];
 
     if (showNotifications) {
       list.add(
         IconButton(
           icon: Icon(Icons.notifications_outlined, color: _iconColor),
-          tooltip: 'الإشعارات',
+          tooltip: l10n.notifications,
           onPressed: onNotificationsTap ??
               () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('📬 سيتم فتح الإشعارات قريباً'),
-                    duration: Duration(seconds: 2),
+                  SnackBar(
+                    content: Text(l10n.notificationsComingSoon),
+                    duration: const Duration(seconds: 2),
                   ),
                 );
               },
@@ -204,7 +165,7 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
             Icons.logout,
             color: _isPrimary ? Colors.white : Colors.red,
           ),
-          tooltip: 'تسجيل الخروج',
+          tooltip: l10n.logout,
           onPressed: () => _showLogoutDialog(context),
         ),
       );
@@ -216,20 +177,21 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
   void _showLogoutDialog(BuildContext context) {
     final authProvider = context.read<AuthProvider>();
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = AppLocalizations.of(context);
 
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'تسجيل الخروج',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        title: Text(
+          l10n.logout,
+          style: const TextStyle(fontWeight: FontWeight.w800),
         ),
-        content: const Text('هل أنت متأكد من رغبتك في تسجيل الخروج؟'),
+        content: Text(l10n.logoutConfirm),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
+            child: Text(l10n.cancel),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -243,7 +205,7 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
               } catch (e) {
                 messenger.showSnackBar(
                   SnackBar(
-                    content: Text('حدث خطأ أثناء تسجيل الخروج: $e'),
+                    content: Text('$e'),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -256,7 +218,7 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: const Text('تأكيد الخروج'),
+            child: Text(l10n.confirmLogout),
           ),
         ],
       ),
