@@ -21,13 +21,11 @@
 
 ## المتطلبات
 
-| الأداة | ملاحظات |
-|--------|---------|
-| [Flutter](https://docs.flutter.dev/get-started/install) | SDK `^3.5.0` (راجع `pubspec.yaml`) |
-| حساب [Firebase](https://console.firebase.google.com/) | Auth + Firestore + Storage |
-| حساب [Mapbox](https://account.mapbox.com/) | Access Token للخرائط |
-| Android Studio / Xcode | حسب المنصة |
-| [Firebase CLI](https://firebase.google.com/docs/cli) (اختياري) | لنشر القواعد والفهارس |
+- **[Flutter](https://docs.flutter.dev/get-started/install)** — SDK `^3.5.0` (راجع `pubspec.yaml`)
+- **حساب [Firebase](https://console.firebase.google.com/)** — Auth + Firestore + Storage
+- **حساب [Mapbox](https://account.mapbox.com/)** — Access Token للخرائط
+- **Android Studio / Xcode** — حسب المنصة
+- **[Firebase CLI](https://firebase.google.com/docs/cli)** (اختياري) — لنشر القواعد والفهارس
 
 تأكد من عمل Flutter:
 
