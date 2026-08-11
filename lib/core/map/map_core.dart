@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import '../../core/theme/app_theme.dart';
@@ -15,11 +16,13 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   bool showPoiLabels = true;
   bool showRoadLabels = true;
 
-  /// يُحمَّل الستايل برمجياً فقط — لا نمرّر styleUri متغيّر في build
-  /// حتى لا تُعاد تهيئة الخريطة عند كل setState.
   static const String initialMapStyle = MapboxStyles.MAPBOX_STREETS;
   String currentMapStyle = initialMapStyle;
   bool isMapReady = false;
+
+  /// آخر مستوى زوم سُجّل (للتشخيص)
+  double lastLoggedZoom = MapConstants.defaultZoom;
+  Timer? _zoomLogDebounce;
 
   bool get suppressPoiTap => false;
 
@@ -32,15 +35,14 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     await initAnnotationManager();
     await initPolylineManager();
     await applyStableGestures();
-    await applyZoomLimitsOnly();
+    // مهم: لا نستدعي setBounds — على Android يسبب رجّة عند حد الزوم
     _setDefaultCamera();
     await Future<void>.delayed(const Duration(milliseconds: 300));
     await applyLabelLayersFilter();
     if (mounted) setState(() => isMapReady = true);
-    MapUtils.log('✅ تم إنشاء الخريطة بنجاح');
+    MapUtils.log('✅ تم إنشاء الخريطة بنجاح (بدون setBounds)');
   }
 
-  /// إيماءات بسيطة ومستقرة — بدون تدوير/ميلان/quickZoom
   Future<void> applyStableGestures() async {
     if (mapboxMap == null) return;
     try {
@@ -65,32 +67,31 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  /// حدود زوم فقط — بدون قيود جغرافية صارمة (سبب شائع للرجّة)
+  /// لم يعد يُطبَّق — الإبقاء للتوافق مع الاستدعاءات القديمة
   Future<void> applyZoomLimitsOnly() async {
-    if (mapboxMap == null) return;
-    try {
-      await mapboxMap!.setBounds(
-        CameraBoundsOptions(
-          bounds: CoordinateBounds(
-            southwest: Point(coordinates: Position(-180.0, -85.0)),
-            northeast: Point(coordinates: Position(180.0, 85.0)),
-            infiniteBounds: true,
-          ),
-          minZoom: MapConstants.minZoom,
-          maxZoom: MapConstants.maxZoom,
-          maxPitch: 0.0,
-          minPitch: 0.0,
-        ),
-      );
-      MapUtils.log('✅ تم ضبط حدود الزوم فقط (بدون قيود جغرافية)');
-    } catch (e) {
-      MapUtils.log('⚠️ خطأ في حدود الزوم: $e');
-    }
+    // متعمّد: لا setBounds على Android (رجّة عند حد الزوم)
+    MapUtils.log('ℹ️ تم تخطي setBounds عمداً لثبات الزوم');
   }
 
-  /// توافق مع الاستدعاءات القديمة
   Future<void> applyGoogleLikeCameraBehavior() => applyStableGestures();
   Future<void> applyMapConstraints() => applyZoomLimitsOnly();
+
+  /// يُستدعى من onCameraChangeListener لتسجيل الزوم
+  void onCameraChangedForDebug(CameraChangedEventData data) {
+    if (!kDebugMode) return;
+    final zoom = data.cameraState.zoom;
+    // سجّل فقط عند تغيّر ملحوظ لتجنّب إغراق الـ log
+    if ((zoom - lastLoggedZoom).abs() < 0.15) return;
+    lastLoggedZoom = zoom;
+    _zoomLogDebounce?.cancel();
+    _zoomLogDebounce = Timer(const Duration(milliseconds: 80), () {
+      debugPrint(
+        '🔍 [MapZoom] zoom=${zoom.toStringAsFixed(2)} '
+        'center=(${data.cameraState.center.coordinates.lat.toStringAsFixed(4)}, '
+        '${data.cameraState.center.coordinates.lng.toStringAsFixed(4)})',
+      );
+    });
+  }
 
   Future<void> flyToFlat({
     required double latitude,
@@ -197,7 +198,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
       await initPolylineManager();
       await applyStableGestures();
       await applyLabelLayersFilter();
-      await applyZoomLimitsOnly();
       onStyleChanged();
       if (mounted) setState(() {});
       MapUtils.log('✅ تم تغيير ستايل الخريطة');
