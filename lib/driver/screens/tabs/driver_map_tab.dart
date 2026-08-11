@@ -12,6 +12,7 @@ import '../../../map/widgets/search_bar_widget.dart';
 import '../../../driver/providers/driver_provider.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/live_tracking_service.dart';
+import '../../../l10n/app_localizations.dart';
 import 'mixins/driver_location_mixin.dart';
 
 /// خريطة السائق المتقدمة: تتبع حي + تنبؤ موقع + رحلات + نقاط تجمع.
@@ -116,7 +117,6 @@ class _DriverMapTabState extends State<DriverMapTab>
 
     listenToPickupPoints();
 
-    // اقرأ الحالة فقط بعد التأكد من mounted
     final driver = context.read<DriverProvider>();
     if (driver.isOnline || driver.isTripActive) {
       await ensureDriverTrackingRunning();
@@ -129,6 +129,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     if (!mounted) return;
     final driver = context.read<DriverProvider>();
     final auth = context.read<AuthProvider>();
+    final l10n = AppLocalizations.of(context);
     final uid = auth.userId;
     if (uid == null) return;
 
@@ -148,16 +149,14 @@ class _DriverMapTabState extends State<DriverMapTab>
       if (!mounted) return;
       MapUtils.showSnackBar(
         context,
-        isOnline
-            ? '🟢 أنت متصل — يظهر موقعك للركاب الآن'
-            : '⚪ تم إيقاف المشاركة',
+        isOnline ? l10n.driverOnlineMsg : l10n.driverOfflineMsg,
       );
     } catch (e) {
       if (mounted) driver.toggleOnlineStatus();
       if (!mounted) return;
       MapUtils.showSnackBar(
         context,
-        'تعذر تحديث حالة الاتصال',
+        l10n.onlineStatusFailed,
         isError: true,
       );
     }
@@ -205,6 +204,8 @@ class _DriverMapTabState extends State<DriverMapTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final l10n = AppLocalizations.of(context);
+
     return Stack(
       children: [
         RepaintBoundary(
@@ -253,6 +254,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                   tripActive: context.select<DriverProvider, bool>(
                     (p) => p.isTripActive,
                   ),
+                  l10n: l10n,
                 );
               },
             ),
@@ -273,8 +275,8 @@ class _DriverMapTabState extends State<DriverMapTab>
                 MapUtils.showSnackBar(
                   context,
                   followDriverCamera
-                      ? '📡 متابعة الكاميرا مفعّلة'
-                      : '✋ متابعة الكاميرا متوقفة',
+                      ? l10n.followCameraOn
+                      : l10n.followCameraOff,
                 );
               },
               onRecenter: recenterDriverCamera,
@@ -290,8 +292,8 @@ class _DriverMapTabState extends State<DriverMapTab>
                 MapUtils.showSnackBar(
                   context,
                   isAddingPickupPoint
-                      ? '📍 اضغط على الخريطة لإضافة نقطة'
-                      : '❌ تم الإلغاء',
+                      ? l10n.tapMapToAddPoint
+                      : l10n.cancelled,
                   isError: !isAddingPickupPoint,
                 );
               },
@@ -312,7 +314,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                   prev.isTripActive != next.isTripActive,
               builder: (context, state, _) {
                 final userName = context.select<AuthProvider, String>(
-                  (a) => a.userData?.fullName ?? 'السائق',
+                  (a) => a.userData?.fullName ?? l10n.driver,
                 );
                 return _DriverStatusPanel(
                   userName: userName,
@@ -325,6 +327,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                   onTripPressed: () => _onTripButtonPressed(
                     isTripActive: state.isTripActive,
                   ),
+                  l10n: l10n,
                 );
               },
             ),
@@ -339,11 +342,13 @@ class _QuickHud extends StatelessWidget {
   final double? speedKmh;
   final bool following;
   final bool tripActive;
+  final AppLocalizations l10n;
 
   const _QuickHud({
     required this.speedKmh,
     required this.following,
     required this.tripActive,
+    required this.l10n,
   });
 
   @override
@@ -365,8 +370,8 @@ class _QuickHud extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               speedKmh != null
-                  ? '${speedKmh!.toStringAsFixed(0)} كم/س'
-                  : '-- كم/س',
+                  ? l10n.speedKmh(speedKmh!.toStringAsFixed(0))
+                  : l10n.speedPlaceholder,
               style: const TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 13,
@@ -382,7 +387,7 @@ class _QuickHud extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  'رحلة',
+                  l10n.tripLabel,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -503,6 +508,7 @@ class _DriverStatusPanel extends StatelessWidget {
   final bool followingCamera;
   final VoidCallback onToggleOnline;
   final VoidCallback onTripPressed;
+  final AppLocalizations l10n;
 
   const _DriverStatusPanel({
     required this.userName,
@@ -513,6 +519,7 @@ class _DriverStatusPanel extends StatelessWidget {
     required this.followingCamera,
     required this.onToggleOnline,
     required this.onTripPressed,
+    required this.l10n,
   });
 
   @override
@@ -546,8 +553,8 @@ class _DriverStatusPanel extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       isOnline
-                          ? '🟢 متصل — الخط: $routeName'
-                          : '⚪ غير متصل',
+                          ? l10n.onlineWithRoute(routeName)
+                          : l10n.offlineStatus,
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey.shade700,
@@ -566,7 +573,7 @@ class _DriverStatusPanel extends StatelessWidget {
                     border: Border.all(color: Colors.red.shade200),
                   ),
                   child: Text(
-                    followingCamera ? '🔴 رحلة + متابعة' : '🔴 رحلة نشطة',
+                    followingCamera ? l10n.tripWithFollow : l10n.activeTrip,
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
@@ -588,7 +595,7 @@ class _DriverStatusPanel extends StatelessWidget {
                     foregroundColor:
                         isOnline ? Colors.black87 : Colors.white,
                   ),
-                  child: Text(isOnline ? 'قطع الاتصال' : 'اتصال'),
+                  child: Text(isOnline ? l10n.goOffline : l10n.goOnline),
                 ),
               ),
               const SizedBox(width: 8),
@@ -601,7 +608,7 @@ class _DriverStatusPanel extends StatelessWidget {
                         : Colors.green.shade600,
                     foregroundColor: Colors.white,
                   ),
-                  child: Text(isTripActive ? 'إنهاء الرحلة' : 'بدء الرحلة'),
+                  child: Text(isTripActive ? l10n.endTrip : l10n.startTrip),
                 ),
               ),
             ],
