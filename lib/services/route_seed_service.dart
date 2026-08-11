@@ -72,7 +72,10 @@ class RouteSeedService {
         final slice = points.sublist(i, end);
         final coords = slice.map((p) => GeoPoint(p.lat, p.lng)).toList();
 
-        await _db.collection('routeCoordinates').doc('${def.id}_c$chunkIndex').set({
+        await _db
+            .collection('routeCoordinates')
+            .doc('${def.id}_c$chunkIndex')
+            .set({
           'routeId': def.id,
           'chunkIndex': chunkIndex,
           'coordinates': coords,
@@ -165,7 +168,7 @@ class _RouteDef {
 
 /// إحداثيات تقريبية على طرق رئيسية في الأردن (ليست GPS دقيق، لكنها كافية للعرض).
 final List<_RouteDef> _demoRoutes = [
-  // 1) عمان → إربد (شارع إربد / طريق عمان–إربد)
+  // 1) عمان → إربد
   _RouteDef(
     id: 'route_amman_irbid',
     name: 'خط عمان — إربد',
@@ -221,7 +224,7 @@ final List<_RouteDef> _demoRoutes = [
       _StopDef('الجيزة', 31.7000, 35.9500),
       _StopDef('القطرانة', 31.2500, 36.0500),
       _StopDef('معان', 30.1960, 35.7340, isMajor: true),
-      _Point(29.8000, 35.3000),
+      _StopDef('وادي رم (مفترق)', 29.8000, 35.3000),
       _StopDef('مجمع العقبة', 29.5320, 35.0060, isMajor: true),
     ],
     polyline: const [
