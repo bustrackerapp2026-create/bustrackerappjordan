@@ -22,6 +22,7 @@
 ## المتطلبات
 
 | الأداة | ملاحظات |
+|--------|---------|
 | [Flutter](https://docs.flutter.dev/get-started/install) | SDK `^3.5.0` (راجع `pubspec.yaml`) |
 | حساب [Firebase](https://console.firebase.google.com/) | Auth + Firestore + Storage |
 | حساب [Mapbox](https://account.mapbox.com/) | Access Token للخرائط |
@@ -66,9 +67,7 @@ flutter run
 MAPBOX_ACCESS_TOKEN=pk.your_real_mapbox_token_here
 ```
 
-| المتغير | الاستخدام |
-|---------|-----------|
-| `MAPBOX_ACCESS_TOKEN` | تهيئة Mapbox في `main.dart` عبر `flutter_dotenv` |
+- **`MAPBOX_ACCESS_TOKEN`** — تهيئة Mapbox في `main.dart` عبر `flutter_dotenv`
 
 بدون هذا المفتاح تظهر الخريطة فارغة أو يظهر تحذير في سجل التشغيل.
 
@@ -111,12 +110,12 @@ firebase deploy --only firestore:rules,firestore:indexes,storage
 
 **`firestore.indexes.json`**
 
-| المجموعة | الحقول (باختصار) | الاستخدام في التطبيق |
-|----------|------------------|----------------------|
-| `users` | `userType` + `isVerified` + `isOnline` | فلترة السائقين / المتصلين |
-| `trips` | `driverId` + `status` + `createdAt` ↓ | طلبات ورحلات السائق |
-| `trips` | `passengerId` + `createdAt` ↓ | سجل رحلات الراكب |
-| `routeCoordinates` | `routeId` + `chunkIndex` | تحميل أجزاء مسار الخط |
+الفهارس المعرّفة حالياً:
+
+- **`users`** — `userType` + `isVerified` + `isOnline` — فلترة السائقين / المتصلين
+- **`trips`** — `driverId` + `status` + `createdAt` (تنازلي) — طلبات ورحلات السائق
+- **`trips`** — `passengerId` + `createdAt` (تنازلي) — سجل رحلات الراكب
+- **`routeCoordinates`** — `routeId` + `chunkIndex` — تحميل أجزاء مسار الخط
 
 ### نشر الفهارس فقط
 
@@ -155,11 +154,11 @@ flutter analyze
 
 ## أدوار المستخدمين
 
-| الدور | السلوك بعد تسجيل الدخول |
-|--------|-------------------------|
-| **passenger** | لوحة الراكب (خريطة، رحلات، حساب) |
-| **driver** | إن لم يُوافق عليه → شاشة انتظار؛ بعد الموافقة → لوحة السائق |
-| **admin** | لوحة المسؤول (إحصائيات، التحقق من السائقين، نقاط التجمع) |
+- **passenger** — لوحة الراكب (خريطة، رحلات، حساب)
+- **driver** — إن لم يُوافق عليه → شاشة انتظار؛ بعد الموافقة → لوحة السائق
+- **admin** — لوحة المسؤول (إحصائيات، التحقق من السائقين، نقاط التجمع)
+
+ملاحظات:
 
 - عند التسجيل يُنشأ الحساب بـ `isVerified: false` (لا يمكن رفعها من التطبيق حسب قواعد Firestore).
 - المسؤول فقط يوافق على السائقين ويعدّل الحالات الحساسة.
@@ -215,14 +214,12 @@ firebase deploy --only storage
 
 ## استكشاف الأخطاء
 
-| المشكلة | ماذا تتحقق |
-|---------|------------|
-| الخريطة لا تظهر | ملف `.env` ووجود `MAPBOX_ACCESS_TOKEN` صحيح |
-| خطأ «requires an index» | نشر `firestore.indexes.json` أو إنشاء الفهرس من رابط الخطأ |
-| Permission denied | نشر `firestore.rules` / `storage.rules`، ونوع المستخدم في المستند |
-| السائق عالق في شاشة الانتظار | `isVerified` يجب أن يكون `true` من حساب أدمن أو Console |
-| فشل رفع الصورة | قواعد Storage وحجم/نوع الملف (صورة، أقل من 5MB) |
-| تعارض Git على pack files | أغلق IDE، نفّذ `git gc --prune=now` أو استنسخ المستودع من جديد |
+- **الخريطة لا تظهر** — تحقق من ملف `.env` ووجود `MAPBOX_ACCESS_TOKEN` صحيح
+- **خطأ «requires an index»** — انشر `firestore.indexes.json` أو أنشئ الفهرس من رابط الخطأ
+- **Permission denied** — انشر `firestore.rules` / `storage.rules`، وتحقق من نوع المستخدم في المستند
+- **السائق عالق في شاشة الانتظار** — يجب أن يكون `isVerified: true` من حساب أدمن أو Console
+- **فشل رفع الصورة** — قواعد Storage وحجم/نوع الملف (صورة، أقل من 5MB)
+- **تعارض Git على pack files** — أغلق IDE، نفّذ `git gc --prune=now` أو استنسخ المستودع من جديد
 
 ---
 
@@ -233,5 +230,6 @@ firebase deploy --only storage
 
 ---
 
-**الإصدار:** حسب `pubspec.yaml` (`1.0.0+1`)  
+**الإصدار:** حسب `pubspec.yaml` (`1.0.0+1`)
+
 **اسم الحزمة:** `jordan_bus_tracker_new`
