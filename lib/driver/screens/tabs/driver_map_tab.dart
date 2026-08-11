@@ -14,6 +14,7 @@ import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/live_tracking_service.dart';
 import 'mixins/driver_location_mixin.dart';
 
+/// خريطة السائق المتقدمة: تتبع حي + تنبؤ موقع + رحلات + نقاط تجمع.
 class DriverMapTab extends StatefulWidget {
   const DriverMapTab({super.key});
 
@@ -107,6 +108,13 @@ class _DriverMapTabState extends State<DriverMapTab>
     if (!mounted) return;
     await applyLabelLayersFilter();
     listenToPickupPoints();
+
+    // إن كان السائق متصلاً مسبقاً — ابدأ التتبع فوراً
+    final driver = context.read<DriverProvider>();
+    if (driver.isOnline || driver.isTripActive) {
+      await ensureDriverTrackingRunning();
+    }
+
     if (mounted) setState(() => isMapReady = true);
   }
 
@@ -126,6 +134,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         isOnline: isOnline,
         latitude: pos?.latitude,
         longitude: pos?.longitude,
+        route: _selectedRoute,
       );
       if (!mounted) return;
       MapUtils.showSnackBar(
@@ -163,6 +172,25 @@ class _DriverMapTabState extends State<DriverMapTab>
     await refreshDriverTrackingProfile();
   }
 
+  Future<void> _onRouteChanged(String route) async {
+    setState(() => _selectedRoute = route);
+    final driver = context.read<DriverProvider>();
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userId;
+    if (uid == null || !driver.isOnline) return;
+
+    final pos = driver.currentPosition;
+    try {
+      await LiveTrackingService().setDriverOnlineStatus(
+        uid: uid,
+        isOnline: true,
+        latitude: pos?.latitude,
+        longitude: pos?.longitude,
+        route: route,
+      );
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -185,6 +213,8 @@ class _DriverMapTabState extends State<DriverMapTab>
             },
           ),
         ),
+
+        // شريط البحث
         Positioned(
           top: 16,
           left: 16,
@@ -193,13 +223,38 @@ class _DriverMapTabState extends State<DriverMapTab>
             child: SearchBarWidget(
               selectedRoute: _selectedRoute,
               routes: AppConstants.jordanRoutes,
-              onRouteChanged: (r) => setState(() => _selectedRoute = r),
+              onRouteChanged: _onRouteChanged,
               onSearchSubmitted: _searchPlace,
             ),
           ),
         ),
+
+        // شريط حالة سريع أعلى اليمين (سرعة + متابعة)
         Positioned(
-          bottom: 140,
+          top: 80,
+          left: 16,
+          child: RepaintBoundary(
+            child: Selector<DriverProvider, double?>(
+              selector: (_, p) => p.currentPosition?.speed,
+              builder: (context, speed, _) {
+                final kmh = (speed != null && speed.isFinite && speed > 0)
+                    ? (speed * 3.6)
+                    : null;
+                return _QuickHud(
+                  speedKmh: kmh,
+                  following: followDriverCamera,
+                  tripActive: context.select<DriverProvider, bool>(
+                    (p) => p.isTripActive,
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+
+        // أزرار التحكم
+        Positioned(
+          bottom: 150,
           right: 16,
           child: RepaintBoundary(
             child: _DriverMapFabColumn(
@@ -221,6 +276,7 @@ class _DriverMapTabState extends State<DriverMapTab>
               onLayers: () => showMapSettingsSheet(context),
               onAddPickup: () {
                 toggleAddingPickupPoint();
+                setState(() {});
                 MapUtils.showSnackBar(
                   context,
                   isAddingPickupPoint
@@ -232,6 +288,8 @@ class _DriverMapTabState extends State<DriverMapTab>
             ),
           ),
         ),
+
+        // لوحة الحالة السفلية
         Positioned(
           bottom: 20,
           left: 16,
@@ -250,9 +308,11 @@ class _DriverMapTabState extends State<DriverMapTab>
                 );
                 return _DriverStatusPanel(
                   userName: userName,
+                  routeName: _selectedRoute,
                   isOnline: state.isOnline,
                   isTripActive: state.isTripActive,
                   isProcessingTrip: isProcessingTrip,
+                  followingCamera: followDriverCamera,
                   onToggleOnline: _onToggleOnline,
                   onTripPressed: () => _onTripButtonPressed(
                     isTripActive: state.isTripActive,
@@ -263,6 +323,74 @@ class _DriverMapTabState extends State<DriverMapTab>
           ),
         ),
       ],
+    );
+  }
+}
+
+/// شريط معلومات سريع (سرعة / حالة الرحلة / متابعة)
+class _QuickHud extends StatelessWidget {
+  final double? speedKmh;
+  final bool following;
+  final bool tripActive;
+
+  const _QuickHud({
+    required this.speedKmh,
+    required this.following,
+    required this.tripActive,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 3,
+      borderRadius: BorderRadius.circular(14),
+      color: Colors.white.withValues(alpha: 0.95),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.speed,
+              size: 18,
+              color: AppTheme.primaryColor,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              speedKmh != null
+                  ? '${speedKmh!.toStringAsFixed(0)} كم/س'
+                  : '-- كم/س',
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+              ),
+            ),
+            if (tripActive) ...[
+              const SizedBox(width: 10),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'رحلة',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.red.shade700,
+                  ),
+                ),
+              ),
+            ],
+            if (following) ...[
+              const SizedBox(width: 8),
+              Icon(Icons.gps_fixed, size: 16, color: Colors.green.shade700),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -361,17 +489,21 @@ class _DriverMapFabColumn extends StatelessWidget {
 
 class _DriverStatusPanel extends StatelessWidget {
   final String userName;
+  final String routeName;
   final bool isOnline;
   final bool isTripActive;
   final bool isProcessingTrip;
+  final bool followingCamera;
   final VoidCallback onToggleOnline;
   final VoidCallback onTripPressed;
 
   const _DriverStatusPanel({
     required this.userName,
+    required this.routeName,
     required this.isOnline,
     required this.isTripActive,
     required this.isProcessingTrip,
+    required this.followingCamera,
     required this.onToggleOnline,
     required this.onTripPressed,
   });
@@ -394,17 +526,61 @@ class _DriverStatusPanel extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            '🚗 مرحباً $userName',
-            style: const TextStyle(fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '🚗 $userName',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isOnline
+                          ? '🟢 متصل — الخط: $routeName'
+                          : '⚪ غير متصل',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isTripActive)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Text(
+                    followingCamera ? '🔴 رحلة + متابعة' : '🔴 رحلة نشطة',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.red.shade800,
+                    ),
+                  ),
+                ),
+            ],
           ),
-          Text(isOnline ? '🟢 متصل — يظهر موقعك للركاب' : '⚪ غير متصل'),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
                 child: ElevatedButton(
                   onPressed: onToggleOnline,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor:
+                        isOnline ? Colors.grey.shade200 : AppTheme.primaryColor,
+                    foregroundColor:
+                        isOnline ? Colors.black87 : Colors.white,
+                  ),
                   child: Text(isOnline ? 'قطع الاتصال' : 'اتصال'),
                 ),
               ),
@@ -412,7 +588,12 @@ class _DriverStatusPanel extends StatelessWidget {
               Expanded(
                 child: ElevatedButton(
                   onPressed: isProcessingTrip ? null : onTripPressed,
-                  child: Text(isTripActive ? 'إنهاء' : 'بدء الرحلة'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor:
+                        isTripActive ? Colors.red.shade600 : Colors.green.shade600,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(isTripActive ? 'إنهاء الرحلة' : 'بدء الرحلة'),
                 ),
               ),
             ],
