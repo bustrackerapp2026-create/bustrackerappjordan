@@ -61,6 +61,7 @@ class ProfileBody extends StatelessWidget {
         body: Stack(
           children: [
             ListView(
+              scrollCacheExtent: ScrollCacheExtent.pixels(400),
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
               children: [
                 RepaintBoundary(
@@ -182,12 +183,13 @@ class ProfileBody extends StatelessWidget {
                 Center(
                   child: Text(
                     '© 2026 Bus Tracker Jordan',
-                    style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
                   ),
                 ),
               ],
             ),
+
+            // طبقة التحميل فقط — لا تعيد بناء ListView
             ValueListenableBuilder<bool>(
               valueListenable: busyNotifier,
               builder: (context, busy, _) {
@@ -274,9 +276,7 @@ class _HeaderCard extends StatelessWidget {
                     ProfileUi.chip('🚗 $userType', AppTheme.primaryColor),
                     ProfileUi.chip(
                       verified ? '✅ معتمد' : '⏳ بانتظار الاعتماد',
-                      verified
-                          ? Colors.green.shade700
-                          : Colors.orange.shade800,
+                      verified ? Colors.green.shade700 : Colors.orange.shade800,
                     ),
                   ],
                 ),
