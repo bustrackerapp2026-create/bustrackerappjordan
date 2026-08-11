@@ -22,7 +22,6 @@
 ## المتطلبات
 
 | الأداة | ملاحظات |
-|--------|---------|
 | [Flutter](https://docs.flutter.dev/get-started/install) | SDK `^3.5.0` (راجع `pubspec.yaml`) |
 | حساب [Firebase](https://console.firebase.google.com/) | Auth + Firestore + Storage |
 | حساب [Mapbox](https://account.mapbox.com/) | Access Token للخرائط |
