@@ -77,12 +77,14 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   Future<void> _searchPlace(String query) async {
     if (!mounted) return;
+    final map = mapboxMap;
+    final loc = locationService;
     await MapUtils.searchPlace(
       context,
-      mapboxMap,
+      map,
       query,
       0,
-      locationService,
+      loc,
     );
   }
 
@@ -95,6 +97,8 @@ class _DriverMapTabState extends State<DriverMapTab>
       initAnnotationManager(),
       applyStableGestures(),
     ]);
+    if (!mounted) return;
+
     await mapboxMap?.setCamera(
       CameraOptions(
         center: Point(coordinates: Position(35.9106, 31.9522)),
@@ -106,10 +110,13 @@ class _DriverMapTabState extends State<DriverMapTab>
 
     await Future<void>.delayed(const Duration(milliseconds: 120));
     if (!mounted) return;
+
     await applyLabelLayersFilter();
+    if (!mounted) return;
+
     listenToPickupPoints();
 
-    // إن كان السائق متصلاً مسبقاً — ابدأ التتبع فوراً
+    // اقرأ الحالة فقط بعد التأكد من mounted
     final driver = context.read<DriverProvider>();
     if (driver.isOnline || driver.isTripActive) {
       await ensureDriverTrackingRunning();
@@ -119,6 +126,7 @@ class _DriverMapTabState extends State<DriverMapTab>
   }
 
   Future<void> _onToggleOnline() async {
+    if (!mounted) return;
     final driver = context.read<DriverProvider>();
     final auth = context.read<AuthProvider>();
     final uid = auth.userId;
@@ -127,6 +135,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     driver.toggleOnlineStatus();
     final isOnline = driver.isOnline;
     final pos = driver.currentPosition;
+    final route = _selectedRoute;
 
     try {
       await LiveTrackingService().setDriverOnlineStatus(
@@ -134,7 +143,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         isOnline: isOnline,
         latitude: pos?.latitude,
         longitude: pos?.longitude,
-        route: _selectedRoute,
+        route: route,
       );
       if (!mounted) return;
       MapUtils.showSnackBar(
@@ -144,7 +153,7 @@ class _DriverMapTabState extends State<DriverMapTab>
             : '⚪ تم إيقاف المشاركة',
       );
     } catch (e) {
-      driver.toggleOnlineStatus();
+      if (mounted) driver.toggleOnlineStatus();
       if (!mounted) return;
       MapUtils.showSnackBar(
         context,
@@ -153,7 +162,7 @@ class _DriverMapTabState extends State<DriverMapTab>
       );
     }
 
-    await refreshDriverTrackingProfile();
+    if (mounted) await refreshDriverTrackingProfile();
   }
 
   Future<void> _onTripButtonPressed({required bool isTripActive}) async {
@@ -169,11 +178,13 @@ class _DriverMapTabState extends State<DriverMapTab>
       setState(() => followDriverCamera = true);
     }
 
-    await refreshDriverTrackingProfile();
+    if (mounted) await refreshDriverTrackingProfile();
   }
 
   Future<void> _onRouteChanged(String route) async {
+    if (!mounted) return;
     setState(() => _selectedRoute = route);
+
     final driver = context.read<DriverProvider>();
     final auth = context.read<AuthProvider>();
     final uid = auth.userId;
@@ -213,8 +224,6 @@ class _DriverMapTabState extends State<DriverMapTab>
             },
           ),
         ),
-
-        // شريط البحث
         Positioned(
           top: 16,
           left: 16,
@@ -228,8 +237,6 @@ class _DriverMapTabState extends State<DriverMapTab>
             ),
           ),
         ),
-
-        // شريط حالة سريع أعلى اليمين (سرعة + متابعة)
         Positioned(
           top: 80,
           left: 16,
@@ -251,8 +258,6 @@ class _DriverMapTabState extends State<DriverMapTab>
             ),
           ),
         ),
-
-        // أزرار التحكم
         Positioned(
           bottom: 150,
           right: 16,
@@ -264,6 +269,7 @@ class _DriverMapTabState extends State<DriverMapTab>
               onCompass: resetNorth,
               onFollow: () {
                 toggleFollowDriverCamera();
+                if (!mounted) return;
                 MapUtils.showSnackBar(
                   context,
                   followDriverCamera
@@ -273,10 +279,14 @@ class _DriverMapTabState extends State<DriverMapTab>
               },
               onRecenter: recenterDriverCamera,
               onMyLocation: goToMyLocation,
-              onLayers: () => showMapSettingsSheet(context),
+              onLayers: () {
+                if (!mounted) return;
+                showMapSettingsSheet(context);
+              },
               onAddPickup: () {
                 toggleAddingPickupPoint();
                 setState(() {});
+                if (!mounted) return;
                 MapUtils.showSnackBar(
                   context,
                   isAddingPickupPoint
@@ -288,8 +298,6 @@ class _DriverMapTabState extends State<DriverMapTab>
             ),
           ),
         ),
-
-        // لوحة الحالة السفلية
         Positioned(
           bottom: 20,
           left: 16,
@@ -327,7 +335,6 @@ class _DriverMapTabState extends State<DriverMapTab>
   }
 }
 
-/// شريط معلومات سريع (سرعة / حالة الرحلة / متابعة)
 class _QuickHud extends StatelessWidget {
   final double? speedKmh;
   final bool following;
@@ -350,7 +357,7 @@ class _QuickHud extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
+            const Icon(
               Icons.speed,
               size: 18,
               color: AppTheme.primaryColor,
@@ -589,8 +596,9 @@ class _DriverStatusPanel extends StatelessWidget {
                 child: ElevatedButton(
                   onPressed: isProcessingTrip ? null : onTripPressed,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        isTripActive ? Colors.red.shade600 : Colors.green.shade600,
+                    backgroundColor: isTripActive
+                        ? Colors.red.shade600
+                        : Colors.green.shade600,
                     foregroundColor: Colors.white,
                   ),
                   child: Text(isTripActive ? 'إنهاء الرحلة' : 'بدء الرحلة'),

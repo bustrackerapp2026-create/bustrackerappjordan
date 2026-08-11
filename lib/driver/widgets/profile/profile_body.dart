@@ -62,6 +62,8 @@ class ProfileBody extends StatelessWidget {
           children: [
             ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+              // cacheExtent متوافق مع إصدارات Flutter المستقرة
+              // (ScrollCacheExtent يحتاج Flutter 3.41+)
               cacheExtent: 400,
               children: [
                 RepaintBoundary(
@@ -189,8 +191,6 @@ class ProfileBody extends StatelessWidget {
                 ),
               ],
             ),
-
-            // طبقة التحميل فقط — لا تعيد بناء ListView
             ValueListenableBuilder<bool>(
               valueListenable: busyNotifier,
               builder: (context, busy, _) {
