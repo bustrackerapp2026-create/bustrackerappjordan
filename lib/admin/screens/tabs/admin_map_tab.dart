@@ -11,6 +11,7 @@ import '../../../../core/pickup/pickup_point_manager.dart';
 import '../../../../core/pickup/pickup_point_dialog.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../services/location_service.dart';
+import '../../../../services/route_seed_service.dart';
 import '../../../../map/widgets/search_bar_widget.dart';
 import '../admin_dashboard.dart';
 import 'mixins/driver_manager_mixin.dart';
@@ -36,6 +37,7 @@ class _AdminMapTabState extends State<AdminMapTab>
   final LocationService _locationService = LocationService();
   bool _isAddingPickupPoint = false;
   bool _isLoadingLocation = false;
+  bool _isSeeding = false;
   StreamSubscription<Position>? _locationSubscription;
   int? _lastHandledFocusToken;
 
@@ -170,6 +172,20 @@ class _AdminMapTabState extends State<AdminMapTab>
 
   Future<void> _searchPlace(String query) async {
     if (query.trim().isEmpty) return;
+
+    // ابحث أولاً ضمن أسماء المسارات المحمّلة
+    final match = routes.where(
+      (r) =>
+          r.name.contains(query.trim()) ||
+          r.startCity.contains(query.trim()) ||
+          r.endCity.contains(query.trim()),
+    );
+    if (match.isNotEmpty) {
+      onRouteFilterChanged(match.first.name);
+      _safeSnack('🚌 تم اختيار المسار: ${match.first.name}');
+      return;
+    }
+
     final result = await _locationService.searchPlace(query);
     if (!mounted) return;
 
@@ -185,6 +201,45 @@ class _AdminMapTabState extends State<AdminMapTab>
     );
     if (!mounted) return;
     _safeSnack('🔎 تم الانتقال إلى ${result.name}');
+  }
+
+  Future<void> _seedRoutesFromMap() async {
+    if (_isSeeding) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('زرع مسارات الأردن'),
+        content: const Text(
+          'سيتم إضافة 8 خطوط بين المحافظات إلى Firestore ثم عرضها على الخريطة.\n\n'
+          'هل تريد المتابعة؟',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('زرع'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    setState(() => _isSeeding = true);
+    try {
+      final msg = await RouteSeedService().seedJordanDemoRoutes();
+      if (!mounted) return;
+      _safeSnack('✅ $msg');
+      // أعد الاستماع لإجبار إعادة التحميل والرسم
+      listenToRoutes();
+    } catch (e) {
+      if (!mounted) return;
+      _safeSnack('❌ فشل الزرع: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isSeeding = false);
+    }
   }
 
   Future<void> _handleMapTap(Point point) async {
@@ -300,10 +355,69 @@ class _AdminMapTabState extends State<AdminMapTab>
           left: 16,
           right: 16,
           child: SearchBarWidget(
-            selectedRoute: 'الكل',
-            routes: const ['الكل'],
-            onRouteChanged: (_) {},
+            selectedRoute: selectedRouteName,
+            routes: routeDropdownItems,
+            onRouteChanged: onRouteFilterChanged,
             onSearchSubmitted: _searchPlace,
+          ),
+        ),
+        // زر زرع المسارات — ظاهر مباشرة على الخريطة
+        Positioned(
+          top: 72,
+          left: 16,
+          child: Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(12),
+            color: Colors.white,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: _isSeeding ? null : _seedRoutesFromMap,
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isSeeding)
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      Icon(Icons.route, color: Colors.blue.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      routes.isEmpty ? 'زرع مسارات الأردن' : 'تحديث المسارات',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: Colors.blue.shade800,
+                      ),
+                    ),
+                    if (routes.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '${routes.length}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
         Positioned(
