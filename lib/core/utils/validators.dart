@@ -1,3 +1,5 @@
+import '../locale/locale_provider.dart';
+
 class AppValidators {
   static final RegExp _emailRegex = RegExp(
     r'^[a-zA-Z0-9.!#$%&*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$',
@@ -7,9 +9,13 @@ class AppValidators {
     r'^(?:\+962|962|0)?[789]\d{7,8}$',
   );
 
+  static bool get _ar => LocaleProvider.languageCode != 'en';
+
+  static String _t(String ar, String en) => _ar ? ar : en;
+
   static String? validateRequired(String? value, {required String fieldName}) {
     if (value == null || value.trim().isEmpty) {
-      return 'الرجاء إدخال $fieldName';
+      return _t('الرجاء إدخال $fieldName', 'Please enter $fieldName');
     }
     return null;
   }
@@ -17,20 +23,23 @@ class AppValidators {
   static String? validateEmail(String? value) {
     final trimmedValue = value?.trim() ?? '';
     if (trimmedValue.isEmpty) {
-      return 'الرجاء إدخال البريد الإلكتروني';
+      return _t('الرجاء إدخال البريد الإلكتروني', 'Please enter email');
     }
     if (!_emailRegex.hasMatch(trimmedValue)) {
-      return 'صيغة البريد الإلكتروني غير صحيحة';
+      return _t('صيغة البريد الإلكتروني غير صحيحة', 'Invalid email format');
     }
     return null;
   }
 
   static String? validatePassword(String? value) {
     if (value == null || value.isEmpty) {
-      return 'الرجاء إدخال كلمة السر';
+      return _t('الرجاء إدخال كلمة السر', 'Please enter password');
     }
     if (value.length < 6) {
-      return 'كلمة السر يجب أن تكون 6 أحرف على الأقل';
+      return _t(
+        'كلمة السر يجب أن تكون 6 أحرف على الأقل',
+        'Password must be at least 6 characters',
+      );
     }
     return null;
   }
@@ -42,7 +51,7 @@ class AppValidators {
 
     final trimmedValue = value.trim();
     if (!_phoneRegex.hasMatch(trimmedValue)) {
-      return 'صيغة رقم الهاتف غير صحيحة';
+      return _t('صيغة رقم الهاتف غير صحيحة', 'Invalid phone number format');
     }
     return null;
   }
