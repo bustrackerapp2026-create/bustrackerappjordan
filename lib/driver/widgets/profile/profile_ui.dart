@@ -6,6 +6,12 @@ import '../../../core/theme/app_theme.dart';
 class ProfileUi {
   ProfileUi._();
 
+  static Color _surface(BuildContext context) =>
+      Theme.of(context).colorScheme.surface;
+
+  static Color _onSurface(BuildContext context, {double alpha = 1}) =>
+      Theme.of(context).colorScheme.onSurface.withValues(alpha: alpha);
+
   static Widget avatar({
     String? photoUrl,
     required String initial,
@@ -103,43 +109,55 @@ class ProfileUi {
   }
 
   static Widget infoRow(IconData icon, String label, String value) {
-    return Row(
-      children: [
-        Icon(icon, color: AppTheme.primaryColor, size: 22),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+    return Builder(
+      builder: (context) {
+        return Row(
+          children: [
+            Icon(icon, color: AppTheme.primaryColor, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _onSurface(context, alpha: 0.55),
+                    ),
+                  ),
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: _onSurface(context),
+                    ),
+                  ),
+                ],
               ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 
   static Widget sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, right: 4),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: Colors.grey.shade700,
-        ),
-      ),
+    return Builder(
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8, right: 4),
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: _onSurface(context, alpha: 0.65),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -147,21 +165,26 @@ class ProfileUi {
     required Widget child,
     EdgeInsetsGeometry? padding,
   }) {
-    return Container(
-      width: double.infinity,
-      padding: padding ?? const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+    return Builder(
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Container(
+          width: double.infinity,
+          padding: padding ?? const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.darkCard : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: child,
+          child: child,
+        );
+      },
     );
   }
 
@@ -171,14 +194,41 @@ class ProfileUi {
     String? subtitle,
     required VoidCallback onTap,
   }) {
-    return ListTile(
-      leading: Icon(icon, color: AppTheme.primaryColor),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: subtitle != null ? Text(subtitle) : null,
-      trailing: Icon(Icons.chevron_left, color: Colors.grey.shade400),
-      onTap: onTap,
+    return Builder(
+      builder: (context) {
+        return ListTile(
+          leading: Icon(icon, color: AppTheme.primaryColor),
+          title: Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: _onSurface(context),
+            ),
+          ),
+          subtitle: subtitle != null
+              ? Text(
+                  subtitle,
+                  style: TextStyle(color: _onSurface(context, alpha: 0.6)),
+                )
+              : null,
+          trailing: Icon(
+            Icons.chevron_left,
+            color: _onSurface(context, alpha: 0.35),
+          ),
+          onTap: onTap,
+        );
+      },
     );
   }
 
-  static Widget divider() => Divider(height: 1, color: Colors.grey.shade200);
+  static Widget divider() {
+    return Builder(
+      builder: (context) {
+        return Divider(
+          height: 1,
+          color: Theme.of(context).dividerColor,
+        );
+      },
+    );
+  }
 }
