@@ -668,6 +668,26 @@ class _ProfileTabState extends State<ProfileTab> {
                 ),
               ),
               const SizedBox(height: 14),
+              _sectionTitle(l10n.account),
+              _sectionCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    _tile(
+                      icon: Icons.edit_outlined,
+                      title: l10n.editProfile,
+                      onTap: _editProfile,
+                    ),
+                    _divider(),
+                    _tile(
+                      icon: Icons.lock_outline,
+                      title: l10n.changePassword,
+                      onTap: _changePassword,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
               _sectionTitle(l10n.settings),
               _sectionCard(
                 padding: EdgeInsets.zero,
@@ -693,13 +713,11 @@ class _ProfileTabState extends State<ProfileTab> {
                         Icons.my_location_outlined,
                         color: AppTheme.primaryColor,
                       ),
-                      title: const Text(
-                        'مشاركة موقعي',
-                        style: TextStyle(fontWeight: FontWeight.w600),
+                      title: Text(
+                        l10n.shareMyLocation,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      subtitle: const Text(
-                        'إظهار موقعي للإدارة أثناء انتظار الباص',
-                      ),
+                      subtitle: Text(l10n.shareMyLocationSubtitle),
                       value: _prefsLoaded ? _shareLocationEnabled : false,
                       activeThumbColor: AppTheme.primaryColor,
                       onChanged: _setShareLocation,
