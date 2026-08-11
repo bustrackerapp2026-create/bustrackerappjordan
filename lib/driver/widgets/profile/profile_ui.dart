@@ -6,9 +6,6 @@ import '../../../core/theme/app_theme.dart';
 class ProfileUi {
   ProfileUi._();
 
-  static Color _surface(BuildContext context) =>
-      Theme.of(context).colorScheme.surface;
-
   static Color _onSurface(BuildContext context, {double alpha = 1}) =>
       Theme.of(context).colorScheme.onSurface.withValues(alpha: alpha);
 
