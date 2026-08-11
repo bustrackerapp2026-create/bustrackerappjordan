@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// ✅ توحيد الاستيرادات باستخدام Package Import المباشر لمنع التضارب
 import 'package:jordan_bus_tracker_new/core/theme/app_theme.dart';
 import 'package:jordan_bus_tracker_new/core/utils/validators.dart';
 import 'package:jordan_bus_tracker_new/features/auth/providers/auth_provider.dart';
+import 'package:jordan_bus_tracker_new/l10n/app_localizations.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -44,6 +44,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _register() async {
+    final l10n = AppLocalizations.of(context);
     if (!_formKey.currentState!.validate()) return;
 
     final name = _nameController.text.trim();
@@ -56,8 +57,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (password != confirmPassword) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ كلمة السر غير متطابقة'),
+        SnackBar(
+          content: Text(l10n.passwordMismatch),
           backgroundColor: Colors.orange,
         ),
       );
@@ -69,7 +70,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       final authProvider = context.read<AuthProvider>();
 
-      // ✅ استدعاء دالة signUp
       await authProvider.signUp(
         email: email,
         password: password,
@@ -83,9 +83,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              '✅ تم إنشاء الحساب بنجاح! سيتم تفعيل حساب السائق بعد المراجعة.'),
+        SnackBar(
+          content: Text(l10n.registerSuccess),
           backgroundColor: Colors.green,
         ),
       );
@@ -109,6 +108,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -143,9 +144,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  'Jordan Bus Tracker',
-                  style: TextStyle(
+                Text(
+                  l10n.appNameEn,
+                  style: const TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
@@ -153,9 +154,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'إنشاء حساب جديد',
-                  style: TextStyle(
+                Text(
+                  l10n.registerTitle,
+                  style: const TextStyle(
                     fontSize: 16,
                     color: Colors.white70,
                   ),
@@ -179,9 +180,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'الاسم الكامل',
-                          style: TextStyle(
+                        Text(
+                          l10n.fullName,
+                          style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: Colors.black87,
@@ -193,12 +194,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           textInputAction: TextInputAction.next,
                           validator: (value) {
                             if (value == null || value.trim().isEmpty) {
-                              return 'الرجاء إدخال الاسم الكامل';
+                              return l10n.enterFullName;
                             }
                             return null;
                           },
                           decoration: InputDecoration(
-                            hintText: 'أحمد محمد',
+                            hintText: 'Ahmad Mohammad',
                             prefixIcon: const Icon(
                               Icons.person_outline,
                               color: AppTheme.primaryColor,
@@ -219,9 +220,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        const Text(
-                          'رقم الهاتف',
-                          style: TextStyle(
+                        Text(
+                          l10n.phone,
+                          style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: Colors.black87,
@@ -254,9 +255,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        const Text(
-                          'البريد الإلكتروني',
-                          style: TextStyle(
+                        Text(
+                          l10n.email,
+                          style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: Colors.black87,
@@ -290,9 +291,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        const Text(
-                          'كلمة السر',
-                          style: TextStyle(
+                        Text(
+                          l10n.password,
+                          style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: Colors.black87,
@@ -341,9 +342,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        const Text(
-                          'تأكيد كلمة السر',
-                          style: TextStyle(
+                        Text(
+                          l10n.confirmPassword,
+                          style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: Colors.black87,
@@ -357,15 +358,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           autocorrect: false,
                           enableSuggestions: false,
                           validator: (value) {
-                            final requiredValidation = AppValidators.validateRequired(
+                            final requiredValidation =
+                                AppValidators.validateRequired(
                               value,
-                              fieldName: 'تأكيد كلمة السر',
+                              fieldName: l10n.confirmPassword,
                             );
                             if (requiredValidation != null) {
                               return requiredValidation;
                             }
                             if (value != _passwordController.text) {
-                              return 'كلمة السر غير متطابقة';
+                              return l10n.passwordsDoNotMatch;
                             }
                             return null;
                           },
@@ -405,9 +407,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        const Text(
-                          'نوع الحساب',
-                          style: TextStyle(
+                        Text(
+                          l10n.accountType,
+                          style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: Colors.black87,
@@ -418,7 +420,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           children: [
                             Expanded(
                               child: ChoiceChip(
-                                label: const Text('🚗 سائق'),
+                                label: Text('🚗 ${l10n.driver}'),
                                 selected: _selectedUserType == 'driver',
                                 onSelected: (selected) {
                                   if (selected) {
@@ -439,7 +441,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: ChoiceChip(
-                                label: const Text('🚶 راكب'),
+                                label: Text('🚶 ${l10n.passenger}'),
                                 selected: _selectedUserType == 'passenger',
                                 onSelected: (selected) {
                                   if (selected) {
@@ -462,8 +464,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         const SizedBox(height: 8),
                         Text(
                           _selectedUserType == 'driver'
-                              ? '📌 سيتم تفعيل حساب السائق بعد موافقة الإدارة.'
-                              : '📌 يمكنك استخدام التطبيق فوراً كراكب.',
+                              ? l10n.driverPendingNote
+                              : l10n.passengerReadyNote,
                           style: TextStyle(
                             fontSize: 12,
                             color: _selectedUserType == 'driver'
@@ -473,9 +475,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         if (_showDriverFields) ...[
                           const SizedBox(height: 20),
-                          const Text(
-                            'معلومات السائق (مطلوبة)',
-                            style: TextStyle(
+                          Text(
+                            l10n.driverInfoRequired,
+                            style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: Colors.black87,
@@ -488,12 +490,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             validator: (value) {
                               if (_showDriverFields &&
                                   (value == null || value.trim().isEmpty)) {
-                                return 'الرجاء إدخال رقم الباص';
+                                return l10n.enterBusNumber;
                               }
                               return null;
                             },
                             decoration: InputDecoration(
-                              hintText: 'رقم الباص (مثل: 123)',
+                              hintText: l10n.busNumberHint,
                               prefixIcon: const Icon(
                                 Icons.directions_bus,
                                 color: AppTheme.primaryColor,
@@ -520,12 +522,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             validator: (value) {
                               if (_showDriverFields &&
                                   (value == null || value.trim().isEmpty)) {
-                                return 'الرجاء إدخال المسار';
+                                return l10n.enterRoute;
                               }
                               return null;
                             },
                             decoration: InputDecoration(
-                              hintText: 'المسار (مثل: عمان - الزرقاء)',
+                              hintText: l10n.routeHint,
                               prefixIcon: const Icon(
                                 Icons.route,
                                 color: AppTheme.primaryColor,
@@ -569,9 +571,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                       strokeWidth: 2.5,
                                     ),
                                   )
-                                : const Text(
-                                    'إنشاء حساب',
-                                    style: TextStyle(
+                                : Text(
+                                    l10n.createAccountBtn,
+                                    style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -582,9 +584,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Text(
-                              'لديك حساب بالفعل؟',
-                              style: TextStyle(color: Colors.grey),
+                            Text(
+                              l10n.alreadyHaveAccount,
+                              style: const TextStyle(color: Colors.grey),
                             ),
                             const SizedBox(width: 4),
                             TextButton(
@@ -596,9 +598,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 padding: EdgeInsets.zero,
                                 minimumSize: const Size(80, 30),
                               ),
-                              child: const Text(
-                                'تسجيل الدخول',
-                                style: TextStyle(
+                              child: Text(
+                                l10n.login,
+                                style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
