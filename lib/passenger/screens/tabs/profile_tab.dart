@@ -8,8 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/theme_provider.dart';
+import '../../../core/locale/locale_provider.dart';
 import '../../../core/widgets/change_password_sheet.dart';
 import '../../../features/auth/providers/auth_provider.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../services/firestore_service.dart';
 import '../../../services/storage_service.dart';
 
@@ -24,11 +26,9 @@ class ProfileTab extends StatefulWidget {
 class _ProfileTabState extends State<ProfileTab> {
   static const _kNotifications = 'passenger_notifications_enabled';
   static const _kShareLocation = 'passenger_share_location_enabled';
-  static const _kLanguage = 'passenger_language';
 
   bool _notificationsEnabled = true;
   bool _shareLocationEnabled = false;
-  String _language = 'العربية';
   bool _prefsLoaded = false;
   bool _savingProfile = false;
   bool _uploadingPhoto = false;
@@ -51,7 +51,6 @@ class _ProfileTabState extends State<ProfileTab> {
     setState(() {
       _notificationsEnabled = prefs.getBool(_kNotifications) ?? true;
       _shareLocationEnabled = prefs.getBool(_kShareLocation) ?? false;
-      _language = prefs.getString(_kLanguage) ?? 'العربية';
       _prefsLoaded = true;
     });
   }
@@ -77,12 +76,6 @@ class _ProfileTabState extends State<ProfileTab> {
         });
       } catch (_) {}
     }
-  }
-
-  Future<void> _setLanguage(String value) async {
-    setState(() => _language = value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kLanguage, value);
   }
 
   void _snack(String message) {
@@ -216,20 +209,21 @@ class _ProfileTabState extends State<ProfileTab> {
     if (!mounted) return;
     final auth = context.read<AuthProvider>();
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = AppLocalizations.of(context);
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'تسجيل الخروج',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        title: Text(
+          l10n.logout,
+          style: const TextStyle(fontWeight: FontWeight.w800),
         ),
-        content: const Text('هل أنت متأكد من رغبتك في تسجيل الخروج؟'),
+        content: Text(l10n.logoutConfirm),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء'),
+            child: Text(l10n.cancel),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -237,7 +231,7 @@ class _ProfileTabState extends State<ProfileTab> {
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: const Text('تأكيد الخروج'),
+            child: Text(l10n.logout),
           ),
         ],
       ),
@@ -250,7 +244,7 @@ class _ProfileTabState extends State<ProfileTab> {
     } catch (e) {
       messenger.showSnackBar(
         SnackBar(
-          content: Text('حدث خطأ أثناء تسجيل الخروج: $e'),
+          content: Text('$e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -390,17 +384,6 @@ class _ProfileTabState extends State<ProfileTab> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'ملاحظة: تغيير البريد قد يتطلب إعادة تسجيل الدخول لأسباب أمنية.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.55),
-                    ),
-                  ),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () => Navigator.pop(ctx, true),
@@ -493,6 +476,9 @@ class _ProfileTabState extends State<ProfileTab> {
 
   void _showLanguagePicker() {
     if (!mounted) return;
+    final localeProvider = context.read<LocaleProvider>();
+    final l10n = AppLocalizations.of(context);
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -504,30 +490,30 @@ class _ProfileTabState extends State<ProfileTab> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 12),
-              const Text(
-                'اختر اللغة',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              Text(
+                l10n.chooseLanguage,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
               ),
               ListTile(
-                title: const Text('العربية'),
-                trailing: _language == 'العربية'
+                title: Text(l10n.arabic),
+                trailing: localeProvider.isArabic
                     ? const Icon(Icons.check, color: AppTheme.primaryColor)
                     : null,
-                onTap: () {
-                  _setLanguage('العربية');
+                onTap: () async {
                   Navigator.pop(ctx);
-                  _snack('🌐 اللغة: العربية');
+                  await localeProvider.setArabic();
+                  _snack(l10n.languageChanged);
                 },
               ),
               ListTile(
-                title: const Text('English'),
-                trailing: _language == 'English'
+                title: Text(l10n.english),
+                trailing: localeProvider.isEnglish
                     ? const Icon(Icons.check, color: AppTheme.primaryColor)
                     : null,
-                onTap: () {
-                  _setLanguage('English');
+                onTap: () async {
                   Navigator.pop(ctx);
-                  _snack('🌐 Language: English');
+                  await localeProvider.setEnglish();
+                  _snack(l10n.languageChanged);
                 },
               ),
               const SizedBox(height: 8),
@@ -590,301 +576,208 @@ class _ProfileTabState extends State<ProfileTab> {
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().userData;
     final isDark = context.watch<ThemeProvider>().isDarkMode;
+    final localeProvider = context.watch<LocaleProvider>();
+    final l10n = AppLocalizations.of(context);
     final name = user?.fullName.trim().isNotEmpty == true
         ? user!.fullName.trim()
-        : 'راكب';
-    final initial = name.isNotEmpty ? name.characters.first : 'ر';
+        : l10n.passenger;
+    final initial = name.isNotEmpty ? name.characters.first : 'P';
     final email = user?.email ?? '';
     final bgColor = Theme.of(context).scaffoldBackgroundColor;
     final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: bgColor,
-        body: Stack(
-          children: [
-            ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-              children: [
-                _sectionCard(
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: _showPhotoOptions,
-                        child: Stack(
-                          alignment: Alignment.bottomLeft,
-                          children: [
-                            _buildAvatar(
-                              photoUrl: user?.photoUrl,
-                              initial: initial,
-                              size: 64,
-                            ),
-                            Container(
-                              padding: const EdgeInsets.all(5),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor,
-                                shape: BoxShape.circle,
-                                border:
-                                    Border.all(color: Colors.white, width: 2),
-                              ),
-                              child: const Icon(
-                                Icons.camera_alt,
-                                size: 12,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            if (email.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                email,
-                                style: TextStyle(fontSize: 13, color: muted),
-                              ),
-                            ],
-                            const SizedBox(height: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor
-                                    .withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                '👤 ${user?.displayUserType ?? 'راكب'}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _sectionTitle('الحساب'),
-                _sectionCard(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      _tile(
-                        icon: Icons.edit_outlined,
-                        title: 'تعديل الملف الشخصي',
-                        subtitle: 'الاسم · الهاتف · البريد · الصورة',
-                        onTap: _editProfile,
-                      ),
-                      _divider(),
-                      _tile(
-                        icon: Icons.lock_outline,
-                        title: 'تغيير كلمة المرور',
-                        subtitle: 'تحديث كلمة المرور عبر Firebase',
-                        onTap: _changePassword,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _sectionTitle('الرحلات والاستخدام'),
-                _sectionCard(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      _tile(
-                        icon: Icons.history,
-                        title: 'رحلاتي',
-                        subtitle: 'عرض سجل الرحلات والحجوزات',
-                        onTap: () {
-                          _snack('افتح تبويب «رحلاتي» من الشريط السفلي');
-                        },
-                      ),
-                      _divider(),
-                      _tile(
-                        icon: Icons.place_outlined,
-                        title: 'نقاط التجمع المفضلة',
-                        subtitle: 'قريباً',
-                        onTap: () => _snack('🔜 المفضلة قريباً'),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _sectionTitle('الإعدادات'),
-                _sectionCard(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      SwitchListTile(
-                        secondary: const Icon(
-                          Icons.notifications_outlined,
-                          color: AppTheme.primaryColor,
-                        ),
-                        title: const Text(
-                          'الإشعارات',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: const Text('تنبيهات الرحلات والتحديثات'),
-                        value: _prefsLoaded ? _notificationsEnabled : true,
-                        activeThumbColor: AppTheme.primaryColor,
-                        onChanged: _setNotifications,
-                      ),
-                      _divider(),
-                      SwitchListTile(
-                        secondary: const Icon(
-                          Icons.my_location_outlined,
-                          color: AppTheme.primaryColor,
-                        ),
-                        title: const Text(
-                          'مشاركة موقعي',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: const Text(
-                          'إظهار موقعي للإدارة أثناء انتظار الباص',
-                        ),
-                        value: _prefsLoaded ? _shareLocationEnabled : false,
-                        activeThumbColor: AppTheme.primaryColor,
-                        onChanged: _setShareLocation,
-                      ),
-                      _divider(),
-                      _tile(
-                        icon: Icons.language,
-                        title: 'اللغة',
-                        subtitle: _language,
-                        onTap: _showLanguagePicker,
-                      ),
-                      _divider(),
-                      SwitchListTile(
-                        secondary: Icon(
-                          isDark ? Icons.dark_mode : Icons.light_mode_outlined,
-                          color: AppTheme.primaryColor,
-                        ),
-                        title: const Text(
-                          'الوضع الليلي',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: Text(
-                          isDark ? 'المظهر الداكن مفعّل' : 'تفعيل المظهر الداكن',
-                        ),
-                        value: isDark,
-                        activeThumbColor: AppTheme.primaryColor,
-                        onChanged: (value) {
-                          context.read<ThemeProvider>().setDarkMode(value);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _sectionTitle('الدعم والمعلومات'),
-                _sectionCard(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      _tile(
-                        icon: Icons.help_outline,
-                        title: 'المساعدة',
-                        subtitle: 'أسئلة شائعة ودعم',
-                        onTap: () => _snack('📬 الدعم قريباً'),
-                      ),
-                      _divider(),
-                      _tile(
-                        icon: Icons.info_outline,
-                        title: 'عن التطبيق',
-                        subtitle: 'الإصدار 1.0.0+1',
-                        onTap: () =>
-                            _snack('📱 Bus Tracker Jordan — 1.0.0+1'),
-                      ),
-                      _divider(),
-                      _tile(
-                        icon: Icons.privacy_tip_outlined,
-                        title: 'سياسة الخصوصية',
-                        subtitle: 'كيف نستخدم بياناتك',
-                        onTap: () => _snack('🔒 سياسة الخصوصية قريباً'),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _logout,
-                    icon: const Icon(Icons.logout),
-                    label: const Text(
-                      'تسجيل الخروج',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade600,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      elevation: 0,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Center(
-                  child: Text(
-                    '© 2026 Bus Tracker Jordan',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.45),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (_savingProfile || _uploadingPhoto)
-              Container(
-                color: Colors.black26,
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const CircularProgressIndicator(),
-                      if (_uploadingPhoto) ...[
-                        const SizedBox(height: 16),
-                        const Text(
-                          'جاري رفع الصورة...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
+    return Scaffold(
+      backgroundColor: bgColor,
+      body: Stack(
+        children: [
+          ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+            children: [
+              _sectionCard(
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: _showPhotoOptions,
+                      child: Stack(
+                        alignment: Alignment.bottomLeft,
+                        children: [
+                          _buildAvatar(
+                            photoUrl: user?.photoUrl,
+                            initial: initial,
+                            size: 64,
                           ),
-                        ),
-                      ],
-                    ],
+                          Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          if (email.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              email,
+                              style: TextStyle(fontSize: 13, color: muted),
+                            ),
+                          ],
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color:
+                                  AppTheme.primaryColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              '👤 ${user?.displayUserType ?? l10n.passenger}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.primaryColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              _sectionTitle(l10n.settings),
+              _sectionCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    SwitchListTile(
+                      secondary: const Icon(
+                        Icons.notifications_outlined,
+                        color: AppTheme.primaryColor,
+                      ),
+                      title: Text(
+                        l10n.notifications,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(l10n.notificationsSubtitle),
+                      value: _prefsLoaded ? _notificationsEnabled : true,
+                      activeThumbColor: AppTheme.primaryColor,
+                      onChanged: _setNotifications,
+                    ),
+                    _divider(),
+                    SwitchListTile(
+                      secondary: const Icon(
+                        Icons.my_location_outlined,
+                        color: AppTheme.primaryColor,
+                      ),
+                      title: const Text(
+                        'مشاركة موقعي',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: const Text(
+                        'إظهار موقعي للإدارة أثناء انتظار الباص',
+                      ),
+                      value: _prefsLoaded ? _shareLocationEnabled : false,
+                      activeThumbColor: AppTheme.primaryColor,
+                      onChanged: _setShareLocation,
+                    ),
+                    _divider(),
+                    _tile(
+                      icon: Icons.language,
+                      title: l10n.language,
+                      subtitle: localeProvider.displayName,
+                      onTap: _showLanguagePicker,
+                    ),
+                    _divider(),
+                    SwitchListTile(
+                      secondary: Icon(
+                        isDark ? Icons.dark_mode : Icons.light_mode_outlined,
+                        color: AppTheme.primaryColor,
+                      ),
+                      title: Text(
+                        l10n.darkMode,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        isDark ? l10n.darkModeOn : l10n.darkModeOff,
+                      ),
+                      value: isDark,
+                      activeThumbColor: AppTheme.primaryColor,
+                      onChanged: (value) {
+                        context.read<ThemeProvider>().setDarkMode(value);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _logout,
+                  icon: const Icon(Icons.logout),
+                  label: Text(
+                    l10n.logout,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
                   ),
                 ),
               ),
-          ],
-        ),
+              const SizedBox(height: 16),
+              Center(
+                child: Text(
+                  '© 2026 Bus Tracker Jordan',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.45),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_savingProfile || _uploadingPhoto)
+            Container(
+              color: Colors.black26,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+        ],
       ),
     );
   }
