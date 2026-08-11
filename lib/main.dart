@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_provider.dart';
 import 'core/constants/user_roles.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
@@ -61,23 +62,30 @@ class BusTrackerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => DriverProvider()),
       ],
-      child: MaterialApp(
-        title: 'Bus Tracker Jordan',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        // يقلل إعادة بناء غير ضرورية عند تغيير لوحة المفاتيح/الحواف
-        builder: (context, child) {
-          return MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              textScaler: TextScaler.noScaling,
-            ),
-            child: child ?? const SizedBox.shrink(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return MaterialApp(
+            title: 'Bus Tracker Jordan',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.themeMode,
+            // يقلل إعادة بناء غير ضرورية عند تغيير لوحة المفاتيح/الحواف
+            builder: (context, child) {
+              return MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.noScaling,
+                ),
+                child: child ?? const SizedBox.shrink(),
+              );
+            },
+            home: const AuthWrapper(),
           );
         },
-        home: const AuthWrapper(),
       ),
     );
   }
@@ -135,9 +143,13 @@ class _AuthLoadingScreen extends StatelessWidget {
             children: [
               const CircularProgressIndicator(),
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 'جاري تحميل بيانات الحساب...',
-                style: TextStyle(color: Colors.grey),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withValues(
+                        alpha: 0.6,
+                      ),
+                ),
               ),
               const SizedBox(height: 24),
               ElevatedButton(
