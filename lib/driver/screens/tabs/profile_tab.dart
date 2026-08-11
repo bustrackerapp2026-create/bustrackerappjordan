@@ -5,12 +5,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/change_password_sheet.dart';
 import '../../../features/auth/providers/auth_provider.dart';
+import '../../../models/user_model.dart';
 import '../../../services/firestore_service.dart';
 import '../../widgets/profile/edit_profile_sheet.dart';
 import '../../widgets/profile/profile_body.dart';
 import '../../widgets/profile/profile_photo_sheet.dart';
 
-/// تبويب حساب السائق — منطق فقط؛ الواجهة في [ProfileBody].
+/// تبويب حساب السائق — منطق خفيف + إعادة بناء انتقائية.
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
 
@@ -18,22 +19,35 @@ class ProfileTab extends StatefulWidget {
   State<ProfileTab> createState() => _ProfileTabState();
 }
 
-class _ProfileTabState extends State<ProfileTab> {
+class _ProfileTabState extends State<ProfileTab>
+    with AutomaticKeepAliveClientMixin {
   static const _kNotifications = 'driver_notifications_enabled';
   static const _kLanguage = 'driver_language';
 
   bool _notificationsEnabled = true;
   String _language = 'العربية';
   bool _prefsLoaded = false;
-  bool _savingProfile = false;
-  bool _uploadingPhoto = false;
+
+  /// لا يعيد بناء ListView عند الرفع/الحفظ
+  final ValueNotifier<bool> _busy = ValueNotifier(false);
+  final ValueNotifier<bool> _uploading = ValueNotifier(false);
 
   final FirestoreService _firestoreService = FirestoreService();
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadPrefs());
+  }
+
+  @override
+  void dispose() {
+    _busy.dispose();
+    _uploading.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPrefs() async {
@@ -88,7 +102,8 @@ class _ProfileTabState extends State<ProfileTab> {
       hasPhoto: auth.userData?.hasPhoto == true,
       onRefreshUser: auth.refreshUserData,
       onUploadingChanged: (v) {
-        if (mounted) setState(() => _uploadingPhoto = v);
+        _uploading.value = v;
+        _busy.value = v;
       },
       onMessage: _snack,
     );
@@ -100,7 +115,7 @@ class _ProfileTabState extends State<ProfileTab> {
     final user = auth.userData;
     if (user == null) return;
 
-    setState(() => _savingProfile = true);
+    _busy.value = true;
     try {
       final result = await EditProfileSheet.show(
         context: context,
@@ -111,7 +126,7 @@ class _ProfileTabState extends State<ProfileTab> {
       if (result.success) await auth.refreshUserData();
       if (mounted) _snack(result.message);
     } finally {
-      if (mounted) setState(() => _savingProfile = false);
+      _busy.value = false;
     }
   }
 
@@ -215,22 +230,37 @@ class _ProfileTabState extends State<ProfileTab> {
 
   @override
   Widget build(BuildContext context) {
-    final user = context.watch<AuthProvider>().userData;
+    super.build(context); // AutomaticKeepAliveClientMixin
 
-    return ProfileBody(
-      user: user,
-      notificationsEnabled: _notificationsEnabled,
-      prefsLoaded: _prefsLoaded,
-      language: _language,
-      savingProfile: _savingProfile,
-      uploadingPhoto: _uploadingPhoto,
-      onPhotoTap: _showPhotoOptions,
-      onEditProfile: _editProfile,
-      onChangePassword: _changePassword,
-      onNotificationsChanged: _setNotifications,
-      onLanguageTap: _showLanguagePicker,
-      onLogout: _logout,
-      onSnack: _snack,
+    // يعيد البناء فقط عند تغيّر userData (وليس أي notifyListeners آخر)
+    return Selector<AuthProvider, UserModel?>(
+      selector: (_, auth) => auth.userData,
+      shouldRebuild: (prev, next) =>
+          prev?.uid != next?.uid ||
+          prev?.fullName != next?.fullName ||
+          prev?.email != next?.email ||
+          prev?.photoUrl != next?.photoUrl ||
+          prev?.busNumber != next?.busNumber ||
+          prev?.route != next?.route ||
+          prev?.isVerified != next?.isVerified ||
+          prev?.phoneNumber != next?.phoneNumber,
+      builder: (context, user, _) {
+        return ProfileBody(
+          user: user,
+          notificationsEnabled: _notificationsEnabled,
+          prefsLoaded: _prefsLoaded,
+          language: _language,
+          busyNotifier: _busy,
+          uploadingNotifier: _uploading,
+          onPhotoTap: _showPhotoOptions,
+          onEditProfile: _editProfile,
+          onChangePassword: _changePassword,
+          onNotificationsChanged: _setNotifications,
+          onLanguageTap: _showLanguagePicker,
+          onLogout: _logout,
+          onSnack: _snack,
+        );
+      },
     );
   }
 }
