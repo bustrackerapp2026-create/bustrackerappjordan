@@ -63,6 +63,9 @@ class AppLocalizations {
   String get processing => _t('جاري...', 'Working...');
   String get now => _t('الآن', 'Just now');
   String get dinar => _t('دينار', 'JOD');
+  String get approve => _t('موافقة', 'Approve');
+  String get reject => _t('رفض', 'Reject');
+  String get live => _t('مباشر', 'Live');
 
   // ── تسجيل الدخول ─────────────────────────────────
   String get login => _t('تسجيل الدخول', 'Log in');
@@ -282,6 +285,83 @@ class AppLocalizations {
   String onlineWithRoute(String route) =>
       _t('🟢 متصل — الخط: $route', '🟢 Online — line: $route');
   String get offlineStatus => _t('⚪ غير متصل', '⚪ Offline');
+
+  // ── إعدادات طبقات الخريطة ─────────────────────────
+  String get mapLayersSettings =>
+      _t('⚙️ إعدادات طبقات الخريطة', '⚙️ Map layer settings');
+  String get chooseMapStyle =>
+      _t('اختر ستايل المظهر:', 'Choose map style:');
+  String get mapStyleStreets => _t('شوارع', 'Streets');
+  String get mapStyleSatellite => _t('قمر صناعي', 'Satellite');
+  String get mapStyleOutdoors => _t('طبيعة', 'Outdoors');
+  String get customizeLabels =>
+      _t('تخصيص الأسماء والمعالم:', 'Customize labels:');
+  String get labelsHideHint =>
+      _t('عند الإيقاف تختفي التسميات من الخريطة فوراً',
+          'Turning off hides labels on the map immediately');
+  String get placeLabels =>
+      _t('📍 المدن والأماكن الكبرى', '📍 Cities & places');
+  String get poiLabels =>
+      _t('🏛️ معالم الجذب (POI)', '🏛️ Points of interest');
+  String get poiLabelsSubtitle =>
+      _t('مطاعم، مستشفيات، مدارس...', 'Restaurants, hospitals, schools...');
+  String get roadLabels => _t('🛣️ أسماء الشوارع', '🛣️ Road names');
+
+  // ── خريطة الراكب ─────────────────────────────────
+  String routeFiltered(String route) =>
+      _t('🔄 تم تصفية الخط: $route', '🔄 Filtered route: $route');
+  String get tapMapAddNewPoint =>
+      _t('📍 اضغط على الخريطة لإضافة نقطة جديدة',
+          '📍 Tap the map to add a new point');
+  String get cancelAddPoint =>
+      _t('❌ تم إلغاء إضافة النقطة', '❌ Add point cancelled');
+  String get liveTracking => _t('🚌 تتبع حي', '🚌 Live tracking');
+  String liveBusesCount(int n) =>
+      _t('$n باص متصل الآن', '$n bus${n == 1 ? '' : 'es'} online now');
+  String get noLiveBuses =>
+      _t('لا يوجد باصات متصلة حالياً', 'No buses online right now');
+
+  // ── نقاط معلقة (أدمن) ────────────────────────────
+  String get pendingPointsTitle =>
+      _t('📍 نقاط التجمع المعلقة', '📍 Pending pickup points');
+  String get noPendingPoints =>
+      _t('لا توجد نقاط تجمع معلقة', 'No pending pickup points');
+  String get noPendingPointsHint =>
+      _t('جميع النقاط المضافة تمت الموافقة عليها أو رفضها.',
+          'All submitted points were approved or rejected.');
+  String get showOnMap =>
+      _t('عرض الموقع على الخريطة', 'Show on map');
+  String get rejectPoint => _t('رفض النقطة', 'Reject point');
+  String rejectPointConfirm(String name) =>
+      _t('هل أنت متأكد من رفض النقطة "$name"؟',
+          'Are you sure you want to reject "$name"?');
+  String pointApproved(String name) =>
+      _t('✅ تم الموافقة على النقطة "$name" بنجاح!',
+          '✅ Point "$name" approved!');
+  String pointRejected(String name) =>
+      _t('🗑️ تم رفض النقطة "$name" بنجاح.',
+          '🗑️ Point "$name" rejected.');
+  String get underReview => _t('قيد المراجعة', 'Under review');
+
+  // ── إحصائيات الأدمن ──────────────────────────────
+  String get systemOverview =>
+      _t('نظرة عامة على النظام', 'System overview');
+  String get totalUsers =>
+      _t('إجمالي المستخدمين:', 'Total users:');
+  String activeNow(int n) =>
+      _t('نشط الآن: $n', 'Active now: $n');
+  String get registeredStats =>
+      _t('إحصائيات المسجلين', 'Registered stats');
+  String get activeUsersNow =>
+      _t('المستخدمين النشطين الآن', 'Users active now');
+  String get driverRequestsStatus =>
+      _t('حالة طلبات السائقين', 'Driver request status');
+  String get pickupPointsSection =>
+      _t('مواقف ونقاط التجمع', 'Pickup points');
+  String get total => _t('الإجمالي', 'Total');
+  String get dbConnectionFailed =>
+      _t('تعذر الاتصال بقاعدة البيانات', 'Could not connect to database');
+  String get retryRefresh => _t('إعادة التحديث', 'Refresh again');
 }
 
 class _AppLocalizationsDelegate
