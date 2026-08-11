@@ -5,6 +5,7 @@ import '../../../services/trip_service.dart';
 import '../../../models/trip_model.dart';
 import '../../../models/trip_status.dart';
 import '../../../features/auth/providers/auth_provider.dart';
+import '../../../l10n/app_localizations.dart';
 
 class OperationsTab extends StatefulWidget {
   const OperationsTab({super.key});
@@ -39,29 +40,29 @@ class _OperationsTabState extends State<OperationsTab> {
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
     final userId = authProvider.userId;
+    final l10n = AppLocalizations.of(context);
 
-    // ✅ حماية إضافية: تجهيز الـ Streams إذا لم تكن قد جهزت في initState
     if (_activeTripsStream == null && userId != null) {
       _activeTripsStream = _tripService.getActiveDriverTrips(userId);
       _pastTripsStream = _tripService.getPastDriverTrips(userId);
     }
 
     if (userId == null) {
-      return const Center(child: Text('يرجى تسجيل الدخول لعرض العمليات'));
+      return Center(child: Text(l10n.pleaseLoginOperations));
     }
 
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('📊 العمليات'),
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.textColor,
+          title: Text(l10n.operationsTitle),
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          foregroundColor: Theme.of(context).colorScheme.onSurface,
           elevation: 1,
-          bottom: const TabBar(
+          bottom: TabBar(
             tabs: [
-              Tab(text: 'الحالية'),
-              Tab(text: 'السابقة'),
+              Tab(text: l10n.tabCurrent),
+              Tab(text: l10n.tabPast),
             ],
             indicatorColor: AppTheme.primaryColor,
             labelColor: AppTheme.primaryColor,
@@ -70,15 +71,15 @@ class _OperationsTabState extends State<OperationsTab> {
         ),
         body: TabBarView(
           children: [
-            _buildActiveTrips(),
-            _buildPastTrips(),
+            _buildActiveTrips(l10n),
+            _buildPastTrips(l10n),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildActiveTrips() {
+  Widget _buildActiveTrips(AppLocalizations l10n) {
     return StreamBuilder<List<TripModel>>(
       stream: _activeTripsStream,
       builder: (context, snapshot) {
@@ -87,26 +88,26 @@ class _OperationsTabState extends State<OperationsTab> {
         }
 
         if (snapshot.hasError) {
-          return Center(child: Text('خطأ: ${snapshot.error}'));
+          return Center(child: Text('${l10n.errorPrefix}: ${snapshot.error}'));
         }
 
         final trips = snapshot.data ?? [];
 
         if (trips.isEmpty) {
-          return const Center(
+          return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.inbox, size: 60, color: Colors.grey),
-                SizedBox(height: 12),
+                const Icon(Icons.inbox, size: 60, color: Colors.grey),
+                const SizedBox(height: 12),
                 Text(
-                  'لا توجد رحلات نشطة حالياً',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  l10n.noActiveTrips,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
-                  'ستظهر الرحلات التي قبلتها هنا.',
-                  style: TextStyle(color: Colors.grey),
+                  l10n.noActiveTripsHint,
+                  style: const TextStyle(color: Colors.grey),
                 ),
               ],
             ),
@@ -118,14 +119,14 @@ class _OperationsTabState extends State<OperationsTab> {
           itemCount: trips.length,
           itemBuilder: (context, index) {
             final trip = trips[index];
-            return _buildTripCard(context, trip, isActive: true);
+            return _buildTripCard(context, trip, l10n, isActive: true);
           },
         );
       },
     );
   }
 
-  Widget _buildPastTrips() {
+  Widget _buildPastTrips(AppLocalizations l10n) {
     return StreamBuilder<List<TripModel>>(
       stream: _pastTripsStream,
       builder: (context, snapshot) {
@@ -134,26 +135,26 @@ class _OperationsTabState extends State<OperationsTab> {
         }
 
         if (snapshot.hasError) {
-          return Center(child: Text('خطأ: ${snapshot.error}'));
+          return Center(child: Text('${l10n.errorPrefix}: ${snapshot.error}'));
         }
 
         final trips = snapshot.data ?? [];
 
         if (trips.isEmpty) {
-          return const Center(
+          return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.history, size: 60, color: Colors.grey),
-                SizedBox(height: 12),
+                const Icon(Icons.history, size: 60, color: Colors.grey),
+                const SizedBox(height: 12),
                 Text(
-                  'لا توجد رحلات سابقة',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  l10n.noPastTrips,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
-                  'ستظهر الرحلات المكتملة أو الملغية هنا.',
-                  style: TextStyle(color: Colors.grey),
+                  l10n.noPastTripsHint,
+                  style: const TextStyle(color: Colors.grey),
                 ),
               ],
             ),
@@ -165,15 +166,19 @@ class _OperationsTabState extends State<OperationsTab> {
           itemCount: trips.length,
           itemBuilder: (context, index) {
             final trip = trips[index];
-            return _buildTripCard(context, trip, isActive: false);
+            return _buildTripCard(context, trip, l10n, isActive: false);
           },
         );
       },
     );
   }
 
-  Widget _buildTripCard(BuildContext context, TripModel trip,
-      {required bool isActive}) {
+  Widget _buildTripCard(
+    BuildContext context,
+    TripModel trip,
+    AppLocalizations l10n, {
+    required bool isActive,
+  }) {
     final bool isProcessing = _processingIds.contains(trip.id);
 
     final Color statusColor;
@@ -182,19 +187,19 @@ class _OperationsTabState extends State<OperationsTab> {
     switch (trip.status) {
       case TripStatus.completed:
         statusColor = Colors.blue;
-        statusText = '✅ مكتملة';
+        statusText = l10n.statusCompleted;
         break;
       case TripStatus.cancelled:
         statusColor = Colors.red;
-        statusText = '❌ ملغية';
+        statusText = l10n.statusCancelled;
         break;
       case TripStatus.active:
         statusColor = Colors.green;
-        statusText = '🚀 نشطة';
+        statusText = l10n.statusActive;
         break;
       default:
         statusColor = Colors.grey;
-        statusText = '⏳ قيد الانتظار';
+        statusText = l10n.statusPending;
     }
 
     final passengerDisplayId = trip.passengerId.length >= 8
@@ -249,14 +254,14 @@ class _OperationsTabState extends State<OperationsTab> {
                 const Icon(Icons.person_outline, size: 14, color: Colors.grey),
                 const SizedBox(width: 4),
                 Text(
-                  'الراكب: $passengerDisplayId...',
+                  '${l10n.passengerLabel}: $passengerDisplayId...',
                   style: const TextStyle(fontSize: 13, color: Colors.grey),
                 ),
                 const SizedBox(width: 16),
                 const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
                 const SizedBox(width: 4),
                 Text(
-                  _formatDate(trip.createdAt),
+                  _formatDate(trip.createdAt, l10n),
                   style: const TextStyle(fontSize: 13, color: Colors.grey),
                 ),
               ],
@@ -281,7 +286,9 @@ class _OperationsTabState extends State<OperationsTab> {
                               ),
                             )
                           : const Icon(Icons.check, size: 18),
-                      label: Text(isProcessing ? 'جاري...' : 'إنهاء الرحلة'),
+                      label: Text(
+                        isProcessing ? l10n.processing : l10n.endTrip,
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
@@ -308,7 +315,9 @@ class _OperationsTabState extends State<OperationsTab> {
                               ),
                             )
                           : const Icon(Icons.close, size: 18),
-                      label: Text(isProcessing ? 'جاري...' : 'إلغاء'),
+                      label: Text(
+                        isProcessing ? l10n.processing : l10n.cancel,
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
@@ -331,6 +340,7 @@ class _OperationsTabState extends State<OperationsTab> {
     if (_processingIds.contains(tripId)) return;
 
     setState(() => _processingIds.add(tripId));
+    final l10n = AppLocalizations.of(context);
 
     try {
       await _tripService.updateTripStatus(tripId, newStatus);
@@ -339,8 +349,8 @@ class _OperationsTabState extends State<OperationsTab> {
           SnackBar(
             content: Text(
               newStatus == TripStatus.completed
-                  ? '✅ تم إنهاء الرحلة بنجاح'
-                  : '🗑️ تم إلغاء الرحلة',
+                  ? l10n.tripEnded
+                  : l10n.tripCancelled,
             ),
             backgroundColor: newStatus == TripStatus.completed
                 ? Colors.green
@@ -351,8 +361,8 @@ class _OperationsTabState extends State<OperationsTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ فشل تحديث حالة الرحلة، يرجى المحاولة لاحقاً.'),
+          SnackBar(
+            content: Text(l10n.tripStatusUpdateFailed),
             backgroundColor: Colors.red,
           ),
         );
@@ -364,18 +374,18 @@ class _OperationsTabState extends State<OperationsTab> {
     }
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(DateTime date, AppLocalizations l10n) {
     final now = DateTime.now();
     final diff = now.difference(date);
 
     if (diff.inDays > 0) {
-      return 'قبل ${diff.inDays} يوم${diff.inDays > 1 ? 'اً' : ''}';
+      return l10n.daysAgo(diff.inDays);
     } else if (diff.inHours > 0) {
-      return 'قبل ${diff.inHours} ساعة${diff.inHours > 1 ? 'اً' : ''}';
+      return l10n.hoursAgo(diff.inHours);
     } else if (diff.inMinutes > 0) {
-      return 'قبل ${diff.inMinutes} دقيقة${diff.inMinutes > 1 ? 'اً' : ''}';
+      return l10n.minutesAgo(diff.inMinutes);
     } else {
-      return 'الآن';
+      return l10n.now;
     }
   }
 }
