@@ -22,8 +22,15 @@ class SearchBarWidget extends StatelessWidget {
         ? selectedRoute
         : (routes.isNotEmpty ? routes.first : null);
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? AppTheme.darkCard : Colors.white;
+    final textColor = Theme.of(context).colorScheme.onSurface;
+    final hintColor = textColor.withValues(alpha: 0.5);
+    final dividerColor = isDark ? Colors.grey.shade700 : Colors.grey.shade300;
+
     return Card(
       elevation: 6,
+      color: surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
       ),
@@ -42,14 +49,15 @@ class SearchBarWidget extends StatelessWidget {
             const SizedBox(width: 4),
             Expanded(
               child: TextField(
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: 'ابحث عن وجهة أو خط...',
+                  hintStyle: TextStyle(color: hintColor, fontSize: 14),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
-                  color: AppTheme.textColor,
+                  color: textColor,
                 ),
                 onSubmitted: onSearchSubmitted,
               ),
@@ -57,18 +65,19 @@ class SearchBarWidget extends StatelessWidget {
             Container(
               width: 1,
               height: 30,
-              color: Colors.grey.shade300,
+              color: dividerColor,
             ),
             DropdownButton<String>(
               value: effectiveValue,
               underline: const SizedBox(),
+              dropdownColor: surface,
               icon: const Icon(
                 Icons.arrow_drop_down,
                 color: AppTheme.primaryColor,
               ),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
-                color: AppTheme.textColor,
+                color: textColor,
                 fontWeight: FontWeight.w500,
               ),
               padding: const EdgeInsets.symmetric(horizontal: 8.0),
