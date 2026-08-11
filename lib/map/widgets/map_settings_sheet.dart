@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import '../../core/theme/app_theme.dart';
+import '../../l10n/app_localizations.dart';
 
 void showMapSettingsSheet({
   required BuildContext context,
@@ -14,7 +15,6 @@ void showMapSettingsSheet({
   required ValueChanged<bool> onTogglePoiLabels,
   required ValueChanged<bool> onToggleRoadLabels,
 }) {
-  // نسخ محلية تتحدث فوراً داخل الورقة (مثل خريطة الأدمن)
   String localStyle = currentStyle;
   bool localPlace = showPlaceLabels;
   bool localPoi = showPoiLabels;
@@ -27,6 +27,8 @@ void showMapSettingsSheet({
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (BuildContext context) {
+      final l10n = AppLocalizations.of(context);
+
       return StatefulBuilder(
         builder: (BuildContext context, StateSetter setSheetState) {
           return Padding(
@@ -43,9 +45,12 @@ void showMapSettingsSheet({
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      '⚙️ إعدادات طبقات الخريطة',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    Text(
+                      l10n.mapLayersSettings,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close),
@@ -55,15 +60,17 @@ void showMapSettingsSheet({
                 ),
                 const Divider(),
                 const SizedBox(height: 12),
-                const Text('اختر ستايل المظهر:',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  l10n.chooseMapStyle,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
                     _buildStyleOption(
-                      title: 'شوارع',
+                      title: l10n.mapStyleStreets,
                       icon: Icons.map,
                       styleUri: MapboxStyles.MAPBOX_STREETS,
                       currentStyle: localStyle,
@@ -74,7 +81,7 @@ void showMapSettingsSheet({
                       },
                     ),
                     _buildStyleOption(
-                      title: 'قمر صناعي',
+                      title: l10n.mapStyleSatellite,
                       icon: Icons.satellite_alt,
                       styleUri: MapboxStyles.SATELLITE_STREETS,
                       currentStyle: localStyle,
@@ -85,7 +92,7 @@ void showMapSettingsSheet({
                       },
                     ),
                     _buildStyleOption(
-                      title: 'طبيعة',
+                      title: l10n.mapStyleOutdoors,
                       icon: Icons.landscape,
                       styleUri: MapboxStyles.OUTDOORS,
                       currentStyle: localStyle,
@@ -98,15 +105,17 @@ void showMapSettingsSheet({
                   ],
                 ),
                 const SizedBox(height: 24),
-                const Text('تخصيص الأسماء والمعالم:',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
                 Text(
-                  'عند الإيقاف تختفي التسميات من الخريطة فوراً',
+                  l10n.customizeLabels,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  l10n.labelsHideHint,
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('📍 المدن والأماكن الكبرى'),
+                  title: Text(l10n.placeLabels),
                   value: localPlace,
                   activeThumbColor: AppTheme.primaryColor,
                   onChanged: (val) {
@@ -118,8 +127,8 @@ void showMapSettingsSheet({
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('🏛️ معالم الجذب (POI)'),
-                  subtitle: const Text('مطاعم، مستشفيات، مدارس...'),
+                  title: Text(l10n.poiLabels),
+                  subtitle: Text(l10n.poiLabelsSubtitle),
                   value: localPoi,
                   activeThumbColor: AppTheme.primaryColor,
                   onChanged: (val) {
@@ -131,7 +140,7 @@ void showMapSettingsSheet({
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('🛣️ أسماء الشوارع'),
+                  title: Text(l10n.roadLabels),
                   value: localRoad,
                   activeThumbColor: AppTheme.primaryColor,
                   onChanged: (val) {
