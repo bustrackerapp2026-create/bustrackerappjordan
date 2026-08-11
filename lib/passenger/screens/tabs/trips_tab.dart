@@ -5,6 +5,7 @@ import '../../../services/trip_service.dart';
 import '../../../models/trip_model.dart';
 import '../../../models/trip_status.dart';
 import '../../../features/auth/providers/auth_provider.dart';
+import '../../../l10n/app_localizations.dart';
 
 class TripsTab extends StatefulWidget {
   const TripsTab({super.key});
@@ -35,21 +36,21 @@ class _TripsTabState extends State<TripsTab> {
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
     final userId = authProvider.userId;
+    final l10n = AppLocalizations.of(context);
 
-    // ✅ حماية إضافية: تجهيز الـ Stream إذا لم يكن قد تم تجهيزه في initState
     if (_tripsStream == null && userId != null) {
       _tripsStream = _tripService.getPassengerTrips(userId);
     }
 
     if (userId == null) {
-      return const Center(child: Text('يرجى تسجيل الدخول لعرض رحلاتك'));
+      return Center(child: Text(l10n.pleaseLoginTrips));
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('🚌 رحلاتي'),
-        backgroundColor: Colors.white,
-        foregroundColor: AppTheme.textColor,
+        title: Text('🚌 ${l10n.myTrips}'),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
         elevation: 1,
         actions: [
           IconButton(
@@ -59,7 +60,7 @@ class _TripsTabState extends State<TripsTab> {
                 _tripsStream = _tripService.getPassengerTrips(userId);
               });
             },
-            tooltip: 'تحديث',
+            tooltip: l10n.refresh,
           ),
         ],
       ),
@@ -77,9 +78,9 @@ class _TripsTabState extends State<TripsTab> {
                 children: [
                   const Icon(Icons.error_outline, size: 60, color: Colors.red),
                   const SizedBox(height: 12),
-                  const Text(
-                    'حدث خطأ أثناء تحميل الرحلات.',
-                    style: TextStyle(fontSize: 16),
+                  Text(
+                    l10n.loadTripsError,
+                    style: const TextStyle(fontSize: 16),
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
@@ -88,7 +89,7 @@ class _TripsTabState extends State<TripsTab> {
                         _tripsStream = _tripService.getPassengerTrips(userId);
                       });
                     },
-                    child: const Text('إعادة المحاولة'),
+                    child: Text(l10n.retry),
                   ),
                 ],
               ),
@@ -98,20 +99,22 @@ class _TripsTabState extends State<TripsTab> {
           final trips = snapshot.data ?? [];
 
           if (trips.isEmpty) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.history, size: 60, color: Colors.grey),
-                  SizedBox(height: 12),
+                  const Icon(Icons.history, size: 60, color: Colors.grey),
+                  const SizedBox(height: 12),
                   Text(
-                    'لا توجد رحلات سابقة',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    l10n.noPastTrips,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
-                    'سوف تظهر رحلاتك هنا بعد حجز أول رحلة.',
-                    style: TextStyle(color: Colors.grey),
+                    l10n.noPastTripsPassengerHint,
+                    style: const TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
@@ -123,7 +126,7 @@ class _TripsTabState extends State<TripsTab> {
             itemCount: trips.length,
             itemBuilder: (context, index) {
               final trip = trips[index];
-              return _buildTripCard(context, trip);
+              return _buildTripCard(context, trip, l10n);
             },
           );
         },
@@ -131,26 +134,30 @@ class _TripsTabState extends State<TripsTab> {
     );
   }
 
-  Widget _buildTripCard(BuildContext context, TripModel trip) {
+  Widget _buildTripCard(
+    BuildContext context,
+    TripModel trip,
+    AppLocalizations l10n,
+  ) {
     final Color statusColor;
     final String statusText;
 
     switch (trip.status) {
       case TripStatus.pending:
         statusColor = Colors.orange;
-        statusText = '⏳ قيد الانتظار';
+        statusText = l10n.statusPending;
         break;
       case TripStatus.active:
         statusColor = Colors.green;
-        statusText = '🚀 قيد التنفيذ';
+        statusText = l10n.statusInProgress;
         break;
       case TripStatus.completed:
         statusColor = Colors.blue;
-        statusText = '✅ مكتملة';
+        statusText = l10n.statusCompleted;
         break;
       case TripStatus.cancelled:
         statusColor = Colors.red;
-        statusText = '❌ ملغية';
+        statusText = l10n.statusCancelled;
         break;
     }
 
@@ -202,7 +209,7 @@ class _TripsTabState extends State<TripsTab> {
                 const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
                 const SizedBox(width: 4),
                 Text(
-                  _formatDate(trip.createdAt),
+                  _formatDate(trip.createdAt, l10n),
                   style: const TextStyle(fontSize: 13, color: Colors.grey),
                 ),
                 const SizedBox(width: 16),
@@ -210,7 +217,7 @@ class _TripsTabState extends State<TripsTab> {
                   const Icon(Icons.attach_money, size: 14, color: Colors.grey),
                   const SizedBox(width: 4),
                   Text(
-                    '${trip.fare!.toStringAsFixed(2)} دينار',
+                    '${trip.fare!.toStringAsFixed(2)} ${l10n.dinar}',
                     style: const TextStyle(fontSize: 13, color: Colors.grey),
                   ),
                 ],
@@ -229,18 +236,18 @@ class _TripsTabState extends State<TripsTab> {
     );
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(DateTime date, AppLocalizations l10n) {
     final now = DateTime.now();
     final diff = now.difference(date);
 
     if (diff.inDays > 0) {
-      return 'قبل ${diff.inDays} يوم${diff.inDays > 1 ? 'اً' : ''}';
+      return l10n.daysAgo(diff.inDays);
     } else if (diff.inHours > 0) {
-      return 'قبل ${diff.inHours} ساعة${diff.inHours > 1 ? 'اً' : ''}';
+      return l10n.hoursAgo(diff.inHours);
     } else if (diff.inMinutes > 0) {
-      return 'قبل ${diff.inMinutes} دقيقة${diff.inMinutes > 1 ? 'اً' : ''}';
+      return l10n.minutesAgo(diff.inMinutes);
     } else {
-      return 'الآن';
+      return l10n.now;
     }
   }
 }
