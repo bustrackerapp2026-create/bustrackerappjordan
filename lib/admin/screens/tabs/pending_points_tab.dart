@@ -4,9 +4,9 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/pickup_point_model.dart';
 import '../../../services/pickup_point_service.dart';
 import '../../../services/pickup_point_service_exception.dart';
+import '../../../l10n/app_localizations.dart';
 
 class PendingPointsTab extends StatefulWidget {
-  /// يُستدعى لفتح خريطة الأدمن عند موقع النقطة
   final void Function({
     required double latitude,
     required double longitude,
@@ -37,18 +37,18 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
     );
   }
 
-  String _userTypeLabel(String type) {
+  String _userTypeLabel(String type, AppLocalizations l10n) {
     switch (type) {
       case 'driver':
-        return 'سائق';
+        return l10n.driver;
       case 'passenger':
-        return 'راكب';
+        return l10n.passenger;
       case 'admin':
-        return 'أدمن';
+        return l10n.admin;
       case 'service':
-        return 'سرفيس';
+        return l10n.isArabic ? 'سرفيس' : 'Service';
       case 'bus_company':
-        return 'شركة باصات';
+        return l10n.isArabic ? 'شركة باصات' : 'Bus company';
       default:
         return type;
     }
@@ -56,7 +56,7 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
 
   Future<Map<String, String>> _loadAdderInfo(String userId) async {
     if (userId.isEmpty) {
-      return {'name': 'غير معروف', 'email': '', 'phone': ''};
+      return {'name': '—', 'email': '', 'phone': ''};
     }
     try {
       final doc = await FirebaseFirestore.instance
@@ -64,23 +64,24 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
           .doc(userId)
           .get();
       if (!doc.exists || doc.data() == null) {
-        return {'name': 'مستخدم محذوف', 'email': '', 'phone': ''};
+        return {'name': '—', 'email': '', 'phone': ''};
       }
       final data = doc.data()!;
       return {
         'name': (data['fullName'] as String?)?.trim().isNotEmpty == true
             ? data['fullName'] as String
-            : 'بدون اسم',
+            : '—',
         'email': (data['email'] as String?) ?? '',
         'phone': (data['phoneNumber'] as String?) ?? '',
       };
     } catch (_) {
-      return {'name': 'تعذر الجلب', 'email': '', 'phone': ''};
+      return {'name': '—', 'email': '', 'phone': ''};
     }
   }
 
   Future<void> _showPointDetails(PickupPointModel point) async {
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
 
     showModalBottomSheet(
       context: context,
@@ -122,29 +123,19 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      point.pointType == 'passenger'
-                          ? '🚶 تجمع ركاب · قيد المراجعة'
-                          : '🚌 تجمع باصات · قيد المراجعة',
+                      l10n.underReview,
                       style: TextStyle(
                         color: Colors.orange.shade800,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'من أضاف النقطة',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
                     if (loading)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12),
                         child: Center(child: CircularProgressIndicator()),
                       )
-                    else ...[
+                    else
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: CircleAvatar(
@@ -157,10 +148,10 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                             color: AppTheme.primaryColor,
                           ),
                         ),
-                        title: Text(adder?['name'] ?? 'غير معروف'),
+                        title: Text(adder?['name'] ?? '—'),
                         subtitle: Text(
                           [
-                            _userTypeLabel(point.addedByUserType),
+                            _userTypeLabel(point.addedByUserType, l10n),
                             if ((adder?['phone'] ?? '').isNotEmpty)
                               adder!['phone'],
                             if ((adder?['email'] ?? '').isNotEmpty)
@@ -168,30 +159,6 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                           ].join(' · '),
                         ),
                       ),
-                    ],
-                    const Divider(height: 24),
-                    Row(
-                      children: [
-                        const Icon(Icons.thumb_up_alt_outlined, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          'أكد صحتها ${point.confirmationCount} شخص',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'الإحداثيات: ${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)}',
-                      style: const TextStyle(color: Colors.grey, fontSize: 13),
-                    ),
-                    if (point.suggestedEdit.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'اقتراح تعديل: ${point.suggestedEdit}',
-                        style: const TextStyle(color: Colors.orange),
-                      ),
-                    ],
                     const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
@@ -206,7 +173,7 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                           );
                         },
                         icon: const Icon(Icons.map_outlined),
-                        label: const Text('عرض الموقع على الخريطة'),
+                        label: Text(l10n.showOnMap),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryColor,
                           foregroundColor: Colors.white,
@@ -230,13 +197,13 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
   Future<void> _approvePoint(String id, String name) async {
     if (_processingIds.contains(id)) return;
     setState(() => _processingIds.add(id));
+    final l10n = AppLocalizations.of(context);
 
     try {
       await _service.approvePickupPoint(id);
-      _showMessage('✅ تم الموافقة على النقطة "$name" بنجاح!');
+      _showMessage(l10n.pointApproved(name));
     } catch (e) {
-      debugPrint('❌ خطأ في الموافقة على النقطة: $e');
-      _showMessage(_getUserFriendlyErrorMessage(e), isError: true);
+      _showMessage(_getUserFriendlyErrorMessage(e, l10n), isError: true);
     } finally {
       if (mounted) {
         setState(() => _processingIds.remove(id));
@@ -247,13 +214,13 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
   Future<void> _rejectPoint(String id, String name) async {
     if (_processingIds.contains(id)) return;
     setState(() => _processingIds.add(id));
+    final l10n = AppLocalizations.of(context);
 
     try {
       await _service.rejectPickupPoint(id);
-      _showMessage('🗑️ تم رفض النقطة "$name" بنجاح.');
+      _showMessage(l10n.pointRejected(name));
     } catch (e) {
-      debugPrint('❌ خطأ في رفض النقطة: $e');
-      _showMessage(_getUserFriendlyErrorMessage(e), isError: true);
+      _showMessage(_getUserFriendlyErrorMessage(e, l10n), isError: true);
     } finally {
       if (mounted) {
         setState(() => _processingIds.remove(id));
@@ -264,11 +231,13 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
   Future<void> _editPoint(PickupPointModel point) async {
     if (_processingIds.contains(point.id)) return;
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
 
     final result = await showDialog<String>(
       context: context,
       builder: (dialogContext) => _EditPointNameDialog(
         initialName: point.name,
+        l10n: l10n,
       ),
     );
 
@@ -283,16 +252,15 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
         data: {
           'name': result,
           'status': 'pending',
-          'suggestedEdit': 'تم تعديلها من لوحة الإدارة',
+          'suggestedEdit': 'admin edit',
         },
       );
 
       if (!mounted) return;
-      _showMessage('✅ تم تعديل النقطة "$result"');
+      _showMessage(l10n.pointApproved(result));
     } catch (e) {
-      debugPrint('❌ فشل تعديل النقطة: $e');
       if (!mounted) return;
-      _showMessage(_getUserFriendlyErrorMessage(e), isError: true);
+      _showMessage(_getUserFriendlyErrorMessage(e, l10n), isError: true);
     } finally {
       if (mounted) {
         setState(() => _processingIds.remove(point.id));
@@ -300,31 +268,27 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
     }
   }
 
-  String _getUserFriendlyErrorMessage(Object error) {
+  String _getUserFriendlyErrorMessage(Object error, AppLocalizations l10n) {
     if (error is PickupPointServiceException) {
       return '⚠️ ${error.message}';
     }
-    final text = error.toString();
-    if (text.contains('permission') || text.contains('PERMISSION_DENIED')) {
-      return '⚠️ ليس لديك صلاحية لإجراء هذه العملية.';
-    }
-    if (text.contains('not found') || text.contains('NOT_FOUND')) {
-      return '⚠️ النقطة غير موجودة أو تم حذفها.';
-    }
-    return '❌ فشلت العملية، يرجى المحاولة لاحقاً.';
+    return l10n.isArabic
+        ? '❌ فشلت العملية، يرجى المحاولة لاحقاً.'
+        : '❌ Operation failed. Please try again later.';
   }
 
   void _showRejectDialog(String id, String name) {
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('رفض النقطة'),
-        content: Text('هل أنت متأكد من رفض النقطة "$name"؟'),
+        title: Text(l10n.rejectPoint),
+        content: Text(l10n.rejectPointConfirm(name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
+            child: Text(l10n.cancel),
           ),
           ElevatedButton(
             onPressed: () {
@@ -335,7 +299,7 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: const Text('رفض'),
+            child: Text(l10n.reject),
           ),
         ],
       ),
@@ -344,11 +308,13 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('📍 نقاط التجمع المعلقة'),
-        backgroundColor: Colors.white,
-        foregroundColor: AppTheme.textColor,
+        title: Text(l10n.pendingPointsTitle),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
         elevation: 1,
       ),
       body: StreamBuilder<List<PickupPointModel>>(
@@ -366,14 +332,13 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                   const Icon(Icons.error_outline, size: 60, color: Colors.red),
                   const SizedBox(height: 12),
                   Text(
-                    '❌ حدث خطأ أثناء تحميل البيانات: ${snapshot.error}',
+                    '${l10n.errorPrefix}: ${snapshot.error}',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 16),
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () => setState(() {}),
-                    child: const Text('إعادة المحاولة'),
+                    child: Text(l10n.retry),
                   ),
                 ],
               ),
@@ -383,21 +348,23 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
           final points = snapshot.data ?? [];
 
           if (points.isEmpty) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.check_circle_outline,
+                  const Icon(Icons.check_circle_outline,
                       size: 80, color: Colors.green),
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   Text(
-                    'لا توجد نقاط تجمع معلقة',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    l10n.noPendingPoints,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
-                    'جميع النقاط المضافة تمت الموافقة عليها أو رفضها.',
-                    style: TextStyle(color: Colors.grey),
+                    l10n.noPendingPointsHint,
+                    style: const TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
@@ -434,33 +401,12 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    point.name,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'الموقع: ${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)}',
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'اضغط لعرض من أضافها والموقع على الخريطة',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.blue.shade700,
-                                    ),
-                                  ),
-                                ],
+                              child: Text(
+                                point.name,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                             Icon(Icons.chevron_left,
@@ -468,26 +414,10 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                           ],
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            const Icon(Icons.person_outline,
-                                size: 16, color: Colors.grey),
-                            const SizedBox(width: 4),
-                            Text(
-                              'أضافها: ${_userTypeLabel(point.addedByUserType)}',
-                              style: const TextStyle(
-                                  fontSize: 13, color: Colors.grey),
-                            ),
-                            const SizedBox(width: 16),
-                            const Icon(Icons.thumb_up,
-                                size: 16, color: Colors.grey),
-                            const SizedBox(width: 4),
-                            Text(
-                              'التأكيدات: ${point.confirmationCount}',
-                              style: const TextStyle(
-                                  fontSize: 13, color: Colors.grey),
-                            ),
-                          ],
+                        Text(
+                          '${_userTypeLabel(point.addedByUserType, l10n)} · ${point.confirmationCount}',
+                          style:
+                              const TextStyle(fontSize: 13, color: Colors.grey),
                         ),
                         const Divider(height: 24),
                         Row(
@@ -508,8 +438,11 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                                         ),
                                       )
                                     : const Icon(Icons.check),
-                                label:
-                                    Text(isProcessing ? 'جاري...' : 'موافقة'),
+                                label: Text(
+                                  isProcessing
+                                      ? l10n.processing
+                                      : l10n.approve,
+                                ),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.primaryColor,
                                   foregroundColor: Colors.white,
@@ -536,7 +469,11 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                                         ),
                                       )
                                     : const Icon(Icons.close),
-                                label: Text(isProcessing ? 'جاري...' : 'رفض'),
+                                label: Text(
+                                  isProcessing
+                                      ? l10n.processing
+                                      : l10n.reject,
+                                ),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.red,
                                   foregroundColor: Colors.white,
@@ -556,8 +493,7 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
                                 ? null
                                 : () => _editPoint(point),
                             icon: const Icon(Icons.edit_note_outlined),
-                            label:
-                                const Text('تعديل وإرسالها للمراجعة مرة أخرى'),
+                            label: Text(l10n.editProfile),
                           ),
                         ),
                       ],
@@ -575,8 +511,12 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
 
 class _EditPointNameDialog extends StatefulWidget {
   final String initialName;
+  final AppLocalizations l10n;
 
-  const _EditPointNameDialog({required this.initialName});
+  const _EditPointNameDialog({
+    required this.initialName,
+    required this.l10n,
+  });
 
   @override
   State<_EditPointNameDialog> createState() => _EditPointNameDialogState();
@@ -599,14 +539,14 @@ class _EditPointNameDialogState extends State<_EditPointNameDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = widget.l10n;
     return AlertDialog(
-      title: const Text('تعديل النقطة'),
+      title: Text(l10n.editProfile),
       content: TextField(
         controller: _controller,
-        decoration: const InputDecoration(
-          labelText: 'اسم النقطة',
+        decoration: InputDecoration(
+          labelText: l10n.isArabic ? 'اسم النقطة' : 'Point name',
         ),
-        textDirection: TextDirection.rtl,
         autofocus: true,
         onSubmitted: (value) {
           final text = value.trim();
@@ -618,7 +558,7 @@ class _EditPointNameDialogState extends State<_EditPointNameDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('إلغاء'),
+          child: Text(l10n.cancel),
         ),
         ElevatedButton(
           onPressed: () {
@@ -626,7 +566,7 @@ class _EditPointNameDialogState extends State<_EditPointNameDialog> {
             if (text.isEmpty) return;
             Navigator.pop(context, text);
           },
-          child: const Text('حفظ'),
+          child: Text(l10n.save),
         ),
       ],
     );
