@@ -29,7 +29,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     await initAnnotationManager();
     await initPolylineManager();
     await applyGoogleLikeCameraBehavior();
-    applyMapConstraints();
+    await applyMapConstraints();
     _setDefaultCamera();
     await Future<void>.delayed(const Duration(milliseconds: 400));
     await applyLabelLayersFilter();
@@ -37,26 +37,28 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     MapUtils.log('✅ تم إنشاء الخريطة بنجاح');
   }
 
-  /// سلوك قريب من خرائط جوجل: خريطة مسطحة بدون ميلان، شمال ثابت افتراضياً
+  /// سلوك مستقر للتكبير/التحريك بدون رجّة
   Future<void> applyGoogleLikeCameraBehavior() async {
     if (mapboxMap == null) return;
     try {
       await mapboxMap!.gestures.updateSettings(
         GesturesSettings(
-          // منع الميلان بإصبعين الذي يسبب «التفاف» الشاشة
           pitchEnabled: false,
-          // السماح بالتدوير اختياريًا بإصبعين (مثل جوجل) — يمكن إيقافه
-          rotateEnabled: true,
+          // التدوير أثناء الـ pinch يسبب تعارضًا ورجّة على بعض الأجهزة
+          rotateEnabled: false,
           scrollEnabled: true,
           pinchToZoomEnabled: true,
           doubleTapToZoomInEnabled: true,
           doubleTouchToZoomOutEnabled: true,
-          quickZoomEnabled: true,
-          simultaneousRotateAndPinchToZoomEnabled: true,
+          // quickZoom (سحب بإصبع واحد بعد ضغط مزدوج) غالبًا يسبب قفزات سريعة
+          quickZoomEnabled: false,
+          simultaneousRotateAndPinchToZoomEnabled: false,
+          pinchPanEnabled: true,
+          focalPoint: null,
         ),
       );
 
-      // تثبيت الكاميرا مسطحة ومتجهة للشمال
+      // تثبيت الميلان والاتجاه مرة واحدة عند التهيئة فقط (بدون مقاطعة الإيماءات لاحقًا)
       await mapboxMap!.setCamera(
         CameraOptions(
           pitch: 0.0,
@@ -68,17 +70,17 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  /// انتقال سلس لموقع معيّن بأسلوب جوجل (مسطح + شمال للأعلى)
   Future<void> flyToFlat({
     required double latitude,
     required double longitude,
     double zoom = 15.5,
   }) async {
     if (mapboxMap == null) return;
+    final clampedZoom = zoom.clamp(MapConstants.minZoom, MapConstants.maxZoom);
     await mapboxMap!.flyTo(
       CameraOptions(
         center: Point(coordinates: Position(longitude, latitude)),
-        zoom: zoom,
+        zoom: clampedZoom.toDouble(),
         pitch: 0.0,
         bearing: 0.0,
       ),
@@ -86,7 +88,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     );
   }
 
-  /// إعادة توجيه الشمال للأعلى (مثل بوصلة جوجل)
   Future<void> resetNorth() async {
     if (mapboxMap == null) return;
     final state = await mapboxMap!.getCameraState();
@@ -114,25 +115,35 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     );
   }
 
-  void applyMapConstraints() {
+  /// حدود مرنة + min/max zoom لتقليل صراع الحدود مع الـ pinch
+  Future<void> applyMapConstraints() async {
     if (mapboxMap == null) return;
     try {
-      mapboxMap?.setBounds(
+      await mapboxMap!.setBounds(
         CameraBoundsOptions(
           bounds: CoordinateBounds(
             southwest: Point(
-              coordinates: Position(MapConstants.minLng, MapConstants.minLat),
+              coordinates: Position(
+                MapConstants.minLng,
+                MapConstants.minLat,
+              ),
             ),
             northeast: Point(
-              coordinates: Position(MapConstants.maxLng, MapConstants.maxLat),
+              coordinates: Position(
+                MapConstants.maxLng,
+                MapConstants.maxLat,
+              ),
             ),
-            infiniteBounds: false,
+            // true يقلل «الشدّ» القاسي الذي يسبب رجّة عند حافة الحدود
+            infiniteBounds: true,
           ),
-          maxPitch: 0.0, // منع أي ميلان برمجيًا أيضًا
+          minZoom: MapConstants.minZoom,
+          maxZoom: MapConstants.maxZoom,
+          maxPitch: 0.0,
           minPitch: 0.0,
         ),
       );
-      MapUtils.log('✅ تم تحديد حدود الكاميرا (الأردن) بدون ميلان');
+      MapUtils.log('✅ تم ضبط حدود/تكبير الكاميرا بشكل مستقر');
     } catch (e) {
       MapUtils.log('⚠️ خطأ في تطبيق الحدود: $e');
     }
@@ -200,7 +211,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
       await initPolylineManager();
       await applyGoogleLikeCameraBehavior();
       await applyLabelLayersFilter();
-      applyMapConstraints();
+      await applyMapConstraints();
       onStyleChanged();
       MapUtils.log('✅ تم تغيير ستايل الخريطة إلى: $styleUri');
     } catch (e) {
