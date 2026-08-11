@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../services/trip_service.dart';
 import '../../../models/trip_model.dart';
 import '../../../models/trip_status.dart';
