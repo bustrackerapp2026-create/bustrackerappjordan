@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -8,6 +9,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
+import 'core/locale/locale_provider.dart';
 import 'core/constants/user_roles.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
@@ -16,6 +18,7 @@ import 'driver/screens/driver_dashboard.dart';
 import 'passenger/screens/passenger_dashboard.dart';
 import 'admin/screens/admin_dashboard.dart';
 import 'driver/providers/driver_provider.dart';
+import 'l10n/app_localizations.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,24 +66,37 @@ class BusTrackerApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => LocaleProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => DriverProvider()),
       ],
-      child: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, _) {
+      child: Consumer2<ThemeProvider, LocaleProvider>(
+        builder: (context, themeProvider, localeProvider, _) {
           return MaterialApp(
             title: 'Bus Tracker Jordan',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: themeProvider.themeMode,
-            // يقلل إعادة بناء غير ضرورية عند تغيير لوحة المفاتيح/الحواف
+            locale: localeProvider.locale,
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
             builder: (context, child) {
+              final isRtl = localeProvider.isArabic;
               return MediaQuery(
                 data: MediaQuery.of(context).copyWith(
                   textScaler: TextScaler.noScaling,
                 ),
-                child: child ?? const SizedBox.shrink(),
+                child: Directionality(
+                  textDirection:
+                      isRtl ? TextDirection.rtl : TextDirection.ltr,
+                  child: child ?? const SizedBox.shrink(),
+                ),
               );
             },
             home: const AuthWrapper(),
@@ -102,7 +118,6 @@ class AuthWrapper extends StatelessWidget {
       return const LoginScreen();
     }
 
-    // نختار فقط الحقول المؤثرة على التوجيه — لا نُعيد بناء عند أي notify عابر
     final gate = context.select<AuthProvider, ({String? type, bool? verified})>(
       (a) {
         final u = a.userData;
@@ -135,6 +150,7 @@ class _AuthLoadingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -144,7 +160,7 @@ class _AuthLoadingScreen extends StatelessWidget {
               const CircularProgressIndicator(),
               const SizedBox(height: 20),
               Text(
-                'جاري تحميل بيانات الحساب...',
+                l10n.loadingAccount,
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface.withValues(
                         alpha: 0.6,
@@ -158,7 +174,7 @@ class _AuthLoadingScreen extends StatelessWidget {
                   backgroundColor: Theme.of(context).colorScheme.error,
                   foregroundColor: Colors.white,
                 ),
-                child: const Text('تسجيل الخروج'),
+                child: Text(l10n.logout),
               ),
             ],
           ),
