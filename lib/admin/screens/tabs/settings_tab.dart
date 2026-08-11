@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/theme_provider.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/pickup_point_service.dart';
 import '../../../services/route_seed_service.dart';
@@ -13,7 +14,6 @@ class SettingsTab extends StatefulWidget {
 }
 
 class _SettingsTabState extends State<SettingsTab> {
-  bool _isDarkMode = false;
   String _selectedLanguage = 'العربية';
   bool _isMigrating = false;
   bool _isSeedingRoutes = false;
@@ -237,11 +237,14 @@ class _SettingsTabState extends State<SettingsTab> {
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
     final user = authProvider.userData;
+    final themeProvider = context.watch<ThemeProvider>();
+    final isDark = themeProvider.isDarkMode;
+    final bgColor = Theme.of(context).scaffoldBackgroundColor;
 
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: Colors.grey.shade50,
+        backgroundColor: bgColor,
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -286,9 +289,12 @@ class _SettingsTabState extends State<SettingsTab> {
                               const SizedBox(height: 4),
                               Text(
                                 user?.email ?? 'admin@example.com',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 14,
-                                  color: Colors.grey,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.6),
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -298,7 +304,9 @@ class _SettingsTabState extends State<SettingsTab> {
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.blue.shade100,
+                                  color: isDark
+                                      ? Colors.blue.shade900.withValues(alpha: 0.4)
+                                      : Colors.blue.shade100,
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
@@ -306,7 +314,9 @@ class _SettingsTabState extends State<SettingsTab> {
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.blue.shade800,
+                                    color: isDark
+                                        ? Colors.blue.shade200
+                                        : Colors.blue.shade800,
                                   ),
                                 ),
                               ),
@@ -328,21 +338,21 @@ class _SettingsTabState extends State<SettingsTab> {
               child: Column(
                 children: [
                   SwitchListTile(
+                    secondary: Icon(
+                      isDark ? Icons.dark_mode : Icons.light_mode,
+                      color: AppTheme.primaryColor,
+                    ),
                     title: const Text(
                       'الوضع الليلي',
                       style: TextStyle(fontWeight: FontWeight.w500),
                     ),
-                    subtitle: const Text('تفعيل المظهر الداكن'),
-                    value: _isDarkMode,
+                    subtitle: Text(
+                      isDark ? 'المظهر الداكن مفعّل' : 'تفعيل المظهر الداكن',
+                    ),
+                    value: isDark,
                     activeThumbColor: AppTheme.primaryColor,
                     onChanged: (value) {
-                      setState(() => _isDarkMode = value);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('🔜 سيتم تفعيل الوضع الليلي قريباً'),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
+                      context.read<ThemeProvider>().setDarkMode(value);
                     },
                   ),
                   const Divider(height: 1),
@@ -460,7 +470,10 @@ class _SettingsTabState extends State<SettingsTab> {
                 '© 2026 Bus Tracker Jordan - جميع الحقوق محفوظة',
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.grey.shade500,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.45),
                 ),
               ),
             ),
