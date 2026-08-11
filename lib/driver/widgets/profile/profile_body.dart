@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/theme_provider.dart';
 import '../../../models/user_model.dart';
 import 'profile_ui.dart';
 
@@ -53,11 +55,12 @@ class ProfileBody extends StatelessWidget {
     final verified = user?.isVerified == true;
     final photoUrl = user?.photoUrl;
     final userType = user?.displayUserType ?? 'سائق';
+    final bgColor = Theme.of(context).scaffoldBackgroundColor;
 
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF5F7FA),
+        backgroundColor: bgColor,
         body: Stack(
           children: [
             ListView(
@@ -128,7 +131,6 @@ class ProfileBody extends StatelessWidget {
                     language: language,
                     onNotificationsChanged: onNotificationsChanged,
                     onLanguageTap: onLanguageTap,
-                    onSnack: onSnack,
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -186,7 +188,10 @@ class ProfileBody extends StatelessWidget {
                     '© 2026 Bus Tracker Jordan',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey.shade500,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.45),
                     ),
                   ),
                 ),
@@ -266,7 +271,10 @@ class _HeaderCard extends StatelessWidget {
                     email,
                     style: TextStyle(
                       fontSize: 13,
-                      color: Colors.grey.shade600,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.6),
                     ),
                   ),
                 ],
@@ -299,7 +307,6 @@ class _SettingsCard extends StatelessWidget {
   final String language;
   final ValueChanged<bool> onNotificationsChanged;
   final VoidCallback onLanguageTap;
-  final void Function(String message) onSnack;
 
   const _SettingsCard({
     required this.notificationsEnabled,
@@ -307,11 +314,12 @@ class _SettingsCard extends StatelessWidget {
     required this.language,
     required this.onNotificationsChanged,
     required this.onLanguageTap,
-    required this.onSnack,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.watch<ThemeProvider>().isDarkMode;
+
     return ProfileUi.sectionCard(
       padding: EdgeInsets.zero,
       child: Column(
@@ -339,18 +347,22 @@ class _SettingsCard extends StatelessWidget {
           ),
           ProfileUi.divider(),
           SwitchListTile(
-            secondary: const Icon(
-              Icons.dark_mode_outlined,
+            secondary: Icon(
+              isDark ? Icons.dark_mode : Icons.light_mode_outlined,
               color: AppTheme.primaryColor,
             ),
             title: const Text(
               'الوضع الليلي',
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
-            subtitle: const Text('قريباً'),
-            value: false,
+            subtitle: Text(
+              isDark ? 'المظهر الداكن مفعّل' : 'تفعيل المظهر الداكن',
+            ),
+            value: isDark,
             activeThumbColor: AppTheme.primaryColor,
-            onChanged: (_) => onSnack('🔜 الوضع الليلي قريباً'),
+            onChanged: (value) {
+              context.read<ThemeProvider>().setDarkMode(value);
+            },
           ),
         ],
       ),
