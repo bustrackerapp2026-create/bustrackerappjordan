@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../l10n/app_localizations.dart';
 
 class DriverCustomBottomNavBar extends StatelessWidget {
   final int currentIndex;
@@ -13,6 +14,8 @@ class DriverCustomBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     return BottomNavigationBar(
       currentIndex: currentIndex,
       onTap: onTap,
@@ -21,26 +24,26 @@ class DriverCustomBottomNavBar extends StatelessWidget {
       selectedFontSize: 13,
       unselectedFontSize: 12,
       type: BottomNavigationBarType.fixed,
-      items: const [
+      items: [
         BottomNavigationBarItem(
-          icon: Icon(Icons.map_outlined),
-          activeIcon: Icon(Icons.map),
-          label: 'الخريطة',
+          icon: const Icon(Icons.map_outlined),
+          activeIcon: const Icon(Icons.map),
+          label: l10n.navMap,
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.dashboard_outlined),
-          activeIcon: Icon(Icons.dashboard),
-          label: 'العمليات',
+          icon: const Icon(Icons.dashboard_outlined),
+          activeIcon: const Icon(Icons.dashboard),
+          label: l10n.navOperations,
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.list_alt_outlined),
-          activeIcon: Icon(Icons.list_alt),
-          label: 'الطلبات',
+          icon: const Icon(Icons.list_alt_outlined),
+          activeIcon: const Icon(Icons.list_alt),
+          label: l10n.navRequests,
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.person_outlined),
-          activeIcon: Icon(Icons.person),
-          label: 'حسابي',
+          icon: const Icon(Icons.person_outlined),
+          activeIcon: const Icon(Icons.person),
+          label: l10n.navMyAccount,
         ),
       ],
     );
