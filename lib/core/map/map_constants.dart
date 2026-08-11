@@ -1,32 +1,25 @@
 /// ثوابت الخريطة المشتركة بين جميع الخرائط
 class MapConstants {
-  // ─── حدود الأردن ──────────────────────────────────────────────────
-  /// الحد الأدنى لخط العرض (جنوب الأردن)
-  static const double minLat = 29.1;
-
-  /// الحد الأقصى لخط العرض (شمال الأردن)
-  static const double maxLat = 33.4;
-
-  /// الحد الأدنى لخط الطول (غرب الأردن)
-  static const double minLng = 34.8;
-
-  /// الحد الأقصى لخط الطول (شرق الأردن)
-  static const double maxLng = 39.2;
+  // ─── حدود الأردن (مع هامش بسيط لتقليل صراع الحدود مع التكبير) ───
+  static const double minLat = 28.8;
+  static const double maxLat = 33.6;
+  static const double minLng = 34.5;
+  static const double maxLng = 39.5;
 
   // ─── مركز الأردن (عمان) ──────────────────────────────────────────
-  /// خط عرض وسط عمان
   static const double centerLat = 31.9522;
-
-  /// خط طول وسط عمان
   static const double centerLng = 35.9106;
 
-  // ─── إعدادات الكاميرا الافتراضية ──────────────────────────────
-  /// مستوى التكبير لإظهار الأردن كاملاً
-  static const double defaultZoom = 8.5;
+  // ─── إعدادات الكاميرا ────────────────────────────────────────────
+  /// مستوى التكبير الافتراضي لإظهار الأردن
+  static const double defaultZoom = 7.8;
 
-  /// مستوى التكبير للتفاصيل (عند تحديد موقع معين)
+  /// أقل تكبير مسموح (يمنع القفز عند التصغير الزائد)
+  static const double minZoom = 6.0;
+
+  /// أعلى تكبير مسموح
+  static const double maxZoom = 18.5;
+
   static const double detailZoom = 15.0;
-
-  /// مستوى التكبير عند عرض مدينة معينة
   static const double cityZoom = 12.0;
 }
