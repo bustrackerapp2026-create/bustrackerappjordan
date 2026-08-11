@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/pickup_point_service.dart';
+import '../../../services/route_seed_service.dart';
 
 class SettingsTab extends StatefulWidget {
   const SettingsTab({super.key});
@@ -15,6 +16,7 @@ class _SettingsTabState extends State<SettingsTab> {
   bool _isDarkMode = false;
   String _selectedLanguage = 'العربية';
   bool _isMigrating = false;
+  bool _isSeedingRoutes = false;
 
   static const String _migrationDialogMessage =
       'سيتم ضبط كل النقاط في Firestore:\n'
@@ -111,6 +113,123 @@ class _SettingsTabState extends State<SettingsTab> {
       );
     } finally {
       if (mounted) setState(() => _isMigrating = false);
+    }
+  }
+
+  Future<void> _seedDemoRoutes() async {
+    if (_isSeedingRoutes) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('زرع مسارات تجريبية'),
+        content: const Text(
+          'سيتم إضافة 8 مسارات بين محافظات الأردن مع محطات وإحداثيات:\n\n'
+          '• عمان — إربد\n'
+          '• عمان — العقبة\n'
+          '• عمان — الزرقاء\n'
+          '• عمان — الكرك\n'
+          '• عمان — جرش\n'
+          '• الزرقاء — المفرق\n'
+          '• إربد — المفرق\n'
+          '• عمان — مادبا\n\n'
+          'تظهر على خريطة الأدمن كخطوط ملوّنة.\n'
+          'هل تريد المتابعة؟',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('زرع المسارات'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() => _isSeedingRoutes = true);
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      final result = await RouteSeedService().seedJordanDemoRoutes();
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('✅ $result'),
+          duration: const Duration(seconds: 5),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('❌ فشل الزرع: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSeedingRoutes = false);
+    }
+  }
+
+  Future<void> _clearDemoRoutes() async {
+    if (_isSeedingRoutes) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف المسارات التجريبية'),
+        content: const Text(
+          'سيتم حذف كل المسارات التي وُسمت كتجريبية (isDemo) مع محطاتها وإحداثياتها.\n\n'
+          'هل تريد المتابعة؟',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() => _isSeedingRoutes = true);
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      final result = await RouteSeedService().clearDemoRoutes();
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('✅ $result'),
+          duration: const Duration(seconds: 4),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('❌ فشل الحذف: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSeedingRoutes = false);
     }
   }
 
@@ -273,6 +392,44 @@ class _SettingsTabState extends State<SettingsTab> {
                     ),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: _isMigrating ? null : _runStatusMigration,
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: _isSeedingRoutes
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(
+                            Icons.route,
+                            color: AppTheme.primaryColor,
+                          ),
+                    title: const Text(
+                      'زرع مسارات تجريبية (الأردن)',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    subtitle: const Text(
+                      '8 خطوط بين المحافظات للتجربة على الخريطة',
+                    ),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: _isSeedingRoutes ? null : _seedDemoRoutes,
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.red,
+                    ),
+                    title: const Text(
+                      'حذف المسارات التجريبية',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    subtitle: const Text(
+                      'إزالة المسارات الموسومة isDemo فقط',
+                    ),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: _isSeedingRoutes ? null : _clearDemoRoutes,
                   ),
                 ],
               ),
