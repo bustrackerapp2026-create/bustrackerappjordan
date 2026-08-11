@@ -100,6 +100,7 @@ class _AdminMapTabState extends State<AdminMapTab>
 
   @override
   void dispose() {
+    _zoomLogDebounce?.cancel();
     _locationSubscription?.cancel();
     disposePickupPoints();
     disposeRoutes();
@@ -334,11 +335,12 @@ class _AdminMapTabState extends State<AdminMapTab>
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // styleUri ثابت — تغيير الستايل يتم فقط عبر loadStyleURI
-        // حتى لا تُعاد تهيئة محرك الخريطة عند كل setState
         MapWidget(
           key: const ValueKey('admin_map_widget'),
+          // Android: TextureView أكثر استقراراً مع Flutter
+          textureView: true,
           onMapCreated: onMapCreated,
+          onCameraChangeListener: onCameraChangedForDebug,
           // ignore: deprecated_member_use
           onTapListener: (event) {
             if (_isAddingPickupPoint) {
@@ -350,7 +352,6 @@ class _AdminMapTabState extends State<AdminMapTab>
           styleUri: MapCoreMixin.initialMapStyle,
         ),
         if (!isMapReady) const Center(child: CircularProgressIndicator()),
-        // شريط البحث يتحدّث عبر ValueListenable بدون إعادة بناء الخريطة
         Positioned(
           top: 16,
           left: 16,
