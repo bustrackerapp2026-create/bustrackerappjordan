@@ -2,12 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 /// خدمة زرع مسارات تجريبية واقعية بين محافظات الأردن في Firestore.
-/// تُستدعى مرة واحدة من شاشة إعدادات الأدمن للتجربة.
 class RouteSeedService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   /// يزرع 8 مسارات نشطة مع محطات وإحداثيات مبسّطة.
-  /// آمن لإعادة التشغيل: يستخدم معرفات ثابتة (set/merge).
   Future<String> seedJordanDemoRoutes({bool forceOverwrite = true}) async {
     final now = Timestamp.now();
     int routesCount = 0;
@@ -32,7 +30,6 @@ class RouteSeedService {
       }, SetOptions(merge: !forceOverwrite));
       routesCount++;
 
-      // محطات (subcollection)
       if (forceOverwrite) {
         final existingStops = await routeRef.collection('stops').get();
         for (final d in existingStops.docs) {
@@ -52,7 +49,6 @@ class RouteSeedService {
         stopsCount++;
       }
 
-      // إحداثيات المسار (chunks في collection منفصلة)
       if (forceOverwrite) {
         final oldChunks = await _db
             .collection('routeCoordinates')
@@ -92,7 +88,6 @@ class RouteSeedService {
     return 'تم زرع $routesCount مسارات، $stopsCount محطة، $chunksCount أجزاء إحداثيات.';
   }
 
-  /// حذف المسارات التجريبية فقط (isDemo == true).
   Future<String> clearDemoRoutes() async {
     final snap = await _db
         .collection('routes')
@@ -123,8 +118,6 @@ class RouteSeedService {
     return 'تم حذف $deleted مسار تجريبي.';
   }
 }
-
-// ─── بيانات المسارات التجريبية ─────────────────────────────────
 
 class _StopDef {
   final String name;
@@ -166,10 +159,8 @@ class _RouteDef {
   });
 }
 
-/// إحداثيات تقريبية على طرق رئيسية في الأردن (ليست GPS دقيق، لكنها كافية للعرض).
-final List<_RouteDef> _demoRoutes = [
-  // 1) عمان → إربد
-  _RouteDef(
+const List<_RouteDef> _demoRoutes = [
+  const _RouteDef(
     id: 'route_amman_irbid',
     name: 'خط عمان — إربد',
     startCity: 'عمّان',
@@ -178,7 +169,7 @@ final List<_RouteDef> _demoRoutes = [
     routeColor: '#1565C0',
     distanceKm: 88,
     estimatedDurationMin: 90,
-    stops: const [
+    stops: [
       _StopDef('مجمع الشمال — عمّان', 32.0120, 35.8720, isMajor: true),
       _StopDef('الجبيهة', 32.0255, 35.8650),
       _StopDef('صويلح', 32.0350, 35.8450),
@@ -186,7 +177,7 @@ final List<_RouteDef> _demoRoutes = [
       _StopDef('جرش (مفترق)', 32.2700, 35.8900),
       _StopDef('مجمع إربد الجديد', 32.5450, 35.8500, isMajor: true),
     ],
-    polyline: const [
+    polyline: [
       _Point(32.0120, 35.8720),
       _Point(32.0200, 35.8680),
       _Point(32.0280, 35.8600),
@@ -207,9 +198,7 @@ final List<_RouteDef> _demoRoutes = [
       _Point(32.5450, 35.8500),
     ],
   ),
-
-  // 2) عمان → العقبة (الطريق الصحراوي)
-  _RouteDef(
+  const _RouteDef(
     id: 'route_amman_aqaba',
     name: 'خط عمان — العقبة (صحراوي)',
     startCity: 'عمّان',
@@ -218,7 +207,7 @@ final List<_RouteDef> _demoRoutes = [
     routeColor: '#C62828',
     distanceKm: 330,
     estimatedDurationMin: 240,
-    stops: const [
+    stops: [
       _StopDef('مجمع الجنوب — عمّان', 31.9000, 35.9100, isMajor: true),
       _StopDef('القسطل', 31.8000, 35.9200),
       _StopDef('الجيزة', 31.7000, 35.9500),
@@ -227,7 +216,7 @@ final List<_RouteDef> _demoRoutes = [
       _StopDef('وادي رم (مفترق)', 29.8000, 35.3000),
       _StopDef('مجمع العقبة', 29.5320, 35.0060, isMajor: true),
     ],
-    polyline: const [
+    polyline: [
       _Point(31.9000, 35.9100),
       _Point(31.8500, 35.9150),
       _Point(31.8000, 35.9200),
@@ -252,9 +241,7 @@ final List<_RouteDef> _demoRoutes = [
       _Point(29.5320, 35.0060),
     ],
   ),
-
-  // 3) عمان → الزرقاء
-  _RouteDef(
+  const _RouteDef(
     id: 'route_amman_zarqa',
     name: 'خط عمان — الزرقاء',
     startCity: 'عمّان',
@@ -263,13 +250,13 @@ final List<_RouteDef> _demoRoutes = [
     routeColor: '#2E7D32',
     distanceKm: 28,
     estimatedDurationMin: 40,
-    stops: const [
+    stops: [
       _StopDef('مجمع الشمال — عمّان', 32.0120, 35.8720, isMajor: true),
       _StopDef('ماركا', 31.9800, 35.9800),
       _StopDef('الرصيفة', 32.0200, 36.0300),
       _StopDef('مجمع الزرقاء', 32.0720, 36.0880, isMajor: true),
     ],
-    polyline: const [
+    polyline: [
       _Point(32.0120, 35.8720),
       _Point(32.0000, 35.9000),
       _Point(31.9900, 35.9400),
@@ -282,9 +269,7 @@ final List<_RouteDef> _demoRoutes = [
       _Point(32.0720, 36.0880),
     ],
   ),
-
-  // 4) عمان → الكرك
-  _RouteDef(
+  const _RouteDef(
     id: 'route_amman_karak',
     name: 'خط عمان — الكرك',
     startCity: 'عمّان',
@@ -293,14 +278,14 @@ final List<_RouteDef> _demoRoutes = [
     routeColor: '#6A1B9A',
     distanceKm: 95,
     estimatedDurationMin: 100,
-    stops: const [
+    stops: [
       _StopDef('مجمع الجنوب — عمّان', 31.9000, 35.9100, isMajor: true),
       _StopDef('ناعور', 31.8700, 35.8200),
       _StopDef('مادبا', 31.7160, 35.7940, isMajor: true),
       _StopDef('ذيبان', 31.5000, 35.7800),
       _StopDef('مجمع الكرك', 31.1850, 35.7050, isMajor: true),
     ],
-    polyline: const [
+    polyline: [
       _Point(31.9000, 35.9100),
       _Point(31.8800, 35.8600),
       _Point(31.8700, 35.8200),
@@ -316,9 +301,7 @@ final List<_RouteDef> _demoRoutes = [
       _Point(31.1850, 35.7050),
     ],
   ),
-
-  // 5) عمان → جرش
-  _RouteDef(
+  const _RouteDef(
     id: 'route_amman_jerash',
     name: 'خط عمان — جرش',
     startCity: 'عمّان',
@@ -327,14 +310,14 @@ final List<_RouteDef> _demoRoutes = [
     routeColor: '#EF6C00',
     distanceKm: 48,
     estimatedDurationMin: 55,
-    stops: const [
+    stops: [
       _StopDef('مجمع الشمال — عمّان', 32.0120, 35.8720, isMajor: true),
       _StopDef('صويلح', 32.0350, 35.8450),
       _StopDef('عين الباشا', 32.1000, 35.8500),
       _StopDef('ساكب', 32.2000, 35.8800),
       _StopDef('وسط جرش', 32.2800, 35.8950, isMajor: true),
     ],
-    polyline: const [
+    polyline: [
       _Point(32.0120, 35.8720),
       _Point(32.0250, 35.8600),
       _Point(32.0350, 35.8450),
@@ -347,9 +330,7 @@ final List<_RouteDef> _demoRoutes = [
       _Point(32.2800, 35.8950),
     ],
   ),
-
-  // 6) الزرقاء → المفرق
-  _RouteDef(
+  const _RouteDef(
     id: 'route_zarqa_mafraq',
     name: 'خط الزرقاء — المفرق',
     startCity: 'الزرقاء',
@@ -358,12 +339,12 @@ final List<_RouteDef> _demoRoutes = [
     routeColor: '#00838F',
     distanceKm: 45,
     estimatedDurationMin: 50,
-    stops: const [
+    stops: [
       _StopDef('مجمع الزرقاء', 32.0720, 36.0880, isMajor: true),
       _StopDef('الضليل', 32.1500, 36.1500),
       _StopDef('مجمع المفرق', 32.3430, 36.2080, isMajor: true),
     ],
-    polyline: const [
+    polyline: [
       _Point(32.0720, 36.0880),
       _Point(32.0900, 36.1000),
       _Point(32.1100, 36.1200),
@@ -375,9 +356,7 @@ final List<_RouteDef> _demoRoutes = [
       _Point(32.3430, 36.2080),
     ],
   ),
-
-  // 7) إربد → المفرق
-  _RouteDef(
+  const _RouteDef(
     id: 'route_irbid_mafraq',
     name: 'خط إربد — المفرق',
     startCity: 'إربد',
@@ -386,13 +365,13 @@ final List<_RouteDef> _demoRoutes = [
     routeColor: '#4527A0',
     distanceKm: 42,
     estimatedDurationMin: 45,
-    stops: const [
+    stops: [
       _StopDef('مجمع إربد الجديد', 32.5450, 35.8500, isMajor: true),
       _StopDef('الحصن', 32.4800, 35.9000),
       _StopDef('الرمثا (مفترق)', 32.5600, 36.0000),
       _StopDef('مجمع المفرق', 32.3430, 36.2080, isMajor: true),
     ],
-    polyline: const [
+    polyline: [
       _Point(32.5450, 35.8500),
       _Point(32.5200, 35.8700),
       _Point(32.5000, 35.8900),
@@ -406,9 +385,7 @@ final List<_RouteDef> _demoRoutes = [
       _Point(32.3430, 36.2080),
     ],
   ),
-
-  // 8) عمان → مادبا
-  _RouteDef(
+  const _RouteDef(
     id: 'route_amman_madaba',
     name: 'خط عمان — مادبا',
     startCity: 'عمّان',
@@ -417,13 +394,13 @@ final List<_RouteDef> _demoRoutes = [
     routeColor: '#AD1457',
     distanceKm: 35,
     estimatedDurationMin: 40,
-    stops: const [
+    stops: [
       _StopDef('مجمع الجنوب — عمّان', 31.9000, 35.9100, isMajor: true),
       _StopDef('خريبة السوق', 31.8800, 35.8800),
       _StopDef('ناعور', 31.8700, 35.8200),
       _StopDef('وسط مادبا', 31.7160, 35.7940, isMajor: true),
     ],
-    polyline: const [
+    polyline: [
       _Point(31.9000, 35.9100),
       _Point(31.8900, 35.8950),
       _Point(31.8800, 35.8800),
