@@ -10,6 +10,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/change_password_sheet.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/firestore_service.dart';
+import '../../../services/storage_service.dart';
 
 /// تبويب حساب الراكب — الملف الشخصي + الإعدادات داخل نفس الشاشة.
 class ProfileTab extends StatefulWidget {
@@ -23,24 +24,23 @@ class _ProfileTabState extends State<ProfileTab> {
   static const _kNotifications = 'passenger_notifications_enabled';
   static const _kShareLocation = 'passenger_share_location_enabled';
   static const _kLanguage = 'passenger_language';
-  static const _kPhotoPathPrefix = 'passenger_photo_path_';
 
   bool _notificationsEnabled = true;
   bool _shareLocationEnabled = false;
   String _language = 'العربية';
   bool _prefsLoaded = false;
-  String? _localPhotoPath;
   bool _savingProfile = false;
+  bool _uploadingPhoto = false;
 
   final ImagePicker _picker = ImagePicker();
+  final StorageService _storageService = StorageService();
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadPrefs());
   }
-
-  String _photoKeyFor(String? uid) => '$_kPhotoPathPrefix${uid ?? 'guest'}';
 
   Future<void> _loadPrefs() async {
     if (!mounted) return;
@@ -53,12 +53,15 @@ class _ProfileTabState extends State<ProfileTab> {
       _notificationsEnabled = prefs.getBool(_kNotifications) ?? true;
       _shareLocationEnabled = prefs.getBool(_kShareLocation) ?? false;
       _language = prefs.getString(_kLanguage) ?? 'العربية';
-      final path = prefs.getString(_photoKeyFor(uid));
-      if (path != null && path.isNotEmpty && File(path).existsSync()) {
-        _localPhotoPath = path;
-      }
       _prefsLoaded = true;
     });
+
+    // مزامنة تفضيل مشاركة الموقع مع Firestore إن لزم
+    if (uid != null) {
+      try {
+        // لا نعيد الكتابة إلا عند الحاجة — القيمة المحلية كافية للعرض
+      } catch (_) {}
+    }
   }
 
   Future<void> _setNotifications(bool value) async {
@@ -77,7 +80,7 @@ class _ProfileTabState extends State<ProfileTab> {
 
     if (uid != null) {
       try {
-        await FirestoreService().updateUserData(uid, {
+        await _firestoreService.updateUserData(uid, {
           'isSharingLocation': value,
         });
       } catch (_) {}
@@ -108,18 +111,28 @@ class _ProfileTabState extends State<ProfileTab> {
 
   Future<void> _removeProfilePhoto() async {
     if (!mounted) return;
-    final uid = context.read<AuthProvider>().userId;
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userId;
+    if (uid == null) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_photoKeyFor(uid));
-
-    if (!mounted) return;
-    setState(() => _localPhotoPath = null);
-    _snack('تم إزالة الصورة الشخصية');
+    setState(() => _uploadingPhoto = true);
+    try {
+      await _storageService.deleteProfilePhoto(uid);
+      await _firestoreService.updateUserData(uid, {'photoUrl': null});
+      await auth.refreshUserData();
+      if (!mounted) return;
+      _snack('تم إزالة الصورة الشخصية');
+    } catch (e) {
+      if (mounted) _snack('❌ تعذر حذف الصورة');
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+    }
   }
 
   Future<void> _showPhotoOptions() async {
     if (!mounted) return;
+    final hasPhoto =
+        context.read<AuthProvider>().userData?.hasPhoto == true;
 
     await showModalBottomSheet(
       context: context,
@@ -153,7 +166,7 @@ class _ProfileTabState extends State<ProfileTab> {
                 _pickFrom(ImageSource.camera);
               },
             ),
-            if (_localPhotoPath != null)
+            if (hasPhoto)
               ListTile(
                 leading: const Icon(Icons.delete_outline, color: Colors.red),
                 title: const Text('إزالة الصورة'),
@@ -179,16 +192,31 @@ class _ProfileTabState extends State<ProfileTab> {
       );
       if (xfile == null || !mounted) return;
 
-      final uid = context.read<AuthProvider>().userId;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_photoKeyFor(uid), xfile.path);
+      final auth = context.read<AuthProvider>();
+      final uid = auth.userId;
+      if (uid == null) {
+        _snack('⚠️ يجب تسجيل الدخول أولاً');
+        return;
+      }
+
+      setState(() => _uploadingPhoto = true);
+
+      final file = File(xfile.path);
+      final downloadUrl = await _storageService.uploadProfilePhoto(
+        uid: uid,
+        file: file,
+      );
+
+      await _firestoreService.updateUserData(uid, {'photoUrl': downloadUrl});
+      await auth.refreshUserData();
 
       if (!mounted) return;
-      setState(() => _localPhotoPath = xfile.path);
-      _snack('✅ تم تحديث الصورة الشخصية');
+      _snack('✅ تم رفع الصورة الشخصية بنجاح');
     } catch (e) {
       if (!mounted) return;
-      _snack('❌ تعذر اختيار الصورة. تأكد من صلاحيات الكاميرا/المعرض.');
+      _snack('❌ تعذر رفع الصورة. تأكد من الاتصال والصلاحيات.');
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
     }
   }
 
@@ -294,6 +322,7 @@ class _ProfileTabState extends State<ProfileTab> {
                         alignment: Alignment.bottomLeft,
                         children: [
                           _buildAvatar(
+                            photoUrl: user.photoUrl,
                             initial: user.fullName.isNotEmpty
                                 ? user.fullName.characters.first
                                 : 'ر',
@@ -439,7 +468,7 @@ class _ProfileTabState extends State<ProfileTab> {
         }
       }
 
-      await FirestoreService().updateUserData(user.uid, updates);
+      await _firestoreService.updateUserData(user.uid, updates);
       await auth.refreshUserData();
 
       if (!mounted) return;
@@ -502,9 +531,12 @@ class _ProfileTabState extends State<ProfileTab> {
     );
   }
 
-  Widget _buildAvatar({required String initial, double size = 64}) {
-    final hasPhoto =
-        _localPhotoPath != null && File(_localPhotoPath!).existsSync();
+  Widget _buildAvatar({
+    String? photoUrl,
+    required String initial,
+    double size = 64,
+  }) {
+    final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
 
     return Container(
       width: size,
@@ -528,7 +560,7 @@ class _ProfileTabState extends State<ProfileTab> {
         ],
         image: hasPhoto
             ? DecorationImage(
-                image: FileImage(File(_localPhotoPath!)),
+                image: NetworkImage(photoUrl),
                 fit: BoxFit.cover,
               )
             : null,
@@ -573,7 +605,11 @@ class _ProfileTabState extends State<ProfileTab> {
                         child: Stack(
                           alignment: Alignment.bottomLeft,
                           children: [
-                            _buildAvatar(initial: initial, size: 64),
+                            _buildAvatar(
+                              photoUrl: user?.photoUrl,
+                              initial: initial,
+                              size: 64,
+                            ),
                             Container(
                               padding: const EdgeInsets.all(5),
                               decoration: BoxDecoration(
@@ -809,10 +845,27 @@ class _ProfileTabState extends State<ProfileTab> {
                 ),
               ],
             ),
-            if (_savingProfile)
+            if (_savingProfile || _uploadingPhoto)
               Container(
                 color: Colors.black26,
-                child: const Center(child: CircularProgressIndicator()),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(),
+                      if (_uploadingPhoto) ...[
+                        const SizedBox(height: 16),
+                        const Text(
+                          'جاري رفع الصورة...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
           ],
         ),
