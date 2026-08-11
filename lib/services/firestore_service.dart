@@ -65,11 +65,25 @@ class FirestoreService {
     }
   }
 
-  // ─── إحصائيات السائقين ─────────────────────────────────────────
+  // ─── مساعدات قراءة الحقول ───────────────────────────────────────
+
+  static String _str(Map<String, dynamic> data, String key, [String def = '']) {
+    final v = data[key];
+    if (v == null) return def;
+    return v.toString().trim();
+  }
+
+  static bool _boolTrue(Map<String, dynamic> data, String key) {
+    final v = data[key];
+    if (v is bool) return v;
+    if (v is String) return v.toLowerCase() == 'true';
+    return false;
+  }
 
   Map<String, int> _emptyUsersStats() {
     return {
       'total': 0,
+      'admin': 0,
       'passenger': 0,
       'driver': 0,
       'service': 0,
@@ -85,6 +99,7 @@ class FirestoreService {
       'total': 0,
       'approved': 0,
       'pending': 0,
+      'rejected': 0,
     };
   }
 
@@ -95,21 +110,25 @@ class FirestoreService {
           .where('userType', isEqualTo: 'driver')
           .get();
 
-      final total = allDrivers.docs.length;
-      final verified = allDrivers.docs
-          .where((doc) => (doc.data()['isVerified'] ?? false) == true)
-          .length;
-      final pending = allDrivers.docs
-          .where((doc) =>
-              (doc.data()['isVerified'] ?? false) == false &&
-              (doc.data()['isRejected'] ?? false) == false)
-          .length;
-      final rejected = allDrivers.docs
-          .where((doc) => (doc.data()['isRejected'] ?? false) == true)
-          .length;
+      var verified = 0;
+      var pending = 0;
+      var rejected = 0;
+
+      for (final doc in allDrivers.docs) {
+        final data = doc.data();
+        final isVerified = _boolTrue(data, 'isVerified');
+        final isRejected = _boolTrue(data, 'isRejected');
+        if (isRejected) {
+          rejected++;
+        } else if (isVerified) {
+          verified++;
+        } else {
+          pending++;
+        }
+      }
 
       return {
-        'total': total,
+        'total': allDrivers.docs.length,
         'verified': verified,
         'pending': pending,
         'rejected': rejected,
@@ -127,28 +146,57 @@ class FirestoreService {
   Future<Map<String, int>> getAllUsersStats({bool useFallback = true}) async {
     try {
       final allUsers = await _firestore.collection('users').get();
-      final docs = allUsers.docs;
 
-      final total = docs.length;
-      final passenger =
-          docs.where((doc) => doc['userType'] == 'passenger').length;
-      final driver = docs.where((doc) => doc['userType'] == 'driver').length;
-      final service = docs.where((doc) => doc['userType'] == 'service').length;
-      final busCompany =
-          docs.where((doc) => doc['userType'] == 'bus_company').length;
+      var total = 0;
+      var admin = 0;
+      var passenger = 0;
+      var driver = 0;
+      var service = 0;
+      var busCompany = 0;
+      var verified = 0;
+      var pending = 0;
+      var rejected = 0;
 
-      final driversOnly = docs.where((doc) => doc['userType'] == 'driver');
-      final verified =
-          driversOnly.where((doc) => doc['isVerified'] == true).length;
-      final pending = driversOnly
-          .where(
-              (doc) => doc['isVerified'] == false && doc['isRejected'] == false)
-          .length;
-      final rejected =
-          driversOnly.where((doc) => doc['isRejected'] == true).length;
+      for (final doc in allUsers.docs) {
+        final data = doc.data();
+        total++;
+
+        final type = _str(data, 'userType', 'passenger').toLowerCase();
+        switch (type) {
+          case 'admin':
+            admin++;
+            break;
+          case 'passenger':
+            passenger++;
+            break;
+          case 'driver':
+            driver++;
+            break;
+          case 'service':
+            service++;
+            break;
+          case 'bus_company':
+            busCompany++;
+            break;
+        }
+
+        // حالة التوثيق تخص السائقين فقط (وما شابه من أنواع تحتاج موافقة)
+        if (type == 'driver' || type == 'service' || type == 'bus_company') {
+          final isVerified = _boolTrue(data, 'isVerified');
+          final isRejected = _boolTrue(data, 'isRejected');
+          if (isRejected) {
+            rejected++;
+          } else if (isVerified) {
+            verified++;
+          } else {
+            pending++;
+          }
+        }
+      }
 
       return {
         'total': total,
+        'admin': admin,
         'passenger': passenger,
         'driver': driver,
         'service': service,
@@ -165,30 +213,69 @@ class FirestoreService {
     }
   }
 
-  // ─── إحصائيات نقاط التجمع ──────────────────────────────────────
+  // ─── إحصائيات نقاط التجمع (حقل status وليس isApproved) ─────────
 
-  Future<Map<String, int>> getPickupPointsStats({bool useFallback = true}) async {
+  Future<Map<String, int>> getPickupPointsStats(
+      {bool useFallback = true}) async {
     try {
       final allPoints = await _firestore.collection('pickupPoints').get();
-      final docs = allPoints.docs;
 
-      final total = docs.length;
-      final approved = docs.where((doc) => doc['isApproved'] == true).length;
-      final pending = docs
-          .where(
-              (doc) => doc['isApproved'] == false && doc['isRejected'] == false)
-          .length;
+      var total = 0;
+      var approved = 0;
+      var pending = 0;
+      var rejected = 0;
+
+      for (final doc in allPoints.docs) {
+        final data = doc.data();
+        total++;
+
+        // المصدر الأساسي: status
+        final status = _str(data, 'status', '').toLowerCase();
+
+        if (status == 'approved') {
+          approved++;
+        } else if (status == 'rejected') {
+          rejected++;
+        } else if (status == 'pending' || status.isEmpty) {
+          // توافق مع بيانات قديمة قد تستخدم isApproved / isRejected
+          if (_boolTrue(data, 'isRejected')) {
+            rejected++;
+          } else if (_boolTrue(data, 'isApproved')) {
+            approved++;
+          } else {
+            pending++;
+          }
+        } else {
+          // حالة غير معروفة → pending
+          pending++;
+        }
+      }
 
       return {
         'total': total,
         'approved': approved,
         'pending': pending,
+        'rejected': rejected,
       };
     } catch (e) {
       if (useFallback) {
         return _emptyPickupStats();
       }
       throw Exception('فشل جلب إحصائيات النقاط: $e');
+    }
+  }
+
+  /// عدد المسارات النشطة
+  Future<int> getActiveRoutesCount({bool useFallback = true}) async {
+    try {
+      final snap = await _firestore
+          .collection('routes')
+          .where('isActive', isEqualTo: true)
+          .get();
+      return snap.docs.length;
+    } catch (e) {
+      if (useFallback) return 0;
+      throw Exception('فشل جلب عدد المسارات: $e');
     }
   }
 }
