@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 class RouteSeedService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  /// يزرع 8 مسارات نشطة مع محطات وإحداثيات مبسّطة.
   Future<String> seedJordanDemoRoutes({bool forceOverwrite = true}) async {
     final now = Timestamp.now();
     int routesCount = 0;
@@ -160,7 +159,7 @@ class _RouteDef {
 }
 
 const List<_RouteDef> _demoRoutes = [
-  const _RouteDef(
+  _RouteDef(
     id: 'route_amman_irbid',
     name: 'خط عمان — إربد',
     startCity: 'عمّان',
@@ -198,7 +197,7 @@ const List<_RouteDef> _demoRoutes = [
       _Point(32.5450, 35.8500),
     ],
   ),
-  const _RouteDef(
+  _RouteDef(
     id: 'route_amman_aqaba',
     name: 'خط عمان — العقبة (صحراوي)',
     startCity: 'عمّان',
@@ -241,7 +240,7 @@ const List<_RouteDef> _demoRoutes = [
       _Point(29.5320, 35.0060),
     ],
   ),
-  const _RouteDef(
+  _RouteDef(
     id: 'route_amman_zarqa',
     name: 'خط عمان — الزرقاء',
     startCity: 'عمّان',
@@ -269,7 +268,7 @@ const List<_RouteDef> _demoRoutes = [
       _Point(32.0720, 36.0880),
     ],
   ),
-  const _RouteDef(
+  _RouteDef(
     id: 'route_amman_karak',
     name: 'خط عمان — الكرك',
     startCity: 'عمّان',
@@ -301,7 +300,7 @@ const List<_RouteDef> _demoRoutes = [
       _Point(31.1850, 35.7050),
     ],
   ),
-  const _RouteDef(
+  _RouteDef(
     id: 'route_amman_jerash',
     name: 'خط عمان — جرش',
     startCity: 'عمّان',
@@ -330,7 +329,7 @@ const List<_RouteDef> _demoRoutes = [
       _Point(32.2800, 35.8950),
     ],
   ),
-  const _RouteDef(
+  _RouteDef(
     id: 'route_zarqa_mafraq',
     name: 'خط الزرقاء — المفرق',
     startCity: 'الزرقاء',
@@ -356,7 +355,7 @@ const List<_RouteDef> _demoRoutes = [
       _Point(32.3430, 36.2080),
     ],
   ),
-  const _RouteDef(
+  _RouteDef(
     id: 'route_irbid_mafraq',
     name: 'خط إربد — المفرق',
     startCity: 'إربد',
@@ -385,7 +384,7 @@ const List<_RouteDef> _demoRoutes = [
       _Point(32.3430, 36.2080),
     ],
   ),
-  const _RouteDef(
+  _RouteDef(
     id: 'route_amman_madaba',
     name: 'خط عمان — مادبا',
     startCity: 'عمّان',
