@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
 
 class AdminBottomNavBar extends StatelessWidget {
   final int currentIndex;
@@ -12,31 +13,34 @@ class AdminBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return BottomNavigationBar(
       currentIndex: currentIndex,
       onTap: onTap,
       type: BottomNavigationBarType.fixed,
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
       selectedItemColor: Colors.blue.shade700,
       unselectedItemColor: Colors.grey.shade700,
       selectedFontSize: 13,
       unselectedFontSize: 12,
-      items: const [
+      items: [
         BottomNavigationBarItem(
-          icon: Icon(Icons.verified_user),
-          label: 'الرئيسية',
+          icon: const Icon(Icons.verified_user),
+          label: l10n.navHome,
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.location_on),
-          label: 'النقاط',
+          icon: const Icon(Icons.location_on),
+          label: l10n.navPoints,
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.map),
-          label: 'الخريطة',
+          icon: const Icon(Icons.map),
+          label: l10n.navMap,
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.settings),
-          label: 'الإعدادات',
+          icon: const Icon(Icons.settings),
+          label: l10n.navSettings,
         ),
       ],
     );
