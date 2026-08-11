@@ -1,8 +1,4 @@
-import 'dart:io';
-
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -10,9 +6,11 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/change_password_sheet.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/firestore_service.dart';
-import '../../../services/storage_service.dart';
+import '../../widgets/profile/edit_profile_sheet.dart';
+import '../../widgets/profile/profile_photo_sheet.dart';
+import '../../widgets/profile/profile_ui.dart';
 
-/// تبويب حساب السائق — ملف شخصي + بيانات الباص + إعدادات.
+/// تبويب حساب السائق — ينسّق الواجهة ويستدعي المكوّنات الفرعية.
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
 
@@ -30,8 +28,6 @@ class _ProfileTabState extends State<ProfileTab> {
   bool _savingProfile = false;
   bool _uploadingPhoto = false;
 
-  final ImagePicker _picker = ImagePicker();
-  final StorageService _storageService = StorageService();
   final FirestoreService _firestoreService = FirestoreService();
 
   @override
@@ -44,7 +40,6 @@ class _ProfileTabState extends State<ProfileTab> {
     if (!mounted) return;
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
-
     setState(() {
       _notificationsEnabled = prefs.getBool(_kNotifications) ?? true;
       _language = prefs.getString(_kLanguage) ?? 'العربية';
@@ -75,119 +70,51 @@ class _ProfileTabState extends State<ProfileTab> {
     if (!mounted) return;
     final ok = await ChangePasswordSheet.show(context);
     if (!mounted) return;
-    if (ok) {
-      _snack('✅ تم تغيير كلمة المرور. سجّل الدخول مجدداً');
-    }
-  }
-
-  Future<void> _removeProfilePhoto() async {
-    if (!mounted) return;
-    final auth = context.read<AuthProvider>();
-    final uid = auth.userId;
-    if (uid == null) return;
-
-    setState(() => _uploadingPhoto = true);
-    try {
-      await _storageService.deleteProfilePhoto(uid);
-      await _firestoreService.updateUserData(uid, {'photoUrl': null});
-      await auth.refreshUserData();
-      if (!mounted) return;
-      _snack('تم إزالة الصورة الشخصية');
-    } catch (e) {
-      if (mounted) _snack('❌ تعذر حذف الصورة');
-    } finally {
-      if (mounted) setState(() => _uploadingPhoto = false);
-    }
+    if (ok) _snack('✅ تم تغيير كلمة المرور. سجّل الدخول مجدداً');
   }
 
   Future<void> _showPhotoOptions() async {
     if (!mounted) return;
-    final hasPhoto =
-        context.read<AuthProvider>().userData?.hasPhoto == true;
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userId;
+    if (uid == null) {
+      _snack('⚠️ يجب تسجيل الدخول أولاً');
+      return;
+    }
 
-    await showModalBottomSheet(
+    await ProfilePhotoActions.showOptions(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            const Text(
-              'صورة الملف الشخصي',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined,
-                  color: AppTheme.primaryColor),
-              title: const Text('اختيار من المعرض'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickFrom(ImageSource.gallery);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined,
-                  color: AppTheme.primaryColor),
-              title: const Text('التقاط صورة'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickFrom(ImageSource.camera);
-              },
-            ),
-            if (hasPhoto)
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('إزالة الصورة'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _removeProfilePhoto();
-                },
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+      uid: uid,
+      hasPhoto: auth.userData?.hasPhoto == true,
+      onRefreshUser: auth.refreshUserData,
+      onUploadingChanged: (v) {
+        if (mounted) setState(() => _uploadingPhoto = v);
+      },
+      onMessage: _snack,
     );
   }
 
-  Future<void> _pickFrom(ImageSource source) async {
+  Future<void> _editProfile() async {
+    if (!mounted) return;
+    final auth = context.read<AuthProvider>();
+    final user = auth.userData;
+    if (user == null) return;
+
+    setState(() => _savingProfile = true);
     try {
-      final xfile = await _picker.pickImage(
-        source: source,
-        maxWidth: 800,
-        maxHeight: 800,
-        imageQuality: 85,
+      final result = await EditProfileSheet.show(
+        context: context,
+        user: user,
+        onRequestPhotoChange: _showPhotoOptions,
       );
-      if (xfile == null || !mounted) return;
+      if (result == null || !mounted) return;
 
-      final auth = context.read<AuthProvider>();
-      final uid = auth.userId;
-      if (uid == null) {
-        _snack('⚠️ يجب تسجيل الدخول أولاً');
-        return;
+      if (result.success) {
+        await auth.refreshUserData();
       }
-
-      setState(() => _uploadingPhoto = true);
-
-      final file = File(xfile.path);
-      final downloadUrl = await _storageService.uploadProfilePhoto(
-        uid: uid,
-        file: file,
-      );
-
-      await _firestoreService.updateUserData(uid, {'photoUrl': downloadUrl});
-      await auth.refreshUserData();
-
-      if (!mounted) return;
-      _snack('✅ تم رفع الصورة الشخصية بنجاح');
-    } catch (e) {
-      if (!mounted) return;
-      _snack('❌ تعذر رفع الصورة. تأكد من الاتصال والصلاحيات.');
+      if (mounted) _snack(result.message);
     } finally {
-      if (mounted) setState(() => _uploadingPhoto = false);
+      if (mounted) setState(() => _savingProfile = false);
     }
   }
 
@@ -242,266 +169,6 @@ class _ProfileTabState extends State<ProfileTab> {
     }
   }
 
-  Future<void> _editProfile() async {
-    if (!mounted) return;
-    final auth = context.read<AuthProvider>();
-    final user = auth.userData;
-    if (user == null) return;
-
-    final nameCtrl = TextEditingController(text: user.fullName);
-    final phoneCtrl = TextEditingController(text: user.phoneNumber ?? '');
-    final emailCtrl = TextEditingController(text: user.email);
-    final busCtrl = TextEditingController(text: user.busNumber ?? '');
-    final routeCtrl = TextEditingController(text: user.route ?? '');
-
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-            ),
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'تعديل الملف الشخصي',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.pop(ctx, false);
-                        _showPhotoOptions();
-                      },
-                      child: Stack(
-                        alignment: Alignment.bottomLeft,
-                        children: [
-                          _buildAvatar(
-                            photoUrl: user.photoUrl,
-                            initial: user.fullName.isNotEmpty
-                                ? user.fullName.characters.first
-                                : 'س',
-                            size: 88,
-                          ),
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryColor,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              size: 16,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'اضغط لتغيير الصورة',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: nameCtrl,
-                    textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'الاسم الكامل',
-                      prefixIcon: const Icon(Icons.person_outline),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: phoneCtrl,
-                    keyboardType: TextInputType.phone,
-                    textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'رقم الهاتف',
-                      prefixIcon: const Icon(Icons.phone_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: emailCtrl,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'البريد الإلكتروني',
-                      prefixIcon: const Icon(Icons.email_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: busCtrl,
-                    textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'رقم الباص',
-                      prefixIcon: const Icon(Icons.directions_bus_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: routeCtrl,
-                    textInputAction: TextInputAction.done,
-                    decoration: InputDecoration(
-                      labelText: 'المسار / الخط',
-                      prefixIcon: const Icon(Icons.route_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'ملاحظة: تغيير البريد قد يتطلب تأكيداً عبر الرابط المرسل.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'حفظ',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text('إلغاء'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-
-    if (saved != true || !mounted) return;
-
-    final name = nameCtrl.text.trim();
-    final phone = phoneCtrl.text.trim();
-    final email = emailCtrl.text.trim();
-    final bus = busCtrl.text.trim();
-    final route = routeCtrl.text.trim();
-
-    if (name.isEmpty) {
-      _snack('⚠️ الاسم مطلوب');
-      return;
-    }
-    if (email.isEmpty || !email.contains('@')) {
-      _snack('⚠️ أدخل بريداً إلكترونياً صالحاً');
-      return;
-    }
-
-    setState(() => _savingProfile = true);
-    try {
-      final updates = <String, dynamic>{
-        'fullName': name,
-        'phoneNumber': phone,
-        'busNumber': bus,
-        'route': route,
-        'email': email,
-      };
-
-      final fbUser = firebase_auth.FirebaseAuth.instance.currentUser;
-      final emailChanged = email.toLowerCase() != user.email.toLowerCase();
-
-      if (fbUser != null && emailChanged) {
-        try {
-          await fbUser.verifyBeforeUpdateEmail(email);
-          if (!mounted) return;
-          _snack(
-            '📧 تم إرسال رابط تأكيد للبريد الجديد. أكّده ثم سجّل الدخول مجدداً.',
-          );
-        } on firebase_auth.FirebaseAuthException catch (e) {
-          if (!mounted) return;
-          if (e.code == 'requires-recent-login') {
-            _snack(
-              '🔒 لتغيير البريد، سجّل الخروج ثم الدخول مجدداً وحاول مرة أخرى.',
-            );
-            updates.remove('email');
-          } else if (e.code == 'email-already-in-use') {
-            _snack('⚠️ هذا البريد مستخدم بالفعل');
-            updates.remove('email');
-          } else {
-            _snack('⚠️ تعذر تحديث البريد: ${e.message ?? e.code}');
-            updates.remove('email');
-          }
-        }
-      }
-
-      await _firestoreService.updateUserData(user.uid, updates);
-      await auth.refreshUserData();
-
-      if (!mounted) return;
-
-      final emailStillInUpdates = updates.containsKey('email');
-      if (!emailChanged || !emailStillInUpdates) {
-        _snack('✅ تم تحديث الملف الشخصي');
-      }
-    } catch (_) {
-      if (mounted) _snack('❌ فشل التحديث');
-    } finally {
-      if (mounted) setState(() => _savingProfile = false);
-    }
-  }
-
   void _showLanguagePicker() {
     if (!mounted) return;
     showModalBottomSheet(
@@ -549,54 +216,6 @@ class _ProfileTabState extends State<ProfileTab> {
     );
   }
 
-  Widget _buildAvatar({
-    String? photoUrl,
-    required String initial,
-    double size = 64,
-  }) {
-    final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
-
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: hasPhoto
-            ? null
-            : LinearGradient(
-                colors: [
-                  AppTheme.primaryColor,
-                  AppTheme.primaryColor.withValues(alpha: 0.75),
-                ],
-              ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withValues(alpha: 0.35),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        image: hasPhoto
-            ? DecorationImage(
-                image: NetworkImage(photoUrl),
-                fit: BoxFit.cover,
-              )
-            : null,
-      ),
-      alignment: Alignment.center,
-      child: hasPhoto
-          ? null
-          : Text(
-              initial,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: size * 0.4,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().userData;
@@ -622,35 +241,13 @@ class _ProfileTabState extends State<ProfileTab> {
             ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
               children: [
-                _sectionCard(
+                ProfileUi.sectionCard(
                   child: Row(
                     children: [
-                      GestureDetector(
+                      ProfileUi.avatarWithCamera(
+                        photoUrl: user?.photoUrl,
+                        initial: initial,
                         onTap: _showPhotoOptions,
-                        child: Stack(
-                          alignment: Alignment.bottomLeft,
-                          children: [
-                            _buildAvatar(
-                              photoUrl: user?.photoUrl,
-                              initial: initial,
-                              size: 64,
-                            ),
-                            Container(
-                              padding: const EdgeInsets.all(5),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor,
-                                shape: BoxShape.circle,
-                                border:
-                                    Border.all(color: Colors.white, width: 2),
-                              ),
-                              child: const Icon(
-                                Icons.camera_alt,
-                                size: 12,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -679,11 +276,11 @@ class _ProfileTabState extends State<ProfileTab> {
                               spacing: 6,
                               runSpacing: 4,
                               children: [
-                                _chip(
+                                ProfileUi.chip(
                                   '🚗 ${user?.displayUserType ?? 'سائق'}',
                                   AppTheme.primaryColor,
                                 ),
-                                _chip(
+                                ProfileUi.chip(
                                   verified ? '✅ معتمد' : '⏳ بانتظار الاعتماد',
                                   verified
                                       ? Colors.green.shade700
@@ -698,30 +295,38 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _sectionTitle('بيانات العمل'),
-                _sectionCard(
+                ProfileUi.sectionTitle('بيانات العمل'),
+                ProfileUi.sectionCard(
                   child: Column(
                     children: [
-                      _infoRow(Icons.directions_bus_outlined, 'رقم الباص', bus),
+                      ProfileUi.infoRow(
+                        Icons.directions_bus_outlined,
+                        'رقم الباص',
+                        bus,
+                      ),
                       const SizedBox(height: 10),
-                      _infoRow(Icons.route_outlined, 'المسار / الخط', route),
+                      ProfileUi.infoRow(
+                        Icons.route_outlined,
+                        'المسار / الخط',
+                        route,
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 14),
-                _sectionTitle('الحساب'),
-                _sectionCard(
+                ProfileUi.sectionTitle('الحساب'),
+                ProfileUi.sectionCard(
                   padding: EdgeInsets.zero,
                   child: Column(
                     children: [
-                      _tile(
+                      ProfileUi.tile(
                         icon: Icons.edit_outlined,
                         title: 'تعديل الملف الشخصي',
                         subtitle: 'الاسم · الهاتف · البريد · الباص · المسار',
                         onTap: _editProfile,
                       ),
-                      _divider(),
-                      _tile(
+                      ProfileUi.divider(),
+                      ProfileUi.tile(
                         icon: Icons.lock_outline,
                         title: 'تغيير كلمة المرور',
                         subtitle: 'تحديث كلمة المرور عبر Firebase',
@@ -731,8 +336,8 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _sectionTitle('الإعدادات'),
-                _sectionCard(
+                ProfileUi.sectionTitle('الإعدادات'),
+                ProfileUi.sectionCard(
                   padding: EdgeInsets.zero,
                   child: Column(
                     children: [
@@ -750,14 +355,14 @@ class _ProfileTabState extends State<ProfileTab> {
                         activeThumbColor: AppTheme.primaryColor,
                         onChanged: _setNotifications,
                       ),
-                      _divider(),
-                      _tile(
+                      ProfileUi.divider(),
+                      ProfileUi.tile(
                         icon: Icons.language,
                         title: 'اللغة',
                         subtitle: _language,
                         onTap: _showLanguagePicker,
                       ),
-                      _divider(),
+                      ProfileUi.divider(),
                       SwitchListTile(
                         secondary: const Icon(
                           Icons.dark_mode_outlined,
@@ -776,19 +381,19 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _sectionTitle('الدعم والمعلومات'),
-                _sectionCard(
+                ProfileUi.sectionTitle('الدعم والمعلومات'),
+                ProfileUi.sectionCard(
                   padding: EdgeInsets.zero,
                   child: Column(
                     children: [
-                      _tile(
+                      ProfileUi.tile(
                         icon: Icons.help_outline,
                         title: 'المساعدة',
                         subtitle: 'أسئلة شائعة ودعم',
                         onTap: () => _snack('📬 الدعم قريباً'),
                       ),
-                      _divider(),
-                      _tile(
+                      ProfileUi.divider(),
+                      ProfileUi.tile(
                         icon: Icons.info_outline,
                         title: 'عن التطبيق',
                         subtitle: 'الإصدار 1.0.0+1',
@@ -857,99 +462,4 @@ class _ProfileTabState extends State<ProfileTab> {
       ),
     );
   }
-
-  Widget _chip(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
-      ),
-    );
-  }
-
-  Widget _infoRow(IconData icon, String label, String value) {
-    return Row(
-      children: [
-        Icon(icon, color: AppTheme.primaryColor, size: 22),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, right: 4),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: Colors.grey.shade700,
-        ),
-      ),
-    );
-  }
-
-  Widget _sectionCard({required Widget child, EdgeInsetsGeometry? padding}) {
-    return Container(
-      width: double.infinity,
-      padding: padding ?? const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
-
-  Widget _tile({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: Icon(icon, color: AppTheme.primaryColor),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: subtitle != null ? Text(subtitle) : null,
-      trailing: Icon(Icons.chevron_left, color: Colors.grey.shade400),
-      onTap: onTap,
-    );
-  }
-
-  Widget _divider() => Divider(height: 1, color: Colors.grey.shade200);
 }
