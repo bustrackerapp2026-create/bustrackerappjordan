@@ -3,8 +3,10 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/locale/locale_provider.dart';
 import '../../../core/widgets/change_password_sheet.dart';
 import '../../../features/auth/providers/auth_provider.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../models/user_model.dart';
 import '../../../services/firestore_service.dart';
 import '../../widgets/profile/edit_profile_sheet.dart';
@@ -22,13 +24,10 @@ class ProfileTab extends StatefulWidget {
 class _ProfileTabState extends State<ProfileTab>
     with AutomaticKeepAliveClientMixin {
   static const _kNotifications = 'driver_notifications_enabled';
-  static const _kLanguage = 'driver_language';
 
   bool _notificationsEnabled = true;
-  String _language = 'العربية';
   bool _prefsLoaded = false;
 
-  /// لا يعيد بناء ListView عند الرفع/الحفظ
   final ValueNotifier<bool> _busy = ValueNotifier(false);
   final ValueNotifier<bool> _uploading = ValueNotifier(false);
 
@@ -56,7 +55,6 @@ class _ProfileTabState extends State<ProfileTab>
     if (!mounted) return;
     setState(() {
       _notificationsEnabled = prefs.getBool(_kNotifications) ?? true;
-      _language = prefs.getString(_kLanguage) ?? 'العربية';
       _prefsLoaded = true;
     });
   }
@@ -65,12 +63,6 @@ class _ProfileTabState extends State<ProfileTab>
     setState(() => _notificationsEnabled = value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kNotifications, value);
-  }
-
-  Future<void> _setLanguage(String value) async {
-    setState(() => _language = value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kLanguage, value);
   }
 
   void _snack(String message) {
@@ -134,20 +126,21 @@ class _ProfileTabState extends State<ProfileTab>
     if (!mounted) return;
     final auth = context.read<AuthProvider>();
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = AppLocalizations.of(context);
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'تسجيل الخروج',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        title: Text(
+          l10n.logout,
+          style: const TextStyle(fontWeight: FontWeight.w800),
         ),
-        content: const Text('هل أنت متأكد من رغبتك في تسجيل الخروج؟'),
+        content: Text(l10n.logoutConfirm),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء'),
+            child: Text(l10n.cancel),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -155,7 +148,7 @@ class _ProfileTabState extends State<ProfileTab>
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: const Text('تأكيد الخروج'),
+            child: Text(l10n.logout),
           ),
         ],
       ),
@@ -174,7 +167,7 @@ class _ProfileTabState extends State<ProfileTab>
     } catch (e) {
       messenger.showSnackBar(
         SnackBar(
-          content: Text('حدث خطأ أثناء تسجيل الخروج: $e'),
+          content: Text('$e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -183,6 +176,9 @@ class _ProfileTabState extends State<ProfileTab>
 
   void _showLanguagePicker() {
     if (!mounted) return;
+    final localeProvider = context.read<LocaleProvider>();
+    final l10n = AppLocalizations.of(context);
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -194,30 +190,30 @@ class _ProfileTabState extends State<ProfileTab>
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 12),
-              const Text(
-                'اختر اللغة',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              Text(
+                l10n.chooseLanguage,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
               ),
               ListTile(
-                title: const Text('العربية'),
-                trailing: _language == 'العربية'
+                title: Text(l10n.arabic),
+                trailing: localeProvider.isArabic
                     ? const Icon(Icons.check, color: AppTheme.primaryColor)
                     : null,
-                onTap: () {
-                  _setLanguage('العربية');
+                onTap: () async {
                   Navigator.pop(ctx);
-                  _snack('🌐 اللغة: العربية');
+                  await localeProvider.setArabic();
+                  _snack(l10n.languageChanged);
                 },
               ),
               ListTile(
-                title: const Text('English'),
-                trailing: _language == 'English'
+                title: Text(l10n.english),
+                trailing: localeProvider.isEnglish
                     ? const Icon(Icons.check, color: AppTheme.primaryColor)
                     : null,
-                onTap: () {
-                  _setLanguage('English');
+                onTap: () async {
                   Navigator.pop(ctx);
-                  _snack('🌐 Language: English');
+                  await localeProvider.setEnglish();
+                  _snack(l10n.languageChanged);
                 },
               ),
               const SizedBox(height: 8),
@@ -230,9 +226,10 @@ class _ProfileTabState extends State<ProfileTab>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // AutomaticKeepAliveClientMixin
+    super.build(context);
 
-    // يعيد البناء فقط عند تغيّر userData (وليس أي notifyListeners آخر)
+    final language = context.watch<LocaleProvider>().displayName;
+
     return Selector<AuthProvider, UserModel?>(
       selector: (_, auth) => auth.userData,
       shouldRebuild: (prev, next) =>
@@ -249,7 +246,7 @@ class _ProfileTabState extends State<ProfileTab>
           user: user,
           notificationsEnabled: _notificationsEnabled,
           prefsLoaded: _prefsLoaded,
-          language: _language,
+          language: language,
           busyNotifier: _busy,
           uploadingNotifier: _uploading,
           onPhotoTap: _showPhotoOptions,
