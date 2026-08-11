@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../services/trip_service.dart';
 import '../../../models/trip_model.dart';
 import '../../../features/auth/providers/auth_provider.dart';
+import '../../../l10n/app_localizations.dart';
 
 class BookingsTab extends StatefulWidget {
   const BookingsTab({super.key});
@@ -30,30 +31,30 @@ class _BookingsTabState extends State<BookingsTab> {
     }
   }
 
-  /// ✅ قبول الطلب بـ Transaction وحماية كاملة
   Future<void> _acceptTrip(String tripId, String passengerDisplayId) async {
     if (_processingIds.contains(tripId) || _currentUserId == null) return;
 
     setState(() => _processingIds.add(tripId));
+    final l10n = AppLocalizations.of(context);
 
     try {
       await _tripService.acceptTripTransaction(tripId, _currentUserId!);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ تم قبول طلب الراكب $passengerDisplayId بنجاح!'),
+            content: Text(l10n.acceptPassengerSuccess(passengerDisplayId)),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        // ✅ عرض رسالة خطأ صديقة للمستخدم بدلاً من عرض $e مباشرة
-        final errorMessage = e.toString().contains('غير موجودة')
-            ? '⚠️ الرحلة غير موجودة أو تم حذفها.'
-            : e.toString().contains('تم تغيير حالة')
-                ? '⚠️ تم قبول هذه الرحلة من قبل سائق آخر.'
-                : '❌ فشل قبول الطلب، يرجى المحاولة لاحقاً.';
+        final raw = e.toString();
+        final errorMessage = raw.contains('غير موجودة') || raw.contains('not found')
+            ? l10n.tripNotFound
+            : raw.contains('تم تغيير حالة') || raw.contains('another')
+                ? l10n.tripTakenByOther
+                : l10n.acceptRequestFailed;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
@@ -70,15 +71,17 @@ class _BookingsTabState extends State<BookingsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     if (_currentUserId == null) {
-      return const Center(child: Text('يرجى تسجيل الدخول لعرض الطلبات'));
+      return Center(child: Text(l10n.pleaseLoginRequests));
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('📋 الطلبات الواردة'),
-        backgroundColor: Colors.white,
-        foregroundColor: AppTheme.textColor,
+        title: Text(l10n.incomingRequests),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
         elevation: 1,
         actions: [
           IconButton(
@@ -91,7 +94,7 @@ class _BookingsTabState extends State<BookingsTab> {
                 });
               }
             },
-            tooltip: 'تحديث',
+            tooltip: l10n.refresh,
           ),
         ],
       ),
@@ -109,9 +112,9 @@ class _BookingsTabState extends State<BookingsTab> {
                 children: [
                   const Icon(Icons.error_outline, size: 60, color: Colors.red),
                   const SizedBox(height: 12),
-                  const Text(
-                    'حدث خطأ أثناء تحميل الطلبات.',
-                    style: TextStyle(fontSize: 16),
+                  Text(
+                    l10n.loadRequestsError,
+                    style: const TextStyle(fontSize: 16),
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
@@ -123,7 +126,7 @@ class _BookingsTabState extends State<BookingsTab> {
                         });
                       }
                     },
-                    child: const Text('إعادة المحاولة'),
+                    child: Text(l10n.retry),
                   ),
                 ],
               ),
@@ -133,20 +136,22 @@ class _BookingsTabState extends State<BookingsTab> {
           final trips = snapshot.data ?? [];
 
           if (trips.isEmpty) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.inbox, size: 60, color: Colors.grey),
-                  SizedBox(height: 12),
+                  const Icon(Icons.inbox, size: 60, color: Colors.grey),
+                  const SizedBox(height: 12),
                   Text(
-                    'لا توجد طلبات واردة حالياً',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    l10n.noIncomingRequests,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
-                    'ستظهر طلبات الركاب هنا عند حجزهم لرحلة.',
-                    style: TextStyle(color: Colors.grey),
+                    l10n.noIncomingRequestsHint,
+                    style: const TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
@@ -195,9 +200,9 @@ class _BookingsTabState extends State<BookingsTab> {
                               color: Colors.orange.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Text(
-                              '⏳ قيد الانتظار',
-                              style: TextStyle(
+                            child: Text(
+                              l10n.statusPending,
+                              style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.orange,
@@ -213,7 +218,7 @@ class _BookingsTabState extends State<BookingsTab> {
                               size: 14, color: Colors.grey),
                           const SizedBox(width: 4),
                           Text(
-                            'الراكب: $passengerDisplayId',
+                            '${l10n.passengerLabel}: $passengerDisplayId',
                             style: const TextStyle(
                                 fontSize: 13, color: Colors.grey),
                           ),
@@ -222,7 +227,7 @@ class _BookingsTabState extends State<BookingsTab> {
                               size: 14, color: Colors.grey),
                           const SizedBox(width: 4),
                           Text(
-                            _formatDate(trip.createdAt),
+                            _formatDate(trip.createdAt, l10n),
                             style: const TextStyle(
                                 fontSize: 13, color: Colors.grey),
                           ),
@@ -254,7 +259,8 @@ class _BookingsTabState extends State<BookingsTab> {
                                 )
                               : const Icon(Icons.check_circle, size: 18),
                           label: Text(
-                              isProcessing ? 'جاري القبول...' : '✅ قبول الطلب'),
+                            isProcessing ? l10n.accepting : l10n.acceptRequest,
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primaryColor,
                             foregroundColor: Colors.white,
@@ -276,18 +282,18 @@ class _BookingsTabState extends State<BookingsTab> {
     );
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(DateTime date, AppLocalizations l10n) {
     final now = DateTime.now();
     final diff = now.difference(date);
 
     if (diff.inDays > 0) {
-      return 'قبل ${diff.inDays} يوم${diff.inDays > 1 ? 'اً' : ''}';
+      return l10n.daysAgo(diff.inDays);
     } else if (diff.inHours > 0) {
-      return 'قبل ${diff.inHours} ساعة${diff.inHours > 1 ? 'اً' : ''}';
+      return l10n.hoursAgo(diff.inHours);
     } else if (diff.inMinutes > 0) {
-      return 'قبل ${diff.inMinutes} دقيقة${diff.inMinutes > 1 ? 'اً' : ''}';
+      return l10n.minutesAgo(diff.inMinutes);
     } else {
-      return 'الآن';
+      return l10n.now;
     }
   }
 }
