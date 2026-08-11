@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/widgets/app_top_bar.dart';
+import '../../l10n/app_localizations.dart';
 import 'tabs/verify_drivers_tab.dart';
 import 'tabs/pending_points_tab.dart';
 import 'tabs/admin_map_tab.dart';
@@ -82,6 +83,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final tabs = [
       const VerifyDriversTab(),
       PendingPointsTab(onShowOnMap: _showPointOnMap),
@@ -90,7 +92,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     ];
 
     return Scaffold(
-      appBar: AppTopBar.admin(title: 'لوحة التحكم - الأدمن'),
+      appBar: AppTopBar.admin(title: l10n.adminDashboardTitle),
       body: IndexedStack(
         index: _currentIndex,
         children: tabs,
