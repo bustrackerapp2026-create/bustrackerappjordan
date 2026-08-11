@@ -60,7 +60,6 @@ class ProfileBody extends StatelessWidget {
         backgroundColor: const Color(0xFFF5F7FA),
         body: Stack(
           children: [
-            // القائمة لا تُعاد بناؤها عند تغيّر حالة الرفع فقط
             ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
               cacheExtent: 400,
@@ -199,7 +198,7 @@ class ProfileBody extends StatelessWidget {
                 return ValueListenableBuilder<bool>(
                   valueListenable: uploadingNotifier,
                   builder: (context, uploading, _) {
-                    return const _BusyOverlay(uploading: true);
+                    return _BusyOverlay(uploading: uploading);
                   },
                 );
               },
