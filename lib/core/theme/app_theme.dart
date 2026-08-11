@@ -14,6 +14,11 @@ class AppTheme {
   static const Color darkText = Color(0xFFE8EAED);
   static const Color darkTextSecondary = Color(0xFF9AA0A6);
 
+  static const BorderRadius _cardRadius =
+      BorderRadius.all(Radius.circular(16));
+  static const BorderRadius _inputRadius =
+      BorderRadius.all(Radius.circular(12));
+
   static ThemeData lightTheme = ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
@@ -32,35 +37,33 @@ class AppTheme {
       elevation: 0,
       centerTitle: true,
     ),
-    cardTheme: CardThemeData(
+    cardTheme: const CardThemeData(
       color: Colors.white,
       elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: _cardRadius),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         minimumSize: const Size(double.infinity, 50),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: const RoundedRectangleBorder(borderRadius: _inputRadius),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: Colors.white,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+      border: const OutlineInputBorder(
+        borderRadius: _inputRadius,
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: _inputRadius,
         borderSide: BorderSide(color: Colors.grey.shade300),
       ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: _inputRadius,
+        borderSide: BorderSide(
           color: primaryColor,
           width: 2,
         ),
@@ -111,35 +114,33 @@ class AppTheme {
       elevation: 0,
       centerTitle: true,
     ),
-    cardTheme: CardThemeData(
+    cardTheme: const CardThemeData(
       color: darkCard,
       elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: _cardRadius),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         minimumSize: const Size(double.infinity, 50),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: const RoundedRectangleBorder(borderRadius: _inputRadius),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: darkCard,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+      border: const OutlineInputBorder(
+        borderRadius: _inputRadius,
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: _inputRadius,
         borderSide: BorderSide(color: Colors.grey.shade700),
       ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: _inputRadius,
+        borderSide: BorderSide(
           color: primaryColor,
           width: 2,
         ),
@@ -174,9 +175,9 @@ class AppTheme {
       bodyMedium: TextStyle(fontSize: 14, color: darkText),
     ),
     dividerColor: Colors.grey.shade800,
-    dialogTheme: DialogThemeData(
+    dialogTheme: const DialogThemeData(
       backgroundColor: darkSurface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: _cardRadius),
     ),
     bottomSheetTheme: const BottomSheetThemeData(
       backgroundColor: darkSurface,
@@ -186,9 +187,9 @@ class AppTheme {
       iconColor: primaryColor,
       textColor: darkText,
     ),
-    snackBarTheme: SnackBarThemeData(
+    snackBarTheme: const SnackBarThemeData(
       backgroundColor: darkCard,
-      contentTextStyle: const TextStyle(color: darkText),
+      contentTextStyle: TextStyle(color: darkText),
       behavior: SnackBarBehavior.floating,
     ),
   );
