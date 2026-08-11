@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/locale/locale_provider.dart';
 import '../../../core/utils/validators.dart';
+import '../../../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import 'register_screen.dart';
 import '../../../services/local_storage_service.dart';
@@ -95,11 +97,12 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _resetPassword() async {
+    final l10n = AppLocalizations.of(context);
     final email = _emailController.text.trim();
     if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ الرجاء إدخال البريد الإلكتروني أولاً'),
+        SnackBar(
+          content: Text(l10n.enterEmailFirst),
           backgroundColor: Colors.orange,
           behavior: SnackBarBehavior.floating,
         ),
@@ -112,8 +115,8 @@ class _LoginScreenState extends State<LoginScreen>
       await authProvider.resetPassword(email);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('📧 تم إرسال رابط إعادة تعيين كلمة السر إلى بريدك'),
+          SnackBar(
+            content: Text(l10n.resetLinkSent),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
@@ -172,6 +175,8 @@ class _LoginScreenState extends State<LoginScreen>
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final l10n = AppLocalizations.of(context);
+    final localeProvider = context.watch<LocaleProvider>();
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
@@ -199,7 +204,6 @@ class _LoginScreenState extends State<LoginScreen>
               opacity: _fadeAnimation,
               child: Stack(
                 children: [
-                  // دوائر زخرفية خفيفة
                   Positioned(
                     top: -40,
                     right: -30,
@@ -216,7 +220,46 @@ class _LoginScreenState extends State<LoginScreen>
                     child: _decorCircle(80, _softBlue.withValues(alpha: 0.12)),
                   ),
 
-                  // المحتوى
+                  // زر تبديل اللغة
+                  Positioned(
+                    top: 8,
+                    left: localeProvider.isArabic ? 12 : null,
+                    right: localeProvider.isArabic ? null : 12,
+                    child: Material(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () => localeProvider.toggle(),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.language,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                localeProvider.isArabic ? 'EN' : 'عر',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
                   SingleChildScrollView(
                     padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset * 0.1),
                     child: ConstrainedBox(
@@ -229,14 +272,14 @@ class _LoginScreenState extends State<LoginScreen>
                       child: Column(
                         children: [
                           const SizedBox(height: 12),
-                          _buildHeader(),
+                          _buildHeader(l10n),
                           const SizedBox(height: 28),
-                          _buildLoginCard(),
+                          _buildLoginCard(l10n),
                           const SizedBox(height: 20),
-                          _buildRegisterRow(),
+                          _buildRegisterRow(l10n),
                           const SizedBox(height: 12),
                           Text(
-                            'تتبع الحافلات · نقاط التجمع · الأردن',
+                            l10n.appTagline,
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.55),
                               fontSize: 12,
@@ -267,7 +310,7 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(AppLocalizations l10n) {
     return Column(
       children: [
         Container(
@@ -302,9 +345,9 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
         const SizedBox(height: 18),
-        const Text(
-          'متتبع الحافلات',
-          style: TextStyle(
+        Text(
+          l10n.appName,
+          style: const TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.w800,
             color: Colors.white,
@@ -313,7 +356,7 @@ class _LoginScreenState extends State<LoginScreen>
         ),
         const SizedBox(height: 6),
         Text(
-          'Jordan Bus Tracker',
+          l10n.appNameEn,
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w500,
@@ -330,7 +373,7 @@ class _LoginScreenState extends State<LoginScreen>
             border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
           ),
           child: Text(
-            'مرحباً بك · سجّل دخولك للمتابعة',
+            l10n.welcomeLogin,
             style: TextStyle(
               fontSize: 12.5,
               color: Colors.white.withValues(alpha: 0.9),
@@ -341,7 +384,7 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _buildLoginCard() {
+  Widget _buildLoginCard(AppLocalizations l10n) {
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxWidth: 420),
@@ -362,10 +405,10 @@ class _LoginScreenState extends State<LoginScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'تسجيل الدخول',
+            Text(
+              l10n.login,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
                 color: Color(0xFF0F172A),
@@ -373,7 +416,7 @@ class _LoginScreenState extends State<LoginScreen>
             ),
             const SizedBox(height: 6),
             Text(
-              'أدخل بيانات حسابك للوصول إلى التطبيق',
+              l10n.loginSubtitle,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
@@ -382,11 +425,10 @@ class _LoginScreenState extends State<LoginScreen>
             ),
             const SizedBox(height: 24),
 
-            // البريد
             Align(
-              alignment: Alignment.centerRight,
+              alignment: AlignmentDirectional.centerStart,
               child: Text(
-                'البريد الإلكتروني',
+                l10n.email,
                 style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w700,
@@ -408,11 +450,10 @@ class _LoginScreenState extends State<LoginScreen>
             ),
             const SizedBox(height: 16),
 
-            // كلمة السر
             Align(
-              alignment: Alignment.centerRight,
+              alignment: AlignmentDirectional.centerStart,
               child: Text(
-                'كلمة السر',
+                l10n.password,
                 style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w700,
@@ -449,7 +490,6 @@ class _LoginScreenState extends State<LoginScreen>
             ),
             const SizedBox(height: 8),
 
-            // تذكرني + نسيت
             Row(
               children: [
                 SizedBox(
@@ -465,9 +505,9 @@ class _LoginScreenState extends State<LoginScreen>
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ),
-                const Text(
-                  'تذكرني',
-                  style: TextStyle(
+                Text(
+                  l10n.rememberMe,
+                  style: const TextStyle(
                     fontSize: 13,
                     color: Color(0xFF475569),
                   ),
@@ -481,9 +521,9 @@ class _LoginScreenState extends State<LoginScreen>
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: const Text(
-                    'نسيت كلمة السر؟',
-                    style: TextStyle(
+                  child: Text(
+                    l10n.forgotPassword,
+                    style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -493,7 +533,6 @@ class _LoginScreenState extends State<LoginScreen>
             ),
             const SizedBox(height: 18),
 
-            // زر الدخول
             SizedBox(
               height: 54,
               child: ElevatedButton(
@@ -518,18 +557,23 @@ class _LoginScreenState extends State<LoginScreen>
                           strokeWidth: 2.4,
                         ),
                       )
-                    : const Row(
+                    : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            'تسجيل الدخول',
-                            style: TextStyle(
+                            l10n.login,
+                            style: const TextStyle(
                               fontSize: 16.5,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          SizedBox(width: 8),
-                          Icon(Icons.arrow_back_rounded, size: 20),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Directionality.of(context) == TextDirection.rtl
+                                ? Icons.arrow_back_rounded
+                                : Icons.arrow_forward_rounded,
+                            size: 20,
+                          ),
                         ],
                       ),
               ),
@@ -540,7 +584,7 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _buildRegisterRow() {
+  Widget _buildRegisterRow(AppLocalizations l10n) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -552,7 +596,7 @@ class _LoginScreenState extends State<LoginScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            'ليس لديك حساب؟',
+            l10n.noAccount,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.85),
               fontSize: 13.5,
@@ -571,9 +615,9 @@ class _LoginScreenState extends State<LoginScreen>
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            child: const Text(
-              'إنشاء حساب جديد',
-              style: TextStyle(
+            child: Text(
+              l10n.createAccount,
+              style: const TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 13.5,
                 decoration: TextDecoration.underline,
