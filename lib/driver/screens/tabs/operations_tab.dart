@@ -14,18 +14,27 @@ class OperationsTab extends StatefulWidget {
   State<OperationsTab> createState() => _OperationsTabState();
 }
 
-class _OperationsTabState extends State<OperationsTab> {
+class _OperationsTabState extends State<OperationsTab>
+    with SingleTickerProviderStateMixin {
   final TripService _tripService = TripService();
 
   Stream<List<TripModel>>? _activeTripsStream;
   Stream<List<TripModel>>? _pastTripsStream;
   List<TripModel> _activeCache = const [];
   List<TripModel> _pastCache = const [];
+  late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _initStreams();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   void _initStreams() {
@@ -38,8 +47,25 @@ class _OperationsTabState extends State<OperationsTab> {
 
   Future<bool> _updateTripStatus(String tripId, TripStatus newStatus) async {
     final l10n = AppLocalizations.of(context);
+    final driverId = context.read<AuthProvider>().userId;
+    if (driverId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.pleaseLoginOperations),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    }
+
     try {
-      await _tripService.updateTripStatus(tripId, newStatus);
+      await _tripService.updateTripStatus(
+        tripId,
+        newStatus,
+        driverId: driverId,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -91,15 +117,14 @@ class _OperationsTabState extends State<OperationsTab> {
       return Center(child: Text(l10n.pleaseLoginOperations));
     }
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(l10n.operationsTitle),
-          backgroundColor: Theme.of(context).colorScheme.surface,
-          foregroundColor: Theme.of(context).colorScheme.onSurface,
+    // بدون Scaffold داخلي — لوحة السائق لديها AppBar بالفعل
+    return Column(
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surface,
           elevation: 1,
-          bottom: TabBar(
+          child: TabBar(
+            controller: _tabController,
             tabs: [
               Tab(text: l10n.tabCurrent),
               Tab(text: l10n.tabPast),
@@ -109,31 +134,34 @@ class _OperationsTabState extends State<OperationsTab> {
             unselectedLabelColor: Colors.grey,
           ),
         ),
-        body: TabBarView(
-          children: [
-            _buildTripList(
-              stream: _activeTripsStream,
-              isActive: true,
-              emptyIcon: Icons.inbox,
-              emptyTitle: l10n.noActiveTrips,
-              emptyHint: l10n.noActiveTripsHint,
-              onCache: (list) => _activeCache = list,
-              findIndex: (key) => _indexIn(_activeCache, key),
-              l10n: l10n,
-            ),
-            _buildTripList(
-              stream: _pastTripsStream,
-              isActive: false,
-              emptyIcon: Icons.history,
-              emptyTitle: l10n.noPastTrips,
-              emptyHint: l10n.noPastTripsHint,
-              onCache: (list) => _pastCache = list,
-              findIndex: (key) => _indexIn(_pastCache, key),
-              l10n: l10n,
-            ),
-          ],
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildTripList(
+                stream: _activeTripsStream,
+                isActive: true,
+                emptyIcon: Icons.inbox,
+                emptyTitle: l10n.noActiveTrips,
+                emptyHint: l10n.noActiveTripsHint,
+                onCache: (list) => _activeCache = list,
+                findIndex: (key) => _indexIn(_activeCache, key),
+                l10n: l10n,
+              ),
+              _buildTripList(
+                stream: _pastTripsStream,
+                isActive: false,
+                emptyIcon: Icons.history,
+                emptyTitle: l10n.noPastTrips,
+                emptyHint: l10n.noPastTripsHint,
+                onCache: (list) => _pastCache = list,
+                findIndex: (key) => _indexIn(_pastCache, key),
+                l10n: l10n,
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -156,7 +184,16 @@ class _OperationsTabState extends State<OperationsTab> {
         }
 
         if (snapshot.hasError) {
-          return Center(child: Text('${l10n.errorPrefix}: ${snapshot.error}'));
+          // فهارس Firestore الناقصة تظهر هنا بدل إسقاط التطبيق
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                '${l10n.errorPrefix}: ${snapshot.error}',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
         }
 
         final trips = snapshot.data ?? const <TripModel>[];

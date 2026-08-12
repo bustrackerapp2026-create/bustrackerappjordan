@@ -16,25 +16,53 @@ class DriverDashboard extends StatefulWidget {
 class _DriverDashboardState extends State<DriverDashboard> {
   int _currentIndex = 0;
 
-  final List<Widget> _tabs = const [
-    DriverMapTab(),
-    OperationsTab(),
-    BookingsTab(),
-    ProfileTab(),
-  ];
+  /// لا تُنشأ الخريطة وبقية التبويبات دفعة واحدة — يقلل التعطّل عند الدخول
+  final Set<int> _visited = {0};
+  final Map<int, Widget> _tabCache = {};
+
+  Widget _tabFor(int index) {
+    return _tabCache.putIfAbsent(index, () {
+      switch (index) {
+        case 0:
+          return const DriverMapTab();
+        case 1:
+          return const OperationsTab();
+        case 2:
+          return const BookingsTab();
+        case 3:
+          return const ProfileTab();
+        default:
+          return const SizedBox.shrink();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // ✅ تم ربط الـ DriverCustomAppBar المخصص هنا
       appBar: const DriverCustomAppBar(),
       body: IndexedStack(
         index: _currentIndex,
-        children: _tabs,
+        sizing: StackFit.expand,
+        children: List.generate(4, (i) {
+          if (!_visited.contains(i)) {
+            return const SizedBox.shrink();
+          }
+          return KeyedSubtree(
+            key: ValueKey('driver_tab_$i'),
+            child: _tabFor(i),
+          );
+        }),
       ),
       bottomNavigationBar: DriverCustomBottomNavBar(
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: (index) {
+          if (index == _currentIndex) return;
+          setState(() {
+            _visited.add(index);
+            _currentIndex = index;
+          });
+        },
       ),
     );
   }
