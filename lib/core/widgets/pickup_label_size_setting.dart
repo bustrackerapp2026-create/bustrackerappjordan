@@ -12,8 +12,10 @@ class PickupLabelSizeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final provider = context.watch<PickupLabelScaleProvider>();
-    final subtitle = _labelFor(l10n, provider.size);
+    // إعادة بناء فقط عند تغيّر الحجم المحدد
+    final size = context.select<PickupLabelScaleProvider, PickupLabelSize>(
+      (p) => p.size,
+    );
 
     return ListTile(
       leading: const Icon(Icons.text_increase, color: AppTheme.primaryColor),
@@ -21,7 +23,7 @@ class PickupLabelSizeTile extends StatelessWidget {
         l10n.pickupLabelSizeTitle,
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
-      subtitle: Text('${l10n.pickupLabelSizeHint}\n$subtitle'),
+      subtitle: Text('${l10n.pickupLabelSizeHint}\n${_labelFor(l10n, size)}'),
       isThreeLine: true,
       trailing: const Icon(Icons.chevron_left),
       onTap: () => _openSheet(context),
@@ -43,6 +45,7 @@ class PickupLabelSizeTile extends StatelessWidget {
 
   Future<void> _openSheet(BuildContext context) async {
     final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -87,14 +90,12 @@ class PickupLabelSizeTile extends StatelessWidget {
                 PickupLabelSizePicker(
                   onSelected: () {
                     if (ctx.mounted) Navigator.pop(ctx);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(l10n.pickupLabelSizeChanged),
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    }
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(l10n.pickupLabelSizeChanged),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
                   },
                 ),
               ],
@@ -106,154 +107,160 @@ class PickupLabelSizeTile extends StatelessWidget {
   }
 }
 
-/// منتقي بصري لحجم النص — 4 بطاقات تعرض حجم الحرف مباشرة.
+/// منتقي بصري لحجم النص — 4 بطاقات خفيفة الأداء.
 class PickupLabelSizePicker extends StatelessWidget {
   final VoidCallback? onSelected;
 
   const PickupLabelSizePicker({super.key, this.onSelected});
 
+  static const _sizes = PickupLabelSize.values;
+  static const _sampleFonts = <double>[14, 18, 22, 28];
+  static const _gap = SizedBox(width: 8);
+  static const _cardHeight = 92.0;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final provider = context.watch<PickupLabelScaleProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
 
-    return Row(
-      children: [
-        for (final size in PickupLabelSize.values) ...[
-          if (size != PickupLabelSize.normal) const SizedBox(width: 8),
-          Expanded(
-            child: _SizeCard(
-              size: size,
-              label: _label(l10n, size),
-              selected: provider.size == size,
-              isDark: isDark,
-              sampleFontSize: _sampleFont(size),
-              onTap: () async {
-                await provider.setSize(size);
-                onSelected?.call();
-              },
+    final labels = <String>[
+      l10n.pickupLabelSizeNormal,
+      l10n.pickupLabelSizeLarge,
+      l10n.pickupLabelSizeXLarge,
+      l10n.pickupLabelSizeXXLarge,
+    ];
+
+    return SizedBox(
+      height: _cardHeight,
+      child: Row(
+        children: [
+          for (var i = 0; i < _sizes.length; i++) ...[
+            if (i > 0) _gap,
+            Expanded(
+              child: RepaintBoundary(
+                child: _SizeCard(
+                  size: _sizes[i],
+                  label: labels[i],
+                  sampleFontSize: _sampleFonts[i],
+                  isDark: isDark,
+                  onSurface: onSurface,
+                  onSelected: onSelected,
+                ),
+              ),
             ),
-          ),
+          ],
         ],
-      ],
+      ),
     );
-  }
-
-  static String _label(AppLocalizations l10n, PickupLabelSize size) {
-    switch (size) {
-      case PickupLabelSize.normal:
-        return l10n.pickupLabelSizeNormal;
-      case PickupLabelSize.large:
-        return l10n.pickupLabelSizeLarge;
-      case PickupLabelSize.xlarge:
-        return l10n.pickupLabelSizeXLarge;
-      case PickupLabelSize.xxlarge:
-        return l10n.pickupLabelSizeXXLarge;
-    }
-  }
-
-  static double _sampleFont(PickupLabelSize size) {
-    switch (size) {
-      case PickupLabelSize.normal:
-        return 14;
-      case PickupLabelSize.large:
-        return 18;
-      case PickupLabelSize.xlarge:
-        return 22;
-      case PickupLabelSize.xxlarge:
-        return 28;
-    }
   }
 }
 
 class _SizeCard extends StatelessWidget {
   final PickupLabelSize size;
   final String label;
-  final bool selected;
-  final bool isDark;
   final double sampleFontSize;
-  final VoidCallback onTap;
+  final bool isDark;
+  final Color onSurface;
+  final VoidCallback? onSelected;
 
   const _SizeCard({
     required this.size,
     required this.label,
-    required this.selected,
-    required this.isDark,
     required this.sampleFontSize,
-    required this.onTap,
+    required this.isDark,
+    required this.onSurface,
+    this.onSelected,
   });
+
+  static const _radius = BorderRadius.all(Radius.circular(14));
+  static const _padding = EdgeInsets.symmetric(vertical: 10, horizontal: 4);
+
+  // ألوان ثابتة لتقليل تخصيص الكائنات
+  static final _bgSelectedLight =
+      AppTheme.primaryColor.withValues(alpha: 0.10);
+  static final _bgSelectedDark =
+      AppTheme.primaryColor.withValues(alpha: 0.22);
+  static final _bgIdleDark = Colors.white.withValues(alpha: 0.06);
+  static final _borderIdle = Colors.grey.shade300;
 
   @override
   Widget build(BuildContext context) {
-    final borderColor =
-        selected ? AppTheme.primaryColor : Colors.grey.shade300;
+    // كل بطاقة تُعاد بناؤها فقط إذا تغيّرت حالة اختيارها
+    final selected = context.select<PickupLabelScaleProvider, bool>(
+      (p) => p.size == size,
+    );
+
     final bg = selected
-        ? AppTheme.primaryColor.withValues(alpha: isDark ? 0.22 : 0.10)
-        : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.shade50);
+        ? (isDark ? _bgSelectedDark : _bgSelectedLight)
+        : (isDark ? _bgIdleDark : Colors.grey.shade50);
+    final borderColor = selected ? AppTheme.primaryColor : _borderIdle;
+    final sampleColor = selected ? AppTheme.primaryColor : onSurface;
+    final labelColor =
+        selected ? AppTheme.primaryColor : onSurface.withValues(alpha: 0.7);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        onTap: () async {
+          final provider = context.read<PickupLabelScaleProvider>();
+          await provider.setSize(size);
+          onSelected?.call();
+        },
+        borderRadius: _radius,
+        child: DecoratedBox(
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: _radius,
             border: Border.all(
               color: borderColor,
               width: selected ? 2 : 1.2,
             ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                height: 36,
-                child: Center(
-                  child: Text(
-                    'أ',
-                    style: TextStyle(
-                      fontSize: sampleFontSize,
-                      fontWeight: FontWeight.w800,
-                      color: selected
-                          ? AppTheme.primaryColor
-                          : Theme.of(context).colorScheme.onSurface,
-                      height: 1,
+          child: Padding(
+            padding: _padding,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  height: 32,
+                  child: Center(
+                    child: Text(
+                      'أ',
+                      style: TextStyle(
+                        fontSize: sampleFontSize,
+                        fontWeight: FontWeight.w800,
+                        color: sampleColor,
+                        height: 1,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  color: selected
-                      ? AppTheme.primaryColor
-                      : Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.7),
-                ),
-              ),
-              if (selected) ...[
                 const SizedBox(height: 4),
-                Icon(
-                  Icons.check_circle,
-                  size: 14,
-                  color: AppTheme.primaryColor,
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight:
+                        selected ? FontWeight.w800 : FontWeight.w600,
+                    color: labelColor,
+                  ),
                 ),
-              ] else
-                const SizedBox(height: 18),
-            ],
+                SizedBox(
+                  height: 16,
+                  child: selected
+                      ? const Icon(
+                          Icons.check_circle,
+                          size: 14,
+                          color: AppTheme.primaryColor,
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
           ),
         ),
       ),
