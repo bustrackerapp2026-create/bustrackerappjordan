@@ -1,23 +1,25 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 
+import '../../../../core/map/bus_marker_images.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../models/live_driver_location.dart';
 import '../../../../services/live_tracking_service.dart';
 
 /// يعرض مواقع السائقين المتصلين مباشرة على خريطة الراكب.
+/// أيقونة الباص تتغير حسب السعة: سرفيس (5) / متوسط (23) / كبير (50).
 mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final LiveTrackingService _tracking = LiveTrackingService();
   StreamSubscription<List<LiveDriverLocation>>? _liveDriversSub;
 
   final Map<String, PointAnnotation> _driverAnnotations = {};
   final Map<String, (double, double)> _lastDrawnPos = {};
-  Uint8List? _busMarkerBytes;
+  /// آخر سعة رُسمت لكل سائق — لإعادة إنشاء الماركر عند تغيّر نوع الباص
+  final Map<String, int?> _lastCapacity = {};
 
   /// لا يُعاد بناء الخريطة عند تغيّر العدد — فقط اللوحة السفلية
   final ValueNotifier<int> liveDriversCount = ValueNotifier<int>(0);
@@ -30,51 +32,8 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   /// حد أدنى بالمتر تقريباً قبل تحديث موقع الماركر (≈ 12م)
   static const double _minMoveThreshold = 0.00012;
 
-  Future<Uint8List> _createBusMarkerBytes() async {
-    if (_busMarkerBytes != null) return _busMarkerBytes!;
-
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    const size = 72.0;
-
-    final shadow = Paint()
-      ..color = Colors.black.withValues(alpha: 0.18)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
-    canvas.drawCircle(const Offset(size / 2, size / 2 + 2), 15, shadow);
-
-    final body = Paint()..color = const Color(0xFF1565C0);
-    final rrect = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: const Offset(size / 2, size / 2),
-        width: 28,
-        height: 34,
-      ),
-      const Radius.circular(7),
-    );
-    canvas.drawRRect(rrect, body);
-
-    final window = Paint()..color = Colors.white.withValues(alpha: 0.9);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: const Offset(size / 2, size / 2 - 5),
-          width: 18,
-          height: 10,
-        ),
-        const Radius.circular(2),
-      ),
-      window,
-    );
-
-    final wheel = Paint()..color = Colors.black87;
-    canvas.drawCircle(const Offset(size / 2 - 8, size / 2 + 13), 3.5, wheel);
-    canvas.drawCircle(const Offset(size / 2 + 8, size / 2 + 13), 3.5, wheel);
-
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(size.toInt(), size.toInt());
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    _busMarkerBytes = bytes!.buffer.asUint8List();
-    return _busMarkerBytes!;
+  Future<Uint8List> _markerFor(LiveDriverLocation d) {
+    return BusMarkerImages.forCapacity(d.capacity);
   }
 
   void startLiveDriverTracking({String? routeFilter}) {
@@ -115,7 +74,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _updatingMarkers = true;
 
     try {
-      final image = await _createBusMarkerBytes();
       if (!mounted) return;
 
       final seen = <String>{};
@@ -126,6 +84,19 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         seen.add(d.driverId);
         final existing = _driverAnnotations[d.driverId];
         final last = _lastDrawnPos[d.driverId];
+        final capacityChanged = _lastCapacity[d.driverId] != d.capacity;
+
+        if (existing != null && capacityChanged) {
+          // تغيّر نوع الباص → احذف وأعد الإنشاء بأيقونة جديدة
+          try {
+            await pointAnnotationManager?.delete(existing);
+          } catch (_) {}
+          _driverAnnotations.remove(d.driverId);
+          _lastDrawnPos.remove(d.driverId);
+          _lastCapacity.remove(d.driverId);
+          toCreate.add(d);
+          continue;
+        }
 
         if (existing != null && last != null) {
           final dLat = (d.latitude - last.$1).abs();
@@ -163,6 +134,8 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       for (final d in toCreate) {
         if (!mounted) return;
         try {
+          final image = await _markerFor(d);
+          if (!mounted) return;
           final ann = await pointAnnotationManager?.create(
             PointAnnotationOptions(
               geometry: Point(
@@ -172,12 +145,12 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
               iconSize: 0.95,
               iconAnchor: IconAnchor.CENTER,
               iconRotate: d.heading ?? 0,
-              // بدون نص على كل ماركر — أرخص للرسم عند كثرة الباصات
             ),
           );
           if (ann != null) {
             _driverAnnotations[d.driverId] = ann;
             _lastDrawnPos[d.driverId] = (d.latitude, d.longitude);
+            _lastCapacity[d.driverId] = d.capacity;
           }
         } catch (e) {
           MapUtils.log('إنشاء ماركر سائق: $e', tag: 'LiveTracking');
@@ -189,6 +162,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       for (final id in toRemove) {
         final ann = _driverAnnotations.remove(id);
         _lastDrawnPos.remove(id);
+        _lastCapacity.remove(id);
         if (ann != null) {
           try {
             await pointAnnotationManager?.delete(ann);
@@ -222,6 +196,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
     _driverAnnotations.clear();
     _lastDrawnPos.clear();
+    _lastCapacity.clear();
     liveDriversCount.value = 0;
   }
 

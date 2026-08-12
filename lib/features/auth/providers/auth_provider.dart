@@ -76,6 +76,7 @@ class AuthProvider extends ChangeNotifier {
     String? phoneNumber,
     String? busNumber,
     String? route,
+    int? capacity,
   }) async {
     try {
       _setLoading(true);
@@ -94,6 +95,7 @@ class AuthProvider extends ChangeNotifier {
           phoneNumber: phoneNumber ?? '',
           busNumber: busNumber ?? '',
           route: route ?? '',
+          capacity: userType == 'driver' ? capacity : null,
           isVerified: false,
         );
 
