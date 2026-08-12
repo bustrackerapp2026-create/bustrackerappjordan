@@ -24,7 +24,6 @@ class AppLocalizations {
 
   String _t(String ar, String en) => isArabic ? ar : en;
 
-  // ── عام ──────────────────────────────────────────
   String get appName => _t('متتبع الحافلات', 'Bus Tracker');
   String get appNameEn => 'Jordan Bus Tracker';
   String get appTagline =>
@@ -57,8 +56,7 @@ class AppLocalizations {
   String get execute => _t('تنفيذ', 'Run');
   String get refresh => _t('تحديث', 'Refresh');
   String get retry => _t('إعادة المحاولة', 'Retry');
-  String get pleaseLogin =>
-      _t('يرجى تسجيل الدخول', 'Please sign in');
+  String get pleaseLogin => _t('يرجى تسجيل الدخول', 'Please sign in');
   String get errorPrefix => _t('خطأ', 'Error');
   String get processing => _t('جاري...', 'Working...');
   String get now => _t('الآن', 'Just now');
@@ -69,7 +67,6 @@ class AppLocalizations {
   String get searchHint =>
       _t('ابحث عن وجهة أو خط...', 'Search destination or route...');
 
-  // ── تسجيل الدخول ─────────────────────────────────
   String get login => _t('تسجيل الدخول', 'Log in');
   String get loginSubtitle =>
       _t('أدخل بيانات حسابك للوصول إلى التطبيق', 'Enter your account details to access the app');
@@ -87,7 +84,6 @@ class AppLocalizations {
       _t('📧 تم إرسال رابط إعادة تعيين كلمة السر إلى بريدك',
           '📧 Password reset link sent to your email');
 
-  // ── التسجيل ──────────────────────────────────────
   String get registerTitle => _t('إنشاء حساب جديد', 'Create new account');
   String get fullName => _t('الاسم الكامل', 'Full name');
   String get phone => _t('رقم الهاتف', 'Phone number');
@@ -127,7 +123,6 @@ class AppLocalizations {
   String get passwordsDoNotMatch =>
       _t('كلمة السر غير متطابقة', 'Passwords do not match');
 
-  // ── انتظار الموافقة ──────────────────────────────
   String get pendingTitle =>
       _t('⏳ حسابك قيد المراجعة', '⏳ Your account is under review');
   String get pendingMessage => _t(
@@ -141,7 +136,6 @@ class AppLocalizations {
         'Sorry, your request was not approved. Please contact support for details.',
       );
 
-  // ── شريط التنقل ──────────────────────────────────
   String get navMap => _t('الخريطة', 'Map');
   String get navOperations => _t('العمليات', 'Operations');
   String get navRequests => _t('الطلبات', 'Requests');
@@ -151,13 +145,11 @@ class AppLocalizations {
   String get navPoints => _t('النقاط', 'Points');
   String get navSettings => _t('الإعدادات', 'Settings');
 
-  // ── لوحات التحكم ─────────────────────────────────
   String get adminDashboardTitle =>
       _t('لوحة التحكم - الأدمن', 'Admin dashboard');
   String get driverDashboard => _t('لوحة السائق', 'Driver dashboard');
   String get passengerDashboard => _t('لوحة الراكب', 'Passenger dashboard');
 
-  // ── الإعدادات ────────────────────────────────────
   String get settings => _t('الإعدادات', 'Settings');
   String get darkMode => _t('الوضع الليلي', 'Dark mode');
   String get darkModeOn =>
@@ -186,7 +178,6 @@ class AppLocalizations {
       _t('نقاط التجمع المفضلة', 'Favorite pickup points');
   String get comingSoon => _t('قريباً', 'Coming soon');
 
-  // ── العمليات / الرحلات / الطلبات ──────────────────
   String get operationsTitle => _t('📊 العمليات', '📊 Operations');
   String get tabCurrent => _t('الحالية', 'Active');
   String get tabPast => _t('السابقة', 'Past');
@@ -258,7 +249,6 @@ class AppLocalizations {
       ? 'قبل $n دقيقة${n > 1 ? 'اً' : ''}'
       : '$n min${n > 1 ? 's' : ''} ago';
 
-  // ── خريطة السائق ─────────────────────────────────
   String get driverOnlineMsg =>
       _t('🟢 أنت متصل — يظهر موقعك للركاب الآن',
           '🟢 You are online — passengers can see you');
@@ -281,14 +271,12 @@ class AppLocalizations {
   String get tripLabel => _t('رحلة', 'Trip');
   String get activeTrip => _t('رحلة نشطة', 'Active trip');
   String get tripWithFollow => _t('رحلة + متابعة', 'Trip + follow');
-  String speedKmh(String value) =>
-      _t('$value كم/س', '$value km/h');
+  String speedKmh(String value) => _t('$value كم/س', '$value km/h');
   String get speedPlaceholder => _t('-- كم/س', '-- km/h');
   String onlineWithRoute(String route) =>
       _t('🟢 متصل — الخط: $route', '🟢 Online — line: $route');
   String get offlineStatus => _t('⚪ غير متصل', '⚪ Offline');
 
-  // ── إعدادات طبقات الخريطة ─────────────────────────
   String get mapLayersSettings =>
       _t('⚙️ إعدادات طبقات الخريطة', '⚙️ Map layer settings');
   String get chooseMapStyle =>
@@ -309,7 +297,18 @@ class AppLocalizations {
       _t('مطاعم، مستشفيات، مدارس...', 'Restaurants, hospitals, schools...');
   String get roadLabels => _t('🛣️ أسماء الشوارع', '🛣️ Road names');
 
-  // ── خريطة الراكب ─────────────────────────────────
+  String get pickupLabelSizeTitle =>
+      _t('حجم نص نقاط التجمع', 'Pickup point label size');
+  String get pickupLabelSizeHint => _t(
+        'يطبّق على أسماء النقاط المضافة في كل الخرائط',
+        'Applies to added point names on all maps',
+      );
+  String get pickupLabelSizeNormal => _t('عادي', 'Normal');
+  String get pickupLabelSizeLarge => _t('كبير', 'Large');
+  String get pickupLabelSizeXLarge => _t('أكبر', 'Extra large');
+  String get pickupLabelSizeChanged =>
+      _t('✅ تم تحديث حجم نص النقاط', '✅ Pickup label size updated');
+
   String routeFiltered(String route) =>
       _t('🔄 تم تصفية الخط: $route', '🔄 Filtered route: $route');
   String get tapMapAddNewPoint =>
@@ -323,7 +322,6 @@ class AppLocalizations {
   String get noLiveBuses =>
       _t('لا يوجد باصات متصلة حالياً', 'No buses online right now');
 
-  // ── نقاط معلقة (أدمن) ────────────────────────────
   String get pendingPointsTitle =>
       _t('📍 نقاط التجمع المعلقة', '📍 Pending pickup points');
   String get noPendingPoints =>
@@ -345,7 +343,6 @@ class AppLocalizations {
           '🗑️ Point "$name" rejected.');
   String get underReview => _t('قيد المراجعة', 'Under review');
 
-  // ── إحصائيات الأدمن ──────────────────────────────
   String get systemOverview =>
       _t('نظرة عامة على النظام', 'System overview');
   String get totalUsers =>
