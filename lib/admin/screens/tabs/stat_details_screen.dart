@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../models/user_model.dart';
 
-class StatDetailsScreen extends StatelessWidget {
+class StatDetailsScreen extends StatefulWidget {
   final String title;
   final String queryType;
 
@@ -12,11 +12,18 @@ class StatDetailsScreen extends StatelessWidget {
     required this.queryType,
   });
 
+  @override
+  State<StatDetailsScreen> createState() => _StatDetailsScreenState();
+}
+
+class _StatDetailsScreenState extends State<StatDetailsScreen> {
+  List<QueryDocumentSnapshot> _latestDocs = const [];
+
   Query<Object?> _getFilteredQuery() {
     CollectionReference usersRef =
         FirebaseFirestore.instance.collection('users');
 
-    switch (queryType) {
+    switch (widget.queryType) {
       case 'passenger':
         return usersRef.where('userType', isEqualTo: 'passenger');
       case 'driver':
@@ -38,13 +45,22 @@ class StatDetailsScreen extends StatelessWidget {
     }
   }
 
+  int? _indexOfDocKey(Key key) {
+    if (key is! ValueKey<String>) return null;
+    final id = key.value;
+    for (var i = 0; i < _latestDocs.length; i++) {
+      if (_latestDocs[i].id == id) return i;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('قائمة: $title'),
+          title: Text('قائمة: ${widget.title}'),
           backgroundColor: Colors.blue.shade700,
           foregroundColor: Colors.white,
           centerTitle: true,
@@ -52,14 +68,16 @@ class StatDetailsScreen extends StatelessWidget {
         body: StreamBuilder<QuerySnapshot>(
           stream: _getFilteredQuery().snapshots(),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
               return Center(child: Text('❌ حدث خطأ: ${snapshot.error}'));
             }
 
-            final docs = snapshot.data?.docs ?? [];
+            final docs = snapshot.data?.docs ?? const <QueryDocumentSnapshot>[];
+            _latestDocs = docs;
 
             if (docs.isEmpty) {
               return const Center(
@@ -80,9 +98,11 @@ class StatDetailsScreen extends StatelessWidget {
             return ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: docs.length,
-              cacheExtent: 320,
+              cacheExtent: 400,
               addAutomaticKeepAlives: false,
+              addRepaintBoundaries: true,
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              findChildIndexCallback: _indexOfDocKey,
               itemBuilder: (context, index) {
                 final doc = docs[index];
                 final user = UserModel.fromMap(

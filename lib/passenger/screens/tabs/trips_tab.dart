@@ -16,6 +16,7 @@ class TripsTab extends StatefulWidget {
 class _TripsTabState extends State<TripsTab> {
   final TripService _tripService = TripService();
   Stream<List<TripModel>>? _tripsStream;
+  List<TripModel> _latestTrips = const [];
 
   @override
   void initState() {
@@ -29,6 +30,15 @@ class _TripsTabState extends State<TripsTab> {
     if (userId != null) {
       _tripsStream = _tripService.getPassengerTrips(userId);
     }
+  }
+
+  int? _indexOfTripKey(Key key) {
+    if (key is! ValueKey<String>) return null;
+    final id = key.value;
+    for (var i = 0; i < _latestTrips.length; i++) {
+      if (_latestTrips[i].id == id) return i;
+    }
+    return null;
   }
 
   @override
@@ -65,7 +75,8 @@ class _TripsTabState extends State<TripsTab> {
       body: StreamBuilder<List<TripModel>>(
         stream: _tripsStream,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
@@ -94,7 +105,8 @@ class _TripsTabState extends State<TripsTab> {
             );
           }
 
-          final trips = snapshot.data ?? [];
+          final trips = snapshot.data ?? const <TripModel>[];
+          _latestTrips = trips;
 
           if (trips.isEmpty) {
             return Center(
@@ -122,9 +134,11 @@ class _TripsTabState extends State<TripsTab> {
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: trips.length,
-            cacheExtent: 320,
+            cacheExtent: 400,
             addAutomaticKeepAlives: false,
+            addRepaintBoundaries: true,
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            findChildIndexCallback: _indexOfTripKey,
             itemBuilder: (context, index) {
               final trip = trips[index];
               return _buildTripCard(context, trip, l10n);
