@@ -38,6 +38,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
   AdminMapFocusRequest? _mapFocus;
   int _focusToken = 0;
 
+  // تبويبات ثابتة قدر الإمكان — لا تُعاد إنشاؤها في كل build
+  late final Widget _verifyTab = const VerifyDriversTab();
+  late final Widget _settingsTab = const SettingsTab();
+  late final Widget _pendingTab = PendingPointsTab(onShowOnMap: _showPointOnMap);
+
   void _showPointOnMap({
     required double latitude,
     required double longitude,
@@ -84,11 +89,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final tabs = [
-      const VerifyDriversTab(),
-      PendingPointsTab(onShowOnMap: _showPointOnMap),
+
+    // AdminMapTab فقط يعتمد على focusRequest — يُحدَّث عند الحاجة
+    final tabs = <Widget>[
+      _verifyTab,
+      _pendingTab,
       AdminMapTab(focusRequest: _mapFocus),
-      const SettingsTab(),
+      _settingsTab,
     ];
 
     return Scaffold(
@@ -99,7 +106,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
       bottomNavigationBar: AdminBottomNavBar(
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: (index) {
+          if (index == _currentIndex) return;
+          setState(() => _currentIndex = index);
+        },
       ),
     );
   }
