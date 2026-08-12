@@ -370,7 +370,6 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: points.length,
-            scrollCacheExtent: const ScrollCacheExtent.pixels(400),
             addAutomaticKeepAlives: false,
             addRepaintBoundaries: true,
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
