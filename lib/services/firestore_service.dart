@@ -54,14 +54,43 @@ class FirestoreService {
     }
   }
 
+  /// موافقة الأدمن على سائق (أو سرفيس / شركة باصات).
+  Future<void> approveDriver(String uid) async {
+    try {
+      await _firestore.collection('users').doc(uid).update({
+        'isVerified': true,
+        'isRejected': false,
+        'verifiedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('فشل الموافقة على السائق: $e');
+    }
+  }
+
   Future<void> rejectDriver(String uid) async {
     try {
       await _firestore.collection('users').doc(uid).update({
         'isVerified': false,
         'isRejected': true,
+        'rejectedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
       throw Exception('فشل رفض السائق: $e');
+    }
+  }
+
+  /// إعادة السائق إلى قائمة الانتظار (بعد رفض سابق مثلاً).
+  Future<void> resetDriverVerification(String uid) async {
+    try {
+      await _firestore.collection('users').doc(uid).update({
+        'isVerified': false,
+        'isRejected': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('فشل إعادة الطلب للانتظار: $e');
     }
   }
 
@@ -156,6 +185,10 @@ class FirestoreService {
       var verified = 0;
       var pending = 0;
       var rejected = 0;
+      var activeBuses = 0;
+      var activePassengers = 0;
+      var activeServices = 0;
+      var activeOthers = 0;
 
       for (final doc in allUsers.docs) {
         final data = doc.data();
@@ -180,7 +213,6 @@ class FirestoreService {
             break;
         }
 
-        // حالة التوثيق تخص السائقين فقط (وما شابه من أنواع تحتاج موافقة)
         if (type == 'driver' || type == 'service' || type == 'bus_company') {
           final isVerified = _boolTrue(data, 'isVerified');
           final isRejected = _boolTrue(data, 'isRejected');
@@ -190,6 +222,19 @@ class FirestoreService {
             verified++;
           } else {
             pending++;
+          }
+        }
+
+        final isOnline = _boolTrue(data, 'isOnline');
+        if (isOnline) {
+          if (type == 'driver') {
+            activeBuses++;
+          } else if (type == 'passenger') {
+            activePassengers++;
+          } else if (type == 'service') {
+            activeServices++;
+          } else if (type != 'admin') {
+            activeOthers++;
           }
         }
       }
@@ -204,10 +249,20 @@ class FirestoreService {
         'verified': verified,
         'pending': pending,
         'rejected': rejected,
+        'active_buses': activeBuses,
+        'active_passengers': activePassengers,
+        'active_services': activeServices,
+        'active_others': activeOthers,
       };
     } catch (e) {
       if (useFallback) {
-        return _emptyUsersStats();
+        return {
+          ..._emptyUsersStats(),
+          'active_buses': 0,
+          'active_passengers': 0,
+          'active_services': 0,
+          'active_others': 0,
+        };
       }
       throw Exception('فشل جلب إحصائيات المستخدمين: $e');
     }
@@ -229,7 +284,6 @@ class FirestoreService {
         final data = doc.data();
         total++;
 
-        // المصدر الأساسي: status
         final status = _str(data, 'status', '').toLowerCase();
 
         if (status == 'approved') {
@@ -237,7 +291,6 @@ class FirestoreService {
         } else if (status == 'rejected') {
           rejected++;
         } else if (status == 'pending' || status.isEmpty) {
-          // توافق مع بيانات قديمة قد تستخدم isApproved / isRejected
           if (_boolTrue(data, 'isRejected')) {
             rejected++;
           } else if (_boolTrue(data, 'isApproved')) {
@@ -246,7 +299,6 @@ class FirestoreService {
             pending++;
           }
         } else {
-          // حالة غير معروفة → pending
           pending++;
         }
       }
