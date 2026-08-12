@@ -33,8 +33,7 @@ class _TripsTabState extends State<TripsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    final userId = authProvider.userId;
+    final userId = context.select<AuthProvider, String?>((a) => a.userId);
     final l10n = AppLocalizations.of(context);
 
     if (_tripsStream == null && userId != null) {
@@ -123,6 +122,9 @@ class _TripsTabState extends State<TripsTab> {
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: trips.length,
+            cacheExtent: 320,
+            addAutomaticKeepAlives: false,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             itemBuilder: (context, index) {
               final trip = trips[index];
               return _buildTripCard(context, trip, l10n);
@@ -161,6 +163,7 @@ class _TripsTabState extends State<TripsTab> {
     }
 
     return Card(
+      key: ValueKey(trip.id),
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
