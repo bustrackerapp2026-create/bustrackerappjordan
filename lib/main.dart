@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -24,7 +25,26 @@ import 'l10n/app_localizations.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // حد ذاكرة صور الشبكة/الملفات — يقلل ضغط الرسم والذاكرة على الأجهزة الضعيفة
+  // لا تُسقط التطبيق عند خطأ واجهة — اعرض شاشة بسيطة بدل الخروج
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    if (kDebugMode) {
+      debugPrint('❌ UI error: ${details.exceptionAsString()}');
+    }
+    return Material(
+      color: Colors.white,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'حدث خطأ في الواجهة.\nأعد فتح التبويب أو أعد تشغيل التطبيق.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.red.shade700, fontSize: 16),
+          ),
+        ),
+      ),
+    );
+  };
+
   final imageCache = PaintingBinding.instance.imageCache;
   imageCache.maximumSize = 120;
   imageCache.maximumSizeBytes = 48 << 20; // 48 MB
@@ -97,7 +117,6 @@ class BusTrackerApp extends StatelessWidget {
               final isRtl = localeProvider.isArabic;
               return MediaQuery(
                 data: MediaQuery.of(context).copyWith(
-                  // تعطيل تكبير النظام للنص — يمنع إعادة تخطيط واسعة
                   textScaler: TextScaler.noScaling,
                 ),
                 child: Directionality(
@@ -115,17 +134,28 @@ class BusTrackerApp extends StatelessWidget {
   }
 }
 
-class AuthWrapper extends StatelessWidget {
+/// يحافظ على آخر نوع مستخدم معروف حتى لا يُعاد التوجيه أثناء ومضات بث Firestore.
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  String? _cachedType;
+  bool? _cachedVerified;
 
   @override
   Widget build(BuildContext context) {
     final isLoggedIn = context.select<AuthProvider, bool>((a) => a.isLoggedIn);
     if (!isLoggedIn) {
+      _cachedType = null;
+      _cachedVerified = null;
       return const LoginScreen();
     }
 
-    final gate = context.select<AuthProvider, ({String? type, bool? verified})>(
+    final userData = context.select<AuthProvider, ({String? type, bool? verified})>(
       (a) {
         final u = a.userData;
         if (u == null) return (type: null, verified: null);
@@ -133,16 +163,24 @@ class AuthWrapper extends StatelessWidget {
       },
     );
 
-    if (gate.type == null) {
+    if (userData.type != null) {
+      _cachedType = userData.type;
+      _cachedVerified = userData.verified;
+    }
+
+    final type = userData.type ?? _cachedType;
+    final verified = userData.verified ?? _cachedVerified;
+
+    if (type == null) {
       return const _AuthLoadingScreen();
     }
 
-    if (gate.type == UserRoles.admin) {
+    if (type == UserRoles.admin) {
       return const AdminDashboard();
     }
 
-    if (gate.type == UserRoles.driver) {
-      if (gate.verified != true) {
+    if (type == UserRoles.driver) {
+      if (verified != true) {
         return const PendingApprovalScreen();
       }
       return const DriverDashboard();

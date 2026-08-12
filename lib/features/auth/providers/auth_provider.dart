@@ -37,11 +37,17 @@ class AuthProvider extends ChangeNotifier {
     _cancelUserDataSubscription();
     _userDataSubscription = _firestoreService.getUserDataStream(uid).listen(
       (data) {
-        _userData = data;
-        notifyListeners();
+        // لا تمسح البيانات السابقة عند null لحظي — يمنع وميض شاشة التحميل/الخروج
+        if (data != null) {
+          _userData = data;
+          notifyListeners();
+        } else if (_userData == null) {
+          notifyListeners();
+        }
       },
       onError: (e) {
         debugPrint('خطأ في جلب بث بيانات المستخدم: $e');
+        // لا تسجّل خروجاً عند خطأ شبكة/قراءة
       },
     );
   }
@@ -53,6 +59,15 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> refreshUserData() async {
     if (_user != null) {
+      try {
+        final fresh = await _firestoreService.getUserData(_user!.uid);
+        if (fresh != null) {
+          _userData = fresh;
+          notifyListeners();
+        }
+      } catch (e) {
+        debugPrint('refreshUserData: $e');
+      }
       _subscribeToUserData(_user!.uid);
     }
   }
@@ -111,8 +126,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// تغيير كلمة المرور ثم إنهاء الجلسة الحالية لأمان أعلى.
-  /// يجب على المستخدم تسجيل الدخول مجدداً بكلمة المرور الجديدة.
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -138,14 +151,9 @@ class AuthProvider extends ChangeNotifier {
         password: currentPassword,
       );
 
-      // 1) التحقق من الهوية بكلمة المرور الحالية
       await user.reauthenticateWithCredential(credential);
-
-      // 2) تحديث كلمة المرور في Firebase Auth
       await user.updatePassword(newPassword);
 
-      // 3) تأمين الجلسة: إنهاء الجلسة الحالية فوراً
-      // حتى لا تبقى رموز الدخول القديمة فعالة على هذا الجهاز
       await _auth.signOut();
       _cancelUserDataSubscription();
       _user = null;

@@ -1,10 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  // ─── Users ───────────────────────────────────────────────────────
 
   Future<void> saveUserData(UserModel user) async {
     try {
@@ -30,8 +29,12 @@ class FirestoreService {
 
   Stream<UserModel?> getUserDataStream(String uid) {
     return _firestore.collection('users').doc(uid).snapshots().map((snapshot) {
-      if (snapshot.exists && snapshot.data() != null) {
-        return UserModel.fromMap(snapshot.data()!, snapshot.id);
+      try {
+        if (snapshot.exists && snapshot.data() != null) {
+          return UserModel.fromMap(snapshot.data()!, snapshot.id);
+        }
+      } catch (e) {
+        debugPrint('getUserDataStream parse error: $e');
       }
       return null;
     });
@@ -54,7 +57,6 @@ class FirestoreService {
     }
   }
 
-  /// موافقة الأدمن على سائق (أو سرفيس / شركة باصات).
   Future<void> approveDriver(String uid) async {
     try {
       await _firestore.collection('users').doc(uid).update({
@@ -81,7 +83,6 @@ class FirestoreService {
     }
   }
 
-  /// إعادة السائق إلى قائمة الانتظار (بعد رفض سابق مثلاً).
   Future<void> resetDriverVerification(String uid) async {
     try {
       await _firestore.collection('users').doc(uid).update({
@@ -93,8 +94,6 @@ class FirestoreService {
       throw Exception('فشل إعادة الطلب للانتظار: $e');
     }
   }
-
-  // ─── مساعدات قراءة الحقول ───────────────────────────────────────
 
   static String _str(Map<String, dynamic> data, String key, [String def = '']) {
     final v = data[key];
@@ -169,8 +168,6 @@ class FirestoreService {
       throw Exception('فشل جلب الإحصائيات: $e');
     }
   }
-
-  // ─── إحصائيات جميع المستخدمين ──────────────────────────────────
 
   Future<Map<String, int>> getAllUsersStats({bool useFallback = true}) async {
     try {
@@ -268,8 +265,6 @@ class FirestoreService {
     }
   }
 
-  // ─── إحصائيات نقاط التجمع (حقل status وليس isApproved) ─────────
-
   Future<Map<String, int>> getPickupPointsStats(
       {bool useFallback = true}) async {
     try {
@@ -317,7 +312,6 @@ class FirestoreService {
     }
   }
 
-  /// عدد المسارات النشطة
   Future<int> getActiveRoutesCount({bool useFallback = true}) async {
     try {
       final snap = await _firestore
