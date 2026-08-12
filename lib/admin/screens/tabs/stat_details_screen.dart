@@ -98,7 +98,6 @@ class _StatDetailsScreenState extends State<StatDetailsScreen> {
             return ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: docs.length,
-              scrollCacheExtent: const ScrollCacheExtent.pixels(400),
               addAutomaticKeepAlives: false,
               addRepaintBoundaries: true,
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
