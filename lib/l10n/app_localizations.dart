@@ -305,7 +305,8 @@ class AppLocalizations {
       );
   String get pickupLabelSizeNormal => _t('عادي', 'Normal');
   String get pickupLabelSizeLarge => _t('كبير', 'Large');
-  String get pickupLabelSizeXLarge => _t('أكبر', 'Extra large');
+  String get pickupLabelSizeXLarge => _t('أكبر', 'XL');
+  String get pickupLabelSizeXXLarge => _t('الأكبر', 'Huge');
   String get pickupLabelSizeChanged =>
       _t('✅ تم تحديث حجم نص النقاط', '✅ Pickup label size updated');
 
