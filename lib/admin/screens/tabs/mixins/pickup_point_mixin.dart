@@ -4,20 +4,24 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
+import 'package:provider/provider.dart';
 
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
+import '../../../../core/map/pickup_label_scale_provider.dart';
 import '../../../../core/pickup/pickup_marker_helper.dart';
 import '../../../../models/pickup_point_model.dart';
 
-/// مكسين نقاط التجمع لخريطة الأدمن — يعرض النقاط ذات status=approved فقط.
 mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final Map<String, PointAnnotation> _pickupAnnotations = {};
   final Map<String, Uint8List> _pickupMarkerCache = {};
+  final Map<String, String> _markerVisualKey = {};
   StreamSubscription<QuerySnapshot>? _pickupSubscription;
   QuerySnapshot? _pendingSnapshot;
   bool _isUpdating = false;
   bool _resyncScheduled = false;
+  PickupLabelScaleProvider? _labelScaleProvider;
+  double _appliedLabelScale = 1.0;
 
   Map<String, PointAnnotation> get pickupAnnotations => _pickupAnnotations;
 
@@ -26,8 +30,42 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return status == 'approved';
   }
 
+  void _onLabelScaleChanged() {
+    if (!mounted) return;
+    final next = PickupLabelScaleProvider.currentScale;
+    if ((next - _appliedLabelScale).abs() < 0.01) return;
+    _appliedLabelScale = next;
+    PickupMarkerHelper.clearCache();
+    _pickupMarkerCache.clear();
+    _markerVisualKey.clear();
+    _forceRedraw();
+  }
+
+  Future<void> _forceRedraw() async {
+    final ids = _pickupAnnotations.keys.toList();
+    for (final id in ids) {
+      final annotation = _pickupAnnotations.remove(id);
+      if (annotation != null) {
+        try {
+          await pointAnnotationManager?.delete(annotation);
+        } catch (_) {}
+      }
+    }
+    if (mounted) _updatePickupMarkers();
+  }
+
   void listenToPickupPoints() {
     _pickupSubscription?.cancel();
+
+    try {
+      _labelScaleProvider?.removeListener(_onLabelScaleChanged);
+      _labelScaleProvider = context.read<PickupLabelScaleProvider>();
+      _appliedLabelScale = _labelScaleProvider!.scale;
+      _labelScaleProvider!.addListener(_onLabelScaleChanged);
+    } catch (_) {
+      _appliedLabelScale = PickupLabelScaleProvider.currentScale;
+    }
+
     _pickupSubscription = FirebaseFirestore.instance
         .collection('pickupPoints')
         .where('status', isEqualTo: 'approved')
@@ -93,6 +131,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             await pointAnnotationManager?.delete(annotation);
           } catch (_) {}
           _pickupMarkerCache.remove(id);
+          _markerVisualKey.remove(id);
         }
       }
 
@@ -130,6 +169,15 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }) async {
     if (pointAnnotationManager == null || !mounted) return;
 
+    final scale = PickupLabelScaleProvider.currentScale;
+    final visualKey =
+        '${pointType}_${name.hashCode}_s${(scale * 100).round()}';
+
+    if (_pickupAnnotations.containsKey(pickupId) &&
+        _markerVisualKey[pickupId] == visualKey) {
+      return;
+    }
+
     if (_pickupAnnotations.containsKey(pickupId)) {
       final annotation = _pickupAnnotations.remove(pickupId)!;
       try {
@@ -141,6 +189,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       name: name,
       pointType: pointType,
       count: confirmationCount,
+      scale: scale,
     );
     if (markerBytes == null || !mounted) return;
 
@@ -154,6 +203,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final annotation = await pointAnnotationManager?.create(options);
     if (annotation != null) {
       _pickupAnnotations[pickupId] = annotation;
+      _markerVisualKey[pickupId] = visualKey;
     }
   }
 
@@ -161,8 +211,10 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     required String name,
     required String pointType,
     required int count,
+    required double scale,
   }) async {
-    final cacheKey = 'pickup_${name.hashCode}_${count}_$pointType';
+    final cacheKey =
+        'pickup_${name.hashCode}_${count}_${pointType}_s${(scale * 100).round()}';
     if (_pickupMarkerCache.containsKey(cacheKey)) {
       return _pickupMarkerCache[cacheKey];
     }
@@ -171,6 +223,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       name: name,
       pointType: pointType,
       confirmationCount: count,
+      textScale: scale,
     );
     if (bytes != null) {
       _pickupMarkerCache[cacheKey] = bytes;
@@ -183,9 +236,12 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   void disposePickupPoints() {
+    _labelScaleProvider?.removeListener(_onLabelScaleChanged);
+    _labelScaleProvider = null;
     _pickupSubscription?.cancel();
     _pendingSnapshot = null;
     _pickupAnnotations.clear();
     _pickupMarkerCache.clear();
+    _markerVisualKey.clear();
   }
 }
