@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jordan_bus_tracker_new/core/constants/bus_capacity.dart';
 import 'package:jordan_bus_tracker_new/models/user_model.dart';
 
 void main() {
@@ -10,6 +11,7 @@ void main() {
         'userType': 'driver',
         'phoneNumber': '079 123 4567',
         'isVerified': true,
+        'capacity': 23,
       }, 'uid-1');
 
       expect(user.uid, 'uid-1');
@@ -19,6 +21,7 @@ void main() {
       expect(user.phoneNumber, '0791234567');
       expect(user.isVerified, isTrue);
       expect(user.isRejected, isFalse);
+      expect(user.capacity, BusCapacity.medium);
     });
 
     test('defaults userType to passenger when missing', () {
@@ -29,6 +32,25 @@ void main() {
 
       expect(user.userType, 'passenger');
       expect(user.isVerified, isFalse);
+      expect(user.capacity, isNull);
+    });
+
+    test('normalizes capacity values', () {
+      expect(
+        UserModel.fromMap({'email': 'a@b.com', 'fullName': 'A', 'capacity': 5}, 'u')
+            .capacity,
+        BusCapacity.service,
+      );
+      expect(
+        UserModel.fromMap({'email': 'a@b.com', 'fullName': 'A', 'capacity': 50}, 'u')
+            .capacity,
+        BusCapacity.large,
+      );
+      expect(
+        UserModel.fromMap({'email': 'a@b.com', 'fullName': 'A', 'capacity': 8}, 'u')
+            .capacity,
+        BusCapacity.service,
+      );
     });
 
     test('hasPhoto is true only when photoUrl is non-empty', () {
@@ -78,6 +100,19 @@ void main() {
       );
     });
 
+    test('displayCapacity labels', () {
+      expect(
+        const UserModel(
+          uid: '1',
+          email: 'a@b.com',
+          fullName: 'X',
+          userType: 'driver',
+          capacity: 5,
+        ).displayCapacity,
+        'سرفيس (5 ركاب)',
+      );
+    });
+
     test('displayName falls back when fullName is empty', () {
       const user = UserModel(
         uid: '1',
@@ -99,10 +134,12 @@ void main() {
       final updated = original.copyWith(
         fullName: 'New',
         isVerified: true,
+        capacity: 50,
       );
 
       expect(updated.fullName, 'New');
       expect(updated.isVerified, isTrue);
+      expect(updated.capacity, 50);
       expect(updated.email, original.email);
       expect(updated.userType, original.userType);
     });
