@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/theme_provider.dart';
 import '../../../core/locale/locale_provider.dart';
+import '../../../core/widgets/pickup_label_size_setting.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../services/pickup_point_service.dart';
@@ -126,16 +127,7 @@ class _SettingsTabState extends State<SettingsTab> {
       builder: (ctx) => AlertDialog(
         title: const Text('زرع مسارات تجريبية'),
         content: const Text(
-          'سيتم إضافة 8 مسارات بين محافظات الأردن مع محطات وإحداثيات:\n\n'
-          '• عمان — إربد\n'
-          '• عمان — العقبة\n'
-          '• عمان — الزرقاء\n'
-          '• عمان — الكرك\n'
-          '• عمان — جرش\n'
-          '• الزرقاء — المفرق\n'
-          '• إربد — المفرق\n'
-          '• عمان — مادبا\n\n'
-          'تظهر على خريطة الأدمن كخطوط ملوّنة.\n'
+          'سيتم إضافة 8 مسارات بين محافظات الأردن مع محطات وإحداثيات.\n\n'
           'هل تريد المتابعة؟',
         ),
         actions: [
@@ -187,7 +179,7 @@ class _SettingsTabState extends State<SettingsTab> {
       builder: (ctx) => AlertDialog(
         title: const Text('حذف المسارات التجريبية'),
         content: const Text(
-          'سيتم حذف كل المسارات التي وُسمت كتجريبية (isDemo) مع محطاتها وإحداثياتها.\n\n'
+          'سيتم حذف كل المسارات التي وُسمت كتجريبية (isDemo).\n\n'
           'هل تريد المتابعة؟',
         ),
         actions: [
@@ -336,29 +328,6 @@ class _SettingsTabState extends State<SettingsTab> {
                                     .withValues(alpha: 0.6),
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? Colors.blue.shade900.withValues(alpha: 0.4)
-                                    : Colors.blue.shade100,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                '👑 Admin',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDark
-                                      ? Colors.blue.shade200
-                                      : Colors.blue.shade800,
-                                ),
-                              ),
-                            ),
                           ],
                         ),
                       ),
@@ -408,6 +377,8 @@ class _SettingsTabState extends State<SettingsTab> {
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () => _showLanguageDialog(context),
                 ),
+                const Divider(height: 1),
+                const PickupLabelSizeTile(),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(
@@ -459,7 +430,7 @@ class _SettingsTabState extends State<SettingsTab> {
                     style: TextStyle(fontWeight: FontWeight.w500),
                   ),
                   subtitle: const Text(
-                    '8 خطوط بين المحافظات للتجربة على الخريطة',
+                    'خطوط بين المحافظات للتجربة على الخريطة',
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: _isSeedingRoutes ? null : _seedDemoRoutes,
@@ -500,19 +471,6 @@ class _SettingsTabState extends State<SettingsTab> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: Text(
-              '© 2026 Bus Tracker Jordan',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.45),
               ),
             ),
           ),
