@@ -14,10 +14,11 @@ class DriverDashboard extends StatefulWidget {
 }
 
 class _DriverDashboardState extends State<DriverDashboard> {
-  int _currentIndex = 0;
+  /// نبدأ من الملف الشخصي (آمن) — الخريطة تُحمَّل فقط عند اختيار تبويبها
+  int _currentIndex = 3;
 
   /// لا تُنشأ الخريطة وبقية التبويبات دفعة واحدة — يقلل التعطّل عند الدخول
-  final Set<int> _visited = {0};
+  final Set<int> _visited = {3};
   final Map<int, Widget> _tabCache = {};
 
   Widget _tabFor(int index) {
@@ -46,7 +47,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
         sizing: StackFit.expand,
         children: List.generate(4, (i) {
           if (!_visited.contains(i)) {
-            return const SizedBox.shrink();
+            // placeholder خفيف حتى يزور المستخدم التبويب
+            return const ColoredBox(
+              color: Colors.transparent,
+              child: SizedBox.expand(),
+            );
           }
           return KeyedSubtree(
             key: ValueKey('driver_tab_$i'),

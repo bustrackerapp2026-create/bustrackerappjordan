@@ -33,6 +33,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         DriverLocationMixin<DriverMapTab> {
   String _selectedRoute = AppConstants.jordanRoutes.first;
   bool _mapInitialized = false;
+  bool _showMap = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -44,6 +45,13 @@ class _DriverMapTabState extends State<DriverMapTab>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // تأخير قصير قبل إنشاء MapWidget لتقليل ضغط الإطار الأول
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Future<void>.delayed(const Duration(milliseconds: 200), () {
+        if (mounted) setState(() => _showMap = true);
+      });
+    });
     preloadDriverMarker();
   }
 
@@ -93,36 +101,43 @@ class _DriverMapTabState extends State<DriverMapTab>
     if (_mapInitialized) return;
     _mapInitialized = true;
 
-    mapboxMap = map;
-    await Future.wait([
-      initAnnotationManager(),
-      applyStableGestures(),
-    ]);
-    if (!mounted) return;
+    try {
+      mapboxMap = map;
+      await Future.wait([
+        initAnnotationManager(),
+        applyStableGestures(),
+      ]);
+      if (!mounted) return;
 
-    await mapboxMap?.setCamera(
-      CameraOptions(
-        center: Point(coordinates: Position(35.9106, 31.9522)),
-        zoom: 12,
-        pitch: 0,
-        bearing: 0,
-      ),
-    );
+      await mapboxMap?.setCamera(
+        CameraOptions(
+          center: Point(coordinates: Position(35.9106, 31.9522)),
+          zoom: 12,
+          pitch: 0,
+          bearing: 0,
+        ),
+      );
 
-    await Future<void>.delayed(const Duration(milliseconds: 120));
-    if (!mounted) return;
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (!mounted) return;
 
-    await applyLabelLayersFilter();
-    if (!mounted) return;
+      await applyLabelLayersFilter();
+      if (!mounted) return;
 
-    listenToPickupPoints();
+      listenToPickupPoints();
 
-    final driver = context.read<DriverProvider>();
-    if (driver.isOnline || driver.isTripActive) {
-      await ensureDriverTrackingRunning();
+      final driver = context.read<DriverProvider>();
+      if (driver.isOnline || driver.isTripActive) {
+        await ensureDriverTrackingRunning();
+      }
+
+      if (mounted) setState(() => isMapReady = true);
+    } catch (e, st) {
+      debugPrint('DriverMapTab _onMapCreated error: $e\n$st');
+      if (mounted) {
+        setState(() => isMapReady = true);
+      }
     }
-
-    if (mounted) setState(() => isMapReady = true);
   }
 
   Future<void> _onToggleOnline() async {
@@ -208,23 +223,29 @@ class _DriverMapTabState extends State<DriverMapTab>
 
     return Stack(
       children: [
-        RepaintBoundary(
-          child: MapWidget(
-            key: const ValueKey('driver_map'),
-            textureView: true,
-            onMapCreated: _onMapCreated,
-            onCameraChangeListener: onCameraChangedForDebug,
-            styleUri: currentMapStyle,
-            // ignore: deprecated_member_use
-            onTapListener: (event) {
-              if (isAddingPickupPoint) {
-                handleAddPickupPoint(event.point);
-              } else {
-                handleMapBackgroundTap(event);
-              }
-            },
+        if (_showMap)
+          RepaintBoundary(
+            child: MapWidget(
+              key: const ValueKey('driver_map'),
+              textureView: true,
+              onMapCreated: _onMapCreated,
+              onCameraChangeListener: onCameraChangedForDebug,
+              styleUri: currentMapStyle,
+              // ignore: deprecated_member_use
+              onTapListener: (event) {
+                if (isAddingPickupPoint) {
+                  handleAddPickupPoint(event.point);
+                } else {
+                  handleMapBackgroundTap(event);
+                }
+              },
+            ),
+          )
+        else
+          const ColoredBox(
+            color: Color(0xFFF0F2F5),
+            child: Center(child: CircularProgressIndicator()),
           ),
-        ),
         Positioned(
           top: 16,
           left: 16,

@@ -29,16 +29,24 @@ void main() async {
   ErrorWidget.builder = (FlutterErrorDetails details) {
     if (kDebugMode) {
       debugPrint('❌ UI error: ${details.exceptionAsString()}');
+      debugPrint('${details.stack}');
     }
     return Material(
       color: Colors.white,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(
-            'حدث خطأ في الواجهة.\nأعد فتح التبويب أو أعد تشغيل التطبيق.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.red.shade700, fontSize: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 48, color: Colors.red.shade700),
+              const SizedBox(height: 16),
+              Text(
+                'حدث خطأ في الواجهة.\nأعد فتح التبويب أو أعد تشغيل التطبيق.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.red.shade700, fontSize: 16),
+              ),
+            ],
           ),
         ),
       ),
@@ -163,13 +171,22 @@ class _AuthWrapperState extends State<AuthWrapper> {
       },
     );
 
+    // حدّث الكاش فقط عند وجود بيانات حقيقية
     if (userData.type != null) {
       _cachedType = userData.type;
-      _cachedVerified = userData.verified;
+      // إذا أصبح verified=true نثبّته؛ لا نرجع لـ false من ومضة null
+      if (userData.verified == true) {
+        _cachedVerified = true;
+      } else if (_cachedVerified != true) {
+        _cachedVerified = userData.verified;
+      }
     }
 
     final type = userData.type ?? _cachedType;
-    final verified = userData.verified ?? _cachedVerified;
+    // إذا كان لدينا تحقق سابق ناجح، لا نرجع لشاشة الانتظار بسبب ومضة
+    final verified = (userData.verified == true || _cachedVerified == true)
+        ? true
+        : (userData.verified ?? _cachedVerified);
 
     if (type == null) {
       return const _AuthLoadingScreen();
