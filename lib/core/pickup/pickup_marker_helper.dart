@@ -4,10 +4,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 /// رسّام علامات نقاط التجمع الموحد لكل الخرائط (أدمن / سائق / راكب).
-///
-/// - تجمع باصات  → برتقالي + أيقونة باص
-/// - تجمع ركاب   → نيلي + أيقونة ركاب
-/// بدون شارة حمراء لعدد التأكيدات.
 class PickupMarkerHelper {
   PickupMarkerHelper._();
 
@@ -31,15 +27,18 @@ class PickupMarkerHelper {
         : Icons.directions_bus_rounded;
   }
 
-  /// إنشاء صورة PNG للعلامة (بدون شارة التأكيدات الحمراء)
+  /// إنشاء صورة PNG للعلامة.
+  /// [textScale] يكبّر نص الاسم وفقاعة التسمية (1.0 عادي).
   static Future<Uint8List?> createMarkerBytes({
     required String name,
     required String pointType,
     int confirmationCount = 0,
+    double textScale = 1.0,
   }) async {
     final safeName = name.trim().isEmpty ? 'نقطة' : name.trim();
-    // لا نضمّن confirmationCount في المفتاح — الشارة لم تعد تُرسم
-    final cacheKey = 'pickup_${pointType}_${safeName.hashCode}';
+    final scale = textScale.clamp(0.85, 2.2);
+    final scaleKey = (scale * 100).round();
+    final cacheKey = 'pickup_${pointType}_${safeName.hashCode}_s$scaleKey';
 
     final cached = _cache[cacheKey];
     if (cached != null) return cached;
@@ -48,34 +47,33 @@ class PickupMarkerHelper {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
 
-      const double width = 140.0;
-      const double height = 120.0;
-      const Offset pinCenter = Offset(width / 2, 42);
+      final double width = 140.0 + (scale - 1.0) * 48;
+      final double fontSize = 12.0 * scale;
+      final double bubbleHeight = (26.0 * scale).clamp(26.0, 44.0);
+      final double height = 120.0 + (bubbleHeight - 26.0) + (scale - 1.0) * 8;
+      const Offset pinCenterBase = Offset(70, 42);
+      final Offset pinCenter = Offset(width / 2, pinCenterBase.dy);
 
       canvas.drawColor(Colors.transparent, BlendMode.clear);
 
       final Color primary = primaryColorFor(pointType);
       final Color glow = glowColorFor(pointType);
 
-      // توهج خارجي
       final glowPaint = Paint()
         ..color = glow.withValues(alpha: 0.28)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
       canvas.drawCircle(pinCenter, 36, glowPaint);
 
-      // حلقة بيضاء خارجية
       final outerPaint = Paint()
         ..color = Colors.white
         ..style = PaintingStyle.fill;
       canvas.drawCircle(pinCenter, 26, outerPaint);
 
-      // الدائرة الداخلية الملونة
       final innerPaint = Paint()
         ..color = primary
         ..style = PaintingStyle.fill;
       canvas.drawCircle(pinCenter, 20, innerPaint);
 
-      // أيقونة
       final iconData = iconFor(pointType);
       final iconPainter = TextPainter(textDirection: TextDirection.ltr);
       iconPainter.text = TextSpan(
@@ -96,7 +94,6 @@ class PickupMarkerHelper {
         ),
       );
 
-      // رأس الدبوس السفلي
       final tipPath = Path()
         ..moveTo(pinCenter.dx - 10, pinCenter.dy + 16)
         ..lineTo(pinCenter.dx, pinCenter.dy + 34)
@@ -111,16 +108,17 @@ class PickupMarkerHelper {
           ..strokeWidth = 1.5,
       );
 
-      // فقاعة الاسم
-      final displayName =
-          safeName.length > 16 ? '${safeName.substring(0, 15)}…' : safeName;
+      final maxChars = scale >= 1.5 ? 20 : (scale >= 1.25 ? 18 : 16);
+      final displayName = safeName.length > maxChars
+          ? '${safeName.substring(0, maxChars - 1)}…'
+          : safeName;
 
       final namePainter = TextPainter(
         text: TextSpan(
           text: displayName,
           style: TextStyle(
             color: Colors.grey.shade900,
-            fontSize: 12,
+            fontSize: fontSize,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -129,16 +127,16 @@ class PickupMarkerHelper {
         maxLines: 1,
         ellipsis: '…',
       );
-      namePainter.layout(maxWidth: width - 20);
+      namePainter.layout(maxWidth: width - 16);
 
-      final bubbleWidth = (namePainter.width + 20).clamp(48.0, width - 8);
-      const bubbleHeight = 26.0;
+      final bubbleWidth =
+          (namePainter.width + 20 * scale).clamp(48.0, width - 8);
       final bubbleLeft = (width - bubbleWidth) / 2;
-      const bubbleTop = height - bubbleHeight - 4;
+      final bubbleTop = height - bubbleHeight - 4;
 
       final bubbleRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(bubbleLeft, bubbleTop, bubbleWidth, bubbleHeight),
-        const Radius.circular(13),
+        Radius.circular(13 * scale.clamp(1.0, 1.4)),
       );
 
       canvas.drawRRect(
@@ -169,11 +167,12 @@ class PickupMarkerHelper {
       );
 
       final picture = recorder.endRecording();
-      final image = await picture.toImage(width.toInt(), height.toInt());
+      final image = await picture.toImage(width.ceil(), height.ceil());
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return null;
 
       final bytes = byteData.buffer.asUint8List();
+      if (_cache.length > 100) _cache.clear();
       _cache[cacheKey] = bytes;
       return bytes;
     } catch (e) {
