@@ -78,8 +78,8 @@ class LocationPermissionSheet {
               ),
               const SizedBox(height: 8),
               Text(
-                'نستخدم موقعك لإظهار علامتك على الخريطة وتحسين التتبع.
-يمكنك تغيير هذا لاحقاً من إعدادات الجهاز.',
+                'نستخدم موقعك لإظهار علامتك على الخريطة وتحسين التتبع.\n'
+                'يمكنك تغيير هذا لاحقاً من إعدادات الجهاز.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13.5,
