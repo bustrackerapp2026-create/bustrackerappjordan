@@ -87,16 +87,19 @@ class PickupLabelSizeTile extends StatelessWidget {
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
                 const SizedBox(height: 18),
-                PickupLabelSizePicker(
-                  onSelected: () {
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    messenger.showSnackBar(
-                      SnackBar(
-                        content: Text(l10n.pickupLabelSizeChanged),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  },
+                // عزل طبقة الرسم للمنتقي عن بقية الورقة (تمرير / ظل)
+                RepaintBoundary(
+                  child: PickupLabelSizePicker(
+                    onSelected: () {
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(l10n.pickupLabelSizeChanged),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
@@ -131,14 +134,15 @@ class PickupLabelSizePicker extends StatelessWidget {
       l10n.pickupLabelSizeXXLarge,
     ];
 
-    return SizedBox(
-      height: _cardHeight,
-      child: Row(
-        children: [
-          for (var i = 0; i < _sizes.length; i++) ...[
-            if (i > 0) _gap,
-            Expanded(
-              child: RepaintBoundary(
+    // طبقة رسم واحدة للصف كاملاً — أنسب من 4 طبقات لبطاقات صغيرة
+    return RepaintBoundary(
+      child: SizedBox(
+        height: _cardHeight,
+        child: Row(
+          children: [
+            for (var i = 0; i < _sizes.length; i++) ...[
+              if (i > 0) _gap,
+              Expanded(
                 child: _SizeCard(
                   size: _sizes[i],
                   label: labels[i],
@@ -148,9 +152,9 @@ class PickupLabelSizePicker extends StatelessWidget {
                   onSelected: onSelected,
                 ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -176,7 +180,6 @@ class _SizeCard extends StatelessWidget {
   static const _radius = BorderRadius.all(Radius.circular(14));
   static const _padding = EdgeInsets.symmetric(vertical: 10, horizontal: 4);
 
-  // ألوان ثابتة لتقليل تخصيص الكائنات
   static final _bgSelectedLight =
       AppTheme.primaryColor.withValues(alpha: 0.10);
   static final _bgSelectedDark =
