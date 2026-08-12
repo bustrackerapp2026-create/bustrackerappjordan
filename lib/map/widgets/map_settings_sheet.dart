@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
+import 'package:provider/provider.dart';
+import '../../core/map/pickup_label_scale_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../l10n/app_localizations.dart';
 
@@ -28,6 +30,7 @@ void showMapSettingsSheet({
     ),
     builder: (BuildContext context) {
       final l10n = AppLocalizations.of(context);
+      final labelScale = context.watch<PickupLabelScaleProvider>();
 
       return StatefulBuilder(
         builder: (BuildContext context, StateSetter setSheetState) {
@@ -148,6 +151,44 @@ void showMapSettingsSheet({
                     onToggleRoadLabels(val);
                     setSheetState(() {});
                     onApplyFilters();
+                  },
+                ),
+                const SizedBox(height: 8),
+                const Divider(),
+                const SizedBox(height: 8),
+                Text(
+                  l10n.pickupLabelSizeTitle,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  l10n.pickupLabelSizeHint,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 12),
+                SegmentedButton<PickupLabelSize>(
+                  segments: [
+                    ButtonSegment(
+                      value: PickupLabelSize.normal,
+                      label: Text(l10n.pickupLabelSizeNormal),
+                      icon: const Icon(Icons.text_fields, size: 16),
+                    ),
+                    ButtonSegment(
+                      value: PickupLabelSize.large,
+                      label: Text(l10n.pickupLabelSizeLarge),
+                      icon: const Icon(Icons.format_size, size: 18),
+                    ),
+                    ButtonSegment(
+                      value: PickupLabelSize.xlarge,
+                      label: Text(l10n.pickupLabelSizeXLarge),
+                      icon: const Icon(Icons.format_size, size: 22),
+                    ),
+                  ],
+                  selected: {labelScale.size},
+                  onSelectionChanged: (set) {
+                    final value = set.first;
+                    context.read<PickupLabelScaleProvider>().setSize(value);
+                    setSheetState(() {});
                   },
                 ),
               ],
