@@ -130,7 +130,7 @@ class EditProfileSheet {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<int>(
-                        value: selectedCapacity,
+                        initialValue: selectedCapacity,
                         decoration: InputDecoration(
                           labelText: 'نوع الباص / عدد الركاب',
                           prefixIcon: const Icon(Icons.event_seat_outlined),
@@ -154,8 +154,8 @@ class EditProfileSheet {
                       Text(
                         'ملاحظة: تغيير البريد قد يتطلب تأكيداً عبر الرابط المرسل.\n'
                         'تظهر أيقونة الباص للراكب حسب النوع المختار تلقائياً.',
-                        style:
-                            TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey.shade600),
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton(

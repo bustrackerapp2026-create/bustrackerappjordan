@@ -571,7 +571,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           const SizedBox(height: 8),
                           DropdownButtonFormField<int>(
-                            value: _selectedCapacity,
+                            initialValue: _selectedCapacity,
                             decoration: InputDecoration(
                               prefixIcon: const Icon(
                                 Icons.event_seat_outlined,
