@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:jordan_bus_tracker_new/core/constants/bus_capacity.dart';
 import 'package:jordan_bus_tracker_new/core/theme/app_theme.dart';
 import 'package:jordan_bus_tracker_new/core/utils/validators.dart';
 import 'package:jordan_bus_tracker_new/features/auth/providers/auth_provider.dart';
@@ -29,6 +30,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscureConfirmPassword = true;
 
   String _selectedUserType = 'passenger';
+  int? _selectedCapacity = BusCapacity.medium;
   bool get _showDriverFields => _selectedUserType == 'driver';
 
   @override
@@ -65,6 +67,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
+    if (_showDriverFields && _selectedCapacity == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ اختر نوع الباص / عدد الركاب'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -78,6 +90,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         userType: _selectedUserType,
         busNumber: _showDriverFields ? busNumber : null,
         route: _showDriverFields ? route : null,
+        capacity: _showDriverFields ? _selectedCapacity : null,
       );
 
       if (!mounted) return;
@@ -518,7 +531,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: _routeController,
-                            textInputAction: TextInputAction.done,
+                            textInputAction: TextInputAction.next,
                             validator: (value) {
                               if (_showDriverFields &&
                                   (value == null || value.trim().isEmpty)) {
@@ -546,6 +559,54 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                               ),
                             ),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'نوع الباص / عدد الركاب',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<int>(
+                            value: _selectedCapacity,
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(
+                                Icons.event_seat_outlined,
+                                color: AppTheme.primaryColor,
+                              ),
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(
+                                  color: AppTheme.primaryColor,
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                            items: BusCapacity.options
+                                .map(
+                                  (c) => DropdownMenuItem<int>(
+                                    value: c,
+                                    child: Text(BusCapacity.label(c)),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) =>
+                                setState(() => _selectedCapacity = v),
+                            validator: (value) {
+                              if (_showDriverFields && value == null) {
+                                return 'اختر نوع الباص';
+                              }
+                              return null;
+                            },
                           ),
                         ],
                         const SizedBox(height: 24),

@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 
+import '../../../core/constants/bus_capacity.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/user_model.dart';
 import '../../../services/firestore_service.dart';
@@ -28,136 +29,167 @@ class EditProfileSheet {
     final emailCtrl = TextEditingController(text: user.email);
     final busCtrl = TextEditingController(text: user.busNumber ?? '');
     final routeCtrl = TextEditingController(text: user.route ?? '');
+    int? selectedCapacity =
+        BusCapacity.normalize(user.capacity) ?? BusCapacity.medium;
 
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-            ),
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'تعديل الملف الشخصي',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: ProfileUi.avatarWithCamera(
-                      photoUrl: user.photoUrl,
-                      initial: user.fullName.isNotEmpty
-                          ? user.fullName.characters.first
-                          : 'س',
-                      size: 88,
-                      onTap: () {
-                        Navigator.pop(ctx, false);
-                        onRequestPhotoChange();
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'اضغط لتغيير الصورة',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 16),
-                  _field(
-                    controller: nameCtrl,
-                    label: 'الاسم الكامل',
-                    icon: Icons.person_outline,
-                    action: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 12),
-                  _field(
-                    controller: phoneCtrl,
-                    label: 'رقم الهاتف',
-                    icon: Icons.phone_outlined,
-                    keyboard: TextInputType.phone,
-                    action: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 12),
-                  _field(
-                    controller: emailCtrl,
-                    label: 'البريد الإلكتروني',
-                    icon: Icons.email_outlined,
-                    keyboard: TextInputType.emailAddress,
-                    action: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 12),
-                  _field(
-                    controller: busCtrl,
-                    label: 'رقم الباص',
-                    icon: Icons.directions_bus_outlined,
-                    action: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 12),
-                  _field(
-                    controller: routeCtrl,
-                    label: 'المسار / الخط',
-                    icon: Icons.route_outlined,
-                    action: TextInputAction.done,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'ملاحظة: تغيير البريد قد يتطلب تأكيداً عبر الرابط المرسل.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'حفظ',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text('إلغاء'),
-                  ),
-                ],
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
               ),
-            ),
-          ),
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                ),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'تعديل الملف الشخصي',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 16),
+                      Center(
+                        child: ProfileUi.avatarWithCamera(
+                          photoUrl: user.photoUrl,
+                          initial: user.fullName.isNotEmpty
+                              ? user.fullName.characters.first
+                              : 'س',
+                          size: 88,
+                          onTap: () {
+                            Navigator.pop(ctx, false);
+                            onRequestPhotoChange();
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'اضغط لتغيير الصورة',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 16),
+                      _field(
+                        controller: nameCtrl,
+                        label: 'الاسم الكامل',
+                        icon: Icons.person_outline,
+                        action: TextInputAction.next,
+                      ),
+                      const SizedBox(height: 12),
+                      _field(
+                        controller: phoneCtrl,
+                        label: 'رقم الهاتف',
+                        icon: Icons.phone_outlined,
+                        keyboard: TextInputType.phone,
+                        action: TextInputAction.next,
+                      ),
+                      const SizedBox(height: 12),
+                      _field(
+                        controller: emailCtrl,
+                        label: 'البريد الإلكتروني',
+                        icon: Icons.email_outlined,
+                        keyboard: TextInputType.emailAddress,
+                        action: TextInputAction.next,
+                      ),
+                      const SizedBox(height: 12),
+                      _field(
+                        controller: busCtrl,
+                        label: 'رقم الباص',
+                        icon: Icons.directions_bus_outlined,
+                        action: TextInputAction.next,
+                      ),
+                      const SizedBox(height: 12),
+                      _field(
+                        controller: routeCtrl,
+                        label: 'المسار / الخط',
+                        icon: Icons.route_outlined,
+                        action: TextInputAction.next,
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int>(
+                        value: selectedCapacity,
+                        decoration: InputDecoration(
+                          labelText: 'نوع الباص / عدد الركاب',
+                          prefixIcon: const Icon(Icons.event_seat_outlined),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        items: BusCapacity.options
+                            .map(
+                              (c) => DropdownMenuItem<int>(
+                                value: c,
+                                child: Text(BusCapacity.label(c)),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) {
+                          setSheetState(() => selectedCapacity = v);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'ملاحظة: تغيير البريد قد يتطلب تأكيداً عبر الرابط المرسل.\n'
+                        'تظهر أيقونة الباص للراكب حسب النوع المختار تلقائياً.',
+                        style:
+                            TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'حفظ',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('إلغاء'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -190,6 +222,7 @@ class EditProfileSheet {
       'busNumber': bus,
       'route': route,
       'email': email,
+      'capacity': selectedCapacity,
     };
 
     String? note;
