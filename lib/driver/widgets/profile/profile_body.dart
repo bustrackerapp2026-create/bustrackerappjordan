@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/theme_provider.dart';
+import '../../../core/widgets/pickup_label_size_setting.dart';
 import '../../../models/user_model.dart';
 import 'profile_ui.dart';
 
@@ -345,6 +346,8 @@ class _SettingsCard extends StatelessWidget {
             subtitle: language,
             onTap: onLanguageTap,
           ),
+          ProfileUi.divider(),
+          const PickupLabelSizeTile(),
           ProfileUi.divider(),
           SwitchListTile(
             secondary: Icon(
