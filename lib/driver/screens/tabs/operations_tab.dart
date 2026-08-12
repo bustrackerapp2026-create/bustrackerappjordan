@@ -187,7 +187,7 @@ class _OperationsTabState extends State<OperationsTab> {
         return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: trips.length,
-          cacheExtent: 400,
+          scrollCacheExtent: const ScrollCacheExtent.pixels(400),
           addAutomaticKeepAlives: false,
           addRepaintBoundaries: true,
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
