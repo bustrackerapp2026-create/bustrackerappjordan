@@ -23,13 +23,18 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final Map<String, String> _pickupAnnotationToPointId = {};
   final Map<String, Uint8List> _markerImageCache = {};
   final Map<String, String> _markerVisualKey = {};
+  final Map<String, (double, double)> _lastMarkerPos = {};
   StreamSubscription<QuerySnapshot>? _pickupPointsSubscription;
   bool _isAddingPickupPoint = false;
   bool _isSyncingMarkers = false;
   QuerySnapshot? _pendingSnapshot;
   bool _resyncScheduled = false;
+  Timer? _snapshotDebounce;
   PickupLabelScaleProvider? _labelScaleProvider;
   double _appliedLabelScale = 1.0;
+
+  /// تجاهل تحريك أقل من ≈ 2م
+  static const double _minPosDelta = 0.00002;
 
   bool get isAddingPickupPoint => _isAddingPickupPoint;
 
@@ -79,6 +84,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   void listenToPickupPoints() {
     _pickupPointsSubscription?.cancel();
+    _snapshotDebounce?.cancel();
 
     try {
       _labelScaleProvider?.removeListener(_onLabelScaleChanged);
@@ -96,12 +102,12 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         .listen(
       (snapshot) {
         if (!mounted) return;
-        MapUtils.log(
-          '📦 [Pickup] معتمدة: ${snapshot.docs.length}',
-          tag: 'PickupMixin',
-        );
         _pendingSnapshot = snapshot;
-        _syncPickupMarkers();
+        // Debounce لتجميع تحديثات Firestore المتتالية
+        _snapshotDebounce?.cancel();
+        _snapshotDebounce = Timer(const Duration(milliseconds: 280), () {
+          if (mounted) _syncPickupMarkers();
+        });
       },
       onError: (error) {
         MapUtils.log(
@@ -115,7 +121,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   void _scheduleResync() {
     if (_resyncScheduled) return;
     _resyncScheduled = true;
-    Future<void>.delayed(const Duration(milliseconds: 450), () {
+    Future<void>.delayed(const Duration(milliseconds: 400), () {
       _resyncScheduled = false;
       if (mounted) _syncPickupMarkers();
     });
@@ -161,16 +167,24 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         await _removePickupMarker(id);
       }
 
-      for (final point in approvedPoints) {
+      // معالجة متوازية بدفعات
+      const batchSize = 5;
+      for (var i = 0; i < approvedPoints.length; i += batchSize) {
         if (!mounted) return;
-        try {
-          await _upsertPickupMarker(point);
-        } catch (e) {
-          MapUtils.log(
-            '⚠️ فشل رسم نقطة ${point.id}: $e',
-            tag: 'PickupMixin',
-          );
-        }
+        final end = (i + batchSize > approvedPoints.length)
+            ? approvedPoints.length
+            : i + batchSize;
+        final batch = approvedPoints.sublist(i, end);
+        await Future.wait(batch.map((point) async {
+          try {
+            await _upsertPickupMarker(point);
+          } catch (e) {
+            MapUtils.log(
+              '⚠️ فشل رسم نقطة ${point.id}: $e',
+              tag: 'PickupMixin',
+            );
+          }
+        }));
       }
 
       MapUtils.log(
@@ -187,6 +201,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   Future<void> _removePickupMarker(String pointId) async {
     final existing = _pickupAnnotations.remove(pointId);
+    _lastMarkerPos.remove(pointId);
     if (existing != null) {
       try {
         await pointAnnotationManager?.delete(existing);
@@ -205,13 +220,21 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final visualKey =
         '${point.pointType}_${point.name.hashCode}_s${(scale * 100).round()}';
     final existing = _pickupAnnotations[point.id];
+    final lastPos = _lastMarkerPos[point.id];
 
     if (existing != null && _markerVisualKey[point.id] == visualKey) {
+      // تخطي التحديث إن الموقع لم يتغيّر فعلياً
+      if (lastPos != null) {
+        final dLat = (point.latitude - lastPos.$1).abs();
+        final dLng = (point.longitude - lastPos.$2).abs();
+        if (dLat < _minPosDelta && dLng < _minPosDelta) return;
+      }
       existing.geometry = Point(
         coordinates: Position(point.longitude, point.latitude),
       );
       try {
         await manager.update(existing);
+        _lastMarkerPos[point.id] = (point.latitude, point.longitude);
       } catch (_) {}
       return;
     }
@@ -237,7 +260,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         coordinates: Position(point.longitude, point.latitude),
       ),
       image: bytes,
-      iconSize: 1.05,
+      iconSize: 1.0,
       iconAnchor: IconAnchor.BOTTOM,
     );
 
@@ -247,6 +270,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _pickupAnnotations[point.id] = annotation;
       _pickupAnnotationToPointId[annotation.id] = point.id;
       _markerVisualKey[point.id] = visualKey;
+      _lastMarkerPos[point.id] = (point.latitude, point.longitude);
     } catch (e) {
       MapUtils.log('⚠️ create marker failed: $e', tag: 'PickupMixin');
     }
@@ -423,6 +447,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   void disposePickupPoints() {
+    _snapshotDebounce?.cancel();
     _labelScaleProvider?.removeListener(_onLabelScaleChanged);
     _labelScaleProvider = null;
     _pickupPointsSubscription?.cancel();
@@ -431,5 +456,6 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _pickupAnnotationToPointId.clear();
     _markerImageCache.clear();
     _markerVisualKey.clear();
+    _lastMarkerPos.clear();
   }
 }

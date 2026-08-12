@@ -102,6 +102,9 @@ class MapLayerController {
     }
   }
 
+  /// آخر مفتاح ستايل استُخدم — لتقييد استعلام POI بالطبقات الصحيحة
+  static String _lastStyleKey = 'default';
+
   static Future<void> applyLabelFilters({
     required MapboxMap mapboxMap,
     required bool showPlaceLabels,
@@ -110,12 +113,12 @@ class MapLayerController {
     String styleKey = 'default',
   }) async {
     try {
+      _lastStyleKey = styleKey;
       final style = mapboxMap.style;
       var cache = _layerCache[styleKey];
 
       if (cache == null) {
-        // تأخير قصير مرة واحدة فقط حتى تكتمل الطبقات
-        await Future<void>.delayed(const Duration(milliseconds: 60));
+        await Future<void>.delayed(const Duration(milliseconds: 40));
 
         final layers = await style.getStyleLayers();
         final placeIds = <String>{};
@@ -173,21 +176,30 @@ class MapLayerController {
     required ScreenCoordinate screenCoordinate,
   }) async {
     try {
+      // صندوق أصغر = استعلام أرخص
+      const half = 16.0;
       final box = ScreenBox(
         min: ScreenCoordinate(
-          x: screenCoordinate.x - 24,
-          y: screenCoordinate.y - 24,
+          x: screenCoordinate.x - half,
+          y: screenCoordinate.y - half,
         ),
         max: ScreenCoordinate(
-          x: screenCoordinate.x + 24,
-          y: screenCoordinate.y + 24,
+          x: screenCoordinate.x + half,
+          y: screenCoordinate.y + half,
         ),
       );
 
       final geometry = RenderedQueryGeometry.fromScreenBox(box);
+
+      // تقييد الاستعلام بطبقات POI فقط عند توفر الكاش — يقلل العمل بشكل كبير
+      final poiLayers = _layerCache[_lastStyleKey]?.poiIds;
+      final layerIds = (poiLayers != null && poiLayers.isNotEmpty)
+          ? poiLayers.toList(growable: false)
+          : null;
+
       final features = await mapboxMap.queryRenderedFeatures(
         geometry,
-        RenderedQueryOptions(layerIds: null, filter: null),
+        RenderedQueryOptions(layerIds: layerIds, filter: null),
       );
 
       if (features.isEmpty) return null;
@@ -197,7 +209,7 @@ class MapLayerController {
 
         final featureMap = item.queriedFeature.feature;
         final props = _asStringKeyedMap(featureMap['properties']);
-        final layerIds = item.layers;
+        final layerIdsFound = item.layers;
 
         final name = _extractName(props);
         if (name == null || name.isEmpty) continue;
@@ -206,7 +218,7 @@ class MapLayerController {
         final clazz = clazzRaw?.toString();
         final type = props['type']?.toString();
         final category = _categoryLabel(clazz, type, name);
-        final layerId = _firstLayerId(layerIds);
+        final layerId = _firstLayerId(layerIdsFound);
         final secondary = _extractSecondaryName(props, name);
 
         return MapPoiInfo(
@@ -267,9 +279,8 @@ class MapLayerController {
   ) async {
     var ok = 0;
     final value = visible ? 'visible' : 'none';
-    // دفعات صغيرة لتقليل حظر الـ UI thread
     final list = layerIds.toList();
-    const batchSize = 8;
+    const batchSize = 12;
     for (var i = 0; i < list.length; i += batchSize) {
       final end = (i + batchSize > list.length) ? list.length : i + batchSize;
       final batch = list.sublist(i, end);

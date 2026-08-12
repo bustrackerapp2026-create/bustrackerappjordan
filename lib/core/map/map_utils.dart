@@ -8,16 +8,12 @@ import 'map_constants.dart';
 
 /// دوال مساعدة مشتركة للخرائط
 class MapUtils {
-  // ─── Logger ──────────────────────────────────────────────────────
-  /// تسجيل الرسائل في وضع التطوير فقط
   static void log(String message, {String tag = 'Map'}) {
     if (kDebugMode) {
       debugPrint('📌 [$tag] $message');
     }
   }
 
-  // ─── SnackBar ──────────────────────────────────────────────────
-  /// عرض رسالة منبثقة (SnackBar) موحدة
   static void showSnackBar(
     BuildContext context,
     String message, {
@@ -41,8 +37,6 @@ class MapUtils {
     );
   }
 
-  // ─── تحويل اللون من Hex ──────────────────────────────────────
-  /// تحويل لون من صيغة Hex (مثل #2196F3) إلى Color
   static Color hexToColor(String hex) {
     try {
       final hexCode = hex.replaceAll('#', '');
@@ -58,18 +52,14 @@ class MapUtils {
     return Colors.blue;
   }
 
-  // ─── التحقق من صحة الإحداثيات ──────────────────────────────────
-  /// التحقق من أن خط العرض ضمن النطاق الصحيح
   static bool isValidLatitude(double lat) {
     return lat >= -90.0 && lat <= 90.0;
   }
 
-  /// التحقق من أن خط الطول ضمن النطاق الصحيح
   static bool isValidLongitude(double lng) {
     return lng >= -180.0 && lng <= 180.0;
   }
 
-  /// التحقق من أن الإحداثيات ضمن حدود الأردن
   static bool isWithinJordanBounds(double lat, double lng) {
     return lat >= MapConstants.minLat &&
         lat <= MapConstants.maxLat &&
@@ -77,9 +67,6 @@ class MapUtils {
         lng <= MapConstants.maxLng;
   }
 
-  // ─── تحويل آمن من Firestore إلى double ──────────────────────────
-  /// تحويل قيمة من Firestore إلى double بأمان
-  /// تدعم: num, int, String, double, null
   static double? safeToDouble(dynamic value) {
     if (value == null) return null;
     if (value is double) return value;
@@ -93,13 +80,6 @@ class MapUtils {
     return null;
   }
 
-  // ════════════════════════════════════════════════════════════════════════════
-  //  ✅ دوال جديدة (للخطوة الحالية)
-  // ════════════════════════════════════════════════════════════════════════════
-
-  /// ✅ تحميل صورة الماركر مسبقاً (لتجنب التأخير عند الاستخدام)
-  ///
-  /// تعود بـ [Uint8List?] أو `null` في حالة الفشل.
   static Future<Uint8List?> preloadMarkerImage() async {
     try {
       return await MapHelpers.createUserMarkerBytes();
@@ -109,15 +89,6 @@ class MapUtils {
     }
   }
 
-  /// ✅ البحث عن مكان باستخدام LocationService
-  ///
-  /// [context] سياق التطبيق (للـ SnackBar والتحقق من mounted)
-  /// [mapboxMap] كائن الخريطة لتحريك الكاميرا
-  /// [query] النص المراد البحث عنه
-  /// [currentBearing] اتجاه الكاميرا الحالي
-  /// [locationService] خدمة الموقع (للبحث)
-  ///
-  /// تعود بـ `void`، وتظهر النتائج عبر SnackBar.
   static Future<void> searchPlace(
     BuildContext context,
     MapboxMap? mapboxMap,
@@ -136,6 +107,7 @@ class MapUtils {
       return;
     }
 
+    // pitch 0 أخف على الرسم من 45
     mapboxMap?.setCamera(
       CameraOptions(
         center: Point(
@@ -143,7 +115,7 @@ class MapUtils {
         ),
         zoom: 15.0,
         bearing: currentBearing,
-        pitch: 45.0,
+        pitch: 0.0,
       ),
     );
     showSnackBar(context, '🔎 تم الانتقال إلى ${result.name}', isError: false);

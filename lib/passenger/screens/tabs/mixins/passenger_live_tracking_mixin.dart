@@ -27,29 +27,29 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   List<LiveDriverLocation>? _pendingDrivers;
   Timer? _updateThrottle;
 
-  /// حد أدنى بالمتر تقريباً قبل تحديث موقع الماركر (≈ 8م)
-  static const double _minMoveThreshold = 0.00008;
+  /// حد أدنى بالمتر تقريباً قبل تحديث موقع الماركر (≈ 12م)
+  static const double _minMoveThreshold = 0.00012;
 
   Future<Uint8List> _createBusMarkerBytes() async {
     if (_busMarkerBytes != null) return _busMarkerBytes!;
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    const size = 88.0;
+    const size = 72.0;
 
     final shadow = Paint()
-      ..color = Colors.black.withValues(alpha: 0.2)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
-    canvas.drawCircle(const Offset(size / 2, size / 2 + 2), 18, shadow);
+      ..color = Colors.black.withValues(alpha: 0.18)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+    canvas.drawCircle(const Offset(size / 2, size / 2 + 2), 15, shadow);
 
     final body = Paint()..color = const Color(0xFF1565C0);
     final rrect = RRect.fromRectAndRadius(
       Rect.fromCenter(
         center: const Offset(size / 2, size / 2),
-        width: 34,
-        height: 42,
+        width: 28,
+        height: 34,
       ),
-      const Radius.circular(8),
+      const Radius.circular(7),
     );
     canvas.drawRRect(rrect, body);
 
@@ -57,18 +57,18 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromCenter(
-          center: const Offset(size / 2, size / 2 - 6),
-          width: 22,
-          height: 12,
+          center: const Offset(size / 2, size / 2 - 5),
+          width: 18,
+          height: 10,
         ),
-        const Radius.circular(3),
+        const Radius.circular(2),
       ),
       window,
     );
 
     final wheel = Paint()..color = Colors.black87;
-    canvas.drawCircle(const Offset(size / 2 - 9, size / 2 + 16), 4, wheel);
-    canvas.drawCircle(const Offset(size / 2 + 9, size / 2 + 16), 4, wheel);
+    canvas.drawCircle(const Offset(size / 2 - 8, size / 2 + 13), 3.5, wheel);
+    canvas.drawCircle(const Offset(size / 2 + 8, size / 2 + 13), 3.5, wheel);
 
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
@@ -96,9 +96,9 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _pendingDrivers = drivers;
     liveDriversCount.value = drivers.length;
 
-    // خنق التحديثات: لا نحدّث الماركرات أكثر من مرة كل 400ms
+    // خنق التحديثات: لا نحدّث الماركرات أكثر من مرة كل 500ms
     if (_updateThrottle?.isActive ?? false) return;
-    _updateThrottle = Timer(const Duration(milliseconds: 400), () {
+    _updateThrottle = Timer(const Duration(milliseconds: 500), () {
       final pending = _pendingDrivers;
       if (pending != null) {
         unawaited(_applyDriverMarkers(pending));
@@ -119,59 +119,68 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (!mounted) return;
 
       final seen = <String>{};
+      final toUpdate = <LiveDriverLocation>[];
+      final toCreate = <LiveDriverLocation>[];
 
       for (final d in drivers) {
-        if (!mounted) return;
         seen.add(d.driverId);
         final existing = _driverAnnotations[d.driverId];
         final last = _lastDrawnPos[d.driverId];
 
-        // تخطي التحديث إن الحركة طفيفة جداً
         if (existing != null && last != null) {
           final dLat = (d.latitude - last.$1).abs();
           final dLng = (d.longitude - last.$2).abs();
           if (dLat < _minMoveThreshold && dLng < _minMoveThreshold) {
             continue;
           }
+          toUpdate.add(d);
+        } else if (existing == null) {
+          toCreate.add(d);
+        } else {
+          toUpdate.add(d);
         }
+      }
 
-        final point = Point(
-          coordinates: Position(d.longitude, d.latitude),
-        );
-
-        if (existing != null) {
-          existing.geometry = point;
-          if (d.heading != null) {
-            existing.iconRotate = d.heading;
-          }
+      // تحديثات متوازية بدفعات صغيرة
+      const batch = 4;
+      for (var i = 0; i < toUpdate.length; i += batch) {
+        if (!mounted) return;
+        final slice = toUpdate.skip(i).take(batch);
+        await Future.wait(slice.map((d) async {
+          final existing = _driverAnnotations[d.driverId];
+          if (existing == null) return;
+          existing.geometry = Point(
+            coordinates: Position(d.longitude, d.latitude),
+          );
+          if (d.heading != null) existing.iconRotate = d.heading;
           try {
             await pointAnnotationManager?.update(existing);
             _lastDrawnPos[d.driverId] = (d.latitude, d.longitude);
           } catch (_) {}
-        } else {
-          try {
-            final ann = await pointAnnotationManager?.create(
-              PointAnnotationOptions(
-                geometry: point,
-                image: image,
-                iconSize: 1.0,
-                iconAnchor: IconAnchor.CENTER,
-                iconRotate: d.heading ?? 0,
-                textField: d.displayLabel,
-                textSize: 11.0,
-                textOffset: [0.0, 1.8],
-                textColor: const Color(0xFF0D47A1).toARGB32(),
-                textHaloColor: const Color(0xFFFFFFFF).toARGB32(),
-                textHaloWidth: 1.2,
+        }));
+      }
+
+      for (final d in toCreate) {
+        if (!mounted) return;
+        try {
+          final ann = await pointAnnotationManager?.create(
+            PointAnnotationOptions(
+              geometry: Point(
+                coordinates: Position(d.longitude, d.latitude),
               ),
-            );
-            if (ann != null) {
-              _driverAnnotations[d.driverId] = ann;
-              _lastDrawnPos[d.driverId] = (d.latitude, d.longitude);
-            }
-          } catch (e) {
-            MapUtils.log('إنشاء ماركر سائق: $e', tag: 'LiveTracking');
+              image: image,
+              iconSize: 0.95,
+              iconAnchor: IconAnchor.CENTER,
+              iconRotate: d.heading ?? 0,
+              // بدون نص على كل ماركر — أرخص للرسم عند كثرة الباصات
+            ),
+          );
+          if (ann != null) {
+            _driverAnnotations[d.driverId] = ann;
+            _lastDrawnPos[d.driverId] = (d.latitude, d.longitude);
           }
+        } catch (e) {
+          MapUtils.log('إنشاء ماركر سائق: $e', tag: 'LiveTracking');
         }
       }
 
@@ -191,7 +200,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final pending = _pendingDrivers;
       if (pending != null && pending.length != drivers.length && mounted) {
         _updateThrottle?.cancel();
-        _updateThrottle = Timer(const Duration(milliseconds: 200), () {
+        _updateThrottle = Timer(const Duration(milliseconds: 250), () {
           unawaited(_applyDriverMarkers(pending));
         });
       }

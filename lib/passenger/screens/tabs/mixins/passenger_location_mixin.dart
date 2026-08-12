@@ -20,6 +20,14 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   double currentPassengerBearing = 0.0;
   bool isPassengerTrackingActive = false;
 
+  DateTime? _lastMarkerAt;
+  double? _lastMarkerLat;
+  double? _lastMarkerLng;
+  bool _markerBusy = false;
+
+  static const Duration _minMarkerInterval = Duration(milliseconds: 220);
+  static const double _minMoveDeg = 0.00003; // ≈ 3م
+
   LocationService get locationService => _passengerLocationService;
 
   Future<void> preloadPassengerMarker() async {
@@ -29,31 +37,53 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Future<void> updatePassengerMarker(
     double lat,
     double lng,
-    double bearing,
-  ) async {
+    double bearing, {
+    bool force = false,
+  }) async {
     if (pointAnnotationManager == null) return;
 
-    final point = Point(coordinates: Position(lng, lat));
-
-    if (_passengerUserAnnotation != null) {
-      _passengerUserAnnotation!.geometry = point;
-      _passengerUserAnnotation!.iconRotate = bearing;
-      await pointAnnotationManager?.update(_passengerUserAnnotation!);
-      return;
+    final now = DateTime.now();
+    if (!force && _lastMarkerAt != null) {
+      if (now.difference(_lastMarkerAt!) < _minMarkerInterval) return;
     }
+    if (!force && _lastMarkerLat != null && _lastMarkerLng != null) {
+      final dLat = (lat - _lastMarkerLat!).abs();
+      final dLng = (lng - _lastMarkerLng!).abs();
+      if (dLat < _minMoveDeg && dLng < _minMoveDeg) return;
+    }
+    if (_markerBusy) return;
+    _markerBusy = true;
 
-    _cachedPassengerMarkerBytes ??= await MapHelpers.createUserMarkerBytes();
-    if (_cachedPassengerMarkerBytes == null) return;
+    try {
+      final point = Point(coordinates: Position(lng, lat));
 
-    _passengerUserAnnotation = await pointAnnotationManager?.create(
-      PointAnnotationOptions(
-        geometry: point,
-        image: _cachedPassengerMarkerBytes!,
-        iconSize: 1.0,
-        iconAnchor: IconAnchor.CENTER,
-        iconRotate: bearing,
-      ),
-    );
+      if (_passengerUserAnnotation != null) {
+        _passengerUserAnnotation!.geometry = point;
+        _passengerUserAnnotation!.iconRotate = bearing;
+        await pointAnnotationManager?.update(_passengerUserAnnotation!);
+      } else {
+        _cachedPassengerMarkerBytes ??=
+            await MapHelpers.createUserMarkerBytes();
+        if (_cachedPassengerMarkerBytes == null) return;
+
+        _passengerUserAnnotation = await pointAnnotationManager?.create(
+          PointAnnotationOptions(
+            geometry: point,
+            image: _cachedPassengerMarkerBytes!,
+            iconSize: 1.0,
+            iconAnchor: IconAnchor.CENTER,
+            iconRotate: bearing,
+          ),
+        );
+      }
+
+      _lastMarkerAt = now;
+      _lastMarkerLat = lat;
+      _lastMarkerLng = lng;
+    } catch (_) {
+    } finally {
+      _markerBusy = false;
+    }
   }
 
   void _safeSnack(String message, {bool isError = false}) {
@@ -114,7 +144,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           final moveCam = stage == LocationFixStage.cached ||
               stage == LocationFixStage.quick ||
               stage == LocationFixStage.precise;
-          unawaited(_applyPosition(pos, moveCamera: moveCam));
+          unawaited(_applyPosition(pos, moveCamera: moveCam, force: true));
         },
       );
 
@@ -129,12 +159,11 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       if (position != null) {
-        await _applyPosition(position, moveCamera: true);
+        await _applyPosition(position, moveCamera: true, force: true);
       }
 
       if (!mounted) return;
 
-      // تتبع خفيف بعد التثبيت (اختياري للراكب)
       isPassengerTrackingActive = true;
       _passengerLocationSubscription = _passengerLocationService
           .getPositionStreamForProfile(LocationTrackingProfile.passengerBrowse)
@@ -158,6 +187,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Future<void> _applyPosition(
     geo.Position position, {
     required bool moveCamera,
+    bool force = false,
   }) async {
     double bearing = position.heading;
     if (bearing == 0.0 && position.speed > 0) {
@@ -166,7 +196,6 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     currentPassengerBearing = bearing;
 
     if (moveCamera) {
-      // setCamera أسرع من flyTo عند التحديثات المتتالية
       try {
         await mapboxMap?.setCamera(
           CameraOptions(
@@ -191,6 +220,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       position.latitude,
       position.longitude,
       bearing,
+      force: force,
     );
   }
 

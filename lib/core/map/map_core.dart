@@ -35,15 +35,13 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   }
 
   Future<void> _initializeMap() async {
-    // تهيئة متوازية قدر الإمكان
     await Future.wait([
       initAnnotationManager(),
       initPolylineManager(),
       applyStableGestures(),
     ]);
     _setDefaultCamera();
-    // تأخير أقصر قبل فلاتر الطبقات
-    await Future<void>.delayed(const Duration(milliseconds: 120));
+    await Future<void>.delayed(const Duration(milliseconds: 80));
     await applyLabelLayersFilter();
     if (mounted) setState(() => isMapReady = true);
     MapUtils.log('✅ تم إنشاء الخريطة بنجاح');
@@ -84,16 +82,17 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   void onCameraChangedForDebug(CameraChangedEventData data) {
     _cameraMoving = true;
     _cameraIdleTimer?.cancel();
-    _cameraIdleTimer = Timer(const Duration(milliseconds: 180), () {
+    // انتظار أطول قليلاً قبل السماح باستعلام POI أثناء السحب
+    _cameraIdleTimer = Timer(const Duration(milliseconds: 260), () {
       _cameraMoving = false;
     });
 
     if (!kDebugMode) return;
     final zoom = data.cameraState.zoom;
-    if ((zoom - lastLoggedZoom).abs() < 0.2) return;
+    if ((zoom - lastLoggedZoom).abs() < 0.25) return;
     lastLoggedZoom = zoom;
     _zoomLogDebounce?.cancel();
-    _zoomLogDebounce = Timer(const Duration(milliseconds: 120), () {
+    _zoomLogDebounce = Timer(const Duration(milliseconds: 150), () {
       debugPrint(
         '🔍 [MapZoom] zoom=${zoom.toStringAsFixed(2)} '
         'center=(${data.cameraState.center.coordinates.lat.toStringAsFixed(4)}, '
@@ -123,7 +122,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         pitch: 0.0,
         bearing: 0.0,
       ),
-      MapAnimationOptions(duration: 600, startDelay: 0),
+      MapAnimationOptions(duration: 450, startDelay: 0),
     );
   }
 
@@ -137,7 +136,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         pitch: 0.0,
         bearing: 0.0,
       ),
-      MapAnimationOptions(duration: 300, startDelay: 0),
+      MapAnimationOptions(duration: 250, startDelay: 0),
     );
   }
 
@@ -211,7 +210,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
       currentMapStyle = styleUri;
       MapLayerController.invalidateCache(styleUri);
       await mapboxMap?.loadStyleURI(styleUri);
-      await Future<void>.delayed(const Duration(milliseconds: 280));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
       await Future.wait([
         initAnnotationManager(),
         initPolylineManager(),
