@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 import 'package:jordan_bus_tracker_new/models/user_model.dart';
 import 'package:jordan_bus_tracker_new/services/firestore_service.dart';
+import 'package:jordan_bus_tracker_new/services/live_tracking_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
@@ -13,6 +14,9 @@ class AuthProvider extends ChangeNotifier {
   UserModel? _userData;
   bool _isLoading = false;
   StreamSubscription<UserModel?>? _userDataSubscription;
+
+  /// يُستدعى عند تسجيل الخروج لتصفير DriverProvider (يُسجَّل من الواجهة).
+  VoidCallback? onBeforeSignOut;
 
   firebase_auth.User? get user => _user;
   UserModel? get userData => _userData;
@@ -37,7 +41,6 @@ class AuthProvider extends ChangeNotifier {
     _cancelUserDataSubscription();
     _userDataSubscription = _firestoreService.getUserDataStream(uid).listen(
       (data) {
-        // لا تمسح البيانات السابقة عند null لحظي — يمنع وميض شاشة التحميل/الخروج
         if (data != null) {
           _userData = data;
           notifyListeners();
@@ -47,7 +50,6 @@ class AuthProvider extends ChangeNotifier {
       },
       onError: (e) {
         debugPrint('خطأ في جلب بث بيانات المستخدم: $e');
-        // لا تسجّل خروجاً عند خطأ شبكة/قراءة
       },
     );
   }
@@ -154,6 +156,10 @@ class AuthProvider extends ChangeNotifier {
       await user.reauthenticateWithCredential(credential);
       await user.updatePassword(newPassword);
 
+      final uid = user.uid;
+      await LiveTrackingService().goOfflineOnLogout(uid);
+      onBeforeSignOut?.call();
+
       await _auth.signOut();
       _cancelUserDataSubscription();
       _user = null;
@@ -179,6 +185,16 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> signOut() async {
     try {
+      final uid = _user?.uid;
+
+      // إيقاف توصيل/رحلة هذا السائق فقط على السيرفر
+      if (uid != null) {
+        await LiveTrackingService().goOfflineOnLogout(uid);
+      }
+
+      // تصفير الحالة المحلية (DriverProvider) عبر الكولباك
+      onBeforeSignOut?.call();
+
       _cancelUserDataSubscription();
       await _auth.signOut();
       _user = null;

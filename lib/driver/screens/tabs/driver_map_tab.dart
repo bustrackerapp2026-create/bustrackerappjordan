@@ -15,7 +15,7 @@ import '../../../services/live_tracking_service.dart';
 import '../../../l10n/app_localizations.dart';
 import 'mixins/driver_location_mixin.dart';
 
-/// خريطة السائق المتقدمة: تتبع حي + تنبؤ موقع + رحلات + نقاط تجمع.
+/// خريطة السائق: تتبع حي + رحلات — كل العمليات مربوطة بـ uid السائق الحالي فقط.
 class DriverMapTab extends StatefulWidget {
   const DriverMapTab({super.key});
 
@@ -45,7 +45,6 @@ class _DriverMapTabState extends State<DriverMapTab>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // تأخير قصير قبل إنشاء MapWidget لتقليل ضغط الإطار الأول
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       Future<void>.delayed(const Duration(milliseconds: 200), () {
@@ -127,7 +126,11 @@ class _DriverMapTabState extends State<DriverMapTab>
       listenToPickupPoints();
 
       final driver = context.read<DriverProvider>();
-      if (driver.isOnline || driver.isTripActive) {
+      final auth = context.read<AuthProvider>();
+      // تتبع فقط إذا كان هذا السائق مربوطاً وهو أونلاين
+      if (driver.isBound &&
+          driver.boundUserId == auth.userId &&
+          (driver.isOnline || driver.isTripActive)) {
         await ensureDriverTrackingRunning();
       }
 
@@ -146,20 +149,29 @@ class _DriverMapTabState extends State<DriverMapTab>
     final auth = context.read<AuthProvider>();
     final l10n = AppLocalizations.of(context);
     final uid = auth.userId;
-    if (uid == null) return;
+    if (uid == null || uid.isEmpty) return;
 
-    driver.toggleOnlineStatus();
+    // رفض العملية إن لم تكن الحالة مربوطة بهذا السائق
+    if (!driver.isBound || driver.boundUserId != uid) {
+      driver.bindToUser(uid);
+    }
+
+    final ok = driver.toggleOnlineStatus(userId: uid);
+    if (!ok) return;
+
     final isOnline = driver.isOnline;
     final pos = driver.currentPosition;
     final route = _selectedRoute;
 
     try {
+      // يُحدَّث users/{uid} فقط — لا يؤثر على سائقين آخرين
       await LiveTrackingService().setDriverOnlineStatus(
         uid: uid,
         isOnline: isOnline,
         latitude: pos?.latitude,
         longitude: pos?.longitude,
         route: route,
+        isTripActive: driver.isTripActive,
       );
       if (!mounted) return;
       MapUtils.showSnackBar(
@@ -167,7 +179,8 @@ class _DriverMapTabState extends State<DriverMapTab>
         isOnline ? l10n.driverOnlineMsg : l10n.driverOfflineMsg,
       );
     } catch (e) {
-      if (mounted) driver.toggleOnlineStatus();
+      // التراجع محلياً عند فشل الكتابة لهذا uid فقط
+      if (mounted) driver.toggleOnlineStatus(userId: uid);
       if (!mounted) return;
       MapUtils.showSnackBar(
         context,
@@ -181,13 +194,34 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   Future<void> _onTripButtonPressed({required bool isTripActive}) async {
     if (isProcessingTrip) return;
+    final auth = context.read<AuthProvider>();
+    final driver = context.read<DriverProvider>();
+    final uid = auth.userId;
+    if (uid == null || uid.isEmpty) return;
+    if (!driver.isBound || driver.boundUserId != uid) {
+      driver.bindToUser(uid);
+    }
 
     if (isTripActive) {
       await endTrip();
       if (!mounted) return;
+      try {
+        await LiveTrackingService().setDriverTripActive(
+          uid: uid,
+          isTripActive: false,
+        );
+      } catch (_) {}
+      if (!mounted) return;
       setState(() => followDriverCamera = false);
     } else {
       await startTrip();
+      if (!mounted) return;
+      try {
+        await LiveTrackingService().setDriverTripActive(
+          uid: uid,
+          isTripActive: true,
+        );
+      } catch (_) {}
       if (!mounted) return;
       setState(() => followDriverCamera = true);
     }
@@ -202,7 +236,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     final driver = context.read<DriverProvider>();
     final auth = context.read<AuthProvider>();
     final uid = auth.userId;
-    if (uid == null || !driver.isOnline) return;
+    if (uid == null || !driver.isOnline || driver.boundUserId != uid) return;
 
     final pos = driver.currentPosition;
     try {
@@ -212,6 +246,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         latitude: pos?.latitude,
         longitude: pos?.longitude,
         route: route,
+        isTripActive: driver.isTripActive,
       );
     } catch (_) {}
   }

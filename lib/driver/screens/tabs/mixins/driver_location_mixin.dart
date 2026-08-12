@@ -56,6 +56,9 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool get _shouldTrackContinuously {
     if (!mounted) return false;
     final driver = context.read<DriverProvider>();
+    final auth = context.read<AuthProvider>();
+    // تتبع فقط للسائق المربوط حالياً
+    if (!driver.isBound || driver.boundUserId != auth.userId) return false;
     return driver.isOnline || driver.isTripActive;
   }
 
@@ -352,7 +355,9 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     );
 
     if (!mounted) return;
-    context.read<DriverProvider>().updatePosition(pos);
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userId;
+    context.read<DriverProvider>().updatePosition(pos, userId: uid);
     unawaited(_maybeUploadDriverLocation(pos, force: doForce));
 
     if (_pendingPosition != null && mounted) {
@@ -366,6 +371,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
+  /// رفع الموقع إلى users/{uid} فقط — لا يمس سائقين آخرين.
   Future<void> _maybeUploadDriverLocation(
     geo.Position position, {
     bool force = false,
@@ -373,10 +379,13 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (_isWritingLocation || !mounted) return;
 
     final driver = context.read<DriverProvider>();
-    if (!driver.isOnline && !force) return;
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userId;
 
-    final uid = context.read<AuthProvider>().userId;
-    if (uid == null) return;
+    if (uid == null || uid.isEmpty) return;
+    // حماية: لا تكتب إلا لوثيقة السائق المربوط
+    if (!driver.isBound || driver.boundUserId != uid) return;
+    if (!driver.isOnline && !force) return;
 
     final profile = _activeProfile;
     final now = DateTime.now();
@@ -406,6 +415,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         'locationUpdatedAt': FieldValue.serverTimestamp(),
         'lastUpdated': FieldValue.serverTimestamp(),
         'isOnline': driver.isOnline,
+        'isTripActive': driver.isTripActive,
       });
       _lastFirestoreLocationWrite = now;
       _lastUploadedLat = position.latitude;

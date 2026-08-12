@@ -59,6 +59,17 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final authProvider = context.read<AuthProvider>();
     final userId = authProvider.userId;
 
+    if (userId == null || userId.isEmpty) {
+      MapUtils.showSnackBar(context, '⚠️ يرجى تسجيل الدخول أولاً.',
+          isError: true);
+      return;
+    }
+
+    // عزل: يجب أن تكون الحالة مربوطة بنفس السائق
+    if (!driverProvider.isBound || driverProvider.boundUserId != userId) {
+      driverProvider.bindToUser(userId);
+    }
+
     if (!driverProvider.isOnline) {
       MapUtils.showSnackBar(context, '⚠️ يجب أن تكون متاحاً أولاً.',
           isError: true);
@@ -66,11 +77,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
     if (driverProvider.isTripActive) {
       MapUtils.showSnackBar(context, '⚠️ الرحلة مفعلة بالفعل.', isError: true);
-      return;
-    }
-    if (userId == null) {
-      MapUtils.showSnackBar(context, '⚠️ يرجى تسجيل الدخول أولاً.',
-          isError: true);
       return;
     }
     if (driverProvider.currentPosition == null) {
@@ -83,9 +89,18 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     setState(() => _isProcessingTrip = true);
 
     try {
+      final started = driverProvider.startTrip(userId: userId);
+      if (!started) {
+        if (mounted) {
+          MapUtils.showSnackBar(context, '⚠️ تعذر بدء الرحلة.', isError: true);
+        }
+        return;
+      }
+
       final docRef = FirebaseFirestore.instance.collection('trips').doc();
       final tripId = docRef.id;
 
+      // الرحلة مرتبطة بـ driverId = هذا السائق فقط
       final trip = TripModel(
         id: tripId,
         passengerId: '',
@@ -102,9 +117,12 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (!mounted) return;
 
       setState(() => _currentTripId = tripId);
-      driverProvider.startTrip();
       MapUtils.showSnackBar(context, '🚀 تم بدء الرحلة!', isError: false);
     } catch (e) {
+      // تراجع محلي عند الفشل
+      try {
+        driverProvider.endTrip(userId: userId);
+      } catch (_) {}
       MapUtils.log('❌ فشل إنشاء الرحلة: $e', tag: 'TripManager');
       if (mounted) {
         MapUtils.showSnackBar(
@@ -124,57 +142,62 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final authProvider = context.read<AuthProvider>();
     final driverId = authProvider.userId;
 
-    if (!driverProvider.isTripActive) {
-      MapUtils.showSnackBar(context, '⚠️ لا توجد رحلة نشطة.', isError: true);
-      return;
-    }
-    if (_currentTripId == null) {
-      MapUtils.showSnackBar(context, '⚠️ لا توجد رحلة نشطة للحفظ.',
-          isError: true);
-      return;
-    }
-    if (driverId == null) {
+    if (driverId == null || driverId.isEmpty) {
       MapUtils.showSnackBar(context, '⚠️ يرجى تسجيل الدخول أولاً.',
           isError: true);
       return;
     }
 
-    final tripId = _currentTripId!;
+    if (!driverProvider.isBound || driverProvider.boundUserId != driverId) {
+      driverProvider.bindToUser(driverId);
+    }
+
+    if (!driverProvider.isTripActive) {
+      MapUtils.showSnackBar(context, '⚠️ لا توجد رحلة نشطة.', isError: true);
+      return;
+    }
+
+    final tripId = _currentTripId;
     setState(() => _isProcessingTrip = true);
 
-    final route = driverProvider.endTrip();
+    final route = driverProvider.endTrip(userId: driverId);
 
     try {
-      if (route.length > 5000) {
-        throw Exception(
-            'عدد نقاط المسار (${route.length}) يتجاوز الحد الأقصى (5000).');
-      }
+      if (tripId != null) {
+        if (route.length > 5000) {
+          throw Exception(
+              'عدد نقاط المسار (${route.length}) يتجاوز الحد الأقصى (5000).');
+        }
 
-      if (route.isNotEmpty) {
-        await _tripService.updateTripStatus(
-          tripId,
-          TripStatus.completed,
-          routePoints: route,
-          driverId: driverId,
-        );
+        if (route.isNotEmpty) {
+          await _tripService.updateTripStatus(
+            tripId,
+            TripStatus.completed,
+            routePoints: route,
+            driverId: driverId,
+          );
 
-        if (!mounted) return;
-
-        await showRouteOnMap(route);
-
-        if (!mounted) return;
-        MapUtils.showSnackBar(
-            context, '🏁 تم إنهاء الرحلة وحفظ المسار (${route.length} نقطة).',
-            isError: false);
+          if (!mounted) return;
+          await showRouteOnMap(route);
+          if (!mounted) return;
+          MapUtils.showSnackBar(
+              context, '🏁 تم إنهاء الرحلة وحفظ المسار (${route.length} نقطة).',
+              isError: false);
+        } else {
+          await _tripService.updateTripStatus(
+            tripId,
+            TripStatus.completed,
+            driverId: driverId,
+          );
+          if (!mounted) return;
+          MapUtils.showSnackBar(context, '🏁 تم إنهاء الرحلة (بدون مسار).',
+              isError: false);
+        }
       } else {
-        await _tripService.updateTripStatus(
-          tripId,
-          TripStatus.completed,
-          driverId: driverId,
-        );
-        if (!mounted) return;
-        MapUtils.showSnackBar(context, '🏁 تم إنهاء الرحلة (بدون مسار).',
-            isError: false);
+        if (mounted) {
+          MapUtils.showSnackBar(context, '🏁 تم إنهاء الرحلة محلياً.',
+              isError: false);
+        }
       }
 
       if (mounted) {

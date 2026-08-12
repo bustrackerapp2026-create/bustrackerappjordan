@@ -4,7 +4,12 @@ import 'package:geolocator/geolocator.dart' as geo;
 import '../../models/route_point.dart';
 import '../../models/pickup_point.dart';
 
+/// حالة تشغيل سائق واحد فقط — مربوطة بـ [boundUserId].
+/// يجب استدعاء [bindToUser] عند دخول السائق و [reset] عند الخروج.
 class DriverProvider extends ChangeNotifier {
+  /// معرّف السائق الذي تخصّه هذه الحالة. null = لا يوجد سائق مربوط.
+  String? _boundUserId;
+
   bool _isOnline = false;
   bool _isTripActive = false;
   geo.Position? _currentPosition;
@@ -14,7 +19,9 @@ class DriverProvider extends ChangeNotifier {
   List<RoutePoint> _lastRecordedRoute = [];
   bool _isRecordingRoute = false;
 
-  // Getters بأسماء دقيقة ونماذج صريحة
+  String? get boundUserId => _boundUserId;
+  bool get isBound => _boundUserId != null && _boundUserId!.isNotEmpty;
+
   bool get isOnline => _isOnline;
   bool get isTripActive => _isTripActive;
   geo.Position? get currentPosition => _currentPosition;
@@ -22,31 +29,126 @@ class DriverProvider extends ChangeNotifier {
   List<RoutePoint> get currentRoute => List.unmodifiable(_currentRoute);
   bool get isRecordingRoute => _isRecordingRoute;
 
-  // ✅ دوال التحقق من صحة الإحداثيات (Validation)
   static bool isValidLatitude(double lat) => lat >= -90.0 && lat <= 90.0;
   static bool isValidLongitude(double lng) => lng >= -180.0 && lng <= 180.0;
 
-  void toggleOnlineStatus() {
-    _isOnline = !_isOnline;
-    if (!_isOnline && _isTripActive) {
-      endTrip();
+  /// ربط الحالة بسائق معيّن. إن تغيّر المعرّف تُصفَّر الحالة السابقة.
+  void bindToUser(String userId) {
+    final id = userId.trim();
+    if (id.isEmpty) {
+      reset();
+      return;
     }
+    if (_boundUserId == id) return;
+    _clearSessionState();
+    _boundUserId = id;
     notifyListeners();
   }
 
-  /// ✅ شروط حماية (State Guard) لمنع التكرار وبدء رحلة بدون موقع
-  void startTrip() {
-    if (_isTripActive) return;
+  /// مزامنة الحالة من Firestore لهذا السائق فقط (بعد bind).
+  void syncFromRemote({
+    required String userId,
+    required bool isOnline,
+    required bool isTripActive,
+  }) {
+    if (_boundUserId != userId) {
+      bindToUser(userId);
+    }
+    var changed = false;
+    if (_isOnline != isOnline) {
+      _isOnline = isOnline;
+      changed = true;
+    }
+    if (_isTripActive != isTripActive) {
+      _isTripActive = isTripActive;
+      if (!isTripActive) {
+        _isRecordingRoute = false;
+        _currentRoute.clear();
+      } else if (!_isRecordingRoute) {
+        _startRecordingRoute();
+      }
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
+  /// تصفير كامل — يُستدعى عند تسجيل الخروج أو تبديل الحساب.
+  void reset() {
+    _boundUserId = null;
+    _clearSessionState();
+    notifyListeners();
+  }
+
+  void _clearSessionState() {
+    _isOnline = false;
+    _isTripActive = false;
+    _currentPosition = null;
+    _pickupPoints.clear();
+    _currentRoute.clear();
+    _lastRecordedRoute.clear();
+    _isRecordingRoute = false;
+  }
+
+  bool _ensureBound([String? expectedUserId]) {
+    if (!isBound) {
+      debugPrint('DriverProvider: رفض العملية — لا يوجد سائق مربوط');
+      return false;
+    }
+    if (expectedUserId != null &&
+        expectedUserId.isNotEmpty &&
+        _boundUserId != expectedUserId) {
+      debugPrint(
+        'DriverProvider: رفض العملية — userId=$expectedUserId '
+        'لا يطابق bound=$_boundUserId',
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /// تبديل التوصيل لهذا السائق فقط.
+  bool toggleOnlineStatus({String? userId}) {
+    if (!_ensureBound(userId)) return false;
+    _isOnline = !_isOnline;
+    if (!_isOnline && _isTripActive) {
+      _isTripActive = false;
+      _stopRecordingRoute();
+    }
+    notifyListeners();
+    return true;
+  }
+
+  bool setOnline(bool value, {String? userId}) {
+    if (!_ensureBound(userId)) return false;
+    if (_isOnline == value) return true;
+    _isOnline = value;
+    if (!_isOnline && _isTripActive) {
+      _isTripActive = false;
+      _stopRecordingRoute();
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// بدء رحلة لهذا السائق فقط.
+  bool startTrip({String? userId}) {
+    if (!_ensureBound(userId)) return false;
+    if (_isTripActive) return false;
     if (_currentPosition == null) {
       throw StateError('لا يمكن بدء الرحلة بدون تحديد الموقع الحالي للسائق.');
+    }
+    if (!_isOnline) {
+      throw StateError('يجب تفعيل التوصيل قبل بدء الرحلة.');
     }
     _isTripActive = true;
     _startRecordingRoute();
     notifyListeners();
+    return true;
   }
 
-  /// ✅ شروط حماية ترجع المسار المكتمل بصفة آمنة
-  List<RoutePoint> endTrip() {
+  /// إنهاء رحلة هذا السائق فقط.
+  List<RoutePoint> endTrip({String? userId}) {
+    if (!_ensureBound(userId)) return const [];
     if (!_isTripActive) return getRecordedRoute();
     _isTripActive = false;
     final recorded = _stopRecordingRoute();
@@ -54,8 +156,9 @@ class DriverProvider extends ChangeNotifier {
     return recorded;
   }
 
-  /// ✅ تقليل الـ Rebuilds عبر التحقق من تغير الموقع الفعلي
-  void updatePosition(geo.Position position) {
+  void updatePosition(geo.Position position, {String? userId}) {
+    if (!_ensureBound(userId)) return;
+
     final bool hasMoved = _currentPosition == null ||
         _currentPosition!.latitude != position.latitude ||
         _currentPosition!.longitude != position.longitude;
@@ -67,13 +170,13 @@ class DriverProvider extends ChangeNotifier {
       routeUpdated = _tryAddPointToRoute(position);
     }
 
-    // لا نرسل إشعار لإعادة الرسم إلا عند وجود تغيير حقيقي
     if (hasMoved || routeUpdated) {
       notifyListeners();
     }
   }
 
   void addPickupPoint(String name, double latitude, double longitude) {
+    if (!isBound) return;
     if (!isValidLatitude(latitude) || !isValidLongitude(longitude)) {
       throw ArgumentError('الإحداثيات المدخلة لنقطة التجمع غير صالحة.');
     }
@@ -84,10 +187,6 @@ class DriverProvider extends ChangeNotifier {
     ));
     notifyListeners();
   }
-
-  // ============================================================
-  // ✅ إدارة تسجيل المسار
-  // ============================================================
 
   void _startRecordingRoute() {
     _currentRoute.clear();
@@ -112,7 +211,7 @@ class DriverProvider extends ChangeNotifier {
         pos.latitude,
         pos.longitude,
       );
-      if (distance < 10) return false; // تجاوز النقاط الأقل من 10 أمتار
+      if (distance < 10) return false;
     }
 
     _currentRoute.add(RoutePoint(
@@ -140,7 +239,6 @@ class DriverProvider extends ChangeNotifier {
     return List<RoutePoint>.unmodifiable(_currentRoute);
   }
 
-  /// ✅ حماية لمنع تفريغ المسار أثناء الرحلة الحالية
   void clearRoute() {
     if (_isTripActive) {
       throw StateError('لا يمكن مسح المسار أثناء وجود رحلة نشطة.');

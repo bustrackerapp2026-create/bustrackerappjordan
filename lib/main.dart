@@ -25,7 +25,6 @@ import 'l10n/app_localizations.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // لا تُسقط التطبيق عند خطأ واجهة — اعرض شاشة بسيطة بدل الخروج
   ErrorWidget.builder = (FlutterErrorDetails details) {
     if (kDebugMode) {
       debugPrint('❌ UI error: ${details.exceptionAsString()}');
@@ -55,7 +54,7 @@ void main() async {
 
   final imageCache = PaintingBinding.instance.imageCache;
   imageCache.maximumSize = 120;
-  imageCache.maximumSizeBytes = 48 << 20; // 48 MB
+  imageCache.maximumSizeBytes = 48 << 20;
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -105,44 +104,81 @@ class BusTrackerApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => DriverProvider()),
       ],
-      child: Consumer2<ThemeProvider, LocaleProvider>(
-        builder: (context, themeProvider, localeProvider, _) {
-          return MaterialApp(
-            title: 'Bus Tracker Jordan',
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.lightTheme,
-            darkTheme: AppTheme.darkTheme,
-            themeMode: themeProvider.themeMode,
-            locale: localeProvider.locale,
-            supportedLocales: AppLocalizations.supportedLocales,
-            localizationsDelegates: const [
-              AppLocalizations.delegate,
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            builder: (context, child) {
-              final isRtl = localeProvider.isArabic;
-              return MediaQuery(
-                data: MediaQuery.of(context).copyWith(
-                  textScaler: TextScaler.noScaling,
-                ),
-                child: Directionality(
-                  textDirection:
-                      isRtl ? TextDirection.rtl : TextDirection.ltr,
-                  child: child ?? const SizedBox.shrink(),
-                ),
-              );
-            },
-            home: const AuthWrapper(),
-          );
-        },
+      child: const _DriverAuthBridge(
+        child: _AppRoot(),
       ),
     );
   }
 }
 
-/// يحافظ على آخر نوع مستخدم معروف حتى لا يُعاد التوجيه أثناء ومضات بث Firestore.
+/// يربط AuthProvider بـ DriverProvider:
+/// عند الخروج يصفّر حالة السائق حتى لا تنتقل لسائق آخر على نفس الجهاز.
+class _DriverAuthBridge extends StatefulWidget {
+  final Widget child;
+  const _DriverAuthBridge({required this.child});
+
+  @override
+  State<_DriverAuthBridge> createState() => _DriverAuthBridgeState();
+}
+
+class _DriverAuthBridgeState extends State<_DriverAuthBridge> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      final driver = context.read<DriverProvider>();
+      auth.onBeforeSignOut = () {
+        driver.reset();
+      };
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+class _AppRoot extends StatelessWidget {
+  const _AppRoot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer2<ThemeProvider, LocaleProvider>(
+      builder: (context, themeProvider, localeProvider, _) {
+        return MaterialApp(
+          title: 'Bus Tracker Jordan',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeProvider.themeMode,
+          locale: localeProvider.locale,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          builder: (context, child) {
+            final isRtl = localeProvider.isArabic;
+            return MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.noScaling,
+              ),
+              child: Directionality(
+                textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+                child: child ?? const SizedBox.shrink(),
+              ),
+            );
+          },
+          home: const AuthWrapper(),
+        );
+      },
+    );
+  }
+}
+
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -153,6 +189,7 @@ class AuthWrapper extends StatefulWidget {
 class _AuthWrapperState extends State<AuthWrapper> {
   String? _cachedType;
   bool? _cachedVerified;
+  String? _cachedUid;
 
   @override
   Widget build(BuildContext context) {
@@ -160,33 +197,50 @@ class _AuthWrapperState extends State<AuthWrapper> {
     if (!isLoggedIn) {
       _cachedType = null;
       _cachedVerified = null;
+      _cachedUid = null;
+      // تأكيد تصفير حالة السائق عند العودة لشاشة الدخول
+      final driver = context.read<DriverProvider>();
+      if (driver.isBound || driver.isOnline || driver.isTripActive) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) context.read<DriverProvider>().reset();
+        });
+      }
       return const LoginScreen();
     }
 
-    final userData = context.select<AuthProvider, ({String? type, bool? verified})>(
-      (a) {
-        final u = a.userData;
-        if (u == null) return (type: null, verified: null);
-        return (type: u.userType, verified: u.isVerified);
-      },
-    );
+    final snapshot = context.select<
+        AuthProvider, ({String? uid, String? type, bool? verified})>((a) {
+      final u = a.userData;
+      return (
+        uid: a.userId,
+        type: u?.userType,
+        verified: u?.isVerified,
+      );
+    });
 
-    // حدّث الكاش فقط عند وجود بيانات حقيقية
-    if (userData.type != null) {
-      _cachedType = userData.type;
-      // إذا أصبح verified=true نثبّته؛ لا نرجع لـ false من ومضة null
-      if (userData.verified == true) {
+    if (snapshot.uid != null) {
+      // تبديل حساب → صفّر الكاش إن تغيّر uid
+      if (_cachedUid != null && _cachedUid != snapshot.uid) {
+        _cachedType = null;
+        _cachedVerified = null;
+        context.read<DriverProvider>().reset();
+      }
+      _cachedUid = snapshot.uid;
+    }
+
+    if (snapshot.type != null) {
+      _cachedType = snapshot.type;
+      if (snapshot.verified == true) {
         _cachedVerified = true;
       } else if (_cachedVerified != true) {
-        _cachedVerified = userData.verified;
+        _cachedVerified = snapshot.verified;
       }
     }
 
-    final type = userData.type ?? _cachedType;
-    // إذا كان لدينا تحقق سابق ناجح، لا نرجع لشاشة الانتظار بسبب ومضة
-    final verified = (userData.verified == true || _cachedVerified == true)
+    final type = snapshot.type ?? _cachedType;
+    final verified = (snapshot.verified == true || _cachedVerified == true)
         ? true
-        : (userData.verified ?? _cachedVerified);
+        : (snapshot.verified ?? _cachedVerified);
 
     if (type == null) {
       return const _AuthLoadingScreen();
@@ -200,7 +254,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
       if (verified != true) {
         return const PendingApprovalScreen();
       }
-      return const DriverDashboard();
+      // مفتاح حسب uid حتى لا تُعاد استخدام حالة سائق سابق
+      return DriverDashboard(
+        key: ValueKey('driver_dash_${snapshot.uid ?? _cachedUid}'),
+      );
     }
 
     return const PassengerDashboard();
