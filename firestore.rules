@@ -43,7 +43,7 @@ service cloud.firestore {
       return t in ['passenger', 'driver', 'service', 'bus_company'];
     }
 
-    /// حقول يمكن للمستخدم تحديثها بنفسه (ملف شخصي + موقع + صورة + سعة الباص)
+    /// حقول يمكن للمستخدم تحديثها بنفسه فقط (لا تشمل isVerified / userType)
     function onlySelfServiceFields() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly([
@@ -60,6 +60,7 @@ service cloud.firestore {
           'speed',
           'isOnline',
           'isSharingLocation',
+          'isTripActive',
           'lastUpdated',
           'locationUpdatedAt',
           'updatedAt'
@@ -67,7 +68,7 @@ service cloud.firestore {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // users
+    // users — كل وثيقة = مستخدم واحد فقط
     // ═══════════════════════════════════════════════════════════
 
     match /users/{userId} {
@@ -79,6 +80,7 @@ service cloud.firestore {
         && request.resource.data.isVerified == false
         && request.resource.data.get('isRejected', false) == false;
 
+      // المالك يعدّل حقوله فقط؛ الأدمن يعدّل أي شيء (موافقة سائقين...)
       allow update: if isOwner(userId) && onlySelfServiceFields()
         && request.resource.data.userType == resource.data.userType
         && request.resource.data.isVerified == resource.data.isVerified
@@ -119,7 +121,7 @@ service cloud.firestore {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // trips
+    // trips — مرتبطة بـ driverId / passengerId
     // ═══════════════════════════════════════════════════════════
 
     match /trips/{tripId} {
