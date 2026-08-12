@@ -24,6 +24,11 @@ import 'l10n/app_localizations.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // حد ذاكرة صور الشبكة/الملفات — يقلل ضغط الرسم والذاكرة على الأجهزة الضعيفة
+  final imageCache = PaintingBinding.instance.imageCache;
+  imageCache.maximumSize = 120;
+  imageCache.maximumSizeBytes = 48 << 20; // 48 MB
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -92,6 +97,7 @@ class BusTrackerApp extends StatelessWidget {
               final isRtl = localeProvider.isArabic;
               return MediaQuery(
                 data: MediaQuery.of(context).copyWith(
+                  // تعطيل تكبير النظام للنص — يمنع إعادة تخطيط واسعة
                   textScaler: TextScaler.noScaling,
                 ),
                 child: Directionality(
