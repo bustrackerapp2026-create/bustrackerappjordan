@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart' as geo;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:provider/provider.dart';
 
+import '../../../../core/location/location_permission_sheet.dart';
 import '../../../../core/location/location_predictor.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
@@ -126,33 +127,31 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  /// زر موقعي — مثل جوجل: عرض فوري ثم تحسين
   Future<void> goToMyLocation() async {
     if (mapboxMap == null || !mounted) return;
 
     setState(() => isLoadingDriverLocation = true);
 
     try {
-      if (!await _driverLocationService.checkAndRequestPermission()) {
-        if (!mounted) return;
+      final granted = await LocationPermissionSheet.ensurePermission(context);
+      if (!mounted) return;
+      if (!granted) {
         MapUtils.showSnackBar(
           context,
-          '⚠️ يرجى تفعيل خدمة الموقع.',
+          '⚠️ لم يتم منح صلاحية الموقع.',
           isError: true,
         );
         return;
       }
-      if (!mounted) return;
 
       var gotAnyFix = false;
 
       final position = await _driverLocationService.locateProgressive(
-        quickTimeout: const Duration(seconds: 3),
-        preciseTimeout: const Duration(seconds: 7),
+        quickTimeout: const Duration(seconds: 2),
+        preciseTimeout: const Duration(seconds: 6),
         onProgress: (pos, stage) {
           if (!mounted) return;
           gotAnyFix = true;
-          // أول تحديث: حرّك الكاميرا فوراً (cached/quick)
           final moveCam = stage == LocationFixStage.cached ||
               stage == LocationFixStage.quick;
           unawaited(

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 
+import '../../../../core/location/location_permission_sheet.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../map/utils/map_helpers.dart';
@@ -26,7 +27,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool _markerBusy = false;
 
   static const Duration _minMarkerInterval = Duration(milliseconds: 220);
-  static const double _minMoveDeg = 0.00003; // ≈ 3م
+  static const double _minMoveDeg = 0.00003;
 
   LocationService get locationService => _passengerLocationService;
 
@@ -91,7 +92,6 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     MapUtils.showSnackBar(context, message, isError: isError);
   }
 
-  /// زر موقعي — عرض فوري ثم تحسين (مثل جوجل ماب)
   Future<void> goToMyLocation() async {
     if (mapboxMap == null || !mounted) return;
 
@@ -99,35 +99,11 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     try {
       final hasPermission =
-          await _passengerLocationService.checkAndRequestPermission();
+          await LocationPermissionSheet.ensurePermission(context);
       if (!mounted) return;
 
       if (!hasPermission) {
-        final deniedForever =
-            await _passengerLocationService.isPermissionDeniedForever();
-        if (!mounted) return;
-
-        if (deniedForever) {
-          final shouldOpen = await _showPermissionDialog();
-          if (!mounted) return;
-          if (shouldOpen == true) {
-            await _passengerLocationService.openAppSettings();
-          }
-        } else {
-          final serviceEnabled =
-              await geo.Geolocator.isLocationServiceEnabled();
-          if (!mounted) return;
-
-          if (!serviceEnabled) {
-            _safeSnack(
-              '⚠️ يرجى تفعيل خدمة الموقع من إعدادات الجهاز.',
-              isError: true,
-            );
-            await _passengerLocationService.openLocationSettings();
-          } else {
-            _safeSnack('⚠️ يرجى السماح بصلاحية الموقع.', isError: true);
-          }
-        }
+        _safeSnack('⚠️ لم يتم منح صلاحية الموقع.', isError: true);
         return;
       }
 
@@ -136,15 +112,12 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       var gotAnyFix = false;
 
       final position = await _passengerLocationService.locateProgressive(
-        quickTimeout: const Duration(seconds: 3),
-        preciseTimeout: const Duration(seconds: 7),
+        quickTimeout: const Duration(seconds: 2),
+        preciseTimeout: const Duration(seconds: 6),
         onProgress: (pos, stage) {
           if (!mounted) return;
           gotAnyFix = true;
-          final moveCam = stage == LocationFixStage.cached ||
-              stage == LocationFixStage.quick ||
-              stage == LocationFixStage.precise;
-          unawaited(_applyPosition(pos, moveCamera: moveCam, force: true));
+          unawaited(_applyPosition(pos, moveCamera: true, force: true));
         },
       );
 
@@ -221,29 +194,6 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       position.longitude,
       bearing,
       force: force,
-    );
-  }
-
-  Future<bool?> _showPermissionDialog() async {
-    if (!mounted) return false;
-    return showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('تفعيل الموقع'),
-        content: const Text(
-          'لتحديد موقعك نحتاج إلى صلاحية الموقع.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('لاحقاً'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('فتح الإعدادات'),
-          ),
-        ],
-      ),
     );
   }
 
