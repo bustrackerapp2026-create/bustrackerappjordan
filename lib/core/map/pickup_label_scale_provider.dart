@@ -6,6 +6,7 @@ enum PickupLabelSize {
   normal,
   large,
   xlarge,
+  xxlarge,
 }
 
 /// إعداد عام لحجم نص النقاط المضافة — يُحفظ محلياً ويُطبَّق على كل الخرائط.
@@ -32,6 +33,8 @@ class PickupLabelScaleProvider extends ChangeNotifier {
         return 1.35;
       case PickupLabelSize.xlarge:
         return 1.7;
+      case PickupLabelSize.xxlarge:
+        return 2.15;
     }
   }
 
@@ -43,6 +46,8 @@ class PickupLabelScaleProvider extends ChangeNotifier {
         return 'كبير';
       case PickupLabelSize.xlarge:
         return 'أكبر';
+      case PickupLabelSize.xxlarge:
+        return 'الأكبر';
     }
   }
 
@@ -54,6 +59,8 @@ class PickupLabelScaleProvider extends ChangeNotifier {
         return 'Large';
       case PickupLabelSize.xlarge:
         return 'Extra large';
+      case PickupLabelSize.xxlarge:
+        return 'Huge';
     }
   }
 
@@ -97,6 +104,8 @@ class PickupLabelScaleProvider extends ChangeNotifier {
         return PickupLabelSize.large;
       case 'xlarge':
         return PickupLabelSize.xlarge;
+      case 'xxlarge':
+        return PickupLabelSize.xxlarge;
       default:
         return PickupLabelSize.normal;
     }
@@ -110,6 +119,8 @@ class PickupLabelScaleProvider extends ChangeNotifier {
         return 'large';
       case PickupLabelSize.xlarge:
         return 'xlarge';
+      case PickupLabelSize.xxlarge:
+        return 'xxlarge';
     }
   }
 }
