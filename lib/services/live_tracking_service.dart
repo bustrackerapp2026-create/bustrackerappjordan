@@ -23,7 +23,9 @@ class LiveTrackingService {
       for (final doc in snap.docs) {
         final live = LiveDriverLocation.fromUserDoc(doc.id, doc.data());
         if (!live.hasValidCoords) continue;
-        if (!live.isFresh) continue;
+        // نظهر السائق المتصل حتى لو تأخر تحديث الموقع قليلاً
+        // (مثلاً بعد إغلاق التطبيق مع بقاء isOnline=true)
+        if (!live.isFresh && !live.isOnline) continue;
         if (routeFilter != null &&
             routeFilter.isNotEmpty &&
             live.route != null &&
@@ -48,6 +50,7 @@ class LiveTrackingService {
   }
 
   /// تحديث حالة الاتصال + مشاركة الموقع لسائق واحد فقط (users/{uid}).
+  /// يُستدعى فقط من أزرار شاشة السائق — ليس عند تسجيل الخروج.
   Future<void> setDriverOnlineStatus({
     required String uid,
     required bool isOnline,
@@ -70,7 +73,7 @@ class LiveTrackingService {
       data['isTripActive'] = isTripActive;
     }
 
-    // عند إيقاف التوصيل نُنهي الرحلة أيضاً على السيرفر لهذا السائق فقط
+    // عند إيقاف التوصيل يدوياً من الشاشة نُنهي الرحلة أيضاً لهذا السائق فقط
     if (!isOnline) {
       data['isSharingLocation'] = false;
       data['isTripActive'] = false;
@@ -88,7 +91,7 @@ class LiveTrackingService {
     await _db.collection('users').doc(uid).update(data);
   }
 
-  /// تحديث حالة الرحلة لسائق واحد فقط.
+  /// تحديث حالة الرحلة لسائق واحد فقط — من شاشة السائق فقط.
   Future<void> setDriverTripActive({
     required String uid,
     required bool isTripActive,
@@ -100,20 +103,5 @@ class LiveTrackingService {
       'isTripActive': isTripActive,
       'updatedAt': FieldValue.serverTimestamp(),
     });
-  }
-
-  /// إيقاف التوصيل والرحلة عند تسجيل الخروج — لهذا uid فقط.
-  Future<void> goOfflineOnLogout(String uid) async {
-    if (uid.isEmpty) return;
-    try {
-      await _db.collection('users').doc(uid).update({
-        'isOnline': false,
-        'isSharingLocation': false,
-        'isTripActive': false,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      // لا نمنع الخروج إذا فشل التحديث
-    }
   }
 }

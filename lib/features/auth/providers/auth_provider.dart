@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 import 'package:jordan_bus_tracker_new/models/user_model.dart';
 import 'package:jordan_bus_tracker_new/services/firestore_service.dart';
-import 'package:jordan_bus_tracker_new/services/live_tracking_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
@@ -15,7 +14,8 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   StreamSubscription<UserModel?>? _userDataSubscription;
 
-  /// يُستدعى عند تسجيل الخروج لتصفير DriverProvider (يُسجَّل من الواجهة).
+  /// يُستدعى عند تسجيل الخروج لتصفير الحالة المحلية فقط (DriverProvider)
+  /// دون المساس بـ isOnline / isTripActive على السيرفر.
   VoidCallback? onBeforeSignOut;
 
   firebase_auth.User? get user => _user;
@@ -156,8 +156,7 @@ class AuthProvider extends ChangeNotifier {
       await user.reauthenticateWithCredential(credential);
       await user.updatePassword(newPassword);
 
-      final uid = user.uid;
-      await LiveTrackingService().goOfflineOnLogout(uid);
+      // لا نوقف التوصيل/الرحلة — تبقى حتى الإيقاف من شاشة السائق
       onBeforeSignOut?.call();
 
       await _auth.signOut();
@@ -183,16 +182,12 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// تسجيل الخروج من التطبيق فقط.
+  /// لا يغيّر isOnline ولا isTripActive على Firestore —
+  /// الإيقاف يتم فقط من أزرار شاشة السائق (إيقاف التوصيل / إنهاء الرحلة).
   Future<void> signOut() async {
     try {
-      final uid = _user?.uid;
-
-      // إيقاف توصيل/رحلة هذا السائق فقط على السيرفر
-      if (uid != null) {
-        await LiveTrackingService().goOfflineOnLogout(uid);
-      }
-
-      // تصفير الحالة المحلية (DriverProvider) عبر الكولباك
+      // تصفير الحالة المحلية على الجهاز فقط (لا تُكتب على السيرفر)
       onBeforeSignOut?.call();
 
       _cancelUserDataSubscription();

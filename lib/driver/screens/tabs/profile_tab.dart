@@ -8,7 +8,6 @@ import '../../../core/widgets/change_password_sheet.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../models/user_model.dart';
-import '../../../services/firestore_service.dart';
 import '../../widgets/profile/edit_profile_sheet.dart';
 import '../../widgets/profile/profile_body.dart';
 import '../../widgets/profile/profile_photo_sheet.dart';
@@ -32,8 +31,6 @@ class _ProfileTabState extends State<ProfileTab>
   final ValueNotifier<bool> _busy = ValueNotifier(false);
   final ValueNotifier<bool> _uploading = ValueNotifier(false);
 
-  final FirestoreService _firestoreService = FirestoreService();
-
   @override
   bool get wantKeepAlive => true;
 
@@ -46,7 +43,6 @@ class _ProfileTabState extends State<ProfileTab>
   @override
   void dispose() {
     _disposed = true;
-    // إزالة المستمعين قبل dispose لمنع "used after being disposed"
     _busy.dispose();
     _uploading.dispose();
     super.dispose();
@@ -154,7 +150,10 @@ class _ProfileTabState extends State<ProfileTab>
           l10n.logout,
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
-        content: Text(l10n.logoutConfirm),
+        content: const Text(
+          'تسجيل الخروج من التطبيق فقط.\n'
+          'حالة التوصيل والرحلة تبقى كما هي حتى توقفها من شاشة الخريطة.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -175,12 +174,7 @@ class _ProfileTabState extends State<ProfileTab>
     if (confirm != true) return;
 
     try {
-      final uid = auth.userId;
-      if (uid != null) {
-        try {
-          await _firestoreService.updateUserData(uid, {'isOnline': false});
-        } catch (_) {}
-      }
+      // لا نوقف isOnline / isTripActive — الإيقاف فقط من شاشة السائق
       await auth.signOut();
     } catch (e) {
       messenger.showSnackBar(

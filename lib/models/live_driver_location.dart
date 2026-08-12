@@ -15,6 +15,7 @@ class LiveDriverLocation {
   final double? heading;
   final double? speed;
   final bool isOnline;
+  final bool isTripActive;
   final DateTime? updatedAt;
 
   const LiveDriverLocation({
@@ -28,6 +29,7 @@ class LiveDriverLocation {
     this.heading,
     this.speed,
     this.isOnline = true,
+    this.isTripActive = false,
     this.updatedAt,
   });
 
@@ -38,10 +40,10 @@ class LiveDriverLocation {
       longitude <= 180 &&
       !(latitude == 0 && longitude == 0);
 
-  /// هل التحديث حديث؟ (أقل من 2 دقيقة)
+  /// هل التحديث حديث؟ (أقل من 15 دقيقة — يسمح ببقاء الظهور بعد إغلاق التطبيق)
   bool get isFresh {
     if (updatedAt == null) return true;
-    return DateTime.now().difference(updatedAt!) < const Duration(minutes: 2);
+    return DateTime.now().difference(updatedAt!) < const Duration(minutes: 15);
   }
 
   factory LiveDriverLocation.fromUserDoc(
@@ -67,6 +69,7 @@ class LiveDriverLocation {
       heading: (data['heading'] as num?)?.toDouble(),
       speed: (data['speed'] as num?)?.toDouble(),
       isOnline: data['isOnline'] == true,
+      isTripActive: data['isTripActive'] == true,
       updatedAt: updated,
     );
   }
