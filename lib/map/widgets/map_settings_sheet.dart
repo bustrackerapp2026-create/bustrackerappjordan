@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:provider/provider.dart';
-import '../../core/map/pickup_label_scale_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/pickup_label_size_setting.dart';
 import '../../l10n/app_localizations.dart';
 
 void showMapSettingsSheet({
@@ -30,168 +30,145 @@ void showMapSettingsSheet({
     ),
     builder: (BuildContext context) {
       final l10n = AppLocalizations.of(context);
-      final labelScale = context.watch<PickupLabelScaleProvider>();
 
       return StatefulBuilder(
         builder: (BuildContext context, StateSetter setSheetState) {
           return Padding(
             padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 24,
+              left: 20,
+              right: 20,
+              top: 20,
               bottom: MediaQuery.of(context).viewInsets.bottom + 24,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      l10n.mapLayersSettings,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        l10n.mapLayersSettings,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-                const Divider(),
-                const SizedBox(height: 12),
-                Text(
-                  l10n.chooseMapStyle,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _buildStyleOption(
-                      title: l10n.mapStyleStreets,
-                      icon: Icons.map,
-                      styleUri: MapboxStyles.MAPBOX_STREETS,
-                      currentStyle: localStyle,
-                      onTap: (uri) {
-                        localStyle = uri;
-                        onStyleChanged(uri);
-                        setSheetState(() {});
-                      },
-                    ),
-                    _buildStyleOption(
-                      title: l10n.mapStyleSatellite,
-                      icon: Icons.satellite_alt,
-                      styleUri: MapboxStyles.SATELLITE_STREETS,
-                      currentStyle: localStyle,
-                      onTap: (uri) {
-                        localStyle = uri;
-                        onStyleChanged(uri);
-                        setSheetState(() {});
-                      },
-                    ),
-                    _buildStyleOption(
-                      title: l10n.mapStyleOutdoors,
-                      icon: Icons.landscape,
-                      styleUri: MapboxStyles.OUTDOORS,
-                      currentStyle: localStyle,
-                      onTap: (uri) {
-                        localStyle = uri;
-                        onStyleChanged(uri);
-                        setSheetState(() {});
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  l10n.customizeLabels,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                Text(
-                  l10n.labelsHideHint,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(l10n.placeLabels),
-                  value: localPlace,
-                  activeThumbColor: AppTheme.primaryColor,
-                  onChanged: (val) {
-                    localPlace = val;
-                    onTogglePlaceLabels(val);
-                    setSheetState(() {});
-                    onApplyFilters();
-                  },
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(l10n.poiLabels),
-                  subtitle: Text(l10n.poiLabelsSubtitle),
-                  value: localPoi,
-                  activeThumbColor: AppTheme.primaryColor,
-                  onChanged: (val) {
-                    localPoi = val;
-                    onTogglePoiLabels(val);
-                    setSheetState(() {});
-                    onApplyFilters();
-                  },
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(l10n.roadLabels),
-                  value: localRoad,
-                  activeThumbColor: AppTheme.primaryColor,
-                  onChanged: (val) {
-                    localRoad = val;
-                    onToggleRoadLabels(val);
-                    setSheetState(() {});
-                    onApplyFilters();
-                  },
-                ),
-                const SizedBox(height: 8),
-                const Divider(),
-                const SizedBox(height: 8),
-                Text(
-                  l10n.pickupLabelSizeTitle,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  l10n.pickupLabelSizeHint,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-                const SizedBox(height: 12),
-                SegmentedButton<PickupLabelSize>(
-                  segments: [
-                    ButtonSegment(
-                      value: PickupLabelSize.normal,
-                      label: Text(l10n.pickupLabelSizeNormal),
-                      icon: const Icon(Icons.text_fields, size: 16),
-                    ),
-                    ButtonSegment(
-                      value: PickupLabelSize.large,
-                      label: Text(l10n.pickupLabelSizeLarge),
-                      icon: const Icon(Icons.format_size, size: 18),
-                    ),
-                    ButtonSegment(
-                      value: PickupLabelSize.xlarge,
-                      label: Text(l10n.pickupLabelSizeXLarge),
-                      icon: const Icon(Icons.format_size, size: 22),
-                    ),
-                  ],
-                  selected: {labelScale.size},
-                  onSelectionChanged: (set) {
-                    final value = set.first;
-                    context.read<PickupLabelScaleProvider>().setSize(value);
-                    setSheetState(() {});
-                  },
-                ),
-              ],
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  const SizedBox(height: 12),
+                  Text(
+                    l10n.chooseMapStyle,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _buildStyleOption(
+                        title: l10n.mapStyleStreets,
+                        icon: Icons.map,
+                        styleUri: MapboxStyles.MAPBOX_STREETS,
+                        currentStyle: localStyle,
+                        onTap: (uri) {
+                          localStyle = uri;
+                          onStyleChanged(uri);
+                          setSheetState(() {});
+                        },
+                      ),
+                      _buildStyleOption(
+                        title: l10n.mapStyleSatellite,
+                        icon: Icons.satellite_alt,
+                        styleUri: MapboxStyles.SATELLITE_STREETS,
+                        currentStyle: localStyle,
+                        onTap: (uri) {
+                          localStyle = uri;
+                          onStyleChanged(uri);
+                          setSheetState(() {});
+                        },
+                      ),
+                      _buildStyleOption(
+                        title: l10n.mapStyleOutdoors,
+                        icon: Icons.landscape,
+                        styleUri: MapboxStyles.OUTDOORS,
+                        currentStyle: localStyle,
+                        onTap: (uri) {
+                          localStyle = uri;
+                          onStyleChanged(uri);
+                          setSheetState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    l10n.customizeLabels,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    l10n.labelsHideHint,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(l10n.placeLabels),
+                    value: localPlace,
+                    activeThumbColor: AppTheme.primaryColor,
+                    onChanged: (val) {
+                      localPlace = val;
+                      onTogglePlaceLabels(val);
+                      setSheetState(() {});
+                      onApplyFilters();
+                    },
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(l10n.poiLabels),
+                    subtitle: Text(l10n.poiLabelsSubtitle),
+                    value: localPoi,
+                    activeThumbColor: AppTheme.primaryColor,
+                    onChanged: (val) {
+                      localPoi = val;
+                      onTogglePoiLabels(val);
+                      setSheetState(() {});
+                      onApplyFilters();
+                    },
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(l10n.roadLabels),
+                    value: localRoad,
+                    activeThumbColor: AppTheme.primaryColor,
+                    onChanged: (val) {
+                      localRoad = val;
+                      onToggleRoadLabels(val);
+                      setSheetState(() {});
+                      onApplyFilters();
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  Text(
+                    l10n.pickupLabelSizeTitle,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    l10n.pickupLabelSizeHint,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 14),
+                  const PickupLabelSizePicker(),
+                ],
+              ),
             ),
           );
         },
