@@ -7,7 +7,7 @@ import '../../../core/widgets/pickup_label_size_setting.dart';
 import '../../../models/user_model.dart';
 import 'profile_ui.dart';
 
-/// جسم شاشة ملف السائق — مُقسَّم لتقليل إعادة البناء.
+/// جسم شاشة ملف السائق — بدون Scaffold داخلي (لوحة السائق لديها Scaffold).
 class ProfileBody extends StatelessWidget {
   final UserModel? user;
   final bool notificationsEnabled;
@@ -53,165 +53,169 @@ class ProfileBody extends StatelessWidget {
     final route = user?.route?.trim().isNotEmpty == true
         ? user!.route!.trim()
         : 'غير محدد';
+    final capacityLabel = user?.displayCapacity ?? '—';
     final verified = user?.isVerified == true;
     final photoUrl = user?.photoUrl;
     final userType = user?.displayUserType ?? 'سائق';
     final bgColor = Theme.of(context).scaffoldBackgroundColor;
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: bgColor,
-        body: Stack(
-          children: [
-            ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-              children: [
-                RepaintBoundary(
-                  child: _HeaderCard(
-                    name: name,
-                    initial: initial,
-                    email: email,
-                    verified: verified,
-                    photoUrl: photoUrl,
-                    userType: userType,
-                    onPhotoTap: onPhotoTap,
-                  ),
+    return ColoredBox(
+      color: bgColor,
+      child: Stack(
+        children: [
+          ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+            children: [
+              RepaintBoundary(
+                child: _HeaderCard(
+                  name: name,
+                  initial: initial,
+                  email: email,
+                  verified: verified,
+                  photoUrl: photoUrl,
+                  userType: userType,
+                  onPhotoTap: onPhotoTap,
                 ),
-                const SizedBox(height: 14),
-                const _SectionLabel('بيانات العمل'),
-                RepaintBoundary(
-                  child: ProfileUi.sectionCard(
-                    child: Column(
-                      children: [
-                        ProfileUi.infoRow(
-                          Icons.directions_bus_outlined,
-                          'رقم الباص',
-                          bus,
-                        ),
-                        const SizedBox(height: 10),
-                        ProfileUi.infoRow(
-                          Icons.route_outlined,
-                          'المسار / الخط',
-                          route,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const _SectionLabel('الحساب'),
-                RepaintBoundary(
-                  child: ProfileUi.sectionCard(
-                    padding: EdgeInsets.zero,
-                    child: Column(
-                      children: [
-                        ProfileUi.tile(
-                          icon: Icons.edit_outlined,
-                          title: 'تعديل الملف الشخصي',
-                          subtitle: 'الاسم · الهاتف · البريد · الباص · المسار',
-                          onTap: onEditProfile,
-                        ),
-                        ProfileUi.divider(),
-                        ProfileUi.tile(
-                          icon: Icons.lock_outline,
-                          title: 'تغيير كلمة المرور',
-                          subtitle: 'تحديث كلمة المرور عبر Firebase',
-                          onTap: onChangePassword,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const _SectionLabel('الإعدادات'),
-                RepaintBoundary(
-                  child: _SettingsCard(
-                    notificationsEnabled: notificationsEnabled,
-                    prefsLoaded: prefsLoaded,
-                    language: language,
-                    onNotificationsChanged: onNotificationsChanged,
-                    onLanguageTap: onLanguageTap,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const _SectionLabel('الدعم والمعلومات'),
-                RepaintBoundary(
-                  child: ProfileUi.sectionCard(
-                    padding: EdgeInsets.zero,
-                    child: Column(
-                      children: [
-                        ProfileUi.tile(
-                          icon: Icons.help_outline,
-                          title: 'المساعدة',
-                          subtitle: 'أسئلة شائعة ودعم',
-                          onTap: () => onSnack('📬 الدعم قريباً'),
-                        ),
-                        ProfileUi.divider(),
-                        ProfileUi.tile(
-                          icon: Icons.info_outline,
-                          title: 'عن التطبيق',
-                          subtitle: 'الإصدار 1.0.0+1',
-                          onTap: () =>
-                              onSnack('📱 Bus Tracker Jordan — 1.0.0+1'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: onLogout,
-                    icon: const Icon(Icons.logout),
-                    label: const Text(
-                      'تسجيل الخروج',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+              ),
+              const SizedBox(height: 14),
+              const _SectionLabel('بيانات العمل'),
+              RepaintBoundary(
+                child: ProfileUi.sectionCard(
+                  child: Column(
+                    children: [
+                      ProfileUi.infoRow(
+                        Icons.directions_bus_outlined,
+                        'رقم الباص',
+                        bus,
                       ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade600,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                      const SizedBox(height: 10),
+                      ProfileUi.infoRow(
+                        Icons.route_outlined,
+                        'المسار / الخط',
+                        route,
                       ),
-                      elevation: 0,
-                    ),
+                      const SizedBox(height: 10),
+                      ProfileUi.infoRow(
+                        Icons.event_seat_outlined,
+                        'سعة الباص',
+                        capacityLabel,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                Center(
-                  child: Text(
-                    '© 2026 Bus Tracker Jordan',
+              ),
+              const SizedBox(height: 14),
+              const _SectionLabel('الحساب'),
+              RepaintBoundary(
+                child: ProfileUi.sectionCard(
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                    children: [
+                      ProfileUi.tile(
+                        icon: Icons.edit_outlined,
+                        title: 'تعديل الملف الشخصي',
+                        subtitle: 'الاسم · الهاتف · البريد · الباص · المسار · السعة',
+                        onTap: onEditProfile,
+                      ),
+                      ProfileUi.divider(),
+                      ProfileUi.tile(
+                        icon: Icons.lock_outline,
+                        title: 'تغيير كلمة المرور',
+                        subtitle: 'تحديث كلمة المرور عبر Firebase',
+                        onTap: onChangePassword,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const _SectionLabel('الإعدادات'),
+              RepaintBoundary(
+                child: _SettingsCard(
+                  notificationsEnabled: notificationsEnabled,
+                  prefsLoaded: prefsLoaded,
+                  language: language,
+                  onNotificationsChanged: onNotificationsChanged,
+                  onLanguageTap: onLanguageTap,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const _SectionLabel('الدعم والمعلومات'),
+              RepaintBoundary(
+                child: ProfileUi.sectionCard(
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                    children: [
+                      ProfileUi.tile(
+                        icon: Icons.help_outline,
+                        title: 'المساعدة',
+                        subtitle: 'أسئلة شائعة ودعم',
+                        onTap: () => onSnack('📬 الدعم قريباً'),
+                      ),
+                      ProfileUi.divider(),
+                      ProfileUi.tile(
+                        icon: Icons.info_outline,
+                        title: 'عن التطبيق',
+                        subtitle: 'الإصدار 1.0.0+1',
+                        onTap: () =>
+                            onSnack('📱 Bus Tracker Jordan — 1.0.0+1'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: onLogout,
+                  icon: const Icon(Icons.logout),
+                  label: const Text(
+                    'تسجيل الخروج',
                     style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.45),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
+                  ),
                 ),
-              ],
-            ),
-            ValueListenableBuilder<bool>(
-              valueListenable: busyNotifier,
-              builder: (context, busy, _) {
-                if (!busy) return const SizedBox.shrink();
-                return ValueListenableBuilder<bool>(
-                  valueListenable: uploadingNotifier,
-                  builder: (context, uploading, _) {
-                    return _BusyOverlay(uploading: uploading);
-                  },
-                );
-              },
-            ),
-          ],
-        ),
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: Text(
+                  '© 2026 Bus Tracker Jordan',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.45),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: busyNotifier,
+            builder: (context, busy, _) {
+              if (!busy) return const SizedBox.shrink();
+              return ValueListenableBuilder<bool>(
+                valueListenable: uploadingNotifier,
+                builder: (context, uploading, _) {
+                  return _BusyOverlay(uploading: uploading);
+                },
+              );
+            },
+          ),
+        ],
       ),
     );
   }

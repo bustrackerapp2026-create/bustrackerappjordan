@@ -27,6 +27,7 @@ class _ProfileTabState extends State<ProfileTab>
 
   bool _notificationsEnabled = true;
   bool _prefsLoaded = false;
+  bool _disposed = false;
 
   final ValueNotifier<bool> _busy = ValueNotifier(false);
   final ValueNotifier<bool> _uploading = ValueNotifier(false);
@@ -44,15 +45,31 @@ class _ProfileTabState extends State<ProfileTab>
 
   @override
   void dispose() {
+    _disposed = true;
+    // إزالة المستمعين قبل dispose لمنع "used after being disposed"
     _busy.dispose();
     _uploading.dispose();
     super.dispose();
   }
 
+  void _setBusy(bool value) {
+    if (_disposed) return;
+    try {
+      _busy.value = value;
+    } catch (_) {}
+  }
+
+  void _setUploading(bool value) {
+    if (_disposed) return;
+    try {
+      _uploading.value = value;
+    } catch (_) {}
+  }
+
   Future<void> _loadPrefs() async {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
     final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
     setState(() {
       _notificationsEnabled = prefs.getBool(_kNotifications) ?? true;
       _prefsLoaded = true;
@@ -60,27 +77,28 @@ class _ProfileTabState extends State<ProfileTab>
   }
 
   Future<void> _setNotifications(bool value) async {
+    if (!mounted || _disposed) return;
     setState(() => _notificationsEnabled = value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kNotifications, value);
   }
 
   void _snack(String message) {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 
   Future<void> _changePassword() async {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
     final ok = await ChangePasswordSheet.show(context);
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
     if (ok) _snack('✅ تم تغيير كلمة المرور. سجّل الدخول مجدداً');
   }
 
   Future<void> _showPhotoOptions() async {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
     final auth = context.read<AuthProvider>();
     final uid = auth.userId;
     if (uid == null) {
@@ -94,36 +112,36 @@ class _ProfileTabState extends State<ProfileTab>
       hasPhoto: auth.userData?.hasPhoto == true,
       onRefreshUser: auth.refreshUserData,
       onUploadingChanged: (v) {
-        _uploading.value = v;
-        _busy.value = v;
+        _setUploading(v);
+        _setBusy(v);
       },
       onMessage: _snack,
     );
   }
 
   Future<void> _editProfile() async {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
     final auth = context.read<AuthProvider>();
     final user = auth.userData;
     if (user == null) return;
 
-    _busy.value = true;
+    _setBusy(true);
     try {
       final result = await EditProfileSheet.show(
         context: context,
         user: user,
         onRequestPhotoChange: _showPhotoOptions,
       );
-      if (result == null || !mounted) return;
+      if (result == null || !mounted || _disposed) return;
       if (result.success) await auth.refreshUserData();
-      if (mounted) _snack(result.message);
+      if (mounted && !_disposed) _snack(result.message);
     } finally {
-      _busy.value = false;
+      _setBusy(false);
     }
   }
 
   Future<void> _logout() async {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
     final auth = context.read<AuthProvider>();
     final messenger = ScaffoldMessenger.of(context);
     final l10n = AppLocalizations.of(context);
@@ -175,7 +193,7 @@ class _ProfileTabState extends State<ProfileTab>
   }
 
   void _showLanguagePicker() {
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
     final localeProvider = context.read<LocaleProvider>();
     final l10n = AppLocalizations.of(context);
 
@@ -239,6 +257,7 @@ class _ProfileTabState extends State<ProfileTab>
           prev?.photoUrl != next?.photoUrl ||
           prev?.busNumber != next?.busNumber ||
           prev?.route != next?.route ||
+          prev?.capacity != next?.capacity ||
           prev?.isVerified != next?.isVerified ||
           prev?.phoneNumber != next?.phoneNumber,
       builder: (context, user, _) {

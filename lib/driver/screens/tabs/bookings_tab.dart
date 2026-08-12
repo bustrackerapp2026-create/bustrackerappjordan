@@ -84,108 +84,127 @@ class _BookingsTabState extends State<BookingsTab> {
       return Center(child: Text(l10n.pleaseLoginRequests));
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.incomingRequests),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        foregroundColor: Theme.of(context).colorScheme.onSurface,
-        elevation: 1,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              if (_currentUserId != null) {
-                setState(() {
-                  _pendingTripsStream =
-                      _tripService.getPendingDriverTrips(_currentUserId!);
-                });
-              }
-            },
-            tooltip: l10n.refresh,
-          ),
-        ],
-      ),
-      body: StreamBuilder<List<TripModel>>(
-        stream: _pendingTripsStream,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting &&
-              !snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 60, color: Colors.red),
-                  const SizedBox(height: 12),
-                  Text(
-                    l10n.loadRequestsError,
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      if (_currentUserId != null) {
-                        setState(() {
-                          _pendingTripsStream = _tripService
-                              .getPendingDriverTrips(_currentUserId!);
-                        });
-                      }
-                    },
-                    child: Text(l10n.retry),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final trips = snapshot.data ?? const <TripModel>[];
-          _latestTrips = trips;
-
-          if (trips.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.inbox, size: 60, color: Colors.grey),
-                  const SizedBox(height: 12),
-                  Text(
-                    l10n.noIncomingRequests,
+    // بدون Scaffold داخلي — لوحة السائق لديها AppBar بالفعل
+    return Column(
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          elevation: 1,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    l10n.incomingRequests,
                     style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    l10n.noIncomingRequestsHint,
-                    style: const TextStyle(color: Colors.grey),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            );
-          }
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () {
+                    if (_currentUserId != null) {
+                      setState(() {
+                        _pendingTripsStream =
+                            _tripService.getPendingDriverTrips(_currentUserId!);
+                      });
+                    }
+                  },
+                  tooltip: l10n.refresh,
+                ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<List<TripModel>>(
+            stream: _pendingTripsStream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  !snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: trips.length,
-            addAutomaticKeepAlives: false,
-            addRepaintBoundaries: true,
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            findChildIndexCallback: _indexOfTripKey,
-            itemBuilder: (context, index) {
-              final trip = trips[index];
-              return _BookingRequestCard(
-                key: ValueKey(trip.id),
-                trip: trip,
-                l10n: l10n,
-                onAccept: _acceptTrip,
+              if (snapshot.hasError) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline,
+                          size: 60, color: Colors.red),
+                      const SizedBox(height: 12),
+                      Text(
+                        l10n.loadRequestsError,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          if (_currentUserId != null) {
+                            setState(() {
+                              _pendingTripsStream = _tripService
+                                  .getPendingDriverTrips(_currentUserId!);
+                            });
+                          }
+                        },
+                        child: Text(l10n.retry),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              final trips = snapshot.data ?? const <TripModel>[];
+              _latestTrips = trips;
+
+              if (trips.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.inbox, size: 60, color: Colors.grey),
+                      const SizedBox(height: 12),
+                      Text(
+                        l10n.noIncomingRequests,
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        l10n.noIncomingRequestsHint,
+                        style: const TextStyle(color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: trips.length,
+                addAutomaticKeepAlives: false,
+                addRepaintBoundaries: true,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                findChildIndexCallback: _indexOfTripKey,
+                itemBuilder: (context, index) {
+                  final trip = trips[index];
+                  return _BookingRequestCard(
+                    key: ValueKey(trip.id),
+                    trip: trip,
+                    l10n: l10n,
+                    onAccept: _acceptTrip,
+                  );
+                },
               );
             },
-          );
-        },
-      ),
+          ),
+        ),
+      ],
     );
   }
 }
