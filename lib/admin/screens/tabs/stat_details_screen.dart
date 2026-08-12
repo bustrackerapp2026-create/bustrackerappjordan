@@ -80,6 +80,9 @@ class StatDetailsScreen extends StatelessWidget {
             return ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: docs.length,
+              cacheExtent: 320,
+              addAutomaticKeepAlives: false,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               itemBuilder: (context, index) {
                 final doc = docs[index];
                 final user = UserModel.fromMap(
@@ -88,6 +91,7 @@ class StatDetailsScreen extends StatelessWidget {
                 );
 
                 return Card(
+                  key: ValueKey(user.uid),
                   elevation: 2,
                   margin: const EdgeInsets.only(bottom: 8),
                   shape: RoundedRectangleBorder(
