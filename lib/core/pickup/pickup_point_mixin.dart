@@ -10,13 +10,13 @@ import '../../features/auth/providers/auth_provider.dart';
 import '../../models/pickup_point_model.dart';
 import '../map/map_core.dart';
 import '../map/map_utils.dart';
+import '../map/pickup_label_scale_provider.dart';
 import '../map/pickup_point_sheet.dart';
 import '../theme/app_theme.dart';
 import 'pickup_marker_helper.dart';
 import 'pickup_point_dialog.dart';
 import 'pickup_point_manager.dart';
 
-/// مكسين مشترك لعرض نقاط التجمع على خرائط السائق والراكب.
 mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final PickupPointManager _pickupManager = PickupPointManager();
   final Map<String, PointAnnotation> _pickupAnnotations = {};
@@ -28,6 +28,8 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool _isSyncingMarkers = false;
   QuerySnapshot? _pendingSnapshot;
   bool _resyncScheduled = false;
+  PickupLabelScaleProvider? _labelScaleProvider;
+  double _appliedLabelScale = 1.0;
 
   bool get isAddingPickupPoint => _isAddingPickupPoint;
 
@@ -51,16 +53,42 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     );
   }
 
-  /// المعيار الوحيد للظهور على الخريطة: status == approved
   bool _isApprovedDoc(Map<String, dynamic> data) {
     final status = data['status']?.toString().trim().toLowerCase();
     return status == 'approved';
   }
 
+  void _onLabelScaleChanged() {
+    if (!mounted) return;
+    final next = PickupLabelScaleProvider.currentScale;
+    if ((next - _appliedLabelScale).abs() < 0.01) return;
+    _appliedLabelScale = next;
+    PickupMarkerHelper.clearCache();
+    _markerImageCache.clear();
+    _markerVisualKey.clear();
+    _forceRedrawAllMarkers();
+  }
+
+  Future<void> _forceRedrawAllMarkers() async {
+    final ids = _pickupAnnotations.keys.toList();
+    for (final id in ids) {
+      await _removePickupMarker(id);
+    }
+    if (mounted) _syncPickupMarkers();
+  }
+
   void listenToPickupPoints() {
     _pickupPointsSubscription?.cancel();
 
-    // استعلام مباشر للمعتمدة فقط (أداء أفضل + توحيد البيانات)
+    try {
+      _labelScaleProvider?.removeListener(_onLabelScaleChanged);
+      _labelScaleProvider = context.read<PickupLabelScaleProvider>();
+      _appliedLabelScale = _labelScaleProvider!.scale;
+      _labelScaleProvider!.addListener(_onLabelScaleChanged);
+    } catch (_) {
+      _appliedLabelScale = PickupLabelScaleProvider.currentScale;
+    }
+
     _pickupPointsSubscription = FirebaseFirestore.instance
         .collection('pickupPoints')
         .where('status', isEqualTo: 'approved')
@@ -173,8 +201,9 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final manager = pointAnnotationManager;
     if (manager == null) return;
 
+    final scale = PickupLabelScaleProvider.currentScale;
     final visualKey =
-        '${point.pointType}_${point.name.hashCode}_${point.confirmationCount}';
+        '${point.pointType}_${point.name.hashCode}_s${(scale * 100).round()}';
     final existing = _pickupAnnotations[point.id];
 
     if (existing != null && _markerVisualKey[point.id] == visualKey) {
@@ -197,7 +226,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     if (!mounted) return;
 
-    final bytes = await _markerBytesFor(point, visualKey);
+    final bytes = await _markerBytesFor(point, visualKey, scale);
     if (bytes == null || !mounted) return;
 
     final currentManager = pointAnnotationManager;
@@ -226,6 +255,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Future<Uint8List?> _markerBytesFor(
     PickupPointModel point,
     String visualKey,
+    double scale,
   ) async {
     final cacheKey = '${point.id}_$visualKey';
     final cached = _markerImageCache[cacheKey];
@@ -235,6 +265,7 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       name: point.name,
       pointType: point.pointType,
       confirmationCount: point.confirmationCount,
+      textScale: scale,
     );
     if (bytes != null) {
       if (_markerImageCache.length > 80) {
@@ -392,6 +423,8 @@ mixin PickupPointMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   void disposePickupPoints() {
+    _labelScaleProvider?.removeListener(_onLabelScaleChanged);
+    _labelScaleProvider = null;
     _pickupPointsSubscription?.cancel();
     _pendingSnapshot = null;
     _pickupAnnotations.clear();
