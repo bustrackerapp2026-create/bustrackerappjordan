@@ -10,6 +10,7 @@ import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
 import 'core/locale/locale_provider.dart';
+import 'core/map/pickup_label_scale_provider.dart';
 import 'core/constants/user_roles.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
@@ -67,6 +68,7 @@ class BusTrackerApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => LocaleProvider()),
+        ChangeNotifierProvider(create: (_) => PickupLabelScaleProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => DriverProvider()),
       ],
@@ -107,7 +109,6 @@ class BusTrackerApp extends StatelessWidget {
   }
 }
 
-/// بوابة مصادقة تعيد البناء فقط عند تغيّر حالة الدخول أو الدور
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
