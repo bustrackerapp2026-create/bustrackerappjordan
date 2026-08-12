@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/constants/bus_capacity.dart';
+
 class UserModel {
   final String uid;
   final String email;
@@ -9,6 +11,8 @@ class UserModel {
   final String? busNumber;
   final String? route;
   final String? photoUrl;
+  /// سعة الباص: 5 (سرفيس) / 23 (متوسط) / 50 (كبير) — للسائقين فقط.
+  final int? capacity;
   final bool isVerified;
   final bool isRejected;
   final DateTime? createdAt;
@@ -24,6 +28,7 @@ class UserModel {
     this.busNumber,
     this.route,
     this.photoUrl,
+    this.capacity,
     this.isVerified = false,
     this.isRejected = false,
     this.createdAt,
@@ -42,6 +47,7 @@ class UserModel {
       busNumber: map['busNumber'] as String?,
       route: map['route'] as String?,
       photoUrl: map['photoUrl'] as String?,
+      capacity: BusCapacity.normalize(map['capacity']),
       isVerified: map['isVerified'] == true,
       isRejected: map['isRejected'] == true,
       createdAt: _parseOptionalDate(map['createdAt']),
@@ -67,6 +73,7 @@ class UserModel {
       'busNumber': busNumber,
       'route': route,
       'photoUrl': photoUrl,
+      'capacity': capacity,
       'isVerified': isVerified,
       'isRejected': isRejected,
     };
@@ -85,6 +92,7 @@ class UserModel {
       'busNumber': busNumber,
       'route': route,
       'photoUrl': photoUrl,
+      'capacity': capacity,
       'isVerified': isVerified,
       'isRejected': isRejected,
       'createdAt': createdAt?.toIso8601String(),
@@ -102,6 +110,7 @@ class UserModel {
       busNumber: json['busNumber'] as String?,
       route: json['route'] as String?,
       photoUrl: json['photoUrl'] as String?,
+      capacity: BusCapacity.normalize(json['capacity']),
       isVerified: json['isVerified'] ?? false,
       isRejected: json['isRejected'] ?? false,
       createdAt:
@@ -120,6 +129,7 @@ class UserModel {
     String? busNumber,
     String? route,
     String? photoUrl,
+    int? capacity,
     bool? isVerified,
     bool? isRejected,
     DateTime? createdAt,
@@ -133,6 +143,7 @@ class UserModel {
       busNumber: busNumber ?? this.busNumber,
       route: route ?? this.route,
       photoUrl: photoUrl ?? this.photoUrl,
+      capacity: capacity ?? this.capacity,
       isVerified: isVerified ?? this.isVerified,
       isRejected: isRejected ?? this.isRejected,
       createdAt: createdAt ?? this.createdAt,
@@ -145,6 +156,8 @@ class UserModel {
   String get displayPhone =>
       phoneNumber?.isNotEmpty == true ? phoneNumber! : 'غير محدد';
   bool get hasPhoto => photoUrl != null && photoUrl!.isNotEmpty;
+
+  String get displayCapacity => BusCapacity.label(capacity);
 
   String get displayUserType {
     switch (userType) {

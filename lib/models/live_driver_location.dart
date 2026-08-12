@@ -1,11 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/constants/bus_capacity.dart';
+
 /// موقع سائق متصل يظهر مباشرة على خرائط الركاب/الأدمن.
 class LiveDriverLocation {
   final String driverId;
   final String fullName;
   final String? busNumber;
   final String? route;
+  /// سعة الباص: 5 سرفيس / 23 متوسط / 50 كبير
+  final int? capacity;
   final double latitude;
   final double longitude;
   final double? heading;
@@ -20,6 +24,7 @@ class LiveDriverLocation {
     required this.longitude,
     this.busNumber,
     this.route,
+    this.capacity,
     this.heading,
     this.speed,
     this.isOnline = true,
@@ -56,6 +61,7 @@ class LiveDriverLocation {
       fullName: data['fullName']?.toString() ?? 'سائق',
       busNumber: data['busNumber']?.toString(),
       route: data['route']?.toString(),
+      capacity: BusCapacity.normalize(data['capacity']),
       latitude: lat,
       longitude: lng,
       heading: (data['heading'] as num?)?.toDouble(),
@@ -66,8 +72,9 @@ class LiveDriverLocation {
   }
 
   String get displayLabel {
+    final type = BusCapacity.shortLabel(capacity);
     final bus = busNumber?.trim();
-    if (bus != null && bus.isNotEmpty) return 'باص $bus';
-    return fullName;
+    if (bus != null && bus.isNotEmpty) return '$type $bus';
+    return '$type · $fullName';
   }
 }
