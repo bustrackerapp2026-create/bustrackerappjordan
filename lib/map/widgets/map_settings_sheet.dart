@@ -205,7 +205,8 @@ Widget _buildStyleOption({
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon,
-                color: isSelected ? AppTheme.primaryColor : Colors.grey.shade600,
+                color:
+                    isSelected ? AppTheme.primaryColor : Colors.grey.shade600,
                 size: 22),
             const SizedBox(height: 4),
             Text(
@@ -213,7 +214,8 @@ Widget _buildStyleOption({
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
-                color: isSelected ? AppTheme.primaryColor : Colors.grey.shade700,
+                color:
+                    isSelected ? AppTheme.primaryColor : Colors.grey.shade700,
               ),
             ),
           ],
