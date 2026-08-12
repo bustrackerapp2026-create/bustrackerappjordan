@@ -22,8 +22,7 @@ class _BookingsTabState extends State<BookingsTab> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final authProvider = context.watch<AuthProvider>();
-    final userId = authProvider.userId;
+    final userId = context.select<AuthProvider, String?>((a) => a.userId);
 
     if (_currentUserId != userId && userId != null) {
       _currentUserId = userId;
@@ -161,6 +160,9 @@ class _BookingsTabState extends State<BookingsTab> {
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: trips.length,
+            cacheExtent: 320,
+            addAutomaticKeepAlives: false,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             itemBuilder: (context, index) {
               final trip = trips[index];
               final isProcessing = _processingIds.contains(trip.id);
@@ -170,6 +172,7 @@ class _BookingsTabState extends State<BookingsTab> {
                   : trip.passengerId;
 
               return Card(
+                key: ValueKey(trip.id),
                 elevation: 2,
                 margin: const EdgeInsets.only(bottom: 12),
                 shape: RoundedRectangleBorder(
