@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 
@@ -18,25 +19,37 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   final Map<String, PointAnnotation> _driverAnnotations = {};
   final Map<String, (double, double)> _lastDrawnPos = {};
-  /// آخر سعة رُسمت لكل سائق — لإعادة إنشاء الماركر عند تغيّر نوع الباص
   final Map<String, int?> _lastCapacity = {};
 
-  /// لا يُعاد بناء الخريطة عند تغيّر العدد — فقط اللوحة السفلية
+  /// عدد السائقين المتصلين للوحة السفلية فقط
   final ValueNotifier<int> liveDriversCount = ValueNotifier<int>(0);
 
   String? _routeFilterForTracking;
   bool _updatingMarkers = false;
+  bool _liveTrackingDisposed = false;
   List<LiveDriverLocation>? _pendingDrivers;
   Timer? _updateThrottle;
 
-  /// حد أدنى بالمتر تقريباً قبل تحديث موقع الماركر (≈ 12م)
   static const double _minMoveThreshold = 0.00012;
 
   Future<Uint8List> _markerFor(LiveDriverLocation d) {
     return BusMarkerImages.forCapacity(d.capacity);
   }
 
+  void _safeSetDriversCount(int count) {
+    if (_liveTrackingDisposed) return;
+    try {
+      if (liveDriversCount.value != count) {
+        liveDriversCount.value = count;
+      }
+    } catch (e) {
+      // ValueNotifier قد يكون disposed أثناء إغلاق الشاشة
+      debugPrint('liveDriversCount set skipped: $e');
+    }
+  }
+
   void startLiveDriverTracking({String? routeFilter}) {
+    if (_liveTrackingDisposed || !mounted) return;
     _routeFilterForTracking = routeFilter;
     _liveDriversSub?.cancel();
     _liveDriversSub = _tracking
@@ -47,17 +60,20 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   void updateLiveTrackingRouteFilter(String? route) {
+    if (_liveTrackingDisposed) return;
     if (_routeFilterForTracking == route) return;
     startLiveDriverTracking(routeFilter: route);
   }
 
   void _onDriversUpdated(List<LiveDriverLocation> drivers) {
-    _pendingDrivers = drivers;
-    liveDriversCount.value = drivers.length;
+    if (_liveTrackingDisposed || !mounted) return;
 
-    // خنق التحديثات: لا نحدّث الماركرات أكثر من مرة كل 500ms
+    _pendingDrivers = drivers;
+    _safeSetDriversCount(drivers.length);
+
     if (_updateThrottle?.isActive ?? false) return;
     _updateThrottle = Timer(const Duration(milliseconds: 500), () {
+      if (_liveTrackingDisposed || !mounted) return;
       final pending = _pendingDrivers;
       if (pending != null) {
         unawaited(_applyDriverMarkers(pending));
@@ -66,7 +82,9 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   Future<void> _applyDriverMarkers(List<LiveDriverLocation> drivers) async {
-    if (!mounted || pointAnnotationManager == null) return;
+    if (_liveTrackingDisposed || !mounted || pointAnnotationManager == null) {
+      return;
+    }
     if (_updatingMarkers) {
       _pendingDrivers = drivers;
       return;
@@ -74,7 +92,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _updatingMarkers = true;
 
     try {
-      if (!mounted) return;
+      if (_liveTrackingDisposed || !mounted) return;
 
       final seen = <String>{};
       final toUpdate = <LiveDriverLocation>[];
@@ -87,7 +105,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         final capacityChanged = _lastCapacity[d.driverId] != d.capacity;
 
         if (existing != null && capacityChanged) {
-          // تغيّر نوع الباص → احذف وأعد الإنشاء بأيقونة جديدة
           try {
             await pointAnnotationManager?.delete(existing);
           } catch (_) {}
@@ -112,10 +129,9 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         }
       }
 
-      // تحديثات متوازية بدفعات صغيرة
       const batch = 4;
       for (var i = 0; i < toUpdate.length; i += batch) {
-        if (!mounted) return;
+        if (_liveTrackingDisposed || !mounted) return;
         final slice = toUpdate.skip(i).take(batch);
         await Future.wait(slice.map((d) async {
           final existing = _driverAnnotations[d.driverId];
@@ -132,10 +148,10 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       for (final d in toCreate) {
-        if (!mounted) return;
+        if (_liveTrackingDisposed || !mounted) return;
         try {
           final image = await _markerFor(d);
-          if (!mounted) return;
+          if (_liveTrackingDisposed || !mounted) return;
           final ann = await pointAnnotationManager?.create(
             PointAnnotationOptions(
               geometry: Point(
@@ -160,6 +176,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final toRemove =
           _driverAnnotations.keys.where((id) => !seen.contains(id)).toList();
       for (final id in toRemove) {
+        if (_liveTrackingDisposed) return;
         final ann = _driverAnnotations.remove(id);
         _lastDrawnPos.remove(id);
         _lastCapacity.remove(id);
@@ -172,9 +189,13 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     } finally {
       _updatingMarkers = false;
       final pending = _pendingDrivers;
-      if (pending != null && pending.length != drivers.length && mounted) {
+      if (!_liveTrackingDisposed &&
+          mounted &&
+          pending != null &&
+          pending.length != drivers.length) {
         _updateThrottle?.cancel();
         _updateThrottle = Timer(const Duration(milliseconds: 250), () {
+          if (_liveTrackingDisposed || !mounted) return;
           unawaited(_applyDriverMarkers(pending));
         });
       }
@@ -186,23 +207,48 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _liveDriversSub = null;
     _updateThrottle?.cancel();
     _updateThrottle = null;
+    _pendingDrivers = null;
   }
 
   Future<void> clearLiveDriverMarkers() async {
-    for (final ann in _driverAnnotations.values) {
+    final annotations = List<PointAnnotation>.from(_driverAnnotations.values);
+    _driverAnnotations.clear();
+    _lastDrawnPos.clear();
+    _lastCapacity.clear();
+
+    for (final ann in annotations) {
       try {
         await pointAnnotationManager?.delete(ann);
       } catch (_) {}
     }
+
+    // لا تلمس ValueNotifier إذا تم dispose
+    _safeSetDriversCount(0);
+  }
+
+  /// ترتيب آمن: إيقاف البث → مسح الماركرات → ثم dispose للـ notifier
+  void disposeLiveTracking() {
+    if (_liveTrackingDisposed) return;
+    _liveTrackingDisposed = true;
+
+    stopLiveDriverTracking();
+
+    // مسح الماركرات بدون انتظار (لا يكتب على notifier بعد العلم بالـ dispose)
+    final annotations = List<PointAnnotation>.from(_driverAnnotations.values);
     _driverAnnotations.clear();
     _lastDrawnPos.clear();
     _lastCapacity.clear();
-    liveDriversCount.value = 0;
-  }
+    for (final ann in annotations) {
+      unawaited(() async {
+        try {
+          await pointAnnotationManager?.delete(ann);
+        } catch (_) {}
+      }());
+    }
 
-  void disposeLiveTracking() {
-    stopLiveDriverTracking();
-    liveDriversCount.dispose();
-    unawaited(clearLiveDriverMarkers());
+    // أخيراً: dispose بعد إيقاف كل المصادر التي قد تكتب عليه
+    try {
+      liveDriversCount.dispose();
+    } catch (_) {}
   }
 }

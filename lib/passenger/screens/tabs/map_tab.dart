@@ -45,9 +45,10 @@ class _MapTabState extends State<MapTab>
 
   @override
   void dispose() {
+    // أوقف التتبع أولاً قبل أي dispose آخر
+    disposeLiveTracking();
     disposeMapDebug();
     WidgetsBinding.instance.removeObserver(this);
-    disposeLiveTracking();
     disposePassengerLocation();
     disposePickupPoints();
     super.dispose();
@@ -57,9 +58,12 @@ class _MapTabState extends State<MapTab>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     onPassengerLocationLifecycle(state);
     if (state == AppLifecycleState.resumed) {
-      startLiveDriverTracking(routeFilter: _selectedRoute);
+      if (mounted) {
+        startLiveDriverTracking(routeFilter: _selectedRoute);
+      }
     } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
       stopLiveDriverTracking();
     }
   }
@@ -88,6 +92,8 @@ class _MapTabState extends State<MapTab>
       initAnnotationManager(),
       applyStableGestures(),
     ]);
+    if (!mounted) return;
+
     mapboxMap?.setCamera(
       CameraOptions(
         center: Point(coordinates: Position(35.9106, 31.9522)),
@@ -100,6 +106,7 @@ class _MapTabState extends State<MapTab>
     await Future<void>.delayed(const Duration(milliseconds: 120));
     if (!mounted) return;
     await applyLabelLayersFilter();
+    if (!mounted) return;
     listenToPickupPoints();
     startLiveDriverTracking(routeFilter: _selectedRoute);
     if (mounted) setState(() => isMapReady = true);
