@@ -22,6 +22,7 @@ import 'mixins/driver_manager_mixin.dart';
 import 'mixins/passenger_manager_mixin.dart';
 import 'mixins/route_manager_mixin.dart';
 import 'mixins/pickup_point_mixin.dart';
+import 'mixins/admin_draw_route_mixin.dart';
 
 class AdminMapTab extends StatefulWidget {
   final AdminMapFocusRequest? focusRequest;
@@ -37,7 +38,8 @@ class _AdminMapTabState extends State<AdminMapTab>
         DriverManagerMixin<AdminMapTab>,
         PassengerManagerMixin<AdminMapTab>,
         RouteManagerMixin<AdminMapTab>,
-        PickupPointMixin<AdminMapTab> {
+        PickupPointMixin<AdminMapTab>,
+        AdminDrawRouteMixin<AdminMapTab> {
   final PickupPointManager _pickupManager = PickupPointManager();
   final LocationService _locationService = LocationService();
   bool _isAddingPickupPoint = false;
@@ -53,7 +55,7 @@ class _AdminMapTabState extends State<AdminMapTab>
   bool get wantKeepAlive => true;
 
   @override
-  bool get suppressPoiTap => _isAddingPickupPoint;
+  bool get suppressPoiTap => _isAddingPickupPoint || isDrawingRoute;
 
   void _safeSnack(String message, {bool isError = false}) {
     if (!mounted) return;
@@ -118,6 +120,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     disposeMapDebug();
     _locationSubscription?.cancel();
     _adminLocationAnnotation = null;
+    disposeAdminDrawRoute();
     disposePickupPoints();
     disposeRoutes();
     disposePassengers();
@@ -127,7 +130,7 @@ class _AdminMapTabState extends State<AdminMapTab>
 
   @override
   void handleAnnotationTap(PointAnnotation annotation) {
-    if (!mounted) return;
+    if (!mounted || isDrawingRoute) return;
     final driverId = _findId(driverAnnotations, annotation);
     if (driverId != null) {
       _safeSnack('🔄 جاري تحميل بيانات السائق (ID: $driverId)...');
@@ -145,6 +148,9 @@ class _AdminMapTabState extends State<AdminMapTab>
   }
 
   void _startAddPickupPoint() {
+    if (isDrawingRoute) {
+      unawaited(cancelDrawingRoute());
+    }
     setState(() => _isAddingPickupPoint = true);
     _safeSnack('📍 اضغط على الخريطة لتحديد موقع النقطة');
   }
@@ -154,7 +160,17 @@ class _AdminMapTabState extends State<AdminMapTab>
     _safeSnack('❌ تم إلغاء إضافة النقطة', isError: true);
   }
 
-  /// أفضل مسار عملي: صلاحية → موقع كاش فوري → علامة → تحسين دقة
+  void _toggleDrawRoute() {
+    if (isDrawingRoute) {
+      unawaited(cancelDrawingRoute());
+    } else {
+      if (_isAddingPickupPoint) {
+        setState(() => _isAddingPickupPoint = false);
+      }
+      startDrawingRoute();
+    }
+  }
+
   Future<void> _goToMyLocation() async {
     if (mapboxMap == null || !mounted) return;
     setState(() => _isLoadingLocation = true);
@@ -175,7 +191,6 @@ class _AdminMapTabState extends State<AdminMapTab>
         onProgress: (pos, stage) {
           if (!mounted) return;
           shown = true;
-          // أول كاش/سريع: حرّك الكاميرا + ضع العلامة فوراً
           unawaited(_showAdminLocation(
             pos.latitude,
             pos.longitude,
@@ -438,7 +453,9 @@ class _AdminMapTabState extends State<AdminMapTab>
             onCameraChangeListener: onCameraChangedForDebug,
             // ignore: deprecated_member_use
             onTapListener: (event) {
-              if (_isAddingPickupPoint) {
+              if (isDrawingRoute) {
+                onDrawRouteMapTap(event.point);
+              } else if (_isAddingPickupPoint) {
                 _handleMapTap(event.point);
               } else {
                 handleMapBackgroundTap(event);
@@ -464,72 +481,127 @@ class _AdminMapTabState extends State<AdminMapTab>
             },
           ),
         ),
-        Positioned(
-          top: 72,
-          left: 16,
-          child: ValueListenableBuilder<int>(
-            valueListenable: routesUiTick,
-            builder: (_, __, ___) {
-              return Material(
-                elevation: 4,
-                borderRadius: BorderRadius.circular(12),
-                color: Colors.white,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: _isSeeding ? null : _seedRoutesFromMap,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+        if (isDrawingRoute)
+          Positioned(
+            top: 72,
+            left: 16,
+            right: 16,
+            child: Material(
+              elevation: 5,
+              borderRadius: BorderRadius.circular(14),
+              color: const Color(0xFFF5F3FF),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'رسم مسار · ${drawPointCount} نقطة — انقر على الخريطة',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF6D28D9),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
                       children: [
-                        if (_isSeeding)
-                          const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        else
-                          Icon(Icons.route,
-                              color: Colors.blue.shade700, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          routes.isEmpty
-                              ? 'زرع مسارات الأردن'
-                              : 'تحديث المسارات',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            color: Colors.blue.shade800,
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: drawPointCount >= 2
+                                ? finishAndSaveDrawnRoute
+                                : null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF7C3AED),
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('حفظ وتسمية'),
                           ),
                         ),
-                        if (routes.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${routes.length}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green.shade800,
-                              ),
-                            ),
-                          ),
-                        ],
+                        const SizedBox(width: 6),
+                        OutlinedButton(
+                          onPressed: undoLastDrawPoint,
+                          child: const Text('تراجع'),
+                        ),
+                        const SizedBox(width: 6),
+                        OutlinedButton(
+                          onPressed: cancelDrawingRoute,
+                          child: const Text('إلغاء'),
+                        ),
                       ],
                     ),
-                  ),
+                  ],
                 ),
-              );
-            },
+              ),
+            ),
+          )
+        else
+          Positioned(
+            top: 72,
+            left: 16,
+            child: ValueListenableBuilder<int>(
+              valueListenable: routesUiTick,
+              builder: (_, __, ___) {
+                return Material(
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: _isSeeding ? null : _seedRoutesFromMap,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_isSeeding)
+                            const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            Icon(Icons.route,
+                                color: Colors.blue.shade700, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            routes.isEmpty
+                                ? 'زرع مسارات الأردن'
+                                : 'تحديث المسارات',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: Colors.blue.shade800,
+                            ),
+                          ),
+                          if (routes.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '${routes.length}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green.shade800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
-        ),
         Positioned(
           bottom: 30,
           left: 16,
@@ -559,6 +631,21 @@ class _AdminMapTabState extends State<AdminMapTab>
         ),
         Positioned(
           bottom: 180,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: 'admin_draw_route',
+            onPressed: _toggleDrawRoute,
+            backgroundColor:
+                isDrawingRoute ? const Color(0xFF7C3AED) : Colors.white,
+            foregroundColor:
+                isDrawingRoute ? Colors.white : const Color(0xFF7C3AED),
+            child: Icon(
+              isDrawingRoute ? Icons.close : Icons.timeline_rounded,
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 260,
           right: 16,
           child: FloatingActionButton(
             heroTag: 'admin_map_location_fab',
