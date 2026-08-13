@@ -37,15 +37,23 @@ class TripService {
     }
   }
 
+  List<TripModel> _mapDocs(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    final out = <TripModel>[];
+    for (final doc in docs) {
+      try {
+        out.add(TripModel.fromMap(doc.data(), doc.id));
+      } catch (_) {}
+    }
+    return out;
+  }
+
   Stream<List<TripModel>> getPassengerTrips(String passengerId) {
     return _firestore
         .collection(_collection)
         .where('passengerId', isEqualTo: passengerId)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => TripModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map((snapshot) => _mapDocs(snapshot.docs));
   }
 
   Stream<List<TripModel>> getDriverTrips(String driverId) {
@@ -54,9 +62,7 @@ class TripService {
         .where('driverId', isEqualTo: driverId)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => TripModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map((snapshot) => _mapDocs(snapshot.docs));
   }
 
   Stream<List<TripModel>> getActiveDriverTrips(String driverId) {
@@ -66,9 +72,7 @@ class TripService {
         .where('status', isEqualTo: TripStatus.active.stringValue)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => TripModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map((snapshot) => _mapDocs(snapshot.docs));
   }
 
   Stream<List<TripModel>> getPastDriverTrips(String driverId) {
@@ -81,9 +85,7 @@ class TripService {
         ])
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => TripModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map((snapshot) => _mapDocs(snapshot.docs));
   }
 
   Stream<List<TripModel>> getPendingDriverTrips(String driverId) {
@@ -93,12 +95,9 @@ class TripService {
         .where('status', isEqualTo: TripStatus.pending.stringValue)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => TripModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map((snapshot) => _mapDocs(snapshot.docs));
   }
 
-  /// قبول رحلة داخل Transaction باستخدام قواعد [TripAcceptance].
   Future<void> acceptTripTransaction(String tripId, String driverId) async {
     await _withRetryAndTimeout(() async {
       final docRef = _firestore.collection(_collection).doc(tripId);
