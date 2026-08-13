@@ -8,10 +8,12 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/map/map_core.dart';
 import '../../../core/map/map_utils.dart';
 import '../../../core/pickup/pickup_point_mixin.dart';
+import '../../../core/utils/arabic_search.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../services/analytics_service.dart';
 import '../../../services/route_prefs_service.dart';
+import '../../../services/route_plan_service.dart';
 import 'mixins/passenger_location_mixin.dart';
 import 'mixins/passenger_live_tracking_mixin.dart';
 import 'mixins/passenger_planned_routes_mixin.dart';
@@ -201,6 +203,51 @@ class _MapTabState extends State<MapTab>
     );
   }
 
+  /// بحث ذكي: يطابق اسم الخط تقريباً من القائمة + Firebase plannedRoutes.
+  Future<void> _onSearchSubmitted(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+
+    // 1) مطابقة قائمة الخطوط المحلية
+    for (final name in AppConstants.jordanRoutes) {
+      if (ArabicSearch.matches(query: q, lineName: name)) {
+        await _onRouteChanged(name);
+        return;
+      }
+    }
+
+    // 2) بحث في المسارات المعتمدة على Firebase
+    try {
+      final found = await RoutePlanService().searchApprovedRoutes(q);
+      if (!mounted) return;
+      if (found.isNotEmpty) {
+        final line = found.first.lineName;
+        // أضف للخيارات إن لم تكن في القائمة الثابتة
+        if (!AppConstants.jordanRoutes.contains(line)) {
+          // نغيّر التحديد حتى لو لم تكن في القائمة الثابتة للـ dropdown
+          setState(() => _selectedRoute = line);
+          updateLiveTrackingRouteFilter(line);
+          updatePlannedRoutesLineFilter(line);
+          await RoutePrefsService().savePreferredRoute(line);
+        } else {
+          await _onRouteChanged(line);
+        }
+        if (!mounted) return;
+        final dirs = found.map((r) => r.direction.labelAr).toSet().join(' و');
+        MapUtils.showSnackBar(
+          context,
+          '🚌 $line ($dirs) — ${found.length} مسار معتمد',
+        );
+        return;
+      }
+    } catch (e) {
+      debugPrint('passenger route search: $e');
+    }
+
+    // 3) بحث مكان جغرافي كاحتياطي
+    await searchPassengerPlace(q);
+  }
+
   Future<void> _findNearestBus() async {
     if (_findingNearest) return;
     MapUtils.mediumHaptic();
@@ -288,7 +335,7 @@ class _MapTabState extends State<MapTab>
               selectedRoute: _selectedRoute,
               routes: AppConstants.jordanRoutes,
               onRouteChanged: _onRouteChanged,
-              onSearchSubmitted: searchPassengerPlace,
+              onSearchSubmitted: _onSearchSubmitted,
             ),
           ),
         ),
