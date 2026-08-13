@@ -23,6 +23,30 @@ import 'driver/providers/driver_provider.dart';
 import 'l10n/app_localizations.dart';
 import 'services/analytics_service.dart';
 
+Future<void> _initDotEnv() async {
+  // 1) حاول تحميل .env الحقيقي (محلي، غير مرفوع على Git)
+  try {
+    await dotenv.load(fileName: '.env', isOptional: true);
+  } catch (e) {
+    debugPrint('⚠️ تحميل .env: $e');
+  }
+
+  // 2) إن لم يُهيَّأ بعد، جرّب الملف النموذجي
+  if (!dotenv.isInitialized) {
+    try {
+      await dotenv.load(fileName: '.env.example', isOptional: true);
+    } catch (e) {
+      debugPrint('⚠️ تحميل .env.example: $e');
+    }
+  }
+
+  // 3) ضمان التهيئة دائماً حتى لا يرمي NotInitializedError
+  if (!dotenv.isInitialized) {
+    dotenv.loadFromString(envString: '');
+    debugPrint('⚠️ DotEnv: تهيئة فارغة (لا يوجد ملف بيئة)');
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -65,20 +89,21 @@ void main() async {
     ),
   );
 
-  try {
-    await dotenv.load(fileName: ".env");
-  } catch (e) {
-    debugPrint('⚠️ لم يتم العثور على ملف .env: $e');
-  }
+  await _initDotEnv();
 
   final String? mapboxToken = dotenv.env['MAPBOX_ACCESS_TOKEN'];
+  final hasRealToken = mapboxToken != null &&
+      mapboxToken.isNotEmpty &&
+      mapboxToken != 'YOUR_MAPBOX_ACCESS_TOKEN_HERE';
 
-  if (mapboxToken != null && mapboxToken.isNotEmpty) {
+  if (hasRealToken) {
     MapboxOptions.setAccessToken(mapboxToken);
     debugPrint('✅ تم تعيين مفتاح Mapbox بنجاح');
   } else {
     debugPrint(
-        '❌ تحذير أمني: لم يتم العثور على MAPBOX_ACCESS_TOKEN في ملف .env');
+      '❌ تحذير: ضع MAPBOX_ACCESS_TOKEN في ملف .env '
+      '(انسخ من .env.example ثم أعد التشغيل)',
+    );
   }
 
   await Firebase.initializeApp(

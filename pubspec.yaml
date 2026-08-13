@@ -43,6 +43,9 @@ flutter:
 
   assets:
     - assets/images/
+    # مطلوب لـ flutter_dotenv (أنشئ .env محلياً من .env.example)
+    - .env
+    - .env.example
 
 flutter_launcher_icons:
   android: true
