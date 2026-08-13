@@ -14,7 +14,14 @@ class PendingPointsTab extends StatefulWidget {
     String? pointId,
   })? onShowOnMap;
 
-  const PendingPointsTab({super.key, this.onShowOnMap});
+  /// عند true يُعرض المحتوى فقط بدون Scaffold/AppBar (للاستخدام داخل Hub).
+  final bool embedded;
+
+  const PendingPointsTab({
+    super.key,
+    this.onShowOnMap,
+    this.embedded = false,
+  });
 
   @override
   State<PendingPointsTab> createState() => _PendingPointsTabState();
@@ -300,9 +307,97 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
     return null;
   }
 
+  Widget _buildBody(AppLocalizations l10n) {
+    return StreamBuilder<List<PickupPointModel>>(
+      stream: _service.getPendingPointsStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 60, color: Colors.red),
+                const SizedBox(height: 12),
+                Text(
+                  '${l10n.errorPrefix}: ${snapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => setState(() {}),
+                  child: Text(l10n.retry),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final points = snapshot.data ?? const <PickupPointModel>[];
+        _latestPoints = points;
+
+        if (points.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.check_circle_outline,
+                    size: 80, color: Colors.green),
+                const SizedBox(height: 16),
+                Text(
+                  l10n.noPendingPoints,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  l10n.noPendingPointsHint,
+                  style: const TextStyle(color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: points.length,
+          addAutomaticKeepAlives: false,
+          addRepaintBoundaries: true,
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          findChildIndexCallback: _indexOfPointKey,
+          itemBuilder: (context, index) {
+            final point = points[index];
+            return _PendingPointCard(
+              key: ValueKey(point.id),
+              point: point,
+              l10n: l10n,
+              onShowDetails: () => _showPointDetails(point),
+              onApprove: () => _approvePoint(point.id, point.name),
+              onReject: () => _showRejectDialog(
+                point.id,
+                point.name,
+                () => _rejectPoint(point.id, point.name),
+              ),
+              onEdit: () => _editPoint(point),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final body = _buildBody(l10n);
+
+    if (widget.embedded) return body;
 
     return Scaffold(
       appBar: AppBar(
@@ -311,88 +406,7 @@ class _PendingPointsTabState extends State<PendingPointsTab> {
         foregroundColor: Theme.of(context).colorScheme.onSurface,
         elevation: 1,
       ),
-      body: StreamBuilder<List<PickupPointModel>>(
-        stream: _service.getPendingPointsStream(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting &&
-              !snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 60, color: Colors.red),
-                  const SizedBox(height: 12),
-                  Text(
-                    '${l10n.errorPrefix}: ${snapshot.error}',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () => setState(() {}),
-                    child: Text(l10n.retry),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final points = snapshot.data ?? const <PickupPointModel>[];
-          _latestPoints = points;
-
-          if (points.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.check_circle_outline,
-                      size: 80, color: Colors.green),
-                  const SizedBox(height: 16),
-                  Text(
-                    l10n.noPendingPoints,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    l10n.noPendingPointsHint,
-                    style: const TextStyle(color: Colors.grey),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: points.length,
-            addAutomaticKeepAlives: false,
-            addRepaintBoundaries: true,
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            findChildIndexCallback: _indexOfPointKey,
-            itemBuilder: (context, index) {
-              final point = points[index];
-              return _PendingPointCard(
-                key: ValueKey(point.id),
-                point: point,
-                l10n: l10n,
-                onShowDetails: () => _showPointDetails(point),
-                onApprove: () => _approvePoint(point.id, point.name),
-                onReject: () => _showRejectDialog(
-                  point.id,
-                  point.name,
-                  () => _rejectPoint(point.id, point.name),
-                ),
-                onEdit: () => _editPoint(point),
-              );
-            },
-          );
-        },
-      ),
+      body: body,
     );
   }
 }
