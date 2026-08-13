@@ -16,8 +16,9 @@ import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/live_tracking_service.dart';
 import '../../../l10n/app_localizations.dart';
 import 'mixins/driver_location_mixin.dart';
+import 'mixins/route_plan_recording_mixin.dart';
 
-/// خريطة السائق: تتبع حي + رحلات — كل العمليات مربوطة بـ uid السائق الحالي فقط.
+/// خريطة السائق: تتبع حي + رحلات + تسجيل مسار خطة الخط — كل العمليات مربوطة بـ uid السائق الحالي فقط.
 class DriverMapTab extends StatefulWidget {
   const DriverMapTab({super.key});
 
@@ -32,7 +33,8 @@ class _DriverMapTabState extends State<DriverMapTab>
         MapCoreMixin<DriverMapTab>,
         PickupPointMixin<DriverMapTab>,
         TripManagerMixin<DriverMapTab>,
-        DriverLocationMixin<DriverMapTab> {
+        DriverLocationMixin<DriverMapTab>,
+        RoutePlanRecordingMixin<DriverMapTab> {
   String _selectedRoute = AppConstants.jordanRoutes.first;
   bool _mapInitialized = false;
   bool _showMap = false;
@@ -62,7 +64,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     _staleCheckTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       final driver = context.read<DriverProvider>();
-      if (driver.isOnline) {
+      if (driver.isOnline || isRecordingRoutePlan) {
         setState(() {});
       }
     });
@@ -74,6 +76,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     _staleCheckTimer = null;
     disposeMapDebug();
     WidgetsBinding.instance.removeObserver(this);
+    disposeRoutePlanRecording();
     disposeDriverLocation();
     disposePickupPoints();
     disposeTripManager();
@@ -92,6 +95,7 @@ class _DriverMapTabState extends State<DriverMapTab>
   @override
   void onStyleChanged() {
     listenToPickupPoints();
+    unawaited(initRoutePlanLayer());
   }
 
   @override
@@ -145,9 +149,15 @@ class _DriverMapTabState extends State<DriverMapTab>
       if (!mounted) return;
 
       listenToPickupPoints();
+      await initRoutePlanLayer();
 
       final driver = context.read<DriverProvider>();
       final auth = context.read<AuthProvider>();
+      final uid = auth.userId;
+      if (uid != null && uid.isNotEmpty) {
+        listenDriverPlannedRoutes(uid);
+      }
+
       if (driver.isBound &&
           driver.boundUserId == auth.userId &&
           (driver.isOnline || driver.isTripActive)) {
@@ -278,6 +288,11 @@ class _DriverMapTabState extends State<DriverMapTab>
     } catch (_) {}
   }
 
+  void _openRoutePlanSheet() {
+    MapUtils.mediumHaptic();
+    showRoutePlanSheet(_selectedRoute);
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -291,6 +306,11 @@ class _DriverMapTabState extends State<DriverMapTab>
     final locationAge = context.select<DriverProvider, String>(
       (p) => p.locationAgeLabel,
     );
+
+    // موضع اللوحات العلوية يعتمد على وجود تنبيهات
+    double topOffset = 80;
+    if (showStaleBanner) topOffset = 168;
+    if (isRecordingRoutePlan) topOffset += 56;
 
     return Stack(
       children: [
@@ -345,15 +365,31 @@ class _DriverMapTabState extends State<DriverMapTab>
                   goToMyLocation();
                 },
                 onGoOffline: () {
-                  // إن كان متصلاً → قطع الاتصال
                   final online = context.read<DriverProvider>().isOnline;
                   if (online) _onToggleOnline();
                 },
               ),
             ),
           ),
+        // شريط تسجيل مسار الخطة الحي
+        if (isRecordingRoutePlan)
+          Positioned(
+            top: showStaleBanner ? 158 : 78,
+            left: 16,
+            right: 16,
+            child: RepaintBoundary(
+              child: _RoutePlanRecordingBanner(
+                directionLabel: recordingDirection?.labelAr ?? '',
+                pointCount: routePlanPointCount,
+                isSaving: isSavingRoutePlan,
+                onSave: () => saveRoutePlanRecording(lineName: _selectedRoute),
+                onCancel: cancelRoutePlanRecording,
+                onOpenSheet: _openRoutePlanSheet,
+              ),
+            ),
+          ),
         Positioned(
-          top: showStaleBanner ? 168 : 80,
+          top: topOffset,
           left: 16,
           child: RepaintBoundary(
             child: Selector<DriverProvider, double?>(
@@ -377,10 +413,11 @@ class _DriverMapTabState extends State<DriverMapTab>
           right: 16,
           child: RepaintBoundary(
             child: _DriverMapFabColumn(
-              simplified: isTripActive,
+              simplified: isTripActive && !isRecordingRoutePlan,
               followDriverCamera: followDriverCamera,
               isLoadingLocation: isLoadingDriverLocation,
               isAddingPickup: isAddingPickupPoint,
+              isRecordingRoutePlan: isRecordingRoutePlan,
               onCompass: () {
                 MapUtils.lightHaptic();
                 resetNorth();
@@ -423,6 +460,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                   isError: !isAddingPickupPoint,
                 );
               },
+              onRoutePlan: _openRoutePlanSheet,
             ),
           ),
         ),
@@ -460,6 +498,87 @@ class _DriverMapTabState extends State<DriverMapTab>
           ),
         ),
       ],
+    );
+  }
+}
+
+/// شريط تنبيه أثناء تسجيل مسار الخطة
+class _RoutePlanRecordingBanner extends StatelessWidget {
+  final String directionLabel;
+  final int pointCount;
+  final bool isSaving;
+  final VoidCallback onSave;
+  final VoidCallback onCancel;
+  final VoidCallback onOpenSheet;
+
+  const _RoutePlanRecordingBanner({
+    required this.directionLabel,
+    required this.pointCount,
+    required this.isSaving,
+    required this.onSave,
+    required this.onCancel,
+    required this.onOpenSheet,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 5,
+      borderRadius: BorderRadius.circular(16),
+      color: const Color(0xFFF5F3FF),
+      child: InkWell(
+        onTap: onOpenSheet,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFDDD6FE)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF7C3AED),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'تسجيل $directionLabel · $pointCount نقطة',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF6D28D9),
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: isSaving ? null : onSave,
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF7C3AED),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: Text(
+                  isSaving ? '…' : 'حفظ',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              TextButton(
+                onPressed: isSaving ? null : onCancel,
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.grey.shade700,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: const Text('إلغاء'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -677,24 +796,28 @@ class _DriverMapFabColumn extends StatelessWidget {
   final bool followDriverCamera;
   final bool isLoadingLocation;
   final bool isAddingPickup;
+  final bool isRecordingRoutePlan;
   final VoidCallback onCompass;
   final VoidCallback onFollow;
   final VoidCallback onRecenter;
   final VoidCallback onMyLocation;
   final VoidCallback onLayers;
   final VoidCallback onAddPickup;
+  final VoidCallback onRoutePlan;
 
   const _DriverMapFabColumn({
     required this.simplified,
     required this.followDriverCamera,
     required this.isLoadingLocation,
     required this.isAddingPickup,
+    required this.isRecordingRoutePlan,
     required this.onCompass,
     required this.onFollow,
     required this.onRecenter,
     required this.onMyLocation,
     required this.onLayers,
     required this.onAddPickup,
+    required this.onRoutePlan,
   });
 
   @override
@@ -742,6 +865,21 @@ class _DriverMapFabColumn extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.my_location),
+        ),
+        // زر مسار خطة الخط — متاح دائماً (حتى أثناء الرحلة)
+        const SizedBox(height: 10),
+        FloatingActionButton(
+          heroTag: 'driver_route_plan',
+          onPressed: onRoutePlan,
+          backgroundColor: isRecordingRoutePlan
+              ? const Color(0xFF7C3AED)
+              : const Color(0xFF8B5CF6),
+          foregroundColor: Colors.white,
+          child: Icon(
+            isRecordingRoutePlan
+                ? Icons.fiber_manual_record
+                : Icons.route_rounded,
+          ),
         ),
         if (!simplified) ...[
           const SizedBox(height: 10),
