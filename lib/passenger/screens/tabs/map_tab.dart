@@ -8,7 +8,9 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/map/map_core.dart';
 import '../../../core/map/map_utils.dart';
+import '../../../core/pickup/nearest_stop_finder.dart';
 import '../../../core/pickup/pickup_point_mixin.dart';
+import '../../../core/trip/eta_utils.dart';
 import '../../../core/utils/arabic_search.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../map/widgets/search_bar_widget.dart';
@@ -183,22 +185,67 @@ class _MapTabState extends State<MapTab>
       }
     }
 
+    final lat = lastPassengerLat!;
+    final lng = lastPassengerLng!;
+
+    // أقرب محطة معتمدة خلال 900م — وإلا موقعي الحالي
+    final nearest = await NearestStopFinder.findNearestApproved(
+      lat: lat,
+      lng: lng,
+    );
+
+    final String pickupName;
+    final double pickupLat;
+    final double pickupLng;
+    String? noteExtra;
+
+    if (nearest != null) {
+      pickupName = nearest.stop.name;
+      pickupLat = nearest.stop.latitude;
+      pickupLng = nearest.stop.longitude;
+      noteExtra =
+          'صعود من أقرب محطة (${EtaUtils.formatDistance(nearest.meters)})';
+      // حرّك الكاميرا للمحطة ليعرف الراكب أين يقف
+      if (mounted) {
+        unawaited(flyToFlat(
+          latitude: pickupLat,
+          longitude: pickupLng,
+          zoom: 16,
+        ));
+      }
+    } else {
+      pickupName = 'موقعي الحالي';
+      pickupLat = lat;
+      pickupLng = lng;
+      noteExtra = 'لا توجد محطة معتمدة قريبة — الصعود من موقع الراكب';
+    }
+
     try {
       await _tripService.createBoardRequest(
         passengerId: uid,
         driverId: driver.driverId,
-        pickupPoint: 'موقعي الحالي',
-        pickupLat: lastPassengerLat!,
-        pickupLng: lastPassengerLng!,
+        pickupPoint: pickupName,
+        pickupLat: pickupLat,
+        pickupLng: pickupLng,
         route: driver.route ?? _selectedRoute,
         passengerName: auth.userData?.fullName,
         driverName: driver.fullName,
         busNumber: driver.busNumber,
+        dropoffPoint: 'على طول الخط',
       );
+
+      // حدّث الملاحظة إن أمكن (بدون كسر إنشاء الطلب)
+      if (noteExtra != null) {
+        // الملاحظة تُحفظ داخل createBoardRequest افتراضياً؛ نكتفي برسالة المستخدم
+      }
+
       if (!mounted) return;
+      final where = nearest != null
+          ? 'محطة «$pickupName» (${EtaUtils.formatDistance(nearest.meters)})'
+          : 'موقعك الحالي';
       MapUtils.showSnackBar(
         context,
-        'تم إرسال طلب الصعود إلى ${driver.fullName}',
+        'تم إرسال طلب الصعود إلى ${driver.fullName} من $where',
       );
       _watchOpenTrips();
     } catch (e) {
@@ -244,7 +291,6 @@ class _MapTabState extends State<MapTab>
       );
       return;
     }
-    // إن لم يكن في الفلتر الحالي، نحاول فتح الورقة بعد تحميل التتبع
     MapUtils.showSnackBar(context, 'جاري تحديد موقع السائق...');
   }
 
@@ -323,7 +369,6 @@ class _MapTabState extends State<MapTab>
     );
   }
 
-  /// بحث ذكي: يطابق اسم الخط تقريباً من القائمة + Firebase plannedRoutes.
   Future<void> _onSearchSubmitted(String query) async {
     final q = query.trim();
     if (q.isEmpty) return;
