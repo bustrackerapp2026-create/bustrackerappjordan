@@ -15,7 +15,6 @@ import '../../../driver/providers/driver_provider.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../services/live_tracking_service.dart';
 import '../../../l10n/app_localizations.dart';
-import '../../../models/planned_route.dart';
 import 'mixins/driver_location_mixin.dart';
 import 'mixins/route_plan_recording_mixin.dart';
 
@@ -262,17 +261,11 @@ class _DriverMapTabState extends State<DriverMapTab>
   Widget build(BuildContext context) {
     super.build(context);
     final l10n = AppLocalizations.of(context);
-    final isTripActive =
-        context.select<DriverProvider, bool>((p) => p.isTripActive);
     final showStaleBanner = context.select<DriverProvider, bool>(
       (p) => p.isLocationStaleWhileOnline,
     );
     final locationAge =
         context.select<DriverProvider, String>((p) => p.locationAgeLabel);
-
-    double topOffset = 80;
-    if (showStaleBanner) topOffset = 168;
-    if (isRecordingRoutePlan) topOffset += 56;
 
     return Stack(
       children: [
