@@ -37,7 +37,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   DriverTrackingState trackingServiceState = DriverTrackingState.stopped;
 
-  /// آخر حالة معروفة للسائق (للاستخدام إن فُقد الـ context)
   bool _cachedOnline = false;
   bool _cachedTripActive = false;
 
@@ -63,6 +62,9 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   static const Duration _predictionTick = Duration(milliseconds: 350);
 
   LocationService get locationService => _driverLocationService;
+
+  /// تُعاد كتابتها في RoutePlanRecordingMixin لتجميع نقاط المسار.
+  void onDriverPositionSample(geo.Position position) {}
 
   bool get _shouldTrackContinuously {
     if (!mounted) return _cachedOnline || _cachedTripActive;
@@ -342,6 +344,9 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     currentDriverBearing = filtered.headingDeg;
 
+    // عيّنة خام لتسجيل مسار الخطة
+    onDriverPositionSample(pos);
+
     if (mounted && doMove && mapboxMap != null) {
       final now = DateTime.now();
       final canMove = doForce ||
@@ -515,20 +520,13 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           unawaited(ensureDriverTrackingRunning());
         }
         break;
-
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
-        if (_shouldTrackContinuously) {
-          MapUtils.log(
-            'App $state — الخدمة تبقى نشطة (متصل/رحلة)',
-            tag: 'DriverLocation',
-          );
-        } else {
+        if (!_shouldTrackContinuously) {
           unawaited(stopDriverTracking());
         }
         break;
-
       case AppLifecycleState.detached:
         unawaited(stopDriverTracking());
         break;
