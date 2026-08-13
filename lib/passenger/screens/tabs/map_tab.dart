@@ -12,6 +12,7 @@ import '../../../services/analytics_service.dart';
 import '../../../services/route_prefs_service.dart';
 import 'mixins/passenger_location_mixin.dart';
 import 'mixins/passenger_live_tracking_mixin.dart';
+import 'mixins/passenger_planned_routes_mixin.dart';
 
 class MapTab extends StatefulWidget {
   const MapTab({super.key});
@@ -27,7 +28,8 @@ class _MapTabState extends State<MapTab>
         MapCoreMixin<MapTab>,
         PickupPointMixin<MapTab>,
         PassengerLocationMixin<MapTab>,
-        PassengerLiveTrackingMixin<MapTab> {
+        PassengerLiveTrackingMixin<MapTab>,
+        PassengerPlannedRoutesMixin<MapTab> {
   String _selectedRoute = AppConstants.jordanRoutes.first;
   bool _mapInitialized = false;
   bool _loggedMapOpened = false;
@@ -56,6 +58,7 @@ class _MapTabState extends State<MapTab>
     if (route != _selectedRoute) {
       setState(() => _selectedRoute = route);
       updateLiveTrackingRouteFilter(route);
+      updatePlannedRoutesLineFilter(route);
     }
   }
 
@@ -90,6 +93,7 @@ class _MapTabState extends State<MapTab>
     try {
       liveDriversCount.removeListener(_onLiveCountChanged);
     } catch (_) {}
+    disposePlannedRoutes();
     disposeLiveTracking();
     disposeMapDebug();
     WidgetsBinding.instance.removeObserver(this);
@@ -104,6 +108,7 @@ class _MapTabState extends State<MapTab>
     if (state == AppLifecycleState.resumed) {
       if (mounted) {
         startLiveDriverTracking(routeFilter: _selectedRoute);
+        startWatchingPlannedRoutes(_selectedRoute);
       }
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
@@ -116,6 +121,7 @@ class _MapTabState extends State<MapTab>
   void onStyleChanged() {
     listenToPickupPoints();
     startLiveDriverTracking(routeFilter: _selectedRoute);
+    unawaited(redrawPlannedRoutes());
   }
 
   @override
@@ -148,6 +154,7 @@ class _MapTabState extends State<MapTab>
     mapboxMap = map;
     await Future.wait([
       initAnnotationManager(),
+      initPolylineManager(),
       applyStableGestures(),
     ]);
     if (!mounted) return;
@@ -167,6 +174,7 @@ class _MapTabState extends State<MapTab>
     if (!mounted) return;
     listenToPickupPoints();
     startLiveDriverTracking(routeFilter: _selectedRoute);
+    startWatchingPlannedRoutes(_selectedRoute);
 
     if (!_loggedMapOpened) {
       _loggedMapOpened = true;
@@ -179,6 +187,7 @@ class _MapTabState extends State<MapTab>
   Future<void> _onRouteChanged(String newRoute) async {
     setState(() => _selectedRoute = newRoute);
     updateLiveTrackingRouteFilter(newRoute);
+    updatePlannedRoutesLineFilter(newRoute);
     _loggedEmptyState = false;
     MapUtils.lightHaptic();
     AnalyticsService().routeFilterChanged(newRoute);

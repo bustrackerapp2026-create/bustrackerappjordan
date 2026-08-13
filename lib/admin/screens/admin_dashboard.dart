@@ -8,7 +8,7 @@ import '../../l10n/app_localizations.dart';
 import '../../services/analytics_service.dart';
 import '../../services/firestore_service.dart';
 import 'tabs/verify_drivers_tab.dart';
-import 'tabs/pending_points_tab.dart';
+import 'tabs/admin_pending_hub.dart';
 import 'tabs/admin_map_tab.dart';
 import 'tabs/settings_tab.dart';
 import '../widgets/admin_bottom_nav_bar.dart';
@@ -48,7 +48,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   late final Widget _verifyTab = const VerifyDriversTab();
   late final Widget _settingsTab = const SettingsTab();
-  late final Widget _pendingTab = PendingPointsTab(onShowOnMap: _showPointOnMap);
+  late final Widget _pendingTab = AdminPendingHub(onShowOnMap: _showPointOnMap);
 
   void _showPointOnMap({
     required double latitude,
