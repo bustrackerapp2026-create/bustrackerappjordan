@@ -29,9 +29,14 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>نحتاج إلى موقعك لتحديد موقعك على الخريطة وتتبع الباصات القريبة منك بدقة.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>نحتاج إلى موقعك أثناء استخدام التطبيق لتحديد موقعك وتتبع الرحلات.</string>
+	<string>يحتاج السائق إلى مشاركة موقعه مع الركاب حتى عند تصغير التطبيق أثناء الرحلة أو الاتصال.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>نحتاج إلى موقعك لتحديد موقعك على الخريطة.</string>
+	<string>يحتاج السائق إلى مشاركة موقعه مع الركاب حتى عند تصغير التطبيق أثناء الرحلة أو الاتصال.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
