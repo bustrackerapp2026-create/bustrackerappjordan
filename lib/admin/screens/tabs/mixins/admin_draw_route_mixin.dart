@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
@@ -101,7 +102,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       // تجاهل نقرات شبه متطابقة مع آخر نقطة
       if (_drawPoints.isNotEmpty) {
         final last = _drawPoints.last;
-        final d = _approxMeters(
+        final d = _meters(
           last.latitude,
           last.longitude,
           snapped.latitude,
@@ -142,7 +143,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (_drawPoints.length >= 2) {
         final from = _drawPoints[_drawPoints.length - 2];
         final to = _drawPoints.last;
-        // snapEndpoints=false لأن النقاط ملصوقة مسبقاً
         final road = await _drawRouteService.getDrivingPath(
           from: from,
           to: to,
@@ -166,37 +166,19 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  double _approxMeters(double lat1, double lng1, double lat2, double lng2) {
+  double _meters(double lat1, double lng1, double lat2, double lng2) {
     const earth = 6371000.0;
-    final dLat = (lat2 - lat1) * mathPi / 180;
-    final dLng = (lng2 - lng1) * mathPi / 180;
-    final a = mathSin(dLat / 2) * mathSin(dLat / 2) +
-        mathCos(lat1 * mathPi / 180) *
-            mathCos(lat2 * mathPi / 180) *
-            mathSin(dLng / 2) *
-            mathSin(dLng / 2);
-    return earth * 2 * mathAtan2(mathSqrt(a), mathSqrt(1 - a));
+    final dLat = _rad(lat2 - lat1);
+    final dLng = _rad(lng2 - lng1);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_rad(lat1)) *
+            math.cos(_rad(lat2)) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    return earth * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
   }
 
-  // دوال رياضية محلية لتجنب استيراد dart:math في الـ mixin بلا داعٍ ظاهر
-  static const double mathPi = 3.141592653589793;
-  double mathSin(double x) {
-    // تقريب بسيط غير مستخدم — نستبدل باستيراد dart:math
-    return _sin(x);
-  }
-
-  double mathCos(double x) => _cos(x);
-  double mathSqrt(double x) => _sqrt(x);
-  double mathAtan2(double y, double x) => _atan2(y, x);
-
-  // سيتم استبدالها بـ dart:math في الملف النهائي
-  double _sin(double x) {
-    return x; // placeholder overwritten below via proper import
-  }
-
-  double _cos(double x) => x;
-  double _sqrt(double x) => x;
-  double _atan2(double y, double x) => 0;
+  double _rad(double d) => d * math.pi / 180;
 
   Future<void> _redrawDrawLine() async {
     if (polylineAnnotationManager == null) return;
@@ -288,7 +270,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         direction: result.dir,
         points: control,
         aliases: result.aliases,
-        // إعادة بناء كاملة: snap + directions + matching
         alreadySnapped: false,
       );
 
