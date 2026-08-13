@@ -24,8 +24,9 @@ extension RouteDirectionX on RouteDirection {
   }
 }
 
-/// حالة اعتماد مسار الخط
+/// حالة مسار الخط
 enum PlannedRouteStatus {
+  /// بانتظار موافقة على تعديل (نادر بعد التحويل للحفظ التلقائي)
   pending,
   approved,
   rejected,
@@ -48,7 +49,7 @@ extension PlannedRouteStatusX on PlannedRouteStatus {
       case PlannedRouteStatus.pending:
         return 'بانتظار الموافقة';
       case PlannedRouteStatus.approved:
-        return 'معتمد';
+        return 'مخزّن';
       case PlannedRouteStatus.rejected:
         return 'مرفوض';
     }
@@ -66,51 +67,88 @@ extension PlannedRouteStatusX on PlannedRouteStatus {
   }
 }
 
-/// مسار خط مخزّن (ذهاب أو إياب) — يظهر للركاب بعد الاعتماد.
+/// مصدر إنشاء المسار
+enum RouteSource {
+  driver,
+  admin,
+}
+
+extension RouteSourceX on RouteSource {
+  String get firestoreValue => this == RouteSource.admin ? 'admin' : 'driver';
+
+  static RouteSource fromString(String? v) {
+    if (v == 'admin') return RouteSource.admin;
+    return RouteSource.driver;
+  }
+}
+
+/// مسار خط مشترك (ذهاب أو إياب) — يُخزَّن مرة واحدة لكل خط+اتجاه ويظهر للركاب فوراً.
 class PlannedRoute {
   final String id;
-  final String driverId;
+  /// من سجّل المسار أول مرة (سائق أو أدمن)
+  final String createdBy;
   final String lineName;
   final RouteDirection direction;
   final List<RoutePoint> points;
   final PlannedRouteStatus status;
   final bool editRequestPending;
+  final String? editRequestReason;
+  final String? editRequestedBy;
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final double? distanceMeters;
   final String? notes;
+  final RouteSource source;
+
+  /// بعد موافقة الأدمن على طلب التعديل يُسمح بإعادة التسجيل
+  final bool reRecordAllowed;
 
   const PlannedRoute({
     required this.id,
-    required this.driverId,
+    required this.createdBy,
     required this.lineName,
     required this.direction,
     required this.points,
-    this.status = PlannedRouteStatus.pending,
+    this.status = PlannedRouteStatus.approved,
     this.editRequestPending = false,
+    this.editRequestReason,
+    this.editRequestedBy,
     this.createdAt,
     this.updatedAt,
     this.distanceMeters,
     this.notes,
+    this.source = RouteSource.driver,
+    this.reRecordAllowed = false,
   });
 
   bool get isApproved => status == PlannedRouteStatus.approved;
-  bool get canEdit =>
-      status == PlannedRouteStatus.rejected ||
-      (status == PlannedRouteStatus.pending && !editRequestPending);
+
+  /// مقفول: موجود ومعتمد ولا يُسمح بإعادة التسجيل
   bool get isLocked =>
-      status == PlannedRouteStatus.approved && !editRequestPending;
+      status == PlannedRouteStatus.approved &&
+      !reRecordAllowed &&
+      points.length >= 2;
+
+  bool get canReRecord =>
+      reRecordAllowed ||
+      status == PlannedRouteStatus.rejected ||
+      (status == PlannedRouteStatus.pending && points.isEmpty);
 
   Map<String, dynamic> toMap() {
     return {
-      'driverId': driverId,
+      'createdBy': createdBy,
+      'driverId': createdBy, // توافق خلفي
       'lineName': lineName,
       'direction': direction.firestoreValue,
       'points': points.map((p) => p.toMap()).toList(),
       'status': status.firestoreValue,
       'editRequestPending': editRequestPending,
+      if (editRequestReason != null) 'editRequestReason': editRequestReason,
+      if (editRequestedBy != null) 'editRequestedBy': editRequestedBy,
       'distanceMeters': distanceMeters,
       if (notes != null) 'notes': notes,
+      'source': source.firestoreValue,
+      'reRecordAllowed': reRecordAllowed,
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -133,18 +171,27 @@ class PlannedRoute {
     final u = data['updatedAt'];
     if (u is Timestamp) updated = u.toDate();
 
+    final createdBy = (data['createdBy'] ?? data['driverId'])?.toString() ?? '';
+
     return PlannedRoute(
       id: id,
-      driverId: data['driverId']?.toString() ?? '',
+      createdBy: createdBy,
       lineName: data['lineName']?.toString() ?? '',
       direction: RouteDirectionX.fromString(data['direction']?.toString()),
       points: points,
       status: PlannedRouteStatusX.fromString(data['status']?.toString()),
       editRequestPending: data['editRequestPending'] == true,
+      editRequestReason: data['editRequestReason']?.toString(),
+      editRequestedBy: data['editRequestedBy']?.toString(),
       createdAt: created,
       updatedAt: updated,
       distanceMeters: (data['distanceMeters'] as num?)?.toDouble(),
       notes: data['notes']?.toString(),
+      source: RouteSourceX.fromString(data['source']?.toString()),
+      reRecordAllowed: data['reRecordAllowed'] == true,
     );
   }
+
+  /// توافق مع الكود القديم الذي يستخدم driverId
+  String get driverId => createdBy;
 }
