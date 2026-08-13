@@ -5,7 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/planned_route.dart';
 import '../../../services/route_plan_service.dart';
 
-/// تبويب الأدمن: اعتماد مسارات الخطوط المخططة وطلبات التعديل.
+/// تبويب الأدمن: طلبات تعديل مسارات الخطوط المشتركة.
 class PendingRoutesTab extends StatefulWidget {
   const PendingRoutesTab({super.key});
 
@@ -13,22 +13,8 @@ class PendingRoutesTab extends StatefulWidget {
   State<PendingRoutesTab> createState() => _PendingRoutesTabState();
 }
 
-class _PendingRoutesTabState extends State<PendingRoutesTab>
-    with SingleTickerProviderStateMixin {
+class _PendingRoutesTabState extends State<PendingRoutesTab> {
   final RoutePlanService _service = RoutePlanService();
-  late final TabController _tabs;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabs = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
-  }
 
   void _snack(String msg, {bool error = false}) {
     if (!mounted) return;
@@ -42,12 +28,12 @@ class _PendingRoutesTabState extends State<PendingRoutesTab>
     );
   }
 
-  Future<String> _driverName(String driverId) async {
-    if (driverId.isEmpty) return '—';
+  Future<String> _userName(String userId) async {
+    if (userId.isEmpty) return '—';
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(driverId)
+          .doc(userId)
           .get();
       final name = doc.data()?['fullName']?.toString().trim();
       return (name != null && name.isNotEmpty) ? name : '—';
@@ -56,64 +42,10 @@ class _PendingRoutesTabState extends State<PendingRoutesTab>
     }
   }
 
-  Future<void> _approve(PlannedRoute r) async {
-    try {
-      await _service.approveRoute(r.id);
-      _snack('تم اعتماد مسار ${r.direction.labelAr} · ${r.lineName}');
-    } catch (e) {
-      _snack('فشل الاعتماد: $e', error: true);
-    }
-  }
-
-  Future<void> _reject(PlannedRoute r) async {
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        final c = TextEditingController();
-        return AlertDialog(
-          title: const Text('رفض المسار'),
-          content: TextField(
-            controller: c,
-            decoration: const InputDecoration(
-              labelText: 'سبب الرفض (اختياري)',
-            ),
-            maxLines: 2,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, c.text.trim()),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('رفض'),
-            ),
-          ],
-        );
-      },
-    );
-    if (reason == null) return;
-    try {
-      await _service.rejectRoute(
-        r.id,
-        reason: reason.isEmpty ? null : reason,
-      );
-      _snack('تم رفض مسار ${r.direction.labelAr}');
-    } catch (e) {
-      _snack('فشل الرفض: $e', error: true);
-    }
-  }
-
   Future<void> _approveEdit(PlannedRoute r) async {
     try {
       await _service.approveEditRequest(r.id);
-      _snack(
-        'تمت الموافقة على طلب التعديل — يمكن للسائق إعادة التسجيل',
-      );
+      _snack('تمت الموافقة — يمكن للسائق إعادة تسجيل المسار');
     } catch (e) {
       _snack('فشل: $e', error: true);
     }
@@ -121,14 +53,7 @@ class _PendingRoutesTabState extends State<PendingRoutesTab>
 
   Future<void> _denyEdit(PlannedRoute r) async {
     try {
-      // إبقاء المسار معتمداً وإلغاء طلب التعديل فقط
-      await FirebaseFirestore.instance
-          .collection('plannedRoutes')
-          .doc(r.id)
-          .update({
-        'editRequestPending': false,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await _service.denyEditRequest(r.id);
       _snack('تم رفض طلب التعديل');
     } catch (e) {
       _snack('فشل: $e', error: true);
@@ -137,90 +62,8 @@ class _PendingRoutesTabState extends State<PendingRoutesTab>
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Material(
-          color: Theme.of(context).colorScheme.surface,
-          child: TabBar(
-            controller: _tabs,
-            labelColor: AppTheme.primaryColor,
-            unselectedLabelColor: Colors.grey.shade600,
-            indicatorColor: AppTheme.primaryColor,
-            tabs: const [
-              Tab(text: 'مسارات جديدة'),
-              Tab(text: 'طلبات تعديل'),
-            ],
-          ),
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabs,
-            children: [
-              _RoutesList(
-                stream: _service.watchPendingRoutes(),
-                emptyTitle: 'لا توجد مسارات بانتظار الاعتماد',
-                emptyHint: 'عندما يسجّل سائق مساراً جديداً سيظهر هنا.',
-                driverNameOf: _driverName,
-                primaryLabel: 'اعتماد',
-                primaryIcon: Icons.check_rounded,
-                onPrimary: _approve,
-                secondaryLabel: 'رفض',
-                secondaryIcon: Icons.close_rounded,
-                onSecondary: _reject,
-                secondaryIsDestructive: true,
-              ),
-              _RoutesList(
-                stream: _service.watchEditRequests(),
-                emptyTitle: 'لا توجد طلبات تعديل',
-                emptyHint: 'طلبات تعديل المسارات المعتمدة تظهر هنا.',
-                driverNameOf: _driverName,
-                primaryLabel: 'السماح بإعادة التسجيل',
-                primaryIcon: Icons.lock_open_rounded,
-                onPrimary: _approveEdit,
-                secondaryLabel: 'رفض الطلب',
-                secondaryIcon: Icons.block_rounded,
-                onSecondary: _denyEdit,
-                secondaryIsDestructive: true,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RoutesList extends StatelessWidget {
-  final Stream<List<PlannedRoute>> stream;
-  final String emptyTitle;
-  final String emptyHint;
-  final Future<String> Function(String driverId) driverNameOf;
-  final String primaryLabel;
-  final IconData primaryIcon;
-  final Future<void> Function(PlannedRoute) onPrimary;
-  final String secondaryLabel;
-  final IconData secondaryIcon;
-  final Future<void> Function(PlannedRoute) onSecondary;
-  final bool secondaryIsDestructive;
-
-  const _RoutesList({
-    required this.stream,
-    required this.emptyTitle,
-    required this.emptyHint,
-    required this.driverNameOf,
-    required this.primaryLabel,
-    required this.primaryIcon,
-    required this.onPrimary,
-    required this.secondaryLabel,
-    required this.secondaryIcon,
-    required this.onSecondary,
-    this.secondaryIsDestructive = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
     return StreamBuilder<List<PlannedRoute>>(
-      stream: stream,
+      stream: _service.watchEditRequests(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
           return const Center(child: CircularProgressIndicator());
@@ -239,9 +82,9 @@ class _RoutesList extends StatelessWidget {
                   Icon(Icons.route_rounded,
                       size: 64, color: Colors.grey.shade400),
                   const SizedBox(height: 12),
-                  Text(
-                    emptyTitle,
-                    style: const TextStyle(
+                  const Text(
+                    'لا توجد طلبات تعديل مسارات',
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                     ),
@@ -249,7 +92,7 @@ class _RoutesList extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    emptyHint,
+                    'المسارات الجديدة تُخزَّن تلقائياً. تظهر هنا فقط طلبات تعديل المسارات المخزّنة.',
                     style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                     textAlign: TextAlign.center,
                   ),
@@ -264,16 +107,11 @@ class _RoutesList extends StatelessWidget {
           itemCount: list.length,
           itemBuilder: (context, i) {
             final r = list[i];
-            return _RouteCard(
+            return _EditRequestCard(
               route: r,
-              driverNameOf: driverNameOf,
-              primaryLabel: primaryLabel,
-              primaryIcon: primaryIcon,
-              onPrimary: () => onPrimary(r),
-              secondaryLabel: secondaryLabel,
-              secondaryIcon: secondaryIcon,
-              onSecondary: () => onSecondary(r),
-              secondaryIsDestructive: secondaryIsDestructive,
+              userNameOf: _userName,
+              onApprove: () => _approveEdit(r),
+              onDeny: () => _denyEdit(r),
             );
           },
         );
@@ -282,42 +120,33 @@ class _RoutesList extends StatelessWidget {
   }
 }
 
-class _RouteCard extends StatefulWidget {
+class _EditRequestCard extends StatefulWidget {
   final PlannedRoute route;
-  final Future<String> Function(String) driverNameOf;
-  final String primaryLabel;
-  final IconData primaryIcon;
-  final Future<void> Function() onPrimary;
-  final String secondaryLabel;
-  final IconData secondaryIcon;
-  final Future<void> Function() onSecondary;
-  final bool secondaryIsDestructive;
+  final Future<String> Function(String) userNameOf;
+  final Future<void> Function() onApprove;
+  final Future<void> Function() onDeny;
 
-  const _RouteCard({
+  const _EditRequestCard({
     required this.route,
-    required this.driverNameOf,
-    required this.primaryLabel,
-    required this.primaryIcon,
-    required this.onPrimary,
-    required this.secondaryLabel,
-    required this.secondaryIcon,
-    required this.onSecondary,
-    required this.secondaryIsDestructive,
+    required this.userNameOf,
+    required this.onApprove,
+    required this.onDeny,
   });
 
   @override
-  State<_RouteCard> createState() => _RouteCardState();
+  State<_EditRequestCard> createState() => _EditRequestCardState();
 }
 
-class _RouteCardState extends State<_RouteCard> {
+class _EditRequestCardState extends State<_EditRequestCard> {
   bool _busy = false;
-  String? _driverName;
+  String? _requesterName;
 
   @override
   void initState() {
     super.initState();
-    widget.driverNameOf(widget.route.driverId).then((n) {
-      if (mounted) setState(() => _driverName = n);
+    final id = widget.route.editRequestedBy ?? widget.route.createdBy;
+    widget.userNameOf(id).then((n) {
+      if (mounted) setState(() => _requesterName = n);
     });
   }
 
@@ -378,46 +207,43 @@ class _RouteCardState extends State<_RouteCard> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Text(
-                  r.status.labelAr,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: r.isApproved
-                        ? const Color(0xFF16A34A)
-                        : Colors.orange.shade800,
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              'السائق: ${_driverName ?? '…'}',
+              'مقدّم الطلب: ${_requesterName ?? '…'}',
               style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
             ),
-            const SizedBox(height: 2),
             Text(
               '${r.points.length} نقطة · $km كم',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
-            if (r.editRequestPending)
-              const Padding(
-                padding: EdgeInsets.only(top: 6),
+            if ((r.editRequestReason ?? '').isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFDBA74)),
+                ),
                 child: Text(
-                  'طلب تعديل بانتظار القرار',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFFEA580C),
+                  'السبب: ${r.editRequestReason}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF9A3412),
                   ),
                 ),
               ),
+            ],
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _busy ? null : () => _run(widget.onPrimary),
+                    onPressed: _busy ? null : () => _run(widget.onApprove),
                     icon: _busy
                         ? const SizedBox(
                             width: 16,
@@ -427,10 +253,10 @@ class _RouteCardState extends State<_RouteCard> {
                               color: Colors.white,
                             ),
                           )
-                        : Icon(widget.primaryIcon, size: 18),
-                    label: Text(
-                      widget.primaryLabel,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+                        : const Icon(Icons.lock_open_rounded, size: 18),
+                    label: const Text(
+                      'السماح بإعادة التسجيل',
+                      style: TextStyle(fontWeight: FontWeight.w800),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryColor,
@@ -444,21 +270,15 @@ class _RouteCardState extends State<_RouteCard> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _busy ? null : () => _run(widget.onSecondary),
-                    icon: Icon(widget.secondaryIcon, size: 18),
-                    label: Text(
-                      widget.secondaryLabel,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    onPressed: _busy ? null : () => _run(widget.onDeny),
+                    icon: const Icon(Icons.block_rounded, size: 18),
+                    label: const Text(
+                      'رفض',
+                      style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: widget.secondaryIsDestructive
-                          ? Colors.red.shade700
-                          : AppTheme.textColor,
-                      side: BorderSide(
-                        color: widget.secondaryIsDestructive
-                            ? Colors.red.shade200
-                            : Colors.grey.shade300,
-                      ),
+                      foregroundColor: Colors.red.shade700,
+                      side: BorderSide(color: Colors.red.shade200),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
