@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -13,19 +14,16 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../models/live_driver_location.dart';
 import '../../../../services/live_tracking_service.dart';
 
-/// يعرض مواقع السائقين المتصلين مباشرة على خريطة الراكب.
-/// الضغط على أيقونة الباص/السرفيس يعرض معلومات السائق.
 mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final LiveTrackingService _tracking = LiveTrackingService();
   StreamSubscription<List<LiveDriverLocation>>? _liveDriversSub;
 
   final Map<String, PointAnnotation> _driverAnnotations = {};
-  /// annotation.id → driverId
   final Map<String, String> _annotationToDriverId = {};
-  /// آخر بيانات معروفة لكل سائق (لعرض التفاصيل عند الضغط)
   final Map<String, LiveDriverLocation> _driverDataById = {};
   final Map<String, (double, double)> _lastDrawnPos = {};
   final Map<String, int?> _lastCapacity = {};
+  final Map<String, bool> _lastStale = {};
 
   final ValueNotifier<int> liveDriversCount = ValueNotifier<int>(0);
 
@@ -38,7 +36,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   static const double _minMoveThreshold = 0.00012;
 
   Future<Uint8List> _markerFor(LiveDriverLocation d) {
-    return BusMarkerImages.forCapacity(d.capacity);
+    return BusMarkerImages.forCapacity(d.capacity, stale: d.isStaleWarning);
   }
 
   void _safeSetDriversCount(int count) {
@@ -59,6 +57,49 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   LiveDriverLocation? getLiveDriverData(String driverId) {
     return _driverDataById[driverId];
   }
+
+  List<LiveDriverLocation> get liveDriversSnapshot =>
+      List<LiveDriverLocation>.unmodifiable(_driverDataById.values);
+
+  /// أقرب سائق متصل بموقع صالح (يفضّل غير القديم).
+  ({LiveDriverLocation driver, double meters})? findNearestDriver(
+    double lat,
+    double lng,
+  ) {
+    LiveDriverLocation? best;
+    var bestMeters = double.infinity;
+
+    for (final d in _driverDataById.values) {
+      if (!d.hasValidCoords) continue;
+      // تجاهل مواقع أقدم من 15 دقيقة
+      if (!d.isFresh) continue;
+      final m = _distanceMeters(lat, lng, d.latitude, d.longitude);
+      // فضّل غير القديم عند تساوي تقريبي
+      final score = d.isStaleWarning ? m + 80 : m;
+      if (score < bestMeters) {
+        bestMeters = score;
+        best = d;
+      }
+    }
+
+    if (best == null) return null;
+    final real = _distanceMeters(lat, lng, best.latitude, best.longitude);
+    return (driver: best, meters: real);
+  }
+
+  double _distanceMeters(double lat1, double lng1, double lat2, double lng2) {
+    const earth = 6371000.0;
+    final dLat = _rad(lat2 - lat1);
+    final dLng = _rad(lng2 - lng1);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_rad(lat1)) *
+            math.cos(_rad(lat2)) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    return earth * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  }
+
+  double _rad(double d) => d * math.pi / 180;
 
   void startLiveDriverTracking({String? routeFilter}) {
     if (_liveTrackingDisposed || !mounted) return;
@@ -120,8 +161,10 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         final existing = _driverAnnotations[d.driverId];
         final last = _lastDrawnPos[d.driverId];
         final capacityChanged = _lastCapacity[d.driverId] != d.capacity;
+        final staleChanged = (_lastStale[d.driverId] ?? false) != d.isStaleWarning;
 
-        if (existing != null && capacityChanged) {
+        // إعادة إنشاء عند تغيّر السعة أو حالة القِدم (أيقونة مختلفة)
+        if (existing != null && (capacityChanged || staleChanged)) {
           try {
             await pointAnnotationManager?.delete(existing);
           } catch (_) {}
@@ -129,6 +172,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           _driverAnnotations.remove(d.driverId);
           _lastDrawnPos.remove(d.driverId);
           _lastCapacity.remove(d.driverId);
+          _lastStale.remove(d.driverId);
           toCreate.add(d);
           continue;
         }
@@ -158,6 +202,8 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             coordinates: Position(d.longitude, d.latitude),
           );
           if (d.heading != null) existing.iconRotate = d.heading;
+          // حجم أصغر قليلاً للموقع القديم
+          existing.iconSize = d.isStaleWarning ? 0.78 : 0.95;
           try {
             await pointAnnotationManager?.update(existing);
             _lastDrawnPos[d.driverId] = (d.latitude, d.longitude);
@@ -176,7 +222,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
                 coordinates: Position(d.longitude, d.latitude),
               ),
               image: image,
-              iconSize: 0.95,
+              iconSize: d.isStaleWarning ? 0.78 : 0.95,
               iconAnchor: IconAnchor.CENTER,
               iconRotate: d.heading ?? 0,
             ),
@@ -186,6 +232,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             _annotationToDriverId[ann.id] = d.driverId;
             _lastDrawnPos[d.driverId] = (d.latitude, d.longitude);
             _lastCapacity[d.driverId] = d.capacity;
+            _lastStale[d.driverId] = d.isStaleWarning;
           }
         } catch (e) {
           MapUtils.log('إنشاء ماركر سائق: $e', tag: 'LiveTracking');
@@ -199,6 +246,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         final ann = _driverAnnotations.remove(id);
         _lastDrawnPos.remove(id);
         _lastCapacity.remove(id);
+        _lastStale.remove(id);
         _driverDataById.remove(id);
         if (ann != null) {
           _annotationToDriverId.remove(ann.id);
@@ -251,6 +299,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _annotationToDriverId.clear();
     _lastDrawnPos.clear();
     _lastCapacity.clear();
+    _lastStale.clear();
 
     for (final ann in annotations) {
       try {
@@ -272,6 +321,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _annotationToDriverId.clear();
     _lastDrawnPos.clear();
     _lastCapacity.clear();
+    _lastStale.clear();
     _driverDataById.clear();
     for (final ann in annotations) {
       unawaited(() async {
@@ -287,7 +337,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 }
 
-/// واجهة تفاصيل السائق — مع إشارة آخر تحديث وتحذير الموقع القديم.
 class DriverDetailsSheet extends StatelessWidget {
   final LiveDriverLocation driver;
 
@@ -363,7 +412,6 @@ class DriverDetailsSheet extends StatelessWidget {
               ),
             ),
           ),
-
           Container(
             width: double.infinity,
             margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -407,9 +455,7 @@ class DriverDetailsSheet extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        driver.fullName.isNotEmpty
-                            ? driver.fullName
-                            : 'سائق',
+                        driver.fullName.isNotEmpty ? driver.fullName : 'سائق',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 19,
@@ -481,8 +527,6 @@ class DriverDetailsSheet extends StatelessWidget {
               ],
             ),
           ),
-
-          // إشارة آخر تحديث + تحذير إن كان قديماً
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Container(
@@ -502,9 +546,7 @@ class DriverDetailsSheet extends StatelessWidget {
               child: Row(
                 children: [
                   Icon(
-                    stale
-                        ? Icons.schedule_rounded
-                        : Icons.update_rounded,
+                    stale ? Icons.schedule_rounded : Icons.update_rounded,
                     size: 18,
                     color: stale
                         ? const Color(0xFFEA580C)
@@ -529,7 +571,6 @@ class DriverDetailsSheet extends StatelessWidget {
               ),
             ),
           ),
-
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
             child: Column(
@@ -601,7 +642,6 @@ class DriverDetailsSheet extends StatelessWidget {
               ],
             ),
           ),
-
           Padding(
             padding: EdgeInsets.fromLTRB(16, 18, 16, bottom + 16),
             child: SizedBox(
