@@ -92,10 +92,12 @@ class _DriverDashboardState extends State<DriverDashboard> {
   }
 
   Widget _tabFor(int index) {
+    // الخريطة تُحدَّث بـ isActive عند كل بناء لتخفيف ضغط Mapbox عند التبويبات الأخرى
+    if (index == 0) {
+      return DriverMapTab(isActive: _currentIndex == 0);
+    }
     return _tabCache.putIfAbsent(index, () {
       switch (index) {
-        case 0:
-          return const DriverMapTab();
         case 1:
           return const OperationsTab();
         case 2:
