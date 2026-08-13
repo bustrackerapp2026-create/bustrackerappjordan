@@ -10,6 +10,7 @@ import '../../../../core/map/bus_marker_images.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/trip/eta_utils.dart';
 import '../../../../models/live_driver_location.dart';
 import '../../../../services/live_tracking_service.dart';
 
@@ -266,7 +267,13 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  Future<void> showDriverInfoSheet(String driverId) async {
+  /// [passengerLat/Lng] لعرض ETA. [onRequestBoard] طلب صعود.
+  Future<void> showDriverInfoSheet(
+    String driverId, {
+    double? passengerLat,
+    double? passengerLng,
+    Future<void> Function(LiveDriverLocation driver)? onRequestBoard,
+  }) async {
     if (!mounted || _liveTrackingDisposed) return;
     final driver = _driverDataById[driverId];
     if (driver == null) return;
@@ -276,7 +283,12 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black54,
-      builder: (ctx) => DriverDetailsSheet(driver: driver),
+      builder: (ctx) => DriverDetailsSheet(
+        driver: driver,
+        passengerLat: passengerLat,
+        passengerLng: passengerLng,
+        onRequestBoard: onRequestBoard,
+      ),
     );
   }
 
@@ -332,10 +344,28 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 }
 
-class DriverDetailsSheet extends StatelessWidget {
+class DriverDetailsSheet extends StatefulWidget {
   final LiveDriverLocation driver;
+  final double? passengerLat;
+  final double? passengerLng;
+  final Future<void> Function(LiveDriverLocation driver)? onRequestBoard;
 
-  const DriverDetailsSheet({super.key, required this.driver});
+  const DriverDetailsSheet({
+    super.key,
+    required this.driver,
+    this.passengerLat,
+    this.passengerLng,
+    this.onRequestBoard,
+  });
+
+  @override
+  State<DriverDetailsSheet> createState() => _DriverDetailsSheetState();
+}
+
+class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
+  bool _requesting = false;
+
+  LiveDriverLocation get driver => widget.driver;
 
   Color get _accent {
     switch (driver.capacity) {
@@ -380,6 +410,25 @@ class DriverDetailsSheet extends StatelessWidget {
         : null;
 
     final stale = driver.isStaleWarning;
+
+    String? etaText;
+    String? distanceText;
+    if (widget.passengerLat != null &&
+        widget.passengerLng != null &&
+        driver.hasValidCoords) {
+      final meters = EtaUtils.distanceMeters(
+        widget.passengerLat!,
+        widget.passengerLng!,
+        driver.latitude,
+        driver.longitude,
+      );
+      final mins = EtaUtils.estimateMinutes(
+        distanceMeters: meters,
+        speedMps: driver.speed,
+      );
+      etaText = EtaUtils.formatEta(mins);
+      distanceText = EtaUtils.formatDistance(meters);
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -522,6 +571,37 @@ class DriverDetailsSheet extends StatelessWidget {
               ],
             ),
           ),
+          if (etaText != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFA7F3D0)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.schedule_rounded,
+                        color: Color(0xFF059669)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'الوصول التقريبي: $etaText · المسافة $distanceText',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF065F46),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Container(
@@ -639,27 +719,75 @@ class DriverDetailsSheet extends StatelessWidget {
           ),
           Padding(
             padding: EdgeInsets.fromLTRB(16, 18, 16, bottom + 16),
-            child: SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: Material(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(14),
-                child: InkWell(
-                  onTap: () => Navigator.pop(context),
-                  borderRadius: BorderRadius.circular(14),
-                  child: const Center(
-                    child: Text(
-                      'إغلاق',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textColor,
+            child: Column(
+              children: [
+                if (widget.onRequestBoard != null) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      onPressed: _requesting
+                          ? null
+                          : () async {
+                              setState(() => _requesting = true);
+                              try {
+                                await widget.onRequestBoard!(driver);
+                                if (context.mounted) Navigator.pop(context);
+                              } catch (_) {
+                                if (mounted) setState(() => _requesting = false);
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F766E),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      icon: _requesting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.hail_rounded),
+                      label: Text(
+                        _requesting ? 'جاري إرسال الطلب...' : 'طلب صعود من موقعي',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: Material(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      onTap: () => Navigator.pop(context),
+                      borderRadius: BorderRadius.circular(14),
+                      child: const Center(
+                        child: Text(
+                          'إغلاق',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textColor,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
