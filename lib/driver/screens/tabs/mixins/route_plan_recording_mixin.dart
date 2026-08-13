@@ -165,9 +165,8 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
   Future<void> _redrawRoutePlanLine() async {
     if (_routePlanLineManager == null || _routePlanBuffer.length < 2) return;
 
-    final coords = _routePlanBuffer
-        .map((p) => Position(p.longitude, p.latitude))
-        .toList();
+    final coords =
+        _routePlanBuffer.map((p) => Position(p.longitude, p.latitude)).toList();
 
     try {
       if (_routePlanLine != null) {
@@ -540,8 +539,7 @@ class _RoutePlanSheet extends StatelessWidget {
   }) {
     final locked = route?.isLocked == true;
     final pendingEdit = route?.editRequestPending == true;
-    final canStart = route == null ||
-        (route.canReRecord && !pendingEdit);
+    final canStart = route == null || (route.canReRecord && !pendingEdit);
 
     final status = route == null
         ? 'غير مخزّن'
@@ -574,9 +572,8 @@ class _RoutePlanSheet extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: locked
-                      ? const Color(0xFF16A34A)
-                      : Colors.orange.shade800,
+                  color:
+                      locked ? const Color(0xFF16A34A) : Colors.orange.shade800,
                 ),
               ),
             ],
@@ -624,7 +621,7 @@ class _RoutePlanSheet extends StatelessWidget {
             )
           else if (locked)
             OutlinedButton.icon(
-              onPressed: () => onRequestEdit(route!),
+              onPressed: () => onRequestEdit(route),
               icon: const Icon(Icons.lock_open_rounded, size: 18),
               label: const Text('طلب تعديل (مع السبب)'),
             )
