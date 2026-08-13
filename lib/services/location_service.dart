@@ -18,7 +18,6 @@ class PlaceSearchResult {
   });
 }
 
-/// مراحل تثبيت الموقع (فوري → سريع → دقيق)
 enum LocationFixStage {
   cached,
   quick,
@@ -40,7 +39,6 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
       case LocationTrackingProfile.driverIdle:
         return LocationAccuracy.high;
       case LocationTrackingProfile.driverTrip:
-        // أفضل دقة متاحة للملاحة على الجهاز
         return LocationAccuracy.bestForNavigation;
       case LocationTrackingProfile.preciseOnce:
         return LocationAccuracy.bestForNavigation;
@@ -52,9 +50,9 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
       case LocationTrackingProfile.passengerBrowse:
         return 12;
       case LocationTrackingProfile.driverIdle:
-        return 15;
+        return 20;
       case LocationTrackingProfile.driverTrip:
-        return 5;
+        return 8;
       case LocationTrackingProfile.preciseOnce:
         return 3;
     }
@@ -65,9 +63,9 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
       case LocationTrackingProfile.passengerBrowse:
         return const Duration(milliseconds: 1200);
       case LocationTrackingProfile.driverIdle:
-        return const Duration(seconds: 2);
+        return const Duration(seconds: 3);
       case LocationTrackingProfile.driverTrip:
-        return const Duration(milliseconds: 500);
+        return const Duration(milliseconds: 800);
       case LocationTrackingProfile.preciseOnce:
         return const Duration(milliseconds: 300);
     }
@@ -78,23 +76,22 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
       case LocationTrackingProfile.passengerBrowse:
         return const Duration(seconds: 3);
       case LocationTrackingProfile.driverIdle:
-        return const Duration(seconds: 4);
+        return const Duration(seconds: 5);
       case LocationTrackingProfile.driverTrip:
-        return const Duration(seconds: 1);
+        return const Duration(seconds: 2);
       case LocationTrackingProfile.preciseOnce:
         return const Duration(milliseconds: 800);
     }
   }
 
-  /// أقصى دقة مقبولة (متر) لبث التحديث — الأرقام الأكبر = أسوأ
   double get maxAcceptableAccuracyMeters {
     switch (this) {
       case LocationTrackingProfile.passengerBrowse:
         return 55;
       case LocationTrackingProfile.driverIdle:
-        return 45;
+        return 50;
       case LocationTrackingProfile.driverTrip:
-        return 30;
+        return 35;
       case LocationTrackingProfile.preciseOnce:
         return 25;
     }
@@ -105,9 +102,9 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
       case LocationTrackingProfile.passengerBrowse:
         return const Duration(seconds: 90);
       case LocationTrackingProfile.driverIdle:
-        return const Duration(seconds: 40);
+        return const Duration(seconds: 45);
       case LocationTrackingProfile.driverTrip:
-        return const Duration(seconds: 12);
+        return const Duration(seconds: 15);
       case LocationTrackingProfile.preciseOnce:
         return const Duration(seconds: 20);
     }
@@ -118,13 +115,17 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
       case LocationTrackingProfile.passengerBrowse:
         return 100;
       case LocationTrackingProfile.driverIdle:
-        return 60;
+        return 70;
       case LocationTrackingProfile.driverTrip:
-        return 25;
+        return 30;
       case LocationTrackingProfile.preciseOnce:
         return 40;
     }
   }
+
+  bool get usesBackgroundLocation =>
+      this == LocationTrackingProfile.driverIdle ||
+      this == LocationTrackingProfile.driverTrip;
 
   LocationSettings toLocationSettings() {
     if (defaultTargetPlatform == TargetPlatform.android) {
@@ -132,7 +133,16 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
         accuracy: accuracy,
         distanceFilter: distanceFilterMeters,
         intervalDuration: androidInterval,
-        forceLocationManager: false, // Fused Location Provider
+        forceLocationManager: false,
+        // إبقاء التتبع حياً عند تصغير التطبيق (إشعار خدمة أمامية)
+        foregroundNotificationConfig: usesBackgroundLocation
+            ? const ForegroundNotificationConfig(
+                notificationTitle: 'Bus Tracker',
+                notificationText: 'جاري مشاركة موقعك مع الركاب',
+                enableWakeLock: true,
+                setOngoing: true,
+              )
+            : null,
       );
     }
 
@@ -144,9 +154,9 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
         activityType: this == LocationTrackingProfile.driverTrip
             ? ActivityType.automotiveNavigation
             : ActivityType.otherNavigation,
-        pauseLocationUpdatesAutomatically:
-            this != LocationTrackingProfile.driverTrip,
-        showBackgroundLocationIndicator: false,
+        pauseLocationUpdatesAutomatically: false,
+        showBackgroundLocationIndicator: usesBackgroundLocation,
+        allowBackgroundLocationUpdates: usesBackgroundLocation,
       );
     }
 
@@ -168,14 +178,8 @@ class LocationService {
   DateTime? _permissionCheckedAt;
 
   static const Duration _permissionCacheTtl = Duration(seconds: 45);
-
-  /// لا تعتمد على كاش أقدم من هذا
   static const Duration _maxCacheAge = Duration(minutes: 2);
-
-  /// دقة «جيدة بما يكفي» لإيقاف التحسين
   static const double _goodEnoughMeters = 12;
-
-  /// دقة مقبولة للتثبيت السريع دون انتظار طويل
   static const double _acceptableQuickMeters = 25;
 
   Future<bool> checkAndRequestPermission() async {
@@ -208,6 +212,39 @@ class LocationService {
       debugPrint('❌ صلاحيات الموقع: $e');
       return false;
     }
+  }
+
+  /// يطلب صلاحية «دائماً» للسائق حتى يستمر التتبع في الخلفية.
+  /// على Android 10+ قد يحتاج فتح الإعدادات يدوياً بعد whileInUse.
+  Future<LocationPermission> ensureBackgroundLocationPermission() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return LocationPermission.denied;
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.whileInUse) {
+        // محاولة الترقية إلى always
+        permission = await Geolocator.requestPermission();
+      }
+
+      _permissionGrantedCache =
+          permission == LocationPermission.whileInUse ||
+              permission == LocationPermission.always;
+      _permissionCheckedAt = DateTime.now();
+      return permission;
+    } catch (e) {
+      debugPrint('❌ ensureBackgroundLocationPermission: $e');
+      return LocationPermission.denied;
+    }
+  }
+
+  Future<bool> hasAlwaysPermission() async {
+    final p = await Geolocator.checkPermission();
+    return p == LocationPermission.always;
   }
 
   Future<bool> isPermissionDeniedForever() async {
@@ -259,7 +296,6 @@ class LocationService {
     } catch (_) {}
   }
 
-  /// يختار الأدق والأحدث بعقلانية
   Position? _preferBetter(Position? current, Position candidate) {
     if (current == null) return candidate;
 
@@ -269,21 +305,17 @@ class LocationService {
     final currentAge = DateTime.now().difference(current.timestamp);
     final candidateAge = DateTime.now().difference(candidate.timestamp);
 
-    // مرشّح أحدث بكثير وأدق أو قريب في الدقة
     if (candidateAge < currentAge - const Duration(seconds: 8) &&
         na <= ca + 20) {
       return candidate;
     }
 
-    // أدق بوضوح
     if (na + 3 < ca) return candidate;
 
-    // نفس الدقة تقريباً لكن أحدث
     if ((na - ca).abs() <= 5 && candidate.timestamp.isAfter(current.timestamp)) {
       return candidate;
     }
 
-    // الحالي قديم جداً
     if (currentAge > const Duration(minutes: 1) &&
         candidateAge < currentAge &&
         na < 80) {
@@ -323,7 +355,6 @@ class LocationService {
     );
   }
 
-  /// 1) كاش طازج → 2) high سريع → 3) bestForNavigation + عينات متعددة
   Future<Position?> locateProgressive({
     void Function(Position position, LocationFixStage stage)? onProgress,
     bool refineToPrecise = true,
@@ -335,7 +366,6 @@ class LocationService {
 
     Position? best;
 
-    // ── 1) كاش طازج فقط ───────────────────────────────────
     final cached = await getLastKnownPosition();
     if (cached != null && _isFresh(cached)) {
       best = cached;
@@ -343,7 +373,6 @@ class LocationService {
       onProgress?.call(cached, LocationFixStage.cached);
     }
 
-    // ── 2) تثبيت سريع عالي الدقة ──────────────────────────
     try {
       final quick = await Geolocator.getCurrentPosition(
         locationSettings: _settings(
@@ -355,7 +384,6 @@ class LocationService {
       _lastKnownPosition = best;
       onProgress?.call(quick, LocationFixStage.quick);
 
-      // دقة ممتازة → لا داعي لانتظار إضافي
       if (_isAccurateEnough(quick, _goodEnoughMeters)) {
         if (refineToPrecise) {
           unawaited(_refineInBackground(onProgress));
@@ -363,7 +391,6 @@ class LocationService {
         return best;
       }
 
-      // دقة مقبولة → حسّن في الخلفية وأرجع فوراً
       if (!refineToPrecise || _isAccurateEnough(quick, _acceptableQuickMeters)) {
         if (refineToPrecise) {
           unawaited(_refineInBackground(onProgress));
@@ -374,7 +401,6 @@ class LocationService {
       debugPrint('⚠️ [Location] quick fix: $e');
     }
 
-    // ── 3) تحسين دقيق (عينات متعددة، أفضل نتيجة) ─────────
     if (refineToPrecise) {
       final precise = await _collectBestPrecise(
         timeBudget: preciseTimeout,
@@ -389,7 +415,6 @@ class LocationService {
     return best ?? _lastKnownPosition;
   }
 
-  /// يجمع عدة قراءات bestForNavigation خلال نافذة زمنية ويختار الأدق
   Future<Position?> _collectBestPrecise({
     required Duration timeBudget,
     void Function(Position position, LocationFixStage stage)? onProgress,
@@ -415,7 +440,6 @@ class LocationService {
         best = _preferBetter(best, pos);
         onProgress?.call(pos, LocationFixStage.precise);
 
-        // وصلنا لدقة ممتازة
         if (_isAccurateEnough(pos, _goodEnoughMeters)) break;
       } catch (e) {
         debugPrint('⚠️ [Location] precise sample $attempts: $e');
@@ -531,7 +555,6 @@ class LocationService {
         handleData: (position, sink) {
           final now = DateTime.now();
 
-          // ارفض قراءة ضعيفة جداً إن وُجدت قراءة أفضل حديثة
           if (position.accuracy.isFinite &&
               position.accuracy > maxAccuracyMeters &&
               lastAccepted != null &&
@@ -543,7 +566,6 @@ class LocationService {
 
           if (_lastEmitTime != null &&
               now.difference(_lastEmitTime!) < throttleDuration) {
-            // اسمح بالتجاوز إذا تحسّنت الدقة كثيراً
             final improved = lastAccepted != null &&
                 position.accuracy.isFinite &&
                 lastAccepted!.accuracy.isFinite &&
