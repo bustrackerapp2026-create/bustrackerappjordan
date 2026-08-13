@@ -17,7 +17,6 @@ class TripModel {
   final String? notes;
   final List<RoutePoint>? routePoints;
 
-  // ✅ حدود الأحرف المسموحة
   static const int _maxPickupLength = 100;
   static const int _maxDropoffLength = 100;
   static const int _maxNotesLength = 500;
@@ -36,28 +35,15 @@ class TripModel {
     this.fare,
     String? notes,
     List<RoutePoint>? routePoints,
-  })  :
-        // ✅ تطبيق التحقق من صحة المدخلات
-        pickupPoint =
+  })  : pickupPoint =
             _validateStringLength(pickupPoint, 'pickupPoint', _maxPickupLength),
         dropoffPoint = _validateStringLength(
             dropoffPoint, 'dropoffPoint', _maxDropoffLength),
         notes = notes != null
             ? _validateStringLength(notes, 'notes', _maxNotesLength)
             : null,
-        routePoints = _validateRoutePoints(routePoints) {
-    // ✅ التحقق الإضافي: إذا كانت الرحلة مكتملة، يجب أن يكون هناك مسار
-    if (status == TripStatus.completed &&
-        (routePoints == null || routePoints.isEmpty)) {
-      throw ArgumentError('الرحلة المكتملة يجب أن تحتوي على نقاط مسار.');
-    }
-  }
+        routePoints = _validateRoutePoints(routePoints);
 
-  // ============================================================
-  // ✅ دوال التحقق من صحة المدخلات (Input Validation)
-  // ============================================================
-
-  /// ✅ التحقق من طول النص ورمي خطأ إذا تجاوز الحد
   static String _validateStringLength(
       String value, String fieldName, int maxLength) {
     if (value.length > maxLength) {
@@ -67,7 +53,6 @@ class TripModel {
     return value;
   }
 
-  /// ✅ التحقق من عدد نقاط المسار (حد أقصى 5000 نقطة)
   static List<RoutePoint>? _validateRoutePoints(List<RoutePoint>? points) {
     if (points == null) return null;
     if (points.length > _maxRoutePoints) {
@@ -77,10 +62,6 @@ class TripModel {
     }
     return points;
   }
-
-  // ============================================================
-  // ✅ تحليل التواريخ
-  // ============================================================
 
   static DateTime _parseRequiredDate(dynamic value, String fieldName) {
     if (value is Timestamp) return value.toDate();
@@ -94,39 +75,71 @@ class TripModel {
     return null;
   }
 
-  // ============================================================
-  // ✅ إنشاء من Map (قادم من Firestore)
-  // ============================================================
-
   factory TripModel.fromMap(Map<String, dynamic> map, String docId) {
-    List<RoutePoint>? parsedRoute;
-    if (map['routePoints'] is List) {
-      parsedRoute = (map['routePoints'] as List)
-          .map((item) => RoutePoint.parse(item))
-          .whereType<RoutePoint>()
-          .toList();
+    try {
+      List<RoutePoint>? parsedRoute;
+      if (map['routePoints'] is List) {
+        parsedRoute = (map['routePoints'] as List)
+            .map((item) {
+              try {
+                return RoutePoint.parse(item);
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<RoutePoint>()
+            .toList();
+        if (parsedRoute.length > _maxRoutePoints) {
+          parsedRoute = parsedRoute.sublist(0, _maxRoutePoints);
+        }
+      }
+
+      String clip(String? v, int max) {
+        final s = (v ?? '').trim();
+        if (s.length <= max) return s;
+        return s.substring(0, max);
+      }
+
+      DateTime created;
+      try {
+        created = _parseRequiredDate(map['createdAt'], 'createdAt');
+      } catch (_) {
+        created = DateTime.now();
+      }
+
+      return TripModel(
+        id: docId,
+        passengerId: map['passengerId'] as String? ?? '',
+        driverId: map['driverId'] as String? ?? '',
+        pickupPoint: clip(map['pickupPoint'] as String?, _maxPickupLength),
+        dropoffPoint: clip(map['dropoffPoint'] as String?, _maxDropoffLength),
+        createdAt: created,
+        startedAt: _parseOptionalDate(map['startedAt']),
+        completedAt: _parseOptionalDate(map['completedAt']),
+        status: TripStatusExtension.fromString(
+            map['status'] as String? ?? 'pending'),
+        fare: (map['fare'] as num?)?.toDouble(),
+        notes: map['notes'] == null
+            ? null
+            : clip(map['notes'] as String?, _maxNotesLength),
+        routePoints: parsedRoute,
+      );
+    } catch (e) {
+      return TripModel(
+        id: docId,
+        passengerId: map['passengerId'] as String? ?? '',
+        driverId: map['driverId'] as String? ?? '',
+        pickupPoint: (map['pickupPoint'] as String? ?? '').length > 100
+            ? (map['pickupPoint'] as String).substring(0, 100)
+            : (map['pickupPoint'] as String? ?? ''),
+        dropoffPoint: (map['dropoffPoint'] as String? ?? '').length > 100
+            ? (map['dropoffPoint'] as String).substring(0, 100)
+            : (map['dropoffPoint'] as String? ?? ''),
+        createdAt: DateTime.now(),
+        status: TripStatus.pending,
+      );
     }
-
-    return TripModel(
-      id: docId,
-      passengerId: map['passengerId'] as String? ?? '',
-      driverId: map['driverId'] as String? ?? '',
-      pickupPoint: map['pickupPoint'] as String? ?? '',
-      dropoffPoint: map['dropoffPoint'] as String? ?? '',
-      createdAt: _parseRequiredDate(map['createdAt'], 'createdAt'),
-      startedAt: _parseOptionalDate(map['startedAt']),
-      completedAt: _parseOptionalDate(map['completedAt']),
-      status:
-          TripStatusExtension.fromString(map['status'] as String? ?? 'pending'),
-      fare: (map['fare'] as num?)?.toDouble(),
-      notes: map['notes'] as String?,
-      routePoints: parsedRoute,
-    );
   }
-
-  // ============================================================
-  // ✅ التحويل إلى Map (للتخزين في Firestore)
-  // ============================================================
 
   Map<String, dynamic> toMap() {
     return {
@@ -152,10 +165,6 @@ class TripModel {
     return map;
   }
 
-  // ============================================================
-  // ✅ copyWith مع التحقق من صحة المدخلات
-  // ============================================================
-
   TripModel copyWith({
     String? id,
     String? passengerId,
@@ -170,7 +179,6 @@ class TripModel {
     String? notes,
     List<RoutePoint>? routePoints,
   }) {
-    // ✅ تطبيق التحقق على القيم الجديدة إن وجدت
     final newPickupPoint = pickupPoint != null
         ? _validateStringLength(pickupPoint, 'pickupPoint', _maxPickupLength)
         : this.pickupPoint;
