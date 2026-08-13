@@ -52,7 +52,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  /// هل هذه العلامة لسائق حي؟
   String? findDriverIdByAnnotation(PointAnnotation annotation) {
     return _annotationToDriverId[annotation.id];
   }
@@ -224,7 +223,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  /// عرض ورقة معلومات السائق عند الضغط على أيقونة الباص/السرفيس.
   Future<void> showDriverInfoSheet(String driverId) async {
     if (!mounted || _liveTrackingDisposed) return;
     final driver = _driverDataById[driverId];
@@ -234,9 +232,8 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return _DriverInfoSheet(driver: driver);
-      },
+      barrierColor: Colors.black54,
+      builder: (ctx) => DriverDetailsSheet(driver: driver),
     );
   }
 
@@ -254,7 +251,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _annotationToDriverId.clear();
     _lastDrawnPos.clear();
     _lastCapacity.clear();
-    // نُبقي _driverDataById حتى لا تفقد الورقة بياناتها أثناء الإغلاق
 
     for (final ann in annotations) {
       try {
@@ -291,148 +287,297 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 }
 
-/// ورقة منبثقة بمعلومات السائق عند الضغط على الماركر.
-class _DriverInfoSheet extends StatelessWidget {
+/// واجهة تفاصيل السائق — تصميم حديث ومنظم.
+class DriverDetailsSheet extends StatelessWidget {
   final LiveDriverLocation driver;
 
-  const _DriverInfoSheet({required this.driver});
+  const DriverDetailsSheet({super.key, required this.driver});
+
+  Color get _accent {
+    switch (driver.capacity) {
+      case BusCapacity.service:
+        return const Color(0xFFF59E0B); // amber — سرفيس
+      case BusCapacity.medium:
+        return const Color(0xFF3B82F6); // blue — متوسط
+      case BusCapacity.large:
+        return const Color(0xFF10B981); // green — كبير
+      default:
+        return AppTheme.primaryColor;
+    }
+  }
+
+  IconData get _vehicleIcon {
+    switch (driver.capacity) {
+      case BusCapacity.service:
+        return Icons.airport_shuttle_rounded;
+      case BusCapacity.large:
+        return Icons.directions_bus_filled_rounded;
+      default:
+        return Icons.directions_bus_rounded;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final isService = driver.capacity == BusCapacity.service;
-    final vehicleIcon =
-        isService ? Icons.airport_shuttle_rounded : Icons.directions_bus_filled;
-    final statusColor =
-        driver.isTripActive ? Colors.red.shade700 : Colors.green.shade700;
-    final statusText = driver.isTripActive
+    final bottom = MediaQuery.of(context).viewPadding.bottom;
+    final isTrip = driver.isTripActive;
+    final isOnline = driver.isOnline;
+    final statusColor = isTrip
+        ? const Color(0xFFDC2626)
+        : (isOnline ? const Color(0xFF16A34A) : const Color(0xFF6B7280));
+    final statusLabel = isTrip
         ? 'في رحلة نشطة'
-        : (driver.isOnline ? 'متصل · متاح' : 'غير متصل');
+        : (isOnline ? 'متصل · متاح' : 'غير متصل');
+
+    final speedKmh = (driver.speed != null &&
+            driver.speed!.isFinite &&
+            driver.speed! > 0.5)
+        ? (driver.speed! * 3.6)
+        : null;
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 12,
-        bottom: MediaQuery.of(context).viewPadding.bottom + 20,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 24,
+            offset: const Offset(0, -4),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade300,
-              borderRadius: BorderRadius.circular(4),
+          // ── مقبض السحب ──
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 4),
+            child: Container(
+              width: 44,
+              height: 5,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(3),
+              ),
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.12),
-                child: Icon(
-                  vehicleIcon,
-                  color: AppTheme.primaryColor,
-                  size: 30,
-                ),
+
+          // ── رأس بتدرج لوني حسب نوع المركبة ──
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  _accent,
+                  _accent.withValues(alpha: 0.75),
+                ],
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: _accent.withValues(alpha: 0.35),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.35),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Icon(_vehicleIcon, color: Colors.white, size: 34),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        driver.fullName.isNotEmpty
+                            ? driver.fullName
+                            : 'سائق',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                          height: 1.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.22),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              driver.vehicleTypeLabel,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 7,
+                                  height: 7,
+                                  decoration: BoxDecoration(
+                                    color: statusColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  statusLabel,
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── بطاقات المعلومات ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+            child: Column(
+              children: [
+                Row(
                   children: [
-                    Text(
-                      driver.fullName.isNotEmpty ? driver.fullName : 'سائق',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
+                    Expanded(
+                      child: _InfoCard(
+                        icon: Icons.event_seat_rounded,
+                        iconColor: _accent,
+                        label: 'السعة',
+                        value: driver.capacity != null
+                            ? '${driver.capacity} راكب'
+                            : '—',
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        statusText,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: statusColor,
-                        ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _InfoCard(
+                        icon: Icons.confirmation_number_rounded,
+                        iconColor: _accent,
+                        label: 'رقم الباص',
+                        value: (driver.busNumber != null &&
+                                driver.busNumber!.trim().isNotEmpty)
+                            ? driver.busNumber!.trim()
+                            : '—',
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          _infoRow(
-            Icons.directions_bus_outlined,
-            'نوع المركبة',
-            driver.vehicleTypeLabel,
-          ),
-          _infoRow(
-            Icons.event_seat_outlined,
-            'السعة',
-            driver.capacityLabel,
-          ),
-          if (driver.busNumber != null &&
-              driver.busNumber!.trim().isNotEmpty)
-            _infoRow(
-              Icons.confirmation_number_outlined,
-              'رقم الباص',
-              driver.busNumber!.trim(),
-            ),
-          if (driver.route != null && driver.route!.trim().isNotEmpty)
-            _infoRow(
-              Icons.route_outlined,
-              'المسار / الخط',
-              driver.route!.trim(),
-            ),
-          if (driver.phoneNumber != null &&
-              driver.phoneNumber!.trim().isNotEmpty)
-            _infoRow(
-              Icons.phone_outlined,
-              'الهاتف',
-              driver.phoneNumber!.trim(),
-            ),
-          if (driver.speed != null &&
-              driver.speed!.isFinite &&
-              driver.speed! > 0)
-            _infoRow(
-              Icons.speed,
-              'السرعة',
-              '${(driver.speed! * 3.6).toStringAsFixed(0)} كم/س',
-            ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () => Navigator.pop(context),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.primaryColor,
-                side: const BorderSide(color: AppTheme.primaryColor),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _InfoCard(
+                        icon: Icons.route_rounded,
+                        iconColor: _accent,
+                        label: 'المسار',
+                        value: (driver.route != null &&
+                                driver.route!.trim().isNotEmpty)
+                            ? driver.route!.trim()
+                            : '—',
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _InfoCard(
+                        icon: Icons.speed_rounded,
+                        iconColor: _accent,
+                        label: 'السرعة',
+                        value: speedKmh != null
+                            ? '${speedKmh.toStringAsFixed(0)} كم/س'
+                            : 'متوقف',
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              child: const Text(
-                'إغلاق',
-                style: TextStyle(fontWeight: FontWeight.w700),
+                if (driver.phoneNumber != null &&
+                    driver.phoneNumber!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _InfoCard(
+                    icon: Icons.phone_rounded,
+                    iconColor: _accent,
+                    label: 'رقم الهاتف',
+                    value: driver.phoneNumber!.trim(),
+                    fullWidth: true,
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // ── زر الإغلاق ──
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 18, 16, bottom + 16),
+            child: SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: Material(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  onTap: () => Navigator.pop(context),
+                  borderRadius: BorderRadius.circular(14),
+                  child: const Center(
+                    child: Text(
+                      'إغلاق',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textColor,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -440,29 +585,70 @@ class _DriverInfoSheet extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _infoRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+class _InfoCard extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String value;
+  final bool fullWidth;
+
+  const _InfoCard({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.value,
+    this.fullWidth = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: fullWidth ? double.infinity : null,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: AppTheme.primaryColor),
-          const SizedBox(width: 10),
-          Text(
-            '$label: ',
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey.shade600,
-              fontWeight: FontWeight.w600,
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
             ),
+            child: Icon(icon, color: iconColor, size: 20),
           ),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade500,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
         ],
