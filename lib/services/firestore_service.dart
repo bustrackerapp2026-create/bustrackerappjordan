@@ -108,6 +108,29 @@ class FirestoreService {
     return false;
   }
 
+  static bool _isDriverLike(String type) {
+    return type == 'driver' || type == 'service' || type == 'bus_company';
+  }
+
+  /// بث حي بعدد طلبات السائقين بانتظار الموافقة (غير موثّق وغير مرفوض).
+  Stream<int> watchPendingDriverApprovals() {
+    return _firestore.collection('users').snapshots().map((snap) {
+      var pending = 0;
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final type = _str(data, 'userType', 'passenger').toLowerCase();
+        if (!_isDriverLike(type)) continue;
+        if (_boolTrue(data, 'isRejected')) continue;
+        if (_boolTrue(data, 'isVerified')) continue;
+        pending++;
+      }
+      return pending;
+    }).handleError((e) {
+      debugPrint('watchPendingDriverApprovals: $e');
+      return 0;
+    });
+  }
+
   Map<String, int> _emptyUsersStats() {
     return {
       'total': 0,
@@ -210,7 +233,7 @@ class FirestoreService {
             break;
         }
 
-        if (type == 'driver' || type == 'service' || type == 'bus_company') {
+        if (_isDriverLike(type)) {
           final isVerified = _boolTrue(data, 'isVerified');
           final isRejected = _boolTrue(data, 'isRejected');
           if (isRejected) {
