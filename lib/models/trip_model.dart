@@ -17,6 +17,14 @@ class TripModel {
   final String? notes;
   final List<RoutePoint>? routePoints;
 
+  /// حقول تجربة الراكب (اختيارية للتوافق مع البيانات القديمة)
+  final String? route;
+  final double? pickupLat;
+  final double? pickupLng;
+  final String? passengerName;
+  final String? driverName;
+  final String? busNumber;
+
   static const int _maxPickupLength = 100;
   static const int _maxDropoffLength = 100;
   static const int _maxNotesLength = 500;
@@ -35,6 +43,12 @@ class TripModel {
     this.fare,
     String? notes,
     List<RoutePoint>? routePoints,
+    this.route,
+    this.pickupLat,
+    this.pickupLng,
+    this.passengerName,
+    this.driverName,
+    this.busNumber,
   })  : pickupPoint =
             _validateStringLength(pickupPoint, 'pickupPoint', _maxPickupLength),
         dropoffPoint = _validateStringLength(
@@ -123,6 +137,12 @@ class TripModel {
             ? null
             : clip(map['notes'] as String?, _maxNotesLength),
         routePoints: parsedRoute,
+        route: map['route'] as String?,
+        pickupLat: (map['pickupLat'] as num?)?.toDouble(),
+        pickupLng: (map['pickupLng'] as num?)?.toDouble(),
+        passengerName: map['passengerName'] as String?,
+        driverName: map['driverName'] as String?,
+        busNumber: map['busNumber'] as String?,
       );
     } catch (e) {
       return TripModel(
@@ -154,6 +174,12 @@ class TripModel {
       'status': status.stringValue,
       'fare': fare,
       'notes': notes,
+      if (route != null && route!.isNotEmpty) 'route': route,
+      if (pickupLat != null) 'pickupLat': pickupLat,
+      if (pickupLng != null) 'pickupLng': pickupLng,
+      if (passengerName != null) 'passengerName': passengerName,
+      if (driverName != null) 'driverName': driverName,
+      if (busNumber != null) 'busNumber': busNumber,
       if (routePoints != null && routePoints!.isNotEmpty)
         'routePoints': routePoints!.map((p) => p.toMap()).toList(),
     };
@@ -164,6 +190,9 @@ class TripModel {
     map['createdAt'] = FieldValue.serverTimestamp();
     return map;
   }
+
+  bool get isOpen =>
+      status == TripStatus.pending || status == TripStatus.active;
 
   TripModel copyWith({
     String? id,
@@ -178,6 +207,12 @@ class TripModel {
     double? fare,
     String? notes,
     List<RoutePoint>? routePoints,
+    String? route,
+    double? pickupLat,
+    double? pickupLng,
+    String? passengerName,
+    String? driverName,
+    String? busNumber,
   }) {
     final newPickupPoint = pickupPoint != null
         ? _validateStringLength(pickupPoint, 'pickupPoint', _maxPickupLength)
@@ -205,6 +240,12 @@ class TripModel {
       fare: fare ?? this.fare,
       notes: newNotes,
       routePoints: newRoutePoints,
+      route: route ?? this.route,
+      pickupLat: pickupLat ?? this.pickupLat,
+      pickupLng: pickupLng ?? this.pickupLng,
+      passengerName: passengerName ?? this.passengerName,
+      driverName: driverName ?? this.driverName,
+      busNumber: busNumber ?? this.busNumber,
     );
   }
 }

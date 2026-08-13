@@ -37,7 +37,8 @@ class TripService {
     }
   }
 
-  List<TripModel> _mapDocs(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  List<TripModel> _mapDocs(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
     final out = <TripModel>[];
     for (final doc in docs) {
       try {
@@ -54,6 +55,34 @@ class TripService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) => _mapDocs(snapshot.docs));
+  }
+
+  /// رحلات الراكب المفتوحة (انتظار أو نشطة)
+  Stream<List<TripModel>> watchPassengerOpenTrips(String passengerId) {
+    return _firestore
+        .collection(_collection)
+        .where('passengerId', isEqualTo: passengerId)
+        .where('status', whereIn: [
+          TripStatus.pending.stringValue,
+          TripStatus.active.stringValue,
+        ])
+        .snapshots()
+        .map((snapshot) {
+      final list = _mapDocs(snapshot.docs);
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    });
+  }
+
+  Stream<TripModel?> watchTrip(String tripId) {
+    return _firestore.collection(_collection).doc(tripId).snapshots().map((doc) {
+      if (!doc.exists || doc.data() == null) return null;
+      try {
+        return TripModel.fromMap(doc.data()!, doc.id);
+      } catch (_) {
+        return null;
+      }
+    });
   }
 
   Stream<List<TripModel>> getDriverTrips(String driverId) {
@@ -124,6 +153,91 @@ class TripService {
           .collection(_collection)
           .doc(trip.id)
           .set(trip.toCreateMap());
+    });
+  }
+
+  /// طلب صعود من الراكب إلى سائق محدد (محطة قريبة / موقعي)
+  Future<String> createBoardRequest({
+    required String passengerId,
+    required String driverId,
+    required String pickupPoint,
+    required double pickupLat,
+    required double pickupLng,
+    String? route,
+    String? passengerName,
+    String? driverName,
+    String? busNumber,
+    String dropoffPoint = 'على طول الخط',
+  }) async {
+    if (passengerId.isEmpty || driverId.isEmpty) {
+      throw const TripServiceException('معرف الراكب أو السائق مفقود.');
+    }
+
+    // منع تكرار طلب مفتوح لنفس السائق
+    final existing = await _firestore
+        .collection(_collection)
+        .where('passengerId', isEqualTo: passengerId)
+        .where('driverId', isEqualTo: driverId)
+        .where('status', whereIn: [
+          TripStatus.pending.stringValue,
+          TripStatus.active.stringValue,
+        ])
+        .limit(1)
+        .get();
+
+    if (existing.docs.isNotEmpty) {
+      return existing.docs.first.id;
+    }
+
+    final docRef = _firestore.collection(_collection).doc();
+    final trip = TripModel(
+      id: docRef.id,
+      passengerId: passengerId,
+      driverId: driverId,
+      pickupPoint: pickupPoint,
+      dropoffPoint: dropoffPoint,
+      createdAt: DateTime.now(),
+      status: TripStatus.pending,
+      route: route,
+      pickupLat: pickupLat,
+      pickupLng: pickupLng,
+      passengerName: passengerName,
+      driverName: driverName,
+      busNumber: busNumber,
+      notes: 'طلب صعود من الراكب',
+    );
+
+    await _withRetryAndTimeout(() async {
+      await docRef.set(trip.toCreateMap());
+    });
+    return docRef.id;
+  }
+
+  Future<void> cancelTripByPassenger({
+    required String tripId,
+    required String passengerId,
+  }) async {
+    await _withRetryAndTimeout(() async {
+      final docRef = _firestore.collection(_collection).doc(tripId);
+      await _firestore.runTransaction((tx) async {
+        final snap = await tx.get(docRef);
+        if (!snap.exists) {
+          throw const TripServiceException('الرحلة غير موجودة.');
+        }
+        final data = snap.data()!;
+        if (data['passengerId'] != passengerId) {
+          throw const TripServiceException('غير مصرح بإلغاء هذه الرحلة.');
+        }
+        final status = data['status'] as String? ?? 'pending';
+        if (status == TripStatus.completed.stringValue ||
+            status == TripStatus.cancelled.stringValue) {
+          return;
+        }
+        tx.update(docRef, {
+          'status': TripStatus.cancelled.stringValue,
+          'completedAt': FieldValue.serverTimestamp(),
+        });
+      });
     });
   }
 
