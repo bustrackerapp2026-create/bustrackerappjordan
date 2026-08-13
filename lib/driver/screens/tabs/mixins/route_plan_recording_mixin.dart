@@ -114,6 +114,7 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
     }
 
     await initRoutePlanLayer();
+    if (!mounted) return;
 
     setState(() {
       isRecordingRoutePlan = true;
@@ -129,6 +130,7 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
 
     await ensureDriverTrackingRunning();
     await _redrawRoutePlanLine();
+    if (!mounted) return;
     MapUtils.showSnackBar(
       context,
       '⏺ تسجيل ${direction.labelAr} — قُد على مسار الشارع ثم احفظ',
@@ -242,6 +244,7 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
         isSavingRoutePlan = false;
       });
       await _clearRoutePlanLine();
+      if (!mounted) return;
 
       final km = ((saved.distanceMeters ?? 0) / 1000).toStringAsFixed(1);
       MapUtils.showSnackBar(
@@ -619,9 +622,9 @@ class _RoutePlanSheet extends StatelessWidget {
                 foregroundColor: Colors.white,
               ),
             )
-          else if (locked && route != null)
+          else if (locked)
             OutlinedButton.icon(
-              onPressed: () => onRequestEdit(route),
+              onPressed: () => onRequestEdit(route!),
               icon: const Icon(Icons.lock_open_rounded, size: 18),
               label: const Text('طلب تعديل (مع السبب)'),
             )

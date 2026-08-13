@@ -380,6 +380,8 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         force: doForce,
       );
 
+      if (!mounted) return;
+
       final auth = context.read<AuthProvider>();
       final uid = auth.userId;
       final driver = context.read<DriverProvider>();

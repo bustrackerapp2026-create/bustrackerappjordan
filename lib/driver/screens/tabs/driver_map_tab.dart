@@ -151,6 +151,7 @@ class _DriverMapTabState extends State<DriverMapTab>
 
       listenToPickupPoints();
       await initRoutePlanLayer();
+      if (!mounted) return;
 
       final driver = context.read<DriverProvider>();
       final auth = context.read<AuthProvider>();
