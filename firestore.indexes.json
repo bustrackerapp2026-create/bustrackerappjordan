@@ -33,6 +33,30 @@
         { "fieldPath": "routeId", "order": "ASCENDING" },
         { "fieldPath": "chunkIndex", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "plannedRoutes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lineName", "order": "ASCENDING" },
+        { "fieldPath": "direction", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "plannedRoutes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lineName", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "plannedRoutes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

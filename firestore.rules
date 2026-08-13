@@ -168,5 +168,33 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
+
+    // ═══════════════════════════════════════════════════════════
+    // plannedRoutes — مسارات الخطوط المرسومة/المسجّلة (ذهاب/إياب)
+    // ═══════════════════════════════════════════════════════════
+
+    match /plannedRoutes/{routeId} {
+      // الجميع المسجّلون يقرأون المسارات المعتمدة للعرض على الخريطة
+      allow read: if isSignedIn();
+
+      // الأدمن يحفظ/يعدّل أي مسار؛ السائق ينشئ/يحدّث مساراً مرتبطاً به
+      allow create: if isAdmin()
+        || (
+          isDriver()
+          && request.resource.data.createdBy == request.auth.uid
+        );
+
+      allow update: if isAdmin()
+        || (
+          isDriver()
+          && (
+            resource.data.createdBy == request.auth.uid
+            || resource.data.get('reRecordAllowed', false) == true
+          )
+          && request.resource.data.lineName == resource.data.lineName
+        );
+
+      allow delete: if isAdmin();
+    }
   }
 }
