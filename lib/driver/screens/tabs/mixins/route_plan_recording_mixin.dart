@@ -330,7 +330,6 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
   Future<void> showRoutePlanSheet(String lineName) async {
     if (!mounted) return;
     listenLinePlannedRoutes(lineName);
-    // انتظر لحظة قصيرة لتحميل أحدث حالة
     await Future<void>.delayed(const Duration(milliseconds: 80));
     if (!mounted) return;
 
@@ -537,10 +536,13 @@ class _RoutePlanSheet extends StatelessWidget {
     required void Function(PlannedRoute) onRequestEdit,
   }) {
     final locked = route?.isLocked == true;
-    final canReRecord = route == null || (route.canReRecord);
+    final pendingEdit = route?.editRequestPending == true;
+    final canStart = route == null ||
+        (route.canReRecord && !pendingEdit);
+
     final status = route == null
         ? 'غير مخزّن'
-        : (route.editRequestPending
+        : (pendingEdit
             ? 'طلب تعديل معلّق'
             : (route.canReRecord
                 ? 'مسموح بإعادة التسجيل'
@@ -585,7 +587,7 @@ class _RoutePlanSheet extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
             ),
-          if (route?.editRequestPending == true) ...[
+          if (pendingEdit) ...[
             const Padding(
               padding: EdgeInsets.only(top: 4),
               child: Text(
@@ -603,7 +605,7 @@ class _RoutePlanSheet extends StatelessWidget {
               ),
           ],
           const SizedBox(height: 8),
-          if (canReRecord && !route!.editRequestPending)
+          if (canStart)
             ElevatedButton.icon(
               onPressed: onRecord,
               icon: const Icon(Icons.fiber_manual_record, size: 18),
@@ -617,23 +619,13 @@ class _RoutePlanSheet extends StatelessWidget {
                 foregroundColor: Colors.white,
               ),
             )
-          else if (route == null)
-            ElevatedButton.icon(
-              onPressed: onRecord,
-              icon: const Icon(Icons.fiber_manual_record, size: 18),
-              label: const Text('بدء التسجيل'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7C3AED),
-                foregroundColor: Colors.white,
-              ),
-            )
-          else if (locked)
+          else if (locked && route != null)
             OutlinedButton.icon(
               onPressed: () => onRequestEdit(route),
               icon: const Icon(Icons.lock_open_rounded, size: 18),
               label: const Text('طلب تعديل (مع السبب)'),
             )
-          else if (route.editRequestPending)
+          else if (pendingEdit)
             const Text(
               'انتظر قرار الأدمن',
               textAlign: TextAlign.center,
