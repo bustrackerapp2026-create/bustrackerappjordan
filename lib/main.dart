@@ -21,6 +21,7 @@ import 'passenger/screens/passenger_dashboard.dart';
 import 'admin/screens/admin_dashboard.dart';
 import 'driver/providers/driver_provider.dart';
 import 'l10n/app_localizations.dart';
+import 'services/analytics_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -111,8 +112,6 @@ class BusTrackerApp extends StatelessWidget {
   }
 }
 
-/// يربط AuthProvider بـ DriverProvider:
-/// عند الخروج يصفّر حالة السائق حتى لا تنتقل لسائق آخر على نفس الجهاز.
 class _DriverAuthBridge extends StatefulWidget {
   final Widget child;
   const _DriverAuthBridge({required this.child});
@@ -190,6 +189,14 @@ class _AuthWrapperState extends State<AuthWrapper> {
   String? _cachedType;
   bool? _cachedVerified;
   String? _cachedUid;
+  String? _loggedRole;
+
+  void _trackRole(String role) {
+    if (_loggedRole == role) return;
+    _loggedRole = role;
+    AnalyticsService().setUserRole(role);
+    AnalyticsService().loginSuccess(role);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -198,7 +205,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
       _cachedType = null;
       _cachedVerified = null;
       _cachedUid = null;
-      // تأكيد تصفير حالة السائق عند العودة لشاشة الدخول
+      _loggedRole = null;
       final driver = context.read<DriverProvider>();
       if (driver.isBound || driver.isOnline || driver.isTripActive) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -219,10 +226,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
     });
 
     if (snapshot.uid != null) {
-      // تبديل حساب → صفّر الكاش إن تغيّر uid
       if (_cachedUid != null && _cachedUid != snapshot.uid) {
         _cachedType = null;
         _cachedVerified = null;
+        _loggedRole = null;
         context.read<DriverProvider>().reset();
       }
       _cachedUid = snapshot.uid;
@@ -247,19 +254,22 @@ class _AuthWrapperState extends State<AuthWrapper> {
     }
 
     if (type == UserRoles.admin) {
+      _trackRole('admin');
       return const AdminDashboard();
     }
 
     if (type == UserRoles.driver) {
       if (verified != true) {
+        _trackRole('driver_pending');
         return const PendingApprovalScreen();
       }
-      // مفتاح حسب uid حتى لا تُعاد استخدام حالة سائق سابق
+      _trackRole('driver');
       return DriverDashboard(
         key: ValueKey('driver_dash_${snapshot.uid ?? _cachedUid}'),
       );
     }
 
+    _trackRole('passenger');
     return const PassengerDashboard();
   }
 }

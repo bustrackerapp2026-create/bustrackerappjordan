@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/widgets/app_top_bar.dart';
 import '../../l10n/app_localizations.dart';
+import '../../services/analytics_service.dart';
 import '../../services/firestore_service.dart';
 import 'tabs/verify_drivers_tab.dart';
 import 'tabs/pending_points_tab.dart';
@@ -12,7 +13,6 @@ import 'tabs/admin_map_tab.dart';
 import 'tabs/settings_tab.dart';
 import '../widgets/admin_bottom_nav_bar.dart';
 
-/// طلب انتقال الكاميرا على خريطة الأدمن إلى نقطة معينة
 class AdminMapFocusRequest {
   final double latitude;
   final double longitude;
@@ -44,6 +44,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   final FirestoreService _firestore = FirestoreService();
   StreamSubscription<int>? _pendingSub;
   int _pendingDrivers = 0;
+  bool _loggedOpen = false;
 
   late final Widget _verifyTab = const VerifyDriversTab();
   late final Widget _settingsTab = const SettingsTab();
@@ -79,12 +80,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
     );
 
-    // شارة حية لطلبات السائقين بانتظار الموافقة
+    AnalyticsService().setUserRole('admin');
+
     _pendingSub = _firestore.watchPendingDriverApprovals().listen(
       (count) {
         if (!mounted) return;
         if (_pendingDrivers != count) {
           setState(() => _pendingDrivers = count);
+        }
+        if (!_loggedOpen) {
+          _loggedOpen = true;
+          AnalyticsService().adminDashboardOpened(pendingDrivers: count);
         }
       },
       onError: (e) {
@@ -122,12 +128,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
       appBar: AppTopBar.admin(title: l10n.adminDashboardTitle),
       body: Column(
         children: [
-          // شريط تنبيه أعلى لوحة الأدمن عند وجود طلبات معلّقة
           if (_pendingDrivers > 0 && _currentIndex != 0)
             Material(
               color: const Color(0xFFFFF7ED),
               child: InkWell(
-                onTap: () => setState(() => _currentIndex = 0),
+                onTap: () {
+                  AnalyticsService()
+                      .adminPendingBannerTapped(_pendingDrivers);
+                  setState(() => _currentIndex = 0);
+                },
                 child: Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -136,7 +145,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEA580C).withValues(alpha: 0.15),
+                          color:
+                              const Color(0xFFEA580C).withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(
