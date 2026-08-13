@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
 
+import 'osm_service.dart';
+
 class PlaceSearchResult {
   final String name;
   final double latitude;
@@ -134,7 +136,6 @@ extension LocationTrackingProfileX on LocationTrackingProfile {
         distanceFilter: distanceFilterMeters,
         intervalDuration: androidInterval,
         forceLocationManager: false,
-        // إبقاء التتبع حياً عند تصغير التطبيق (إشعار خدمة أمامية)
         foregroundNotificationConfig: usesBackgroundLocation
             ? const ForegroundNotificationConfig(
                 notificationTitle: 'Bus Tracker',
@@ -214,8 +215,6 @@ class LocationService {
     }
   }
 
-  /// يطلب صلاحية «دائماً» للسائق حتى يستمر التتبع في الخلفية.
-  /// على Android 10+ قد يحتاج فتح الإعدادات يدوياً بعد whileInUse.
   Future<LocationPermission> ensureBackgroundLocationPermission() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -227,7 +226,6 @@ class LocationService {
       }
 
       if (permission == LocationPermission.whileInUse) {
-        // محاولة الترقية إلى always
         permission = await Geolocator.requestPermission();
       }
 
@@ -489,15 +487,31 @@ class LocationService {
     );
   }
 
+  /// بحث مكان: OpenStreetMap أولاً (عربي / الأردن)، ثم Mapbox كاحتياطي.
   Future<PlaceSearchResult?> searchPlace(String query) async {
     if (query.trim().isEmpty) return null;
 
+    // 1) OpenStreetMap Nominatim — أسماء عربية داخل الأردن
+    try {
+      final osm = await OsmService().searchPlace(query);
+      if (osm != null) return osm;
+    } catch (e) {
+      debugPrint('⚠️ OSM search fallback: $e');
+    }
+
+    // 2) Mapbox Geocoding احتياطي
+    return _searchPlaceMapbox(query);
+  }
+
+  Future<PlaceSearchResult?> _searchPlaceMapbox(String query) async {
     try {
       await dotenv.load(fileName: '.env');
     } catch (_) {}
 
     final token = dotenv.env['MAPBOX_ACCESS_TOKEN'] ?? '';
-    if (token.isEmpty) return null;
+    if (token.isEmpty || token == 'YOUR_MAPBOX_ACCESS_TOKEN_HERE') {
+      return null;
+    }
 
     final encodedQuery = Uri.encodeComponent(query.trim());
     final uri = Uri.parse(
@@ -528,7 +542,7 @@ class LocationService {
         latitude: (center[1] as num).toDouble(),
       );
     } catch (e) {
-      debugPrint('❌ searchPlace: $e');
+      debugPrint('❌ searchPlace Mapbox: $e');
       return null;
     } finally {
       client.close(force: true);
