@@ -78,7 +78,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     double bearing, {
     bool force = false,
   }) async {
-    if (pointAnnotationManager == null) return;
+    if (!mounted || pointAnnotationManager == null) return;
 
     final now = DateTime.now();
     if (!force && _lastMarkerUpdateAt != null) {
@@ -203,6 +203,24 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       await stopDriverTracking();
       return;
     }
+
+    // طلب صلاحية الخلفية (أفضل جهد — قد تبقى whileInUse على بعض الأجهزة)
+    final permission =
+        await _driverLocationService.ensureBackgroundLocationPermission();
+    if (permission == geo.LocationPermission.denied ||
+        permission == geo.LocationPermission.deniedForever) {
+      MapUtils.log('⚠️ لا صلاحية موقع للتتبع', tag: 'DriverLocation');
+      return;
+    }
+
+    if (permission != geo.LocationPermission.always && mounted) {
+      // تنبيه لمرة واحدة تقريباً عبر snack قصير
+      MapUtils.log(
+        'الموقع: whileInUse — التتبع في الخلفية قد يكون محدوداً',
+        tag: 'DriverLocation',
+      );
+    }
+
     await _restartLocationStream();
     _startPredictionLoop();
   }
@@ -269,17 +287,20 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (!_shouldTrackContinuously) return;
 
     final profile = _activeProfile;
-    MapUtils.log('📡 تتبع GPS + تنبؤ: $profile', tag: 'DriverLocation');
+    MapUtils.log(
+      '📡 تتبع GPS (خلفية مفعّلة إن أمكن): $profile',
+      tag: 'DriverLocation',
+    );
 
     _driverLocationSubscription = _driverLocationService
         .getPositionStreamForProfile(profile)
         .listen(
       (pos) {
-        if (!mounted) return;
+        // حتى في الخلفية: ارفع الموقع — لا تعتمد على الواجهة فقط
         unawaited(
           _applyPosition(
             pos,
-            moveCamera: followDriverCamera,
+            moveCamera: mounted && followDriverCamera,
             forceUpload: false,
           ),
         );
@@ -321,7 +342,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     currentDriverBearing = filtered.headingDeg;
 
-    if (doMove && mapboxMap != null) {
+    if (mounted && doMove && mapboxMap != null) {
       final now = DateTime.now();
       final canMove = doForce ||
           _lastCameraUpdateAt == null ||
@@ -346,14 +367,21 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
     }
 
-    await updateDriverMarker(
-      filtered.latitude,
-      filtered.longitude,
-      filtered.headingDeg,
-      force: doForce,
-    );
+    if (mounted) {
+      await updateDriverMarker(
+        filtered.latitude,
+        filtered.longitude,
+        filtered.headingDeg,
+        force: doForce,
+      );
+    }
 
-    if (!mounted) return;
+    if (!mounted) {
+      // ما زلنا نرفع إلى Firestore إن أمكن عبر آخر سياق محفوظ؟
+      // بدون mounted لا نستطيع context.read بأمان — نتخطى التحديث المحلي فقط
+      return;
+    }
+
     final auth = context.read<AuthProvider>();
     final uid = auth.userId;
     context.read<DriverProvider>().updatePosition(pos, userId: uid);
@@ -370,7 +398,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  /// رفع الموقع إلى users/{uid} فقط — لا يمس سائقين آخرين.
   Future<void> _maybeUploadDriverLocation(
     geo.Position position, {
     bool force = false,
@@ -476,6 +503,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
+  /// لا نوقف التتبع عند التصغير إذا كان السائق متصلاً أو في رحلة.
   void onDriverLocationLifecycle(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       if (_shouldTrackContinuously) {
@@ -484,12 +512,23 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       return;
     }
 
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached ||
-        state == AppLifecycleState.hidden) {
+    if (state == AppLifecycleState.detached) {
+      // إغلاق كامل للعملية — أوقف التتبع المحلي
       unawaited(stopDriverTracking());
+      return;
     }
+
+    // paused / inactive / hidden: أبقِ الـ stream إذا كان متصلاً
+    // (خدمة أمامية على أندرويد + خلفية على iOS)
+    if (_shouldTrackContinuously) {
+      MapUtils.log(
+        'الوضع $state — استمرار مشاركة الموقع في الخلفية',
+        tag: 'DriverLocation',
+      );
+      return;
+    }
+
+    unawaited(stopDriverTracking());
   }
 
   void disposeDriverLocation() {
