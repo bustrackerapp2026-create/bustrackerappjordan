@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -61,7 +60,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   List<LiveDriverLocation> get liveDriversSnapshot =>
       List<LiveDriverLocation>.unmodifiable(_driverDataById.values);
 
-  /// أقرب سائق متصل بموقع صالح (يفضّل غير القديم).
   ({LiveDriverLocation driver, double meters})? findNearestDriver(
     double lat,
     double lng,
@@ -71,10 +69,8 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     for (final d in _driverDataById.values) {
       if (!d.hasValidCoords) continue;
-      // تجاهل مواقع أقدم من 15 دقيقة
       if (!d.isFresh) continue;
       final m = _distanceMeters(lat, lng, d.latitude, d.longitude);
-      // فضّل غير القديم عند تساوي تقريبي
       final score = d.isStaleWarning ? m + 80 : m;
       if (score < bestMeters) {
         bestMeters = score;
@@ -161,9 +157,9 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         final existing = _driverAnnotations[d.driverId];
         final last = _lastDrawnPos[d.driverId];
         final capacityChanged = _lastCapacity[d.driverId] != d.capacity;
-        final staleChanged = (_lastStale[d.driverId] ?? false) != d.isStaleWarning;
+        final staleChanged =
+            (_lastStale[d.driverId] ?? false) != d.isStaleWarning;
 
-        // إعادة إنشاء عند تغيّر السعة أو حالة القِدم (أيقونة مختلفة)
         if (existing != null && (capacityChanged || staleChanged)) {
           try {
             await pointAnnotationManager?.delete(existing);
@@ -202,7 +198,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             coordinates: Position(d.longitude, d.latitude),
           );
           if (d.heading != null) existing.iconRotate = d.heading;
-          // حجم أصغر قليلاً للموقع القديم
           existing.iconSize = d.isStaleWarning ? 0.78 : 0.95;
           try {
             await pointAnnotationManager?.update(existing);

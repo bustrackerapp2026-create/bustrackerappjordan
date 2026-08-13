@@ -57,7 +57,6 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
       await ensurePlannedRoutesPolylineManager();
       if (polylineAnnotationManager == null || !mounted) return;
 
-      // امسح الخطوط السابقة فقط لمسارات الخطة
       for (final ann in _plannedLineAnnotations) {
         try {
           await polylineAnnotationManager!.delete(ann);
@@ -80,7 +79,7 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
               lineOpacity: 0.85,
             ),
           );
-          if (ann != null) _plannedLineAnnotations.add(ann);
+          _plannedLineAnnotations.add(ann);
         } catch (e) {
           MapUtils.log('draw planned route: $e', tag: 'PassengerRoutes');
         }
@@ -90,7 +89,6 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
     }
   }
 
-  /// يُستدعى بعد تغيير الستايل لإعادة الرسم
   Future<void> redrawPlannedRoutes() async {
     if (_lastPlannedRoutes.isEmpty) return;
     await _drawPlannedRoutes(_lastPlannedRoutes);
