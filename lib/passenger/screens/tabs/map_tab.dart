@@ -169,12 +169,14 @@ class _MapTabState extends State<MapTab>
     final auth = context.read<AuthProvider>();
     final uid = auth.userId;
     if (uid == null || uid.isEmpty) {
+      if (!mounted) return;
       MapUtils.showSnackBar(context, 'سجّل الدخول أولاً لطلب الصعود', isError: true);
       throw StateError('not logged in');
     }
 
     if (!hasPassengerLocation) {
       await goToMyLocation();
+      if (!mounted) return;
       if (!hasPassengerLocation) {
         MapUtils.showSnackBar(
           context,
@@ -188,36 +190,29 @@ class _MapTabState extends State<MapTab>
     final lat = lastPassengerLat!;
     final lng = lastPassengerLng!;
 
-    // أقرب محطة معتمدة خلال 900م — وإلا موقعي الحالي
     final nearest = await NearestStopFinder.findNearestApproved(
       lat: lat,
       lng: lng,
     );
+    if (!mounted) return;
 
     final String pickupName;
     final double pickupLat;
     final double pickupLng;
-    String? noteExtra;
 
     if (nearest != null) {
       pickupName = nearest.stop.name;
       pickupLat = nearest.stop.latitude;
       pickupLng = nearest.stop.longitude;
-      noteExtra =
-          'صعود من أقرب محطة (${EtaUtils.formatDistance(nearest.meters)})';
-      // حرّك الكاميرا للمحطة ليعرف الراكب أين يقف
-      if (mounted) {
-        unawaited(flyToFlat(
-          latitude: pickupLat,
-          longitude: pickupLng,
-          zoom: 16,
-        ));
-      }
+      unawaited(flyToFlat(
+        latitude: pickupLat,
+        longitude: pickupLng,
+        zoom: 16,
+      ));
     } else {
       pickupName = 'موقعي الحالي';
       pickupLat = lat;
       pickupLng = lng;
-      noteExtra = 'لا توجد محطة معتمدة قريبة — الصعود من موقع الراكب';
     }
 
     try {
@@ -233,11 +228,6 @@ class _MapTabState extends State<MapTab>
         busNumber: driver.busNumber,
         dropoffPoint: 'على طول الخط',
       );
-
-      // حدّث الملاحظة إن أمكن (بدون كسر إنشاء الطلب)
-      if (noteExtra != null) {
-        // الملاحظة تُحفظ داخل createBoardRequest افتراضياً؛ نكتفي برسالة المستخدم
-      }
 
       if (!mounted) return;
       final where = nearest != null
@@ -291,6 +281,7 @@ class _MapTabState extends State<MapTab>
       );
       return;
     }
+    if (!mounted) return;
     MapUtils.showSnackBar(context, 'جاري تحديد موقع السائق...');
   }
 
