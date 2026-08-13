@@ -48,6 +48,23 @@ class LiveDriverLocation {
     return DateTime.now().difference(updatedAt!) < const Duration(minutes: 15);
   }
 
+  /// الموقع قديم نسبياً (أكثر من 3 دقائق) — تحذير خفيف للراكب
+  bool get isStaleWarning {
+    if (updatedAt == null) return false;
+    return DateTime.now().difference(updatedAt!) > const Duration(minutes: 3);
+  }
+
+  /// نص عربي نسبي لآخر تحديث موقع
+  String get updatedAgoLabel {
+    if (updatedAt == null) return 'وقت التحديث غير معروف';
+    final diff = DateTime.now().difference(updatedAt!);
+    if (diff.inSeconds < 30) return 'الآن';
+    if (diff.inMinutes < 1) return 'قبل أقل من دقيقة';
+    if (diff.inMinutes < 60) return 'قبل ${diff.inMinutes} د';
+    if (diff.inHours < 24) return 'قبل ${diff.inHours} س';
+    return 'قبل ${diff.inDays} يوم';
+  }
+
   factory LiveDriverLocation.fromUserDoc(
     String id,
     Map<String, dynamic> data,

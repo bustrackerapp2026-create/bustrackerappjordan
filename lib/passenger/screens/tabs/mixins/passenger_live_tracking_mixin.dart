@@ -287,7 +287,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 }
 
-/// واجهة تفاصيل السائق — تصميم حديث ومنظم.
+/// واجهة تفاصيل السائق — مع إشارة آخر تحديث وتحذير الموقع القديم.
 class DriverDetailsSheet extends StatelessWidget {
   final LiveDriverLocation driver;
 
@@ -296,11 +296,11 @@ class DriverDetailsSheet extends StatelessWidget {
   Color get _accent {
     switch (driver.capacity) {
       case BusCapacity.service:
-        return const Color(0xFFF59E0B); // amber — سرفيس
+        return const Color(0xFFF59E0B);
       case BusCapacity.medium:
-        return const Color(0xFF3B82F6); // blue — متوسط
+        return const Color(0xFF3B82F6);
       case BusCapacity.large:
-        return const Color(0xFF10B981); // green — كبير
+        return const Color(0xFF10B981);
       default:
         return AppTheme.primaryColor;
     }
@@ -335,6 +335,8 @@ class DriverDetailsSheet extends StatelessWidget {
         ? (driver.speed! * 3.6)
         : null;
 
+    final stale = driver.isStaleWarning;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -350,7 +352,6 @@ class DriverDetailsSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── مقبض السحب ──
           Padding(
             padding: const EdgeInsets.only(top: 12, bottom: 4),
             child: Container(
@@ -363,7 +364,6 @@ class DriverDetailsSheet extends StatelessWidget {
             ),
           ),
 
-          // ── رأس بتدرج لوني حسب نوع المركبة ──
           Container(
             width: double.infinity,
             margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -482,9 +482,56 @@ class DriverDetailsSheet extends StatelessWidget {
             ),
           ),
 
-          // ── بطاقات المعلومات ──
+          // إشارة آخر تحديث + تحذير إن كان قديماً
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: stale
+                    ? const Color(0xFFFFF7ED)
+                    : const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: stale
+                      ? const Color(0xFFFDBA74)
+                      : const Color(0xFFBBF7D0),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    stale
+                        ? Icons.schedule_rounded
+                        : Icons.update_rounded,
+                    size: 18,
+                    color: stale
+                        ? const Color(0xFFEA580C)
+                        : const Color(0xFF16A34A),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      stale
+                          ? 'آخر تحديث للموقع: ${driver.updatedAgoLabel} — قد يكون الموقع غير دقيق'
+                          : 'آخر تحديث للموقع: ${driver.updatedAgoLabel}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: stale
+                            ? const Color(0xFF9A3412)
+                            : const Color(0xFF166534),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
             child: Column(
               children: [
                 Row(
@@ -555,7 +602,6 @@ class DriverDetailsSheet extends StatelessWidget {
             ),
           ),
 
-          // ── زر الإغلاق ──
           Padding(
             padding: EdgeInsets.fromLTRB(16, 18, 16, bottom + 16),
             child: SizedBox(
