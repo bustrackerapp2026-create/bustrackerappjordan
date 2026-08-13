@@ -26,6 +26,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   /// لمنع استعلامات POI أثناء الحركة
   bool _cameraMoving = false;
   Timer? _cameraIdleTimer;
+  Timer? _arabicLabelsRetry;
 
   bool get suppressPoiTap => false;
 
@@ -43,8 +44,20 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     _setDefaultCamera();
     await Future<void>.delayed(const Duration(milliseconds: 80));
     await applyLabelLayersFilter();
+    _scheduleArabicLabelsRetry();
     if (mounted) setState(() => isMapReady = true);
     MapUtils.log('✅ تم إنشاء الخريطة بنجاح');
+  }
+
+  /// إعادة تعريب بعد استقرار تحميل الستايل (بعض الطبقات تظهر متأخرة)
+  void _scheduleArabicLabelsRetry() {
+    _arabicLabelsRetry?.cancel();
+    _arabicLabelsRetry = Timer(const Duration(milliseconds: 600), () async {
+      if (!mounted || mapboxMap == null) return;
+      try {
+        await MapLayerController.applyArabicLabels(mapboxMap: mapboxMap!);
+      } catch (_) {}
+    });
   }
 
   Future<void> applyStableGestures() async {
@@ -78,11 +91,9 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   Future<void> applyGoogleLikeCameraBehavior() => applyStableGestures();
   Future<void> applyMapConstraints() => applyZoomLimitsOnly();
 
-  /// يُستدعى من onCameraChangeListener
   void onCameraChangedForDebug(CameraChangedEventData data) {
     _cameraMoving = true;
     _cameraIdleTimer?.cancel();
-    // انتظار أطول قليلاً قبل السماح باستعلام POI أثناء السحب
     _cameraIdleTimer = Timer(const Duration(milliseconds: 260), () {
       _cameraMoving = false;
     });
@@ -106,6 +117,8 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     _zoomLogDebounce = null;
     _cameraIdleTimer?.cancel();
     _cameraIdleTimer = null;
+    _arabicLabelsRetry?.cancel();
+    _arabicLabelsRetry = null;
   }
 
   Future<void> flyToFlat({
@@ -217,6 +230,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         applyStableGestures(),
       ]);
       await applyLabelLayersFilter();
+      _scheduleArabicLabelsRetry();
       onStyleChanged();
       if (mounted) setState(() {});
       MapUtils.log('✅ تم تغيير ستايل الخريطة');
@@ -247,7 +261,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   Future<void> handleMapBackgroundTap(MapContentGestureContext gesture) async {
     if (!mounted || mapboxMap == null) return;
     if (suppressPoiTap) return;
-    // لا تستعلم أثناء تحريك الكاميرا — يحسّن السلاسة
     if (_cameraMoving) return;
 
     final poi = await MapLayerController.queryPoiAt(
