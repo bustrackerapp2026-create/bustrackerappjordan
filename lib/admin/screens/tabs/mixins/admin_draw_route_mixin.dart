@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:provider/provider.dart';
@@ -96,10 +97,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (mounted) setState(() => isSnappingSegment = true);
 
     try {
-      // 1) لصق النقرة على أقرب شارع
       final snapped = await _drawRouteService.snapPointToRoad(raw);
 
-      // تجاهل نقرات شبه متطابقة مع آخر نقطة
       if (_drawPoints.isNotEmpty) {
         final last = _drawPoints.last;
         final d = _meters(
@@ -122,7 +121,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       _drawPoints.add(snapped);
 
-      // علامة على الموقع الملصوق (وليس مكان النقر الخام)
       try {
         final manager = pointAnnotationManager;
         if (manager != null) {
@@ -139,7 +137,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         }
       } catch (_) {}
 
-      // 2) ربط القطعة الأخيرة بمسار قيادة على الشارع
       if (_drawPoints.length >= 2) {
         final from = _drawPoints[_drawPoints.length - 2];
         final to = _drawPoints.last;
@@ -230,6 +227,29 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (mounted) setState(() {});
   }
 
+  String _friendlySaveError(Object e) {
+    if (e is FirebaseException) {
+      switch (e.code) {
+        case 'permission-denied':
+          return 'رفض Firebase الكتابة على plannedRoutes. '
+              'انشر قواعد Firestore من المشروع (firebase deploy --only firestore) '
+              'وتأكد أن حسابك userType = admin في مجموعة users.';
+        case 'failed-precondition':
+          return 'فهرس Firestore ناقص لاستعلام المسارات. '
+              'انشر الفهارس: firebase deploy --only firestore:indexes';
+        case 'unavailable':
+          return 'تعذر الاتصال بـ Firebase — تحقق من الإنترنت وحاول مجدداً.';
+        default:
+          return 'خطأ Firebase (${e.code}): ${e.message ?? e}';
+      }
+    }
+    final s = e.toString();
+    if (s.contains('permission-denied') || s.contains('PERMISSION_DENIED')) {
+      return 'رفض الصلاحيات على plannedRoutes — انشر firestore.rules ثم أعد المحاولة.';
+    }
+    return s;
+  }
+
   Future<void> finishAndSaveDrawnRoute() async {
     if (!mounted || isSnappingSegment) return;
     if (_drawPoints.length < 2) {
@@ -243,7 +263,14 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     final auth = context.read<AuthProvider>();
     final adminId = auth.userId;
-    if (adminId == null) return;
+    if (adminId == null) {
+      MapUtils.showSnackBar(
+        context,
+        'يجب تسجيل الدخول كأدمن قبل الحفظ',
+        isError: true,
+      );
+      return;
+    }
 
     final result = await showModalBottomSheet<
         ({String name, RouteDirection dir, List<String> aliases})>(
@@ -289,8 +316,13 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         '($km كم · ${saved.points.length} نقطة شارع) للجميع',
       );
     } catch (e) {
+      MapUtils.log('save drawn route: $e', tag: 'AdminDraw');
       if (mounted) {
-        MapUtils.showSnackBar(context, '❌ $e', isError: true);
+        MapUtils.showSnackBar(
+          context,
+          '❌ ${_friendlySaveError(e)}',
+          isError: true,
+        );
       }
     }
   }
