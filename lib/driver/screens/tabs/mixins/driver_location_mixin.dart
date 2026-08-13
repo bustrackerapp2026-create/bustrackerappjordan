@@ -63,8 +63,16 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   LocationService get locationService => _driverLocationService;
 
-  /// تُعاد كتابتها في RoutePlanRecordingMixin لتجميع نقاط المسار.
   void onDriverPositionSample(geo.Position position) {}
+
+  /// يُتجاوز من DriverMapTab عند إخفاء التبويب
+  bool get isMapTabActive => true;
+
+  void pauseMapUiUpdates() {
+    _stopPredictionLoop();
+    followDriverCamera = false;
+    _pendingMoveCamera = false;
+  }
 
   bool get _shouldTrackContinuously {
     if (!mounted) return _cachedOnline || _cachedTripActive;
@@ -97,7 +105,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     unawaited(
       _applyPosition(
         pos,
-        moveCamera: mounted && followDriverCamera,
+        moveCamera: mounted && isMapTabActive && followDriverCamera,
         forceUpload: false,
       ),
     );
@@ -115,6 +123,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     bool force = false,
   }) async {
     if (!mounted || pointAnnotationManager == null) return;
+    if (!isMapTabActive && !force) return;
 
     final now = DateTime.now();
     if (!force && _lastMarkerUpdateAt != null) {
@@ -256,7 +265,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       uid: uid,
       profile: _activeProfile,
     );
-    _startPredictionLoop();
+    if (isMapTabActive) _startPredictionLoop();
   }
 
   Future<void> stopDriverTracking() async {
@@ -267,7 +276,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   void _startPredictionLoop() {
     _predictionTimer?.cancel();
     _predictionTimer = Timer.periodic(_predictionTick, (_) {
-      if (!mounted || !_shouldTrackContinuously) return;
+      if (!mounted || !isMapTabActive || !_shouldTrackContinuously) return;
       final predicted = _predictor.predictAt(DateTime.now());
       if (predicted == null || predicted.confidence < 0.25) return;
 
@@ -343,11 +352,9 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     );
 
     currentDriverBearing = filtered.headingDeg;
-
-    // عيّنة خام لتسجيل مسار الخطة
     onDriverPositionSample(pos);
 
-    if (mounted && doMove && mapboxMap != null) {
+    if (mounted && isMapTabActive && doMove && mapboxMap != null) {
       final now = DateTime.now();
       final canMove = doForce ||
           _lastCameraUpdateAt == null ||
@@ -373,12 +380,14 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
 
     if (mounted) {
-      await updateDriverMarker(
-        filtered.latitude,
-        filtered.longitude,
-        filtered.headingDeg,
-        force: doForce,
-      );
+      if (isMapTabActive) {
+        await updateDriverMarker(
+          filtered.latitude,
+          filtered.longitude,
+          filtered.headingDeg,
+          force: doForce,
+        );
+      }
 
       if (!mounted) return;
 
