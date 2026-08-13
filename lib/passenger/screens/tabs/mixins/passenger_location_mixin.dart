@@ -21,6 +21,10 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   double currentPassengerBearing = 0.0;
   bool isPassengerTrackingActive = false;
 
+  /// آخر موقع معروف للراكب (لأقرب باص)
+  double? lastPassengerLat;
+  double? lastPassengerLng;
+
   DateTime? _lastMarkerAt;
   double? _lastMarkerLat;
   double? _lastMarkerLng;
@@ -30,6 +34,9 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   static const double _minMoveDeg = 0.00003;
 
   LocationService get locationService => _passengerLocationService;
+
+  bool get hasPassengerLocation =>
+      lastPassengerLat != null && lastPassengerLng != null;
 
   Future<void> preloadPassengerMarker() async {
     _cachedPassengerMarkerBytes = await MapHelpers.createUserMarkerBytes();
@@ -81,6 +88,8 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _lastMarkerAt = now;
       _lastMarkerLat = lat;
       _lastMarkerLng = lng;
+      lastPassengerLat = lat;
+      lastPassengerLng = lng;
     } catch (_) {
     } finally {
       _markerBusy = false;
@@ -162,6 +171,9 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     required bool moveCamera,
     bool force = false,
   }) async {
+    lastPassengerLat = position.latitude;
+    lastPassengerLng = position.longitude;
+
     double bearing = position.heading;
     if (bearing == 0.0 && position.speed > 0) {
       bearing = currentPassengerBearing;

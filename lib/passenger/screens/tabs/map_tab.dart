@@ -9,10 +9,10 @@ import '../../../core/pickup/pickup_point_mixin.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../services/analytics_service.dart';
+import '../../../services/route_prefs_service.dart';
 import 'mixins/passenger_location_mixin.dart';
 import 'mixins/passenger_live_tracking_mixin.dart';
 
-/// خريطة الراكب مع تتبع حي للباصات المتصلة.
 class MapTab extends StatefulWidget {
   const MapTab({super.key});
 
@@ -33,6 +33,7 @@ class _MapTabState extends State<MapTab>
   bool _loggedMapOpened = false;
   bool _loggedEmptyState = false;
   int? _lastLiveCount;
+  bool _findingNearest = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -46,6 +47,16 @@ class _MapTabState extends State<MapTab>
     WidgetsBinding.instance.addObserver(this);
     preloadPassengerMarker();
     liveDriversCount.addListener(_onLiveCountChanged);
+    _loadPreferredRoute();
+  }
+
+  Future<void> _loadPreferredRoute() async {
+    final route = await RoutePrefsService().loadPreferredRoute();
+    if (!mounted) return;
+    if (route != _selectedRoute) {
+      setState(() => _selectedRoute = route);
+      updateLiveTrackingRouteFilter(route);
+    }
   }
 
   void _onLiveCountChanged() {
@@ -65,10 +76,8 @@ class _MapTabState extends State<MapTab>
     }
   }
 
-  /// حماية بسيطة إن تم dispose الـ notifier
   bool get _liveTrackingDisposedLike {
     try {
-      // ignore: unnecessary_statements
       liveDriversCount.value;
       return false;
     } catch (_) {
@@ -167,6 +176,74 @@ class _MapTabState extends State<MapTab>
     if (mounted) setState(() => isMapReady = true);
   }
 
+  Future<void> _onRouteChanged(String newRoute) async {
+    setState(() => _selectedRoute = newRoute);
+    updateLiveTrackingRouteFilter(newRoute);
+    _loggedEmptyState = false;
+    MapUtils.lightHaptic();
+    AnalyticsService().routeFilterChanged(newRoute);
+    await RoutePrefsService().savePreferredRoute(newRoute);
+    if (!mounted) return;
+    MapUtils.showSnackBar(
+      context,
+      AppLocalizations.of(context).routeFiltered(newRoute),
+    );
+  }
+
+  Future<void> _findNearestBus() async {
+    if (_findingNearest) return;
+    MapUtils.mediumHaptic();
+
+    if (!hasPassengerLocation) {
+      MapUtils.showSnackBar(
+        context,
+        'حدّد موقعك أولاً بزر موقعي',
+        isError: true,
+      );
+      await goToMyLocation();
+      if (!hasPassengerLocation) return;
+    }
+
+    setState(() => _findingNearest = true);
+    try {
+      final result = findNearestDriver(
+        lastPassengerLat!,
+        lastPassengerLng!,
+      );
+      if (!mounted) return;
+
+      if (result == null) {
+        MapUtils.showSnackBar(
+          context,
+          'لا يوجد باص حي على هذا الخط حالياً',
+          isError: true,
+        );
+        return;
+      }
+
+      final meters = result.meters;
+      final km = meters / 1000.0;
+      final distanceLabel = meters < 1000
+          ? '${meters.toStringAsFixed(0)} م'
+          : '${km.toStringAsFixed(1)} كم';
+
+      await flyToFlat(
+        latitude: result.driver.latitude,
+        longitude: result.driver.longitude,
+        zoom: 15.5,
+      );
+
+      if (!mounted) return;
+      MapUtils.showSnackBar(
+        context,
+        'أقرب باص: ${result.driver.fullName} · $distanceLabel',
+      );
+      await showDriverInfoSheet(result.driver.driverId);
+    } finally {
+      if (mounted) setState(() => _findingNearest = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -199,17 +276,7 @@ class _MapTabState extends State<MapTab>
             child: SearchBarWidget(
               selectedRoute: _selectedRoute,
               routes: AppConstants.jordanRoutes,
-              onRouteChanged: (newRoute) {
-                setState(() => _selectedRoute = newRoute);
-                updateLiveTrackingRouteFilter(newRoute);
-                _loggedEmptyState = false;
-                MapUtils.lightHaptic();
-                AnalyticsService().routeFilterChanged(newRoute);
-                MapUtils.showSnackBar(
-                  context,
-                  l10n.routeFiltered(newRoute),
-                );
-              },
+              onRouteChanged: _onRouteChanged,
               onSearchSubmitted: searchPassengerPlace,
             ),
           ),
@@ -221,6 +288,28 @@ class _MapTabState extends State<MapTab>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                FloatingActionButton.extended(
+                  heroTag: 'passenger_nearest_bus',
+                  onPressed: _findingNearest ? null : _findNearestBus,
+                  backgroundColor: const Color(0xFF0F766E),
+                  foregroundColor: Colors.white,
+                  elevation: 4,
+                  icon: _findingNearest
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.near_me_rounded, size: 20),
+                  label: const Text(
+                    'أقرب باص',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 FloatingActionButton(
                   heroTag: 'passenger_map_layers',
                   onPressed: () {
