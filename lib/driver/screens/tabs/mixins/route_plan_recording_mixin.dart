@@ -13,7 +13,7 @@ import '../../../../models/route_point.dart';
 import '../../../../services/route_plan_service.dart';
 import 'driver_location_mixin.dart';
 
-/// تسجيل مسار خطة الخط (ذهاب / إياب) — يعتمد على عينات موقع السائق.
+/// تسجيل مسار خطة الخط (ذهاب / إياب) — مشترك باسم الخط.
 mixin RoutePlanRecordingMixin<T extends StatefulWidget>
     on DriverLocationMixin<T> {
   final RoutePlanService _routePlanService = RoutePlanService();
@@ -26,10 +26,15 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
   PolylineAnnotationManager? _routePlanLineManager;
   PolylineAnnotation? _routePlanLine;
 
-  List<PlannedRoute> driverPlannedRoutes = const [];
+  /// مسارات الخط الحالي (مشتركة وليس لكل سائق)
+  List<PlannedRoute> linePlannedRoutes = const [];
   StreamSubscription<List<PlannedRoute>>? _plannedRoutesSub;
+  String? _listeningLineName;
 
   int get routePlanPointCount => _routePlanBuffer.length;
+
+  /// توافق
+  List<PlannedRoute> get driverPlannedRoutes => linePlannedRoutes;
 
   @override
   void onDriverPositionSample(geo.Position position) {
@@ -42,17 +47,25 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
         await mapboxMap!.annotations.createPolylineAnnotationManager();
   }
 
-  void listenDriverPlannedRoutes(String driverId) {
+  /// يستمع لمسارات الخط المختار (مشتركة بين كل الباصات)
+  void listenLinePlannedRoutes(String lineName) {
+    if (_listeningLineName == lineName) return;
+    _listeningLineName = lineName;
     _plannedRoutesSub?.cancel();
     _plannedRoutesSub =
-        _routePlanService.watchDriverRoutes(driverId).listen((list) {
-      driverPlannedRoutes = list;
+        _routePlanService.watchLineRoutes(lineName).listen((list) {
+      linePlannedRoutes = list;
       if (mounted) setState(() {});
     });
   }
 
+  @Deprecated('استخدم listenLinePlannedRoutes')
+  void listenDriverPlannedRoutes(String driverId) {
+    // لا شيء — المسارات مشتركة باسم الخط
+  }
+
   PlannedRoute? plannedFor(RouteDirection d, String lineName) {
-    for (final r in driverPlannedRoutes) {
+    for (final r in linePlannedRoutes) {
       if (r.direction == d && r.lineName == lineName) return r;
     }
     return null;
@@ -74,7 +87,8 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
     if (existing != null && existing.isLocked) {
       MapUtils.showSnackBar(
         context,
-        'المسار ${direction.labelAr} معتمد ومقفول. اطلب تعديلاً من الأدمن.',
+        'مسار ${direction.labelAr} لخط «$lineName» مخزّن مسبقاً. '
+        'اطلب تعديلاً من الأدمن مع ذكر السبب إن لزم.',
         isError: true,
       );
       return;
@@ -90,7 +104,6 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
       return;
     }
 
-    // يفضّل أن يكون متصلاً ليبقى التتبع مستمراً
     if (!driver.isOnline) {
       MapUtils.showSnackBar(
         context,
@@ -233,7 +246,7 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
       final km = ((saved.distanceMeters ?? 0) / 1000).toStringAsFixed(1);
       MapUtils.showSnackBar(
         context,
-        '✅ تم إرسال مسار ${direction.labelAr} ($km كم · ${saved.points.length} نقطة) لاعتماد الأدمن',
+        '✅ تم تخزين مسار ${direction.labelAr} ($km كم) — يظهر للركاب فوراً',
       );
     } catch (e) {
       if (mounted) {
@@ -245,12 +258,66 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
 
   Future<void> requestRoutePlanEdit(PlannedRoute route) async {
     if (!mounted) return;
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userId;
+    if (uid == null) return;
+
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final c = TextEditingController();
+        return AlertDialog(
+          title: Text('طلب تعديل مسار ${route.direction.labelAr}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'خط «${route.lineName}» مخزّن مسبقاً ويُستخدم لعدة باصات. '
+                'اكتب سبب طلب التعديل ليراجعه الأدمن.',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: c,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'سبب التعديل *',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final t = c.text.trim();
+                if (t.isEmpty) return;
+                Navigator.pop(ctx, t);
+              },
+              child: const Text('إرسال الطلب'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (reason == null || reason.isEmpty) return;
+
     try {
-      await _routePlanService.requestEdit(routeId: route.id);
+      await _routePlanService.requestEdit(
+        routeId: route.id,
+        reason: reason,
+        requestedBy: uid,
+      );
       if (mounted) {
         MapUtils.showSnackBar(
           context,
-          'تم إرسال طلب تعديل مسار ${route.direction.labelAr} للأدمن',
+          'تم إرسال طلب التعديل للأدمن مع السبب',
         );
       }
     } catch (e) {
@@ -262,6 +329,11 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
 
   Future<void> showRoutePlanSheet(String lineName) async {
     if (!mounted) return;
+    listenLinePlannedRoutes(lineName);
+    // انتظر لحظة قصيرة لتحميل أحدث حالة
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    if (!mounted) return;
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -314,6 +386,7 @@ mixin RoutePlanRecordingMixin<T extends StatefulWidget>
     _routePlanLine = null;
     _routePlanLineManager = null;
     _routePlanBuffer.clear();
+    _listeningLineName = null;
   }
 }
 
@@ -384,7 +457,8 @@ class _RoutePlanSheet extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'يمكن تخزين مسارين فقط: ذهاب وإياب. بعد الاعتماد لا يُعدَّل إلا بطلب للأدمن. يُحاذى المسار على الشوارع عند الحفظ.',
+            'المسار مشترك لكل باصات نفس الخط. إن كان مخزّناً مسبقاً لا حاجة لتسجيله. '
+            'التعديل يتطلب موافقة الأدمن مع ذكر السبب.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
@@ -462,17 +536,15 @@ class _RoutePlanSheet extends StatelessWidget {
     required VoidCallback onRecord,
     required void Function(PlannedRoute) onRequestEdit,
   }) {
-    final status = route?.status.labelAr ?? 'غير مسجّل';
     final locked = route?.isLocked == true;
-    final canRecord = route == null ||
-        route.status == PlannedRouteStatus.rejected ||
-        route.status == PlannedRouteStatus.pending ||
-        (route.editRequestPending == false &&
-            route.status != PlannedRouteStatus.approved) ||
-        (route.status == PlannedRouteStatus.pending);
-
-    // بعد موافقة طلب التعديل يصبح status=pending ونقاط فارغة
-    final allowRecord = !locked;
+    final canReRecord = route == null || (route.canReRecord);
+    final status = route == null
+        ? 'غير مخزّن'
+        : (route.editRequestPending
+            ? 'طلب تعديل معلّق'
+            : (route.canReRecord
+                ? 'مسموح بإعادة التسجيل'
+                : route.status.labelAr));
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -497,7 +569,7 @@ class _RoutePlanSheet extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: route?.isApproved == true
+                  color: locked
                       ? const Color(0xFF16A34A)
                       : Colors.orange.shade800,
                 ),
@@ -508,11 +580,12 @@ class _RoutePlanSheet extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                '${route.points.length} نقطة · ${((route.distanceMeters ?? 0) / 1000).toStringAsFixed(1)} كم',
+                '${route.points.length} نقطة · ${((route.distanceMeters ?? 0) / 1000).toStringAsFixed(1)} كم'
+                '${route.source == RouteSource.admin ? ' · أدمن' : ''}',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
             ),
-          if (route?.editRequestPending == true)
+          if (route?.editRequestPending == true) ...[
             const Padding(
               padding: EdgeInsets.only(top: 4),
               child: Text(
@@ -520,12 +593,35 @@ class _RoutePlanSheet extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: Color(0xFFEA580C)),
               ),
             ),
+            if ((route?.editRequestReason ?? '').isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  'السبب: ${route!.editRequestReason}',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ),
+          ],
           const SizedBox(height: 8),
-          if (allowRecord)
+          if (canReRecord && !route!.editRequestPending)
             ElevatedButton.icon(
               onPressed: onRecord,
               icon: const Icon(Icons.fiber_manual_record, size: 18),
-              label: Text(route == null ? 'بدء التسجيل' : 'إعادة التسجيل'),
+              label: Text(
+                route == null || route.points.isEmpty
+                    ? 'بدء التسجيل'
+                    : 'إعادة التسجيل',
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7C3AED),
+                foregroundColor: Colors.white,
+              ),
+            )
+          else if (route == null)
+            ElevatedButton.icon(
+              onPressed: onRecord,
+              icon: const Icon(Icons.fiber_manual_record, size: 18),
+              label: const Text('بدء التسجيل'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF7C3AED),
                 foregroundColor: Colors.white,
@@ -533,9 +629,15 @@ class _RoutePlanSheet extends StatelessWidget {
             )
           else if (locked)
             OutlinedButton.icon(
-              onPressed: route == null ? null : () => onRequestEdit(route),
+              onPressed: () => onRequestEdit(route),
               icon: const Icon(Icons.lock_open_rounded, size: 18),
-              label: const Text('طلب تعديل من الأدمن'),
+              label: const Text('طلب تعديل (مع السبب)'),
+            )
+          else if (route.editRequestPending)
+            const Text(
+              'انتظر قرار الأدمن',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Color(0xFFEA580C)),
             ),
         ],
       ),
