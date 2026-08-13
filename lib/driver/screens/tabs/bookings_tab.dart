@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../services/trip_service.dart';
 import '../../../models/trip_model.dart';
+import '../../../models/trip_status.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../l10n/app_localizations.dart';
 
@@ -18,7 +19,6 @@ class _BookingsTabState extends State<BookingsTab> {
   Stream<List<TripModel>>? _pendingTripsStream;
   String? _currentUserId;
 
-  // كاش للهويات الحالية لتسريع findChildIndexCallback
   List<TripModel> _latestTrips = const [];
 
   @override
@@ -32,7 +32,7 @@ class _BookingsTabState extends State<BookingsTab> {
     }
   }
 
-  Future<bool> _acceptTrip(String tripId, String passengerDisplayId) async {
+  Future<bool> _acceptTrip(String tripId, String passengerDisplay) async {
     if (_currentUserId == null) return false;
     final l10n = AppLocalizations.of(context);
 
@@ -41,7 +41,7 @@ class _BookingsTabState extends State<BookingsTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n.acceptPassengerSuccess(passengerDisplayId)),
+            content: Text(l10n.acceptPassengerSuccess(passengerDisplay)),
             backgroundColor: Colors.green,
           ),
         );
@@ -67,6 +67,36 @@ class _BookingsTabState extends State<BookingsTab> {
     }
   }
 
+  Future<bool> _rejectTrip(String tripId) async {
+    if (_currentUserId == null) return false;
+    try {
+      await _tripService.updateTripStatus(
+        tripId,
+        TripStatus.cancelled,
+        driverId: _currentUserId,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم رفض الطلب'),
+            backgroundColor: Color(0xFFB45309),
+          ),
+        );
+      }
+      return true;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر رفض الطلب'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
   int? _indexOfTripKey(Key key) {
     if (key is! ValueKey<String>) return null;
     final id = key.value;
@@ -84,7 +114,6 @@ class _BookingsTabState extends State<BookingsTab> {
       return Center(child: Text(l10n.pleaseLoginRequests));
     }
 
-    // بدون Scaffold داخلي — لوحة السائق لديها AppBar بالفعل
     return Column(
       children: [
         Material(
@@ -198,6 +227,7 @@ class _BookingsTabState extends State<BookingsTab> {
                     trip: trip,
                     l10n: l10n,
                     onAccept: _acceptTrip,
+                    onReject: _rejectTrip,
                   );
                 },
               );
@@ -209,17 +239,18 @@ class _BookingsTabState extends State<BookingsTab> {
   }
 }
 
-/// بطاقة طلب — حالة التحميل محلية فلا تُعاد بناء بقية القائمة.
 class _BookingRequestCard extends StatefulWidget {
   final TripModel trip;
   final AppLocalizations l10n;
-  final Future<bool> Function(String tripId, String passengerDisplayId) onAccept;
+  final Future<bool> Function(String tripId, String passengerDisplay) onAccept;
+  final Future<bool> Function(String tripId) onReject;
 
   const _BookingRequestCard({
     super.key,
     required this.trip,
     required this.l10n,
     required this.onAccept,
+    required this.onReject,
   });
 
   @override
@@ -229,7 +260,9 @@ class _BookingRequestCard extends StatefulWidget {
 class _BookingRequestCardState extends State<_BookingRequestCard> {
   bool _busy = false;
 
-  String get _passengerDisplayId {
+  String get _passengerLabel {
+    final name = widget.trip.passengerName?.trim();
+    if (name != null && name.isNotEmpty) return name;
     final id = widget.trip.passengerId;
     return id.length > 8 ? '${id.substring(0, 8)}...' : id;
   }
@@ -238,7 +271,17 @@ class _BookingRequestCardState extends State<_BookingRequestCard> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await widget.onAccept(widget.trip.id, _passengerDisplayId);
+      await widget.onAccept(widget.trip.id, _passengerLabel);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _handleReject() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.onReject(widget.trip.id);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -248,13 +291,14 @@ class _BookingRequestCardState extends State<_BookingRequestCard> {
   Widget build(BuildContext context) {
     final trip = widget.trip;
     final l10n = widget.l10n;
+    final route = trip.route?.trim();
 
     return Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
+        side: BorderSide(color: Colors.orange.withValues(alpha: 0.35)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -262,14 +306,13 @@ class _BookingRequestCardState extends State<_BookingRequestCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
                   child: Text(
-                    '${trip.pickupPoint} → ${trip.dropoffPoint}',
+                    trip.pickupPoint,
                     style: const TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
@@ -284,68 +327,119 @@ class _BookingRequestCardState extends State<_BookingRequestCard> {
                     l10n.statusPending,
                     style: const TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       color: Colors.orange,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Row(
+            const SizedBox(height: 6),
+            Text(
+              'إلى: ${trip.dropoffPoint}',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
               children: [
-                const Icon(Icons.person_outline, size: 14, color: Colors.grey),
-                const SizedBox(width: 4),
-                Text(
-                  '${l10n.passengerLabel}: $_passengerDisplayId',
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-                const SizedBox(width: 16),
-                const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
-                const SizedBox(width: 4),
-                Text(
-                  _formatDate(trip.createdAt, l10n),
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
-                ),
+                _miniChip(Icons.person_outline, _passengerLabel),
+                if (route != null && route.isNotEmpty)
+                  _miniChip(Icons.route, route),
+                _miniChip(Icons.schedule, _formatDate(trip.createdAt, l10n)),
               ],
             ),
             if (trip.notes != null && trip.notes!.isNotEmpty) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               Text(
                 trip.notes!,
                 style: const TextStyle(fontSize: 13, color: Colors.grey),
               ),
             ],
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _busy ? null : _handleAccept,
-                icon: _busy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.check_circle, size: 18),
-                label: Text(
-                  _busy ? l10n.accepting : l10n.acceptRequest,
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _busy ? null : _handleReject,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFB91C1C),
+                      side: const BorderSide(color: Color(0xFFFECACA)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Text(
+                      'رفض',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: _busy ? null : _handleAccept,
+                    icon: _busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check_circle, size: 18),
+                    label: Text(
+                      _busy ? l10n.accepting : l10n.acceptRequest,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _miniChip(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFF64748B)),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF334155),
+            ),
+          ),
+        ],
       ),
     );
   }
