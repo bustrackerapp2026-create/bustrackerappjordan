@@ -496,7 +496,9 @@ class _AdminMapTabState extends State<AdminMapTab>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'رسم مسار · $drawPointCount نقطة — انقر على الخريطة',
+                      isSnappingSegment
+                          ? 'جاري لصق القطعة على الشارع…'
+                          : 'رسم على الشارع · $drawPointCount نقطة — انقر بالتسلسل',
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF6D28D9),
@@ -508,7 +510,7 @@ class _AdminMapTabState extends State<AdminMapTab>
                       children: [
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: drawPointCount >= 2
+                            onPressed: drawPointCount >= 2 && !isSnappingSegment
                                 ? finishAndSaveDrawnRoute
                                 : null,
                             style: ElevatedButton.styleFrom(
@@ -520,7 +522,8 @@ class _AdminMapTabState extends State<AdminMapTab>
                         ),
                         const SizedBox(width: 6),
                         OutlinedButton(
-                          onPressed: undoLastDrawPoint,
+                          onPressed:
+                              isSnappingSegment ? null : undoLastDrawPoint,
                           child: const Text('تراجع'),
                         ),
                         const SizedBox(width: 6),
