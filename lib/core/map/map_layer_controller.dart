@@ -31,6 +31,63 @@ class MapLayerController {
   /// كاش معرّفات الطبقات لكل styleUri لتفادي إعادة المسح الكامل
   static final Map<String, _LayerIdCache> _layerCache = {};
 
+  /// تعبير Mapbox يفضّل الاسم العربي ثم البدائل
+  static final List<dynamic> arabicTextFieldExpression = [
+    'coalesce',
+    [
+      'case',
+      [
+        'all',
+        ['has', 'name_ar'],
+        ['!=', ['get', 'name_ar'], ''],
+      ],
+      ['get', 'name_ar'],
+      '',
+    ],
+    [
+      'case',
+      [
+        'all',
+        ['has', 'name:ar'],
+        ['!=', ['get', 'name:ar'], ''],
+      ],
+      ['get', 'name:ar'],
+      '',
+    ],
+    [
+      'case',
+      [
+        'all',
+        ['has', 'name'],
+        ['!=', ['get', 'name'], ''],
+      ],
+      ['get', 'name'],
+      '',
+    ],
+    [
+      'case',
+      [
+        'all',
+        ['has', 'name_en'],
+        ['!=', ['get', 'name_en'], ''],
+      ],
+      ['get', 'name_en'],
+      '',
+    ],
+    ['to-string', ['get', 'ref']],
+  ];
+
+  /// تعبير أبسط وأكثر توافقاً مع أنماط Mapbox المختلفة
+  static final List<dynamic> arabicTextFieldSimple = [
+    'coalesce',
+    ['get', 'name_ar'],
+    ['get', 'name:ar'],
+    ['get', 'name'],
+    ['get', 'name_en'],
+    ['get', 'name:en'],
+    ['to-string', ['get', 'ref']],
+  ];
+
   static const List<String> _placeKeywords = [
     'settlement',
     'place-label',
@@ -93,7 +150,29 @@ class MapLayerController {
     'tunnel-label',
   ];
 
-  /// يُستدعى عند تغيير الستايل لمسح الكاش
+  /// كلمات تدل على طبقة تسميات (symbol) يجب تعريبها
+  static const List<String> _labelKeywords = [
+    'label',
+    'poi',
+    'place',
+    'settlement',
+    'road',
+    'street',
+    'bridge',
+    'tunnel',
+    'water-name',
+    'waterway',
+    'airport',
+    'transit',
+    'rail',
+    'bus',
+    'shield',
+    'junction',
+    'mountain',
+    'natural',
+    'housenum',
+  ];
+
   static void invalidateCache([String? styleUri]) {
     if (styleUri == null) {
       _layerCache.clear();
@@ -102,7 +181,6 @@ class MapLayerController {
     }
   }
 
-  /// آخر مفتاح ستايل استُخدم — لتقييد استعلام POI بالطبقات الصحيحة
   static String _lastStyleKey = 'default';
 
   static Future<void> applyLabelFilters({
@@ -124,6 +202,7 @@ class MapLayerController {
         final placeIds = <String>{};
         final poiIds = <String>{};
         final roadIds = <String>{};
+        final allLabelIds = <String>{};
 
         for (final layer in layers) {
           final rawId = layer?.id;
@@ -131,6 +210,13 @@ class MapLayerController {
           final lower = rawId.toLowerCase();
 
           if (_isBaseGeometryLayer(lower)) continue;
+
+          final isLabelLike = _matchesAny(lower, _labelKeywords) ||
+              lower.contains('label');
+
+          if (isLabelLike) {
+            allLabelIds.add(rawId);
+          }
 
           if (_matchesAny(lower, _placeKeywords)) {
             placeIds.add(rawId);
@@ -145,13 +231,25 @@ class MapLayerController {
         if (poiIds.isEmpty) poiIds.addAll(_fallbackPoi);
         if (roadIds.isEmpty) roadIds.addAll(_fallbackRoad);
 
+        // ادمج الاحتياطي ضمن قائمة التسميات للتعريب
+        allLabelIds.addAll(placeIds);
+        allLabelIds.addAll(poiIds);
+        allLabelIds.addAll(roadIds);
+
         cache = _LayerIdCache(
           placeIds: placeIds,
           poiIds: poiIds,
           roadIds: roadIds,
+          labelIds: allLabelIds,
         );
         _layerCache[styleKey] = cache;
       }
+
+      // فرض العربية قبل ضبط الإظهار
+      await applyArabicLabels(
+        mapboxMap: mapboxMap,
+        layerIds: cache.labelIds,
+      );
 
       final results = await Future.wait([
         _setVisibilityBatch(style, cache.placeIds, showPlaceLabels),
@@ -163,7 +261,7 @@ class MapLayerController {
       _log(
         'طبقات محدّثة: $changed '
         '(أماكن: ${cache.placeIds.length}, POI: ${cache.poiIds.length}, '
-        'شوارع: ${cache.roadIds.length}, كاش: نعم)',
+        'شوارع: ${cache.roadIds.length}, تسميات: ${cache.labelIds.length})',
       );
     } catch (e, st) {
       _log('فشل تطبيق فلاتر الطبقات: $e');
@@ -171,12 +269,92 @@ class MapLayerController {
     }
   }
 
+  /// يفرض عرض الاسم العربي على طبقات التسميات الرمزية.
+  static Future<int> applyArabicLabels({
+    required MapboxMap mapboxMap,
+    Set<String>? layerIds,
+  }) async {
+    try {
+      final style = mapboxMap.style;
+      final ids = layerIds ?? await _discoverAllLabelLayerIds(style);
+      if (ids.isEmpty) {
+        _log('لا توجد طبقات تسميات لتعريبها');
+        return 0;
+      }
+
+      final exprJson = jsonEncode(arabicTextFieldSimple);
+      var ok = 0;
+      final list = ids.toList();
+      const batchSize = 10;
+
+      for (var i = 0; i < list.length; i += batchSize) {
+        final end =
+            (i + batchSize > list.length) ? list.length : i + batchSize;
+        final batch = list.sublist(i, end);
+        final results = await Future.wait(batch.map((id) async {
+          try {
+            final exists = await style.styleLayerExists(id);
+            if (!exists) return 0;
+
+            // بعض الطبقات ليست symbol — تجاهل الفشل بهدوء
+            await style.setStyleLayerProperty(id, 'text-field', exprJson);
+            return 1;
+          } catch (_) {
+            // جرّب تمرير التعبير كقائمة إن فشل JSON string
+            try {
+              await style.setStyleLayerProperty(
+                id,
+                'text-field',
+                arabicTextFieldSimple,
+              );
+              return 1;
+            } catch (_) {
+              return 0;
+            }
+          }
+        }));
+        for (final r in results) {
+          ok += r;
+        }
+      }
+
+      _log('تعريب التسميات: $ok / ${ids.length} طبقة');
+      return ok;
+    } catch (e) {
+      _log('فشل تعريب التسميات: $e');
+      return 0;
+    }
+  }
+
+  static Future<Set<String>> _discoverAllLabelLayerIds(StyleManager style) async {
+    final ids = <String>{};
+    try {
+      final layers = await style.getStyleLayers();
+      for (final layer in layers) {
+        final rawId = layer?.id;
+        if (rawId == null || rawId.isEmpty) continue;
+        final lower = rawId.toLowerCase();
+        if (_isBaseGeometryLayer(lower)) continue;
+        if (_matchesAny(lower, _labelKeywords) || lower.contains('label')) {
+          ids.add(rawId);
+        }
+      }
+    } catch (e) {
+      _log('فشل اكتشاف طبقات التسميات: $e');
+    }
+    if (ids.isEmpty) {
+      ids.addAll(_fallbackPlace);
+      ids.addAll(_fallbackPoi);
+      ids.addAll(_fallbackRoad);
+    }
+    return ids;
+  }
+
   static Future<MapPoiInfo?> queryPoiAt({
     required MapboxMap mapboxMap,
     required ScreenCoordinate screenCoordinate,
   }) async {
     try {
-      // صندوق أصغر = استعلام أرخص
       const half = 16.0;
       final box = ScreenBox(
         min: ScreenCoordinate(
@@ -191,7 +369,6 @@ class MapLayerController {
 
       final geometry = RenderedQueryGeometry.fromScreenBox(box);
 
-      // تقييد الاستعلام بطبقات POI فقط عند توفر الكاش — يقلل العمل بشكل كبير
       final poiLayers = _layerCache[_lastStyleKey]?.poiIds;
       final layerIds = (poiLayers != null && poiLayers.isNotEmpty)
           ? poiLayers.toList(growable: false)
@@ -348,6 +525,7 @@ class MapLayerController {
     return {};
   }
 
+  /// يفضّل العربي عند قراءة خصائص المعلم
   static String? _extractName(Map<String, dynamic> props) {
     const keys = [
       'name_ar',
@@ -369,6 +547,7 @@ class MapLayerController {
     Map<String, dynamic> props,
     String primary,
   ) {
+    // إن كان الأساسي عربياً، اعرض الإنجليزي ثانوياً والعكس
     const keys = ['name_en', 'name:en', 'name_ar', 'name:ar', 'name'];
     for (final k in keys) {
       final v = props[k]?.toString().trim();
@@ -422,10 +601,12 @@ class _LayerIdCache {
   final Set<String> placeIds;
   final Set<String> poiIds;
   final Set<String> roadIds;
+  final Set<String> labelIds;
 
   const _LayerIdCache({
     required this.placeIds,
     required this.poiIds,
     required this.roadIds,
+    required this.labelIds,
   });
 }
