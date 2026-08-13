@@ -8,6 +8,7 @@ import '../../../core/map/map_utils.dart';
 import '../../../core/pickup/pickup_point_mixin.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../services/analytics_service.dart';
 import 'mixins/passenger_location_mixin.dart';
 import 'mixins/passenger_live_tracking_mixin.dart';
 
@@ -29,6 +30,9 @@ class _MapTabState extends State<MapTab>
         PassengerLiveTrackingMixin<MapTab> {
   String _selectedRoute = AppConstants.jordanRoutes.first;
   bool _mapInitialized = false;
+  bool _loggedMapOpened = false;
+  bool _loggedEmptyState = false;
+  int? _lastLiveCount;
 
   @override
   bool get wantKeepAlive => true;
@@ -41,10 +45,42 @@ class _MapTabState extends State<MapTab>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     preloadPassengerMarker();
+    liveDriversCount.addListener(_onLiveCountChanged);
+  }
+
+  void _onLiveCountChanged() {
+    if (_liveTrackingDisposedLike) return;
+    final count = liveDriversCount.value;
+    if (_lastLiveCount == count) return;
+    _lastLiveCount = count;
+
+    if (count == 0) {
+      if (!_loggedEmptyState) {
+        _loggedEmptyState = true;
+        AnalyticsService().noLiveBusesViewed(route: _selectedRoute);
+      }
+    } else {
+      _loggedEmptyState = false;
+      AnalyticsService().liveBusesViewed(count, route: _selectedRoute);
+    }
+  }
+
+  /// حماية بسيطة إن تم dispose الـ notifier
+  bool get _liveTrackingDisposedLike {
+    try {
+      // ignore: unnecessary_statements
+      liveDriversCount.value;
+      return false;
+    } catch (_) {
+      return true;
+    }
   }
 
   @override
   void dispose() {
+    try {
+      liveDriversCount.removeListener(_onLiveCountChanged);
+    } catch (_) {}
     disposeLiveTracking();
     disposeMapDebug();
     WidgetsBinding.instance.removeObserver(this);
@@ -80,6 +116,10 @@ class _MapTabState extends State<MapTab>
     final driverId = findDriverIdByAnnotation(annotation);
     if (driverId != null) {
       MapUtils.lightHaptic();
+      final data = getLiveDriverData(driverId);
+      AnalyticsService().driverMarkerTapped(
+        capacity: data?.capacity?.toString(),
+      );
       showDriverInfoSheet(driverId);
       return;
     }
@@ -87,6 +127,7 @@ class _MapTabState extends State<MapTab>
     final pickupId = findPickupIdByAnnotation(annotation);
     if (pickupId != null) {
       MapUtils.lightHaptic();
+      AnalyticsService().pickupMarkerTapped();
       showPickupPointSheet(pickupId);
     }
   }
@@ -117,6 +158,12 @@ class _MapTabState extends State<MapTab>
     if (!mounted) return;
     listenToPickupPoints();
     startLiveDriverTracking(routeFilter: _selectedRoute);
+
+    if (!_loggedMapOpened) {
+      _loggedMapOpened = true;
+      AnalyticsService().passengerMapOpened();
+    }
+
     if (mounted) setState(() => isMapReady = true);
   }
 
@@ -155,7 +202,9 @@ class _MapTabState extends State<MapTab>
               onRouteChanged: (newRoute) {
                 setState(() => _selectedRoute = newRoute);
                 updateLiveTrackingRouteFilter(newRoute);
+                _loggedEmptyState = false;
                 MapUtils.lightHaptic();
+                AnalyticsService().routeFilterChanged(newRoute);
                 MapUtils.showSnackBar(
                   context,
                   l10n.routeFiltered(newRoute),
@@ -386,7 +435,6 @@ class _LiveStatusBar extends StatelessWidget {
               ),
             ],
           ),
-          // نصيحة عند عدم وجود باصات — تقلل الإحباط
           if (!hasLive) ...[
             const SizedBox(height: 10),
             Container(

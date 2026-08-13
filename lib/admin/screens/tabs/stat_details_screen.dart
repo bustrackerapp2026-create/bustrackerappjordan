@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/constants/bus_capacity.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/user_model.dart';
+import '../../../services/analytics_service.dart';
 import '../../../services/firestore_service.dart';
 
 class StatDetailsScreen extends StatefulWidget {
@@ -30,7 +31,6 @@ class _StatDetailsScreenState extends State<StatDetailsScreen> {
       widget.queryType == 'rejected' ||
       widget.queryType == 'driver';
 
-  /// جلب ثم تصفية محلياً لتجنب فهارس مركّبة وخلط الركاب مع طلبات السائقين.
   Stream<List<UserModel>> _watchUsers() {
     return FirebaseFirestore.instance.collection('users').snapshots().map((snap) {
       final list = <UserModel>[];
@@ -58,14 +58,13 @@ class _StatDetailsScreenState extends State<StatDetailsScreen> {
       case 'bus_company':
         return type == 'bus_company';
       case 'pending':
-        // طلبات موافقة فقط — ليس الركاب
         return needsApproval && !user.isVerified && !user.isRejected;
       case 'verified':
         return needsApproval && user.isVerified && !user.isRejected;
       case 'rejected':
         return needsApproval && user.isRejected;
       case 'active_buses':
-        return type == 'driver'; // التصفية الحية تتم في الإحصائيات
+        return type == 'driver';
       case 'active_passengers':
         return type == 'passenger';
       case 'active_services':
@@ -80,6 +79,7 @@ class _StatDetailsScreenState extends State<StatDetailsScreen> {
     setState(() => _busyIds.add(user.uid));
     try {
       await _firestore.approveDriver(user.uid);
+      AnalyticsService().adminDriverApproved();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -128,6 +128,7 @@ class _StatDetailsScreenState extends State<StatDetailsScreen> {
     setState(() => _busyIds.add(user.uid));
     try {
       await _firestore.rejectDriver(user.uid);
+      AnalyticsService().adminDriverRejected();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
