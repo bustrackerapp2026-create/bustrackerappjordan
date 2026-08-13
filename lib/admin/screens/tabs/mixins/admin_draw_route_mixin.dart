@@ -67,14 +67,17 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     // علامة النقطة
     try {
-      final ann = await pointAnnotationManager?.create(
-        PointAnnotationOptions(
-          geometry: point,
-          iconSize: 0.7,
-          iconColor: const Color(0xFF7C3AED).toARGB32(),
-        ),
-      );
-      if (ann != null) _drawPointMarkers.add(ann);
+      final manager = pointAnnotationManager;
+      if (manager != null) {
+        final ann = await manager.create(
+          PointAnnotationOptions(
+            geometry: point,
+            iconSize: 0.7,
+            iconColor: const Color(0xFF7C3AED).toARGB32(),
+          ),
+        );
+        _drawPointMarkers.add(ann);
+      }
     } catch (_) {}
 
     await _redrawDrawLine();
@@ -161,6 +164,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         _drawPoints.clear();
       });
       await _clearDrawVisuals();
+      if (!mounted) return;
       final km = ((saved.distanceMeters ?? 0) / 1000).toStringAsFixed(1);
       MapUtils.showSnackBar(
         context,
