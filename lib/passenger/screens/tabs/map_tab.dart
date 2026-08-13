@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
+import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
@@ -9,12 +10,17 @@ import '../../../core/map/map_core.dart';
 import '../../../core/map/map_utils.dart';
 import '../../../core/pickup/pickup_point_mixin.dart';
 import '../../../core/utils/arabic_search.dart';
+import '../../../features/auth/providers/auth_provider.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../models/live_driver_location.dart';
 import '../../../models/planned_route.dart';
+import '../../../models/trip_model.dart';
+import '../../../passenger/widgets/active_trip_banner.dart';
 import '../../../services/analytics_service.dart';
 import '../../../services/route_prefs_service.dart';
 import '../../../services/route_plan_service.dart';
+import '../../../services/trip_service.dart';
 import 'mixins/passenger_location_mixin.dart';
 import 'mixins/passenger_live_tracking_mixin.dart';
 import 'mixins/passenger_planned_routes_mixin.dart';
@@ -42,6 +48,10 @@ class _MapTabState extends State<MapTab>
   int? _lastLiveCount;
   bool _findingNearest = false;
 
+  final TripService _tripService = TripService();
+  StreamSubscription<List<TripModel>>? _openTripsSub;
+  TripModel? _openTrip;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -55,6 +65,19 @@ class _MapTabState extends State<MapTab>
     preloadPassengerMarker();
     liveDriversCount.addListener(_onLiveCountChanged);
     _loadPreferredRoute();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _watchOpenTrips());
+  }
+
+  void _watchOpenTrips() {
+    _openTripsSub?.cancel();
+    final uid = context.read<AuthProvider>().userId;
+    if (uid == null || uid.isEmpty) return;
+    _openTripsSub = _tripService.watchPassengerOpenTrips(uid).listen((list) {
+      if (!mounted) return;
+      setState(() => _openTrip = list.isEmpty ? null : list.first);
+    }, onError: (e) {
+      debugPrint('open trips watch: $e');
+    });
   }
 
   Future<void> _loadPreferredRoute() async {
@@ -95,6 +118,7 @@ class _MapTabState extends State<MapTab>
 
   @override
   void dispose() {
+    _openTripsSub?.cancel();
     try {
       liveDriversCount.removeListener(_onLiveCountChanged);
     } catch (_) {}
@@ -114,6 +138,7 @@ class _MapTabState extends State<MapTab>
       if (mounted) {
         startLiveDriverTracking(routeFilter: _selectedRoute);
         startWatchingPlannedRoutes(_selectedRoute);
+        _watchOpenTrips();
       }
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
@@ -129,6 +154,100 @@ class _MapTabState extends State<MapTab>
     unawaited(redrawPlannedRoutes());
   }
 
+  Future<void> _openDriverSheet(String driverId) async {
+    await showDriverInfoSheet(
+      driverId,
+      passengerLat: lastPassengerLat,
+      passengerLng: lastPassengerLng,
+      onRequestBoard: _requestBoard,
+    );
+  }
+
+  Future<void> _requestBoard(LiveDriverLocation driver) async {
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userId;
+    if (uid == null || uid.isEmpty) {
+      MapUtils.showSnackBar(context, 'سجّل الدخول أولاً لطلب الصعود', isError: true);
+      throw StateError('not logged in');
+    }
+
+    if (!hasPassengerLocation) {
+      await goToMyLocation();
+      if (!hasPassengerLocation) {
+        MapUtils.showSnackBar(
+          context,
+          'حدّد موقعك أولاً لطلب الصعود',
+          isError: true,
+        );
+        throw StateError('no location');
+      }
+    }
+
+    try {
+      await _tripService.createBoardRequest(
+        passengerId: uid,
+        driverId: driver.driverId,
+        pickupPoint: 'موقعي الحالي',
+        pickupLat: lastPassengerLat!,
+        pickupLng: lastPassengerLng!,
+        route: driver.route ?? _selectedRoute,
+        passengerName: auth.userData?.fullName,
+        driverName: driver.fullName,
+        busNumber: driver.busNumber,
+      );
+      if (!mounted) return;
+      MapUtils.showSnackBar(
+        context,
+        'تم إرسال طلب الصعود إلى ${driver.fullName}',
+      );
+      _watchOpenTrips();
+    } catch (e) {
+      if (mounted) {
+        MapUtils.showSnackBar(
+          context,
+          'فشل إرسال الطلب. تحقق من الصلاحيات أو الاتصال.',
+          isError: true,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _cancelOpenTrip() async {
+    final trip = _openTrip;
+    final uid = context.read<AuthProvider>().userId;
+    if (trip == null || uid == null) return;
+    try {
+      await _tripService.cancelTripByPassenger(
+        tripId: trip.id,
+        passengerId: uid,
+      );
+      if (mounted) {
+        MapUtils.showSnackBar(context, 'تم إلغاء الطلب');
+      }
+    } catch (_) {
+      if (mounted) {
+        MapUtils.showSnackBar(context, 'تعذر إلغاء الطلب', isError: true);
+      }
+    }
+  }
+
+  Future<void> _focusOpenTripDriver() async {
+    final trip = _openTrip;
+    if (trip == null || trip.driverId.isEmpty) return;
+    final data = getLiveDriverData(trip.driverId);
+    if (data != null && data.hasValidCoords) {
+      await flyToFlat(
+        latitude: data.latitude,
+        longitude: data.longitude,
+        zoom: 15.5,
+      );
+      return;
+    }
+    // إن لم يكن في الفلتر الحالي، نحاول فتح الورقة بعد تحميل التتبع
+    MapUtils.showSnackBar(context, 'جاري تحديد موقع السائق...');
+  }
+
   @override
   void handleAnnotationTap(PointAnnotation annotation) {
     if (!mounted) return;
@@ -140,7 +259,7 @@ class _MapTabState extends State<MapTab>
       AnalyticsService().driverMarkerTapped(
         capacity: data?.capacity?.toString(),
       );
-      showDriverInfoSheet(driverId);
+      unawaited(_openDriverSheet(driverId));
       return;
     }
 
@@ -209,7 +328,6 @@ class _MapTabState extends State<MapTab>
     final q = query.trim();
     if (q.isEmpty) return;
 
-    // 1) مطابقة قائمة الخطوط المحلية
     for (final name in AppConstants.jordanRoutes) {
       if (ArabicSearch.matches(query: q, lineName: name)) {
         await _onRouteChanged(name);
@@ -217,15 +335,12 @@ class _MapTabState extends State<MapTab>
       }
     }
 
-    // 2) بحث في المسارات المعتمدة على Firebase
     try {
       final found = await RoutePlanService().searchApprovedRoutes(q);
       if (!mounted) return;
       if (found.isNotEmpty) {
         final line = found.first.lineName;
-        // أضف للخيارات إن لم تكن في القائمة الثابتة
         if (!AppConstants.jordanRoutes.contains(line)) {
-          // نغيّر التحديد حتى لو لم تكن في القائمة الثابتة للـ dropdown
           setState(() => _selectedRoute = line);
           updateLiveTrackingRouteFilter(line);
           updatePlannedRoutesLineFilter(line);
@@ -245,7 +360,6 @@ class _MapTabState extends State<MapTab>
       debugPrint('passenger route search: $e');
     }
 
-    // 3) بحث مكان جغرافي كاحتياطي
     await searchPassengerPlace(q);
   }
 
@@ -297,7 +411,7 @@ class _MapTabState extends State<MapTab>
         context,
         'أقرب باص: ${result.driver.fullName} · $distanceLabel',
       );
-      await showDriverInfoSheet(result.driver.driverId);
+      await _openDriverSheet(result.driver.driverId);
     } finally {
       if (mounted) setState(() => _findingNearest = false);
     }
@@ -307,6 +421,7 @@ class _MapTabState extends State<MapTab>
   Widget build(BuildContext context) {
     super.build(context);
     final l10n = AppLocalizations.of(context);
+    final hasOpenTrip = _openTrip != null;
 
     return Stack(
       children: [
@@ -341,7 +456,7 @@ class _MapTabState extends State<MapTab>
           ),
         ),
         Positioned(
-          bottom: 120,
+          bottom: hasOpenTrip ? 200 : 120,
           right: 16,
           child: RepaintBoundary(
             child: Column(
@@ -435,23 +550,35 @@ class _MapTabState extends State<MapTab>
             ),
           ),
         ),
-        Positioned(
-          bottom: 30,
-          left: 16,
-          right: 16,
-          child: RepaintBoundary(
-            child: ValueListenableBuilder<int>(
-              valueListenable: liveDriversCount,
-              builder: (context, count, _) {
-                return _LiveStatusBar(
-                  routeName: _selectedRoute,
-                  liveCount: count,
-                  l10n: l10n,
-                );
-              },
+        if (hasOpenTrip)
+          Positioned(
+            bottom: 30,
+            left: 16,
+            right: 16,
+            child: ActiveTripBanner(
+              trip: _openTrip!,
+              onCancel: _cancelOpenTrip,
+              onFocusDriver: _focusOpenTripDriver,
+            ),
+          )
+        else
+          Positioned(
+            bottom: 30,
+            left: 16,
+            right: 16,
+            child: RepaintBoundary(
+              child: ValueListenableBuilder<int>(
+                valueListenable: liveDriversCount,
+                builder: (context, count, _) {
+                  return _LiveStatusBar(
+                    routeName: _selectedRoute,
+                    liveCount: count,
+                    l10n: l10n,
+                  );
+                },
+              ),
             ),
           ),
-        ),
       ],
     );
   }
