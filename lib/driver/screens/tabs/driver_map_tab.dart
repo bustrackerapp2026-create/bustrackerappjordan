@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:provider/provider.dart';
@@ -35,6 +37,9 @@ class _DriverMapTabState extends State<DriverMapTab>
   bool _mapInitialized = false;
   bool _showMap = false;
 
+  /// يعيد بناء الشاشة دورياً لإظهار/إخفاء تنبيه الموقع القديم
+  Timer? _staleCheckTimer;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -52,10 +57,21 @@ class _DriverMapTabState extends State<DriverMapTab>
       });
     });
     preloadDriverMarker();
+
+    // فحص كل 30 ثانية: هل الموقع قديم بينما السائق متصل؟
+    _staleCheckTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      final driver = context.read<DriverProvider>();
+      if (driver.isOnline) {
+        setState(() {});
+      }
+    });
   }
 
   @override
   void dispose() {
+    _staleCheckTimer?.cancel();
+    _staleCheckTimer = null;
     disposeMapDebug();
     WidgetsBinding.instance.removeObserver(this);
     disposeDriverLocation();
@@ -67,6 +83,10 @@ class _DriverMapTabState extends State<DriverMapTab>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     onDriverLocationLifecycle(state);
+    // عند العودة للتطبيق أعد فحص القِدم فوراً
+    if (state == AppLifecycleState.resumed && mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -212,7 +232,6 @@ class _DriverMapTabState extends State<DriverMapTab>
         );
       } catch (_) {}
       if (!mounted) return;
-      // عند إنهاء الرحلة أوقف وضع إضافة نقطة إن كان مفعّلاً
       if (isAddingPickupPoint) {
         toggleAddingPickupPoint();
       }
@@ -227,7 +246,6 @@ class _DriverMapTabState extends State<DriverMapTab>
         );
       } catch (_) {}
       if (!mounted) return;
-      // أثناء الرحلة لا نسمح بإضافة نقاط تجمع بالخطأ
       if (isAddingPickupPoint) {
         toggleAddingPickupPoint();
       }
@@ -266,6 +284,12 @@ class _DriverMapTabState extends State<DriverMapTab>
     final l10n = AppLocalizations.of(context);
     final isTripActive = context.select<DriverProvider, bool>(
       (p) => p.isTripActive,
+    );
+    final showStaleBanner = context.select<DriverProvider, bool>(
+      (p) => p.isLocationStaleWhileOnline,
+    );
+    final locationAge = context.select<DriverProvider, String>(
+      (p) => p.locationAgeLabel,
     );
 
     return Stack(
@@ -306,8 +330,30 @@ class _DriverMapTabState extends State<DriverMapTab>
             ),
           ),
         ),
+        // تنبيه الموقع القديم أثناء الاتصال
+        if (showStaleBanner)
+          Positioned(
+            top: 78,
+            left: 16,
+            right: 16,
+            child: RepaintBoundary(
+              child: _StaleLocationBanner(
+                ageLabel: locationAge,
+                isRefreshing: isLoadingDriverLocation,
+                onRefresh: () {
+                  MapUtils.mediumHaptic();
+                  goToMyLocation();
+                },
+                onGoOffline: () {
+                  // إن كان متصلاً → قطع الاتصال
+                  final online = context.read<DriverProvider>().isOnline;
+                  if (online) _onToggleOnline();
+                },
+              ),
+            ),
+          ),
         Positioned(
-          top: 80,
+          top: showStaleBanner ? 168 : 80,
           left: 16,
           child: RepaintBoundary(
             child: Selector<DriverProvider, double?>(
@@ -331,7 +377,6 @@ class _DriverMapTabState extends State<DriverMapTab>
           right: 16,
           child: RepaintBoundary(
             child: _DriverMapFabColumn(
-              // أثناء الرحلة: أزرار أساسية فقط لتقليل الإلهاء
               simplified: isTripActive,
               followDriverCamera: followDriverCamera,
               isLoadingLocation: isLoadingDriverLocation,
@@ -365,7 +410,6 @@ class _DriverMapTabState extends State<DriverMapTab>
                 showMapSettingsSheet(context);
               },
               onAddPickup: () {
-                // لا يُسمح بإضافة نقطة أثناء رحلة نشطة
                 if (isTripActive) return;
                 MapUtils.lightHaptic();
                 toggleAddingPickupPoint();
@@ -416,6 +460,136 @@ class _DriverMapTabState extends State<DriverMapTab>
           ),
         ),
       ],
+    );
+  }
+}
+
+/// شريط تنبيه: متصل لكن الموقع قديم أو غير متوفر.
+class _StaleLocationBanner extends StatelessWidget {
+  final String ageLabel;
+  final bool isRefreshing;
+  final VoidCallback onRefresh;
+  final VoidCallback onGoOffline;
+
+  const _StaleLocationBanner({
+    required this.ageLabel,
+    required this.isRefreshing,
+    required this.onRefresh,
+    required this.onGoOffline,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 5,
+      borderRadius: BorderRadius.circular(16),
+      color: const Color(0xFFFFF7ED),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFFDBA74)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(
+                  Icons.location_off_rounded,
+                  size: 18,
+                  color: Color(0xFFEA580C),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'موقعك قديم بينما أنت متصل',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF9A3412),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'آخر تحديث: $ageLabel — الركاب قد يرون موقعاً غير دقيق.',
+              style: const TextStyle(
+                fontSize: 11.5,
+                height: 1.3,
+                color: Color(0xFF9A3412),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 36,
+                    child: ElevatedButton.icon(
+                      onPressed: isRefreshing ? null : onRefresh,
+                      icon: isRefreshing
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.my_location, size: 16),
+                      label: Text(
+                        isRefreshing ? 'جاري التحديث…' : 'تحديث موقعي',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        elevation: 0,
+                        backgroundColor: const Color(0xFFEA580C),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SizedBox(
+                    height: 36,
+                    child: OutlinedButton(
+                      onPressed: onGoOffline,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF9A3412),
+                        side: const BorderSide(color: Color(0xFFFDBA74)),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'قطع الاتصال',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -499,7 +673,6 @@ class _QuickHud extends StatelessWidget {
 }
 
 class _DriverMapFabColumn extends StatelessWidget {
-  /// أثناء الرحلة نخفي الطبقات وإضافة النقاط لتقليل التشتت
   final bool simplified;
   final bool followDriverCamera;
   final bool isLoadingLocation;
@@ -570,7 +743,6 @@ class _DriverMapFabColumn extends StatelessWidget {
                 )
               : const Icon(Icons.my_location),
         ),
-        // أثناء الرحلة: لا طبقات ولا إضافة نقاط
         if (!simplified) ...[
           const SizedBox(height: 10),
           FloatingActionButton(
