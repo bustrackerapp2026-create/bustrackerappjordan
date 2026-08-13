@@ -11,6 +11,7 @@ import '../../../core/pickup/pickup_point_mixin.dart';
 import '../../../core/utils/arabic_search.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../models/planned_route.dart';
 import '../../../services/analytics_service.dart';
 import '../../../services/route_prefs_service.dart';
 import '../../../services/route_plan_service.dart';
