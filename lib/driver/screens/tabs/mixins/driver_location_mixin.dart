@@ -13,6 +13,7 @@ import '../../../../core/location/location_predictor.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../driver/providers/driver_provider.dart';
+import '../../../../driver/services/driver_tracking_lifecycle.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../map/utils/map_helpers.dart';
 import '../../../../services/location_service.dart';
@@ -20,15 +21,23 @@ import '../../../../services/location_service.dart';
 mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PointAnnotation? _driverUserAnnotation;
   Uint8List? _cachedDriverMarkerBytes;
-  StreamSubscription<geo.Position>? _driverLocationSubscription;
   final LocationService _driverLocationService = LocationService();
   final LocationPredictor _predictor = LocationPredictor();
+
+  /// مدير دورة حياة خدمة التتبع (بدء / إيقاف / نبض قلب)
+  late final DriverTrackingLifecycle _trackingLifecycle =
+      DriverTrackingLifecycle(locationService: _driverLocationService)
+        ..onPosition = _onLifecyclePosition
+        ..onStateChanged = _onTrackingStateChanged;
 
   Timer? _predictionTimer;
 
   bool isLoadingDriverLocation = false;
   double currentDriverBearing = 0.0;
   bool followDriverCamera = false;
+
+  /// حالة الخدمة للعرض/التشخيص
+  DriverTrackingState trackingServiceState = DriverTrackingState.stopped;
 
   DateTime? _lastFirestoreLocationWrite;
   double? _lastUploadedLat;
@@ -65,6 +74,23 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final driver = context.read<DriverProvider>();
     if (driver.isTripActive) return LocationTrackingProfile.driverTrip;
     return LocationTrackingProfile.driverIdle;
+  }
+
+  void _onTrackingStateChanged(DriverTrackingState state) {
+    trackingServiceState = state;
+    if (mounted) {
+      // لا setState إلزامي في كل تغيّر — فقط عند الحاجة للواجهة
+    }
+  }
+
+  void _onLifecyclePosition(geo.Position pos) {
+    unawaited(
+      _applyPosition(
+        pos,
+        moveCamera: mounted && followDriverCamera,
+        forceUpload: false,
+      ),
+    );
   }
 
   Future<void> preloadDriverMarker() async {
@@ -198,37 +224,30 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
+  /// تشغيل خدمة التتبع عبر مدير الدورة — متسلسل وآمن.
   Future<void> ensureDriverTrackingRunning() async {
     if (!_shouldTrackContinuously) {
       await stopDriverTracking();
       return;
     }
 
-    // طلب صلاحية الخلفية (أفضل جهد — قد تبقى whileInUse على بعض الأجهزة)
-    final permission =
-        await _driverLocationService.ensureBackgroundLocationPermission();
-    if (permission == geo.LocationPermission.denied ||
-        permission == geo.LocationPermission.deniedForever) {
-      MapUtils.log('⚠️ لا صلاحية موقع للتتبع', tag: 'DriverLocation');
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userId;
+    if (uid == null || uid.isEmpty) {
+      await stopDriverTracking();
       return;
     }
 
-    if (permission != geo.LocationPermission.always && mounted) {
-      // تنبيه لمرة واحدة تقريباً عبر snack قصير
-      MapUtils.log(
-        'الموقع: whileInUse — التتبع في الخلفية قد يكون محدوداً',
-        tag: 'DriverLocation',
-      );
-    }
-
-    await _restartLocationStream();
+    await _trackingLifecycle.requestStart(
+      uid: uid,
+      profile: _activeProfile,
+    );
     _startPredictionLoop();
   }
 
   Future<void> stopDriverTracking() async {
-    await _driverLocationSubscription?.cancel();
-    _driverLocationSubscription = null;
     _stopPredictionLoop();
+    await _trackingLifecycle.requestStop();
   }
 
   void _startPredictionLoop() {
@@ -278,37 +297,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   void _stopPredictionLoop() {
     _predictionTimer?.cancel();
     _predictionTimer = null;
-  }
-
-  Future<void> _restartLocationStream() async {
-    await _driverLocationSubscription?.cancel();
-    _driverLocationSubscription = null;
-
-    if (!_shouldTrackContinuously) return;
-
-    final profile = _activeProfile;
-    MapUtils.log(
-      '📡 تتبع GPS (خلفية مفعّلة إن أمكن): $profile',
-      tag: 'DriverLocation',
-    );
-
-    _driverLocationSubscription = _driverLocationService
-        .getPositionStreamForProfile(profile)
-        .listen(
-      (pos) {
-        // حتى في الخلفية: ارفع الموقع — لا تعتمد على الواجهة فقط
-        unawaited(
-          _applyPosition(
-            pos,
-            moveCamera: mounted && followDriverCamera,
-            forceUpload: false,
-          ),
-        );
-      },
-      onError: (e) {
-        MapUtils.log('⚠️ stream موقع: $e', tag: 'DriverLocation');
-      },
-    );
   }
 
   Future<void> _applyPosition(
@@ -376,16 +364,23 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       );
     }
 
-    if (!mounted) {
-      // ما زلنا نرفع إلى Firestore إن أمكن عبر آخر سياق محفوظ؟
-      // بدون mounted لا نستطيع context.read بأمان — نتخطى التحديث المحلي فقط
-      return;
+    // تحديث المزود + Firestore إن كانت الشاشة موجودة
+    if (mounted) {
+      final auth = context.read<AuthProvider>();
+      final uid = auth.userId;
+      final driver = context.read<DriverProvider>();
+      driver.updatePosition(pos, userId: uid);
+      unawaited(_maybeUploadDriverLocation(pos, force: doForce));
+    } else {
+      // الشاشة غير مُركّبة لكن الخدمة ما زالت تريد الرفع
+      unawaited(
+        _trackingLifecycle.uploadLocation(
+          position: pos,
+          isOnline: true,
+          isTripActive: _activeProfile == LocationTrackingProfile.driverTrip,
+        ),
+      );
     }
-
-    final auth = context.read<AuthProvider>();
-    final uid = auth.userId;
-    context.read<DriverProvider>().updatePosition(pos, userId: uid);
-    unawaited(_maybeUploadDriverLocation(pos, force: doForce));
 
     if (_pendingPosition != null && mounted) {
       unawaited(
@@ -503,36 +498,39 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  /// لا نوقف التتبع عند التصغير إذا كان السائق متصلاً أو في رحلة.
+  /// إدارة دورة حياة التطبيق ↔ خدمة التتبع
   void onDriverLocationLifecycle(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      if (_shouldTrackContinuously) {
-        unawaited(ensureDriverTrackingRunning());
-      }
-      return;
-    }
+    switch (state) {
+      case AppLifecycleState.resumed:
+        if (_shouldTrackContinuously) {
+          unawaited(ensureDriverTrackingRunning());
+        }
+        break;
 
-    if (state == AppLifecycleState.detached) {
-      // إغلاق كامل للعملية — أوقف التتبع المحلي
-      unawaited(stopDriverTracking());
-      return;
-    }
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        // متصل؟ أبقِ الخدمة — الإشعار الأمامي يبقيها حية على أندرويد
+        if (_shouldTrackContinuously) {
+          MapUtils.log(
+            'App $state — الخدمة تبقى نشطة (متصل/رحلة)',
+            tag: 'DriverLocation',
+          );
+        } else {
+          unawaited(stopDriverTracking());
+        }
+        break;
 
-    // paused / inactive / hidden: أبقِ الـ stream إذا كان متصلاً
-    // (خدمة أمامية على أندرويد + خلفية على iOS)
-    if (_shouldTrackContinuously) {
-      MapUtils.log(
-        'الوضع $state — استمرار مشاركة الموقع في الخلفية',
-        tag: 'DriverLocation',
-      );
-      return;
+      case AppLifecycleState.detached:
+        // إغلاق العملية: أوقف كل شيء
+        unawaited(stopDriverTracking());
+        break;
     }
-
-    unawaited(stopDriverTracking());
   }
 
   void disposeDriverLocation() {
-    unawaited(stopDriverTracking());
+    _stopPredictionLoop();
+    unawaited(_trackingLifecycle.dispose());
     _predictor.reset();
     _driverUserAnnotation = null;
     _pendingPosition = null;
