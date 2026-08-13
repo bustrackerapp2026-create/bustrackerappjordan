@@ -14,6 +14,12 @@ class DriverProvider extends ChangeNotifier {
   bool _isTripActive = false;
   geo.Position? _currentPosition;
 
+  /// آخر وقت حصلنا فيه على موقع محلي لهذا السائق
+  DateTime? _lastLocationUpdatedAt;
+
+  /// آخر وقت رُفع فيه الموقع إلى Firestore بنجاح
+  DateTime? _lastLocationUploadedAt;
+
   final List<PickupPoint> _pickupPoints = [];
   final List<RoutePoint> _currentRoute = [];
   List<RoutePoint> _lastRecordedRoute = [];
@@ -25,9 +31,34 @@ class DriverProvider extends ChangeNotifier {
   bool get isOnline => _isOnline;
   bool get isTripActive => _isTripActive;
   geo.Position? get currentPosition => _currentPosition;
+  DateTime? get lastLocationUpdatedAt => _lastLocationUpdatedAt;
+  DateTime? get lastLocationUploadedAt => _lastLocationUploadedAt;
   List<PickupPoint> get pickupPoints => List.unmodifiable(_pickupPoints);
   List<RoutePoint> get currentRoute => List.unmodifiable(_currentRoute);
   bool get isRecordingRoute => _isRecordingRoute;
+
+  /// هل الموقع قديم بينما السائق متصل؟ (للتنبيه على الشاشة)
+  bool get isLocationStaleWhileOnline {
+    if (!_isOnline) return false;
+    // لا يوجد موقع أصلاً
+    if (_currentPosition == null || _lastLocationUpdatedAt == null) {
+      return true;
+    }
+    final age = DateTime.now().difference(_lastLocationUpdatedAt!);
+    return age > const Duration(minutes: 3);
+  }
+
+  /// نص نسبي لآخر تحديث موقع
+  String get locationAgeLabel {
+    final t = _lastLocationUpdatedAt;
+    if (t == null) return 'لا يوجد موقع محدد';
+    final diff = DateTime.now().difference(t);
+    if (diff.inSeconds < 30) return 'الآن';
+    if (diff.inMinutes < 1) return 'قبل أقل من دقيقة';
+    if (diff.inMinutes < 60) return 'قبل ${diff.inMinutes} د';
+    if (diff.inHours < 24) return 'قبل ${diff.inHours} س';
+    return 'قبل ${diff.inDays} يوم';
+  }
 
   static bool isValidLatitude(double lat) => lat >= -90.0 && lat <= 90.0;
   static bool isValidLongitude(double lng) => lng >= -180.0 && lng <= 180.0;
@@ -83,6 +114,8 @@ class DriverProvider extends ChangeNotifier {
     _isOnline = false;
     _isTripActive = false;
     _currentPosition = null;
+    _lastLocationUpdatedAt = null;
+    _lastLocationUploadedAt = null;
     _pickupPoints.clear();
     _currentRoute.clear();
     _lastRecordedRoute.clear();
@@ -164,6 +197,7 @@ class DriverProvider extends ChangeNotifier {
         _currentPosition!.longitude != position.longitude;
 
     _currentPosition = position;
+    _lastLocationUpdatedAt = DateTime.now();
 
     bool routeUpdated = false;
     if (_isTripActive && _isRecordingRoute) {
@@ -172,7 +206,17 @@ class DriverProvider extends ChangeNotifier {
 
     if (hasMoved || routeUpdated) {
       notifyListeners();
+    } else {
+      // حتى لو لم يتحرك: حدّث وقت الموقع حتى يختفي تنبيه القِدم
+      notifyListeners();
     }
+  }
+
+  /// يُستدعى بعد رفع ناجح للموقع إلى Firestore
+  void markLocationUploaded({String? userId}) {
+    if (!_ensureBound(userId)) return;
+    _lastLocationUploadedAt = DateTime.now();
+    notifyListeners();
   }
 
   void addPickupPoint(String name, double latitude, double longitude) {

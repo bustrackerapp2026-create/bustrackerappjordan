@@ -57,7 +57,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (!mounted) return false;
     final driver = context.read<DriverProvider>();
     final auth = context.read<AuthProvider>();
-    // تتبع فقط للسائق المربوط حالياً
     if (!driver.isBound || driver.boundUserId != auth.userId) return false;
     return driver.isOnline || driver.isTripActive;
   }
@@ -383,7 +382,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final uid = auth.userId;
 
     if (uid == null || uid.isEmpty) return;
-    // حماية: لا تكتب إلا لوثيقة السائق المربوط
     if (!driver.isBound || driver.boundUserId != uid) return;
     if (!driver.isOnline && !force) return;
 
@@ -420,6 +418,9 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _lastFirestoreLocationWrite = now;
       _lastUploadedLat = position.latitude;
       _lastUploadedLng = position.longitude;
+      if (mounted) {
+        context.read<DriverProvider>().markLocationUploaded(userId: uid);
+      }
     } catch (e) {
       MapUtils.log('⚠️ رفع الموقع: $e', tag: 'DriverLocation');
     } finally {
