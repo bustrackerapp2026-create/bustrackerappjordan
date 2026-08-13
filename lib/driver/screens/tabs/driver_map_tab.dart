@@ -79,6 +79,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     if (!mounted) return;
     final pickupId = findPickupIdByAnnotation(annotation);
     if (pickupId != null) {
+      MapUtils.lightHaptic();
       showPickupPointSheet(pickupId);
     }
   }
@@ -127,7 +128,6 @@ class _DriverMapTabState extends State<DriverMapTab>
 
       final driver = context.read<DriverProvider>();
       final auth = context.read<AuthProvider>();
-      // تتبع فقط إذا كان هذا السائق مربوطاً وهو أونلاين
       if (driver.isBound &&
           driver.boundUserId == auth.userId &&
           (driver.isOnline || driver.isTripActive)) {
@@ -151,11 +151,11 @@ class _DriverMapTabState extends State<DriverMapTab>
     final uid = auth.userId;
     if (uid == null || uid.isEmpty) return;
 
-    // رفض العملية إن لم تكن الحالة مربوطة بهذا السائق
     if (!driver.isBound || driver.boundUserId != uid) {
       driver.bindToUser(uid);
     }
 
+    MapUtils.mediumHaptic();
     final ok = driver.toggleOnlineStatus(userId: uid);
     if (!ok) return;
 
@@ -164,7 +164,6 @@ class _DriverMapTabState extends State<DriverMapTab>
     final route = _selectedRoute;
 
     try {
-      // يُحدَّث users/{uid} فقط — لا يؤثر على سائقين آخرين
       await LiveTrackingService().setDriverOnlineStatus(
         uid: uid,
         isOnline: isOnline,
@@ -179,7 +178,6 @@ class _DriverMapTabState extends State<DriverMapTab>
         isOnline ? l10n.driverOnlineMsg : l10n.driverOfflineMsg,
       );
     } catch (e) {
-      // التراجع محلياً عند فشل الكتابة لهذا uid فقط
       if (mounted) driver.toggleOnlineStatus(userId: uid);
       if (!mounted) return;
       MapUtils.showSnackBar(
@@ -201,6 +199,8 @@ class _DriverMapTabState extends State<DriverMapTab>
     if (!driver.isBound || driver.boundUserId != uid) {
       driver.bindToUser(uid);
     }
+
+    MapUtils.mediumHaptic();
 
     if (isTripActive) {
       await endTrip();
@@ -232,6 +232,7 @@ class _DriverMapTabState extends State<DriverMapTab>
   Future<void> _onRouteChanged(String route) async {
     if (!mounted) return;
     setState(() => _selectedRoute = route);
+    MapUtils.lightHaptic();
 
     final driver = context.read<DriverProvider>();
     final auth = context.read<AuthProvider>();
@@ -324,8 +325,12 @@ class _DriverMapTabState extends State<DriverMapTab>
               followDriverCamera: followDriverCamera,
               isLoadingLocation: isLoadingDriverLocation,
               isAddingPickup: isAddingPickupPoint,
-              onCompass: resetNorth,
+              onCompass: () {
+                MapUtils.lightHaptic();
+                resetNorth();
+              },
               onFollow: () {
+                MapUtils.lightHaptic();
                 toggleFollowDriverCamera();
                 if (!mounted) return;
                 MapUtils.showSnackBar(
@@ -335,13 +340,21 @@ class _DriverMapTabState extends State<DriverMapTab>
                       : l10n.followCameraOff,
                 );
               },
-              onRecenter: recenterDriverCamera,
-              onMyLocation: goToMyLocation,
+              onRecenter: () {
+                MapUtils.lightHaptic();
+                recenterDriverCamera();
+              },
+              onMyLocation: () {
+                MapUtils.lightHaptic();
+                goToMyLocation();
+              },
               onLayers: () {
                 if (!mounted) return;
+                MapUtils.lightHaptic();
                 showMapSettingsSheet(context);
               },
               onAddPickup: () {
+                MapUtils.lightHaptic();
                 toggleAddingPickupPoint();
                 setState(() {});
                 if (!mounted) return;
@@ -410,20 +423,28 @@ class _QuickHud extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      elevation: 3,
-      borderRadius: BorderRadius.circular(14),
-      color: Colors.white.withValues(alpha: 0.95),
+      elevation: 4,
+      borderRadius: BorderRadius.circular(16),
+      color: Colors.white.withValues(alpha: 0.97),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.speed,
-              size: 18,
-              color: AppTheme.primaryColor,
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.speed_rounded,
+                size: 16,
+                color: AppTheme.primaryColor,
+              ),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             Text(
               speedKmh != null
                   ? l10n.speedKmh(speedKmh!.toStringAsFixed(0))
@@ -441,12 +462,13 @@ class _QuickHud extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.red.shade50,
                   borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade100),
                 ),
                 child: Text(
                   l10n.tripLabel,
                   style: TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                     color: Colors.red.shade700,
                   ),
                 ),
@@ -580,16 +602,28 @@ class _DriverStatusPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final statusColor = isTripActive
+        ? const Color(0xFFDC2626)
+        : (isOnline ? const Color(0xFF16A34A) : const Color(0xFF6B7280));
+    final statusText = isTripActive
+        ? (followingCamera ? l10n.tripWithFollow : l10n.activeTrip)
+        : (isOnline ? l10n.onlineWithRoute(routeName) : l10n.offlineStatus);
+
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.98),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: isOnline
+              ? statusColor.withValues(alpha: 0.25)
+              : Colors.grey.shade200,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -598,73 +632,136 @@ class _DriverStatusPanel extends StatelessWidget {
         children: [
           Row(
             children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  isTripActive
+                      ? Icons.route_rounded
+                      : (isOnline
+                          ? Icons.wifi_tethering_rounded
+                          : Icons.wifi_tethering_off_rounded),
+                  color: statusColor,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '🚗 $userName',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      isOnline
-                          ? l10n.onlineWithRoute(routeName)
-                          : l10n.offlineStatus,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade700,
+                      userName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: statusColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            statusText,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: statusColor,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
-              if (isTripActive)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Text(
-                    followingCamera ? l10n.tripWithFollow : l10n.activeTrip,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.red.shade800,
-                    ),
-                  ),
-                ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
-                child: ElevatedButton(
-                  onPressed: onToggleOnline,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        isOnline ? Colors.grey.shade200 : AppTheme.primaryColor,
-                    foregroundColor:
-                        isOnline ? Colors.black87 : Colors.white,
+                child: SizedBox(
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: onToggleOnline,
+                    icon: Icon(
+                      isOnline ? Icons.power_settings_new : Icons.wifi_rounded,
+                      size: 18,
+                    ),
+                    label: Text(
+                      isOnline ? l10n.goOffline : l10n.goOnline,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: isOnline
+                          ? Colors.grey.shade100
+                          : AppTheme.primaryColor,
+                      foregroundColor:
+                          isOnline ? Colors.black87 : Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
                   ),
-                  child: Text(isOnline ? l10n.goOffline : l10n.goOnline),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
-                child: ElevatedButton(
-                  onPressed: isProcessingTrip ? null : onTripPressed,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isTripActive
-                        ? Colors.red.shade600
-                        : Colors.green.shade600,
-                    foregroundColor: Colors.white,
+                child: SizedBox(
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: isProcessingTrip ? null : onTripPressed,
+                    icon: isProcessingTrip
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            isTripActive
+                                ? Icons.stop_circle_outlined
+                                : Icons.play_arrow_rounded,
+                            size: 18,
+                          ),
+                    label: Text(
+                      isTripActive ? l10n.endTrip : l10n.startTrip,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: isTripActive
+                          ? const Color(0xFFDC2626)
+                          : const Color(0xFF16A34A),
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor:
+                          Colors.grey.shade300,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
                   ),
-                  child: Text(isTripActive ? l10n.endTrip : l10n.startTrip),
                 ),
               ),
             ],

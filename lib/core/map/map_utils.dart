@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import '../../core/theme/app_theme.dart';
 import '../../services/location_service.dart';
@@ -23,18 +24,53 @@ class MapUtils {
   }) {
     if (!context.mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: backgroundColor ??
-            (isError ? Colors.red.shade700 : AppTheme.primaryColor),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+    final bg = backgroundColor ??
+        (isError ? const Color(0xFFDC2626) : AppTheme.primaryColor);
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                isError
+                    ? Icons.error_outline_rounded
+                    : Icons.check_circle_outline_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: bg,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          elevation: 6,
+          duration: duration,
         ),
-        duration: duration,
-      ),
-    );
+      );
+  }
+
+  static void lightHaptic() {
+    HapticFeedback.lightImpact();
+  }
+
+  static void mediumHaptic() {
+    HapticFeedback.mediumImpact();
   }
 
   static Color hexToColor(String hex) {

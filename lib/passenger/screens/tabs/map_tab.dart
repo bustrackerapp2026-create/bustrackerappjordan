@@ -77,16 +77,16 @@ class _MapTabState extends State<MapTab>
   void handleAnnotationTap(PointAnnotation annotation) {
     if (!mounted) return;
 
-    // 1) ضغط على باص/سرفيس → معلومات السائق
     final driverId = findDriverIdByAnnotation(annotation);
     if (driverId != null) {
+      MapUtils.lightHaptic();
       showDriverInfoSheet(driverId);
       return;
     }
 
-    // 2) ضغط على نقطة تجمع
     final pickupId = findPickupIdByAnnotation(annotation);
     if (pickupId != null) {
+      MapUtils.lightHaptic();
       showPickupPointSheet(pickupId);
     }
   }
@@ -155,6 +155,7 @@ class _MapTabState extends State<MapTab>
               onRouteChanged: (newRoute) {
                 setState(() => _selectedRoute = newRoute);
                 updateLiveTrackingRouteFilter(newRoute);
+                MapUtils.lightHaptic();
                 MapUtils.showSnackBar(
                   context,
                   l10n.routeFiltered(newRoute),
@@ -173,7 +174,10 @@ class _MapTabState extends State<MapTab>
               children: [
                 FloatingActionButton(
                   heroTag: 'passenger_map_layers',
-                  onPressed: () => showMapSettingsSheet(context),
+                  onPressed: () {
+                    MapUtils.lightHaptic();
+                    showMapSettingsSheet(context);
+                  },
                   backgroundColor: Colors.white,
                   foregroundColor: AppTheme.textColor,
                   elevation: 4,
@@ -183,7 +187,10 @@ class _MapTabState extends State<MapTab>
                 const SizedBox(height: 12),
                 FloatingActionButton(
                   heroTag: 'passenger_my_location',
-                  onPressed: goToMyLocation,
+                  onPressed: () {
+                    MapUtils.lightHaptic();
+                    goToMyLocation();
+                  },
                   backgroundColor: Colors.white,
                   foregroundColor: AppTheme.primaryColor,
                   elevation: 4,
@@ -203,6 +210,7 @@ class _MapTabState extends State<MapTab>
                 FloatingActionButton(
                   heroTag: 'passenger_add_pickup',
                   onPressed: () {
+                    MapUtils.lightHaptic();
                     toggleAddingPickupPoint();
                     MapUtils.showSnackBar(
                       context,
@@ -265,72 +273,109 @@ class _LiveStatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasLive = liveCount > 0;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.95),
+        color: Colors.white.withValues(alpha: 0.97),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: hasLive
+              ? AppTheme.primaryColor.withValues(alpha: 0.2)
+              : Colors.grey.shade200,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 12,
+            blurRadius: 14,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
+          Stack(
+            alignment: Alignment.center,
             children: [
+              if (hasLive)
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                  ),
+                ),
               CircleAvatar(
-                backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.1),
+                backgroundColor: hasLive
+                    ? AppTheme.primaryColor.withValues(alpha: 0.15)
+                    : Colors.grey.shade100,
                 radius: 18,
-                child: const Icon(
-                  Icons.directions_bus,
-                  color: AppTheme.primaryColor,
+                child: Icon(
+                  Icons.directions_bus_rounded,
+                  color: hasLive ? AppTheme.primaryColor : Colors.grey,
                   size: 20,
                 ),
               ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    l10n.liveTracking,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textColor,
+              if (hasLive)
+                Positioned(
+                  right: 2,
+                  top: 2,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF16A34A),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    liveCount > 0
-                        ? l10n.liveBusesCount(liveCount)
-                        : l10n.noLiveBuses,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
+                ),
             ],
           ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  l10n.liveTracking,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasLive
+                      ? l10n.liveBusesCount(liveCount)
+                      : l10n.noLiveBuses,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: hasLive
+                        ? const Color(0xFF16A34A)
+                        : Colors.grey.shade600,
+                    fontWeight: hasLive ? FontWeight.w600 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
               color: AppTheme.primaryColor,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
               routeName,
               style: const TextStyle(
                 fontSize: 12,
                 color: Colors.white,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
