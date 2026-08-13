@@ -24,7 +24,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final LocationService _driverLocationService = LocationService();
   final LocationPredictor _predictor = LocationPredictor();
 
-  /// مدير دورة حياة خدمة التتبع (بدء / إيقاف / نبض قلب)
   late final DriverTrackingLifecycle _trackingLifecycle =
       DriverTrackingLifecycle(locationService: _driverLocationService)
         ..onPosition = _onLifecyclePosition
@@ -36,8 +35,11 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   double currentDriverBearing = 0.0;
   bool followDriverCamera = false;
 
-  /// حالة الخدمة للعرض/التشخيص
   DriverTrackingState trackingServiceState = DriverTrackingState.stopped;
+
+  /// آخر حالة معروفة للسائق (للاستخدام إن فُقد الـ context)
+  bool _cachedOnline = false;
+  bool _cachedTripActive = false;
 
   DateTime? _lastFirestoreLocationWrite;
   double? _lastUploadedLat;
@@ -63,24 +65,30 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   LocationService get locationService => _driverLocationService;
 
   bool get _shouldTrackContinuously {
-    if (!mounted) return false;
+    if (!mounted) return _cachedOnline || _cachedTripActive;
     final driver = context.read<DriverProvider>();
     final auth = context.read<AuthProvider>();
     if (!driver.isBound || driver.boundUserId != auth.userId) return false;
+    _cachedOnline = driver.isOnline;
+    _cachedTripActive = driver.isTripActive;
     return driver.isOnline || driver.isTripActive;
   }
 
   LocationTrackingProfile get _activeProfile {
+    if (!mounted) {
+      return _cachedTripActive
+          ? LocationTrackingProfile.driverTrip
+          : LocationTrackingProfile.driverIdle;
+    }
     final driver = context.read<DriverProvider>();
+    _cachedOnline = driver.isOnline;
+    _cachedTripActive = driver.isTripActive;
     if (driver.isTripActive) return LocationTrackingProfile.driverTrip;
     return LocationTrackingProfile.driverIdle;
   }
 
   void _onTrackingStateChanged(DriverTrackingState state) {
     trackingServiceState = state;
-    if (mounted) {
-      // لا setState إلزامي في كل تغيّر — فقط عند الحاجة للواجهة
-    }
   }
 
   void _onLifecyclePosition(geo.Position pos) {
@@ -224,19 +232,23 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  /// تشغيل خدمة التتبع عبر مدير الدورة — متسلسل وآمن.
   Future<void> ensureDriverTrackingRunning() async {
     if (!_shouldTrackContinuously) {
       await stopDriverTracking();
       return;
     }
 
+    if (!mounted) return;
     final auth = context.read<AuthProvider>();
     final uid = auth.userId;
     if (uid == null || uid.isEmpty) {
       await stopDriverTracking();
       return;
     }
+
+    final driver = context.read<DriverProvider>();
+    _cachedOnline = driver.isOnline;
+    _cachedTripActive = driver.isTripActive;
 
     await _trackingLifecycle.requestStart(
       uid: uid,
@@ -362,22 +374,20 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         filtered.headingDeg,
         force: doForce,
       );
-    }
 
-    // تحديث المزود + Firestore إن كانت الشاشة موجودة
-    if (mounted) {
       final auth = context.read<AuthProvider>();
       final uid = auth.userId;
       final driver = context.read<DriverProvider>();
+      _cachedOnline = driver.isOnline;
+      _cachedTripActive = driver.isTripActive;
       driver.updatePosition(pos, userId: uid);
       unawaited(_maybeUploadDriverLocation(pos, force: doForce));
-    } else {
-      // الشاشة غير مُركّبة لكن الخدمة ما زالت تريد الرفع
+    } else if (_cachedOnline || _cachedTripActive) {
       unawaited(
         _trackingLifecycle.uploadLocation(
           position: pos,
-          isOnline: true,
-          isTripActive: _activeProfile == LocationTrackingProfile.driverTrip,
+          isOnline: _cachedOnline,
+          isTripActive: _cachedTripActive,
         ),
       );
     }
@@ -498,7 +508,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  /// إدارة دورة حياة التطبيق ↔ خدمة التتبع
   void onDriverLocationLifecycle(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
@@ -510,7 +519,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
-        // متصل؟ أبقِ الخدمة — الإشعار الأمامي يبقيها حية على أندرويد
         if (_shouldTrackContinuously) {
           MapUtils.log(
             'App $state — الخدمة تبقى نشطة (متصل/رحلة)',
@@ -522,7 +530,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         break;
 
       case AppLifecycleState.detached:
-        // إغلاق العملية: أوقف كل شيء
         unawaited(stopDriverTracking());
         break;
     }
