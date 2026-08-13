@@ -212,6 +212,10 @@ class _DriverMapTabState extends State<DriverMapTab>
         );
       } catch (_) {}
       if (!mounted) return;
+      // عند إنهاء الرحلة أوقف وضع إضافة نقطة إن كان مفعّلاً
+      if (isAddingPickupPoint) {
+        toggleAddingPickupPoint();
+      }
       setState(() => followDriverCamera = false);
     } else {
       await startTrip();
@@ -223,6 +227,10 @@ class _DriverMapTabState extends State<DriverMapTab>
         );
       } catch (_) {}
       if (!mounted) return;
+      // أثناء الرحلة لا نسمح بإضافة نقاط تجمع بالخطأ
+      if (isAddingPickupPoint) {
+        toggleAddingPickupPoint();
+      }
       setState(() => followDriverCamera = true);
     }
 
@@ -256,6 +264,9 @@ class _DriverMapTabState extends State<DriverMapTab>
   Widget build(BuildContext context) {
     super.build(context);
     final l10n = AppLocalizations.of(context);
+    final isTripActive = context.select<DriverProvider, bool>(
+      (p) => p.isTripActive,
+    );
 
     return Stack(
       children: [
@@ -308,9 +319,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                 return _QuickHud(
                   speedKmh: kmh,
                   following: followDriverCamera,
-                  tripActive: context.select<DriverProvider, bool>(
-                    (p) => p.isTripActive,
-                  ),
+                  tripActive: isTripActive,
                   l10n: l10n,
                 );
               },
@@ -322,6 +331,8 @@ class _DriverMapTabState extends State<DriverMapTab>
           right: 16,
           child: RepaintBoundary(
             child: _DriverMapFabColumn(
+              // أثناء الرحلة: أزرار أساسية فقط لتقليل الإلهاء
+              simplified: isTripActive,
               followDriverCamera: followDriverCamera,
               isLoadingLocation: isLoadingDriverLocation,
               isAddingPickup: isAddingPickupPoint,
@@ -354,6 +365,8 @@ class _DriverMapTabState extends State<DriverMapTab>
                 showMapSettingsSheet(context);
               },
               onAddPickup: () {
+                // لا يُسمح بإضافة نقطة أثناء رحلة نشطة
+                if (isTripActive) return;
                 MapUtils.lightHaptic();
                 toggleAddingPickupPoint();
                 setState(() {});
@@ -486,6 +499,8 @@ class _QuickHud extends StatelessWidget {
 }
 
 class _DriverMapFabColumn extends StatelessWidget {
+  /// أثناء الرحلة نخفي الطبقات وإضافة النقاط لتقليل التشتت
+  final bool simplified;
   final bool followDriverCamera;
   final bool isLoadingLocation;
   final bool isAddingPickup;
@@ -497,6 +512,7 @@ class _DriverMapFabColumn extends StatelessWidget {
   final VoidCallback onAddPickup;
 
   const _DriverMapFabColumn({
+    required this.simplified,
     required this.followDriverCamera,
     required this.isLoadingLocation,
     required this.isAddingPickup,
@@ -554,24 +570,27 @@ class _DriverMapFabColumn extends StatelessWidget {
                 )
               : const Icon(Icons.my_location),
         ),
-        const SizedBox(height: 10),
-        FloatingActionButton(
-          heroTag: 'driver_map_layers',
-          onPressed: onLayers,
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.textColor,
-          elevation: 4,
-          shape: const CircleBorder(),
-          child: const Icon(Icons.layers, size: 26),
-        ),
-        const SizedBox(height: 10),
-        FloatingActionButton(
-          heroTag: 'driver_add_pickup',
-          onPressed: onAddPickup,
-          backgroundColor: isAddingPickup ? Colors.red : Colors.orange,
-          foregroundColor: Colors.white,
-          child: Icon(isAddingPickup ? Icons.close : Icons.add_location),
-        ),
+        // أثناء الرحلة: لا طبقات ولا إضافة نقاط
+        if (!simplified) ...[
+          const SizedBox(height: 10),
+          FloatingActionButton(
+            heroTag: 'driver_map_layers',
+            onPressed: onLayers,
+            backgroundColor: Colors.white,
+            foregroundColor: AppTheme.textColor,
+            elevation: 4,
+            shape: const CircleBorder(),
+            child: const Icon(Icons.layers, size: 26),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton(
+            heroTag: 'driver_add_pickup',
+            onPressed: onAddPickup,
+            backgroundColor: isAddingPickup ? Colors.red : Colors.orange,
+            foregroundColor: Colors.white,
+            child: Icon(isAddingPickup ? Icons.close : Icons.add_location),
+          ),
+        ],
       ],
     );
   }
@@ -755,8 +774,7 @@ class _DriverStatusPanel extends StatelessWidget {
                           ? const Color(0xFFDC2626)
                           : const Color(0xFF16A34A),
                       foregroundColor: Colors.white,
-                      disabledBackgroundColor:
-                          Colors.grey.shade300,
+                      disabledBackgroundColor: Colors.grey.shade300,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
