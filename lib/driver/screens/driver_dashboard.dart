@@ -19,10 +19,10 @@ class DriverDashboard extends StatefulWidget {
 }
 
 class _DriverDashboardState extends State<DriverDashboard> {
-  /// نبدأ من الملف الشخصي (آمن) — الخريطة تُحمَّل فقط عند اختيار تبويبها
-  int _currentIndex = 3;
+  /// البدء من تبويب الخريطة
+  int _currentIndex = 0;
 
-  final Set<int> _visited = {3};
+  final Set<int> _visited = {0};
   final Map<int, Widget> _tabCache = {};
 
   String? _boundUid;
@@ -46,11 +46,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
       return;
     }
 
-    // عزل كامل: ربط الحالة بهذا السائق فقط
     driver.bindToUser(uid);
     _boundUid = uid;
 
-    // مزامنة isOnline / isTripActive من وثيقة هذا السائق فقط
     try {
       final doc =
           await FirebaseFirestore.instance.collection('users').doc(uid).get();
@@ -87,7 +85,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final uid = context.read<AuthProvider>().userId;
-    // إذا تغيّر المستخدم أثناء بقاء الشاشة — أعد الربط
     if (uid != null && uid != _boundUid && _sessionReady) {
       _sessionReady = false;
       _bindDriverSession();

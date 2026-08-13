@@ -45,7 +45,6 @@ class _MapTabState extends State<MapTab>
 
   @override
   void dispose() {
-    // أوقف التتبع أولاً قبل أي dispose آخر
     disposeLiveTracking();
     disposeMapDebug();
     WidgetsBinding.instance.removeObserver(this);
@@ -77,6 +76,15 @@ class _MapTabState extends State<MapTab>
   @override
   void handleAnnotationTap(PointAnnotation annotation) {
     if (!mounted) return;
+
+    // 1) ضغط على باص/سرفيس → معلومات السائق
+    final driverId = findDriverIdByAnnotation(annotation);
+    if (driverId != null) {
+      showDriverInfoSheet(driverId);
+      return;
+    }
+
+    // 2) ضغط على نقطة تجمع
     final pickupId = findPickupIdByAnnotation(annotation);
     if (pickupId != null) {
       showPickupPointSheet(pickupId);

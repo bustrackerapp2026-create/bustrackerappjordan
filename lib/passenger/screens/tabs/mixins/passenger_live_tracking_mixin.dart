@@ -5,23 +5,28 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 
+import '../../../../core/constants/bus_capacity.dart';
 import '../../../../core/map/bus_marker_images.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
+import '../../../../core/theme/app_theme.dart';
 import '../../../../models/live_driver_location.dart';
 import '../../../../services/live_tracking_service.dart';
 
 /// يعرض مواقع السائقين المتصلين مباشرة على خريطة الراكب.
-/// أيقونة الباص تتغير حسب السعة: سرفيس (5) / متوسط (23) / كبير (50).
+/// الضغط على أيقونة الباص/السرفيس يعرض معلومات السائق.
 mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final LiveTrackingService _tracking = LiveTrackingService();
   StreamSubscription<List<LiveDriverLocation>>? _liveDriversSub;
 
   final Map<String, PointAnnotation> _driverAnnotations = {};
+  /// annotation.id → driverId
+  final Map<String, String> _annotationToDriverId = {};
+  /// آخر بيانات معروفة لكل سائق (لعرض التفاصيل عند الضغط)
+  final Map<String, LiveDriverLocation> _driverDataById = {};
   final Map<String, (double, double)> _lastDrawnPos = {};
   final Map<String, int?> _lastCapacity = {};
 
-  /// عدد السائقين المتصلين للوحة السفلية فقط
   final ValueNotifier<int> liveDriversCount = ValueNotifier<int>(0);
 
   String? _routeFilterForTracking;
@@ -43,9 +48,17 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         liveDriversCount.value = count;
       }
     } catch (e) {
-      // ValueNotifier قد يكون disposed أثناء إغلاق الشاشة
       debugPrint('liveDriversCount set skipped: $e');
     }
+  }
+
+  /// هل هذه العلامة لسائق حي؟
+  String? findDriverIdByAnnotation(PointAnnotation annotation) {
+    return _annotationToDriverId[annotation.id];
+  }
+
+  LiveDriverLocation? getLiveDriverData(String driverId) {
+    return _driverDataById[driverId];
   }
 
   void startLiveDriverTracking({String? routeFilter}) {
@@ -67,6 +80,10 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   void _onDriversUpdated(List<LiveDriverLocation> drivers) {
     if (_liveTrackingDisposed || !mounted) return;
+
+    for (final d in drivers) {
+      _driverDataById[d.driverId] = d;
+    }
 
     _pendingDrivers = drivers;
     _safeSetDriversCount(drivers.length);
@@ -100,6 +117,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       for (final d in drivers) {
         seen.add(d.driverId);
+        _driverDataById[d.driverId] = d;
         final existing = _driverAnnotations[d.driverId];
         final last = _lastDrawnPos[d.driverId];
         final capacityChanged = _lastCapacity[d.driverId] != d.capacity;
@@ -108,6 +126,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           try {
             await pointAnnotationManager?.delete(existing);
           } catch (_) {}
+          _annotationToDriverId.remove(existing.id);
           _driverAnnotations.remove(d.driverId);
           _lastDrawnPos.remove(d.driverId);
           _lastCapacity.remove(d.driverId);
@@ -165,6 +184,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           );
           if (ann != null) {
             _driverAnnotations[d.driverId] = ann;
+            _annotationToDriverId[ann.id] = d.driverId;
             _lastDrawnPos[d.driverId] = (d.latitude, d.longitude);
             _lastCapacity[d.driverId] = d.capacity;
           }
@@ -180,7 +200,9 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         final ann = _driverAnnotations.remove(id);
         _lastDrawnPos.remove(id);
         _lastCapacity.remove(id);
+        _driverDataById.remove(id);
         if (ann != null) {
+          _annotationToDriverId.remove(ann.id);
           try {
             await pointAnnotationManager?.delete(ann);
           } catch (_) {}
@@ -202,6 +224,22 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
+  /// عرض ورقة معلومات السائق عند الضغط على أيقونة الباص/السرفيس.
+  Future<void> showDriverInfoSheet(String driverId) async {
+    if (!mounted || _liveTrackingDisposed) return;
+    final driver = _driverDataById[driverId];
+    if (driver == null) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return _DriverInfoSheet(driver: driver);
+      },
+    );
+  }
+
   void stopLiveDriverTracking() {
     _liveDriversSub?.cancel();
     _liveDriversSub = null;
@@ -213,8 +251,10 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Future<void> clearLiveDriverMarkers() async {
     final annotations = List<PointAnnotation>.from(_driverAnnotations.values);
     _driverAnnotations.clear();
+    _annotationToDriverId.clear();
     _lastDrawnPos.clear();
     _lastCapacity.clear();
+    // نُبقي _driverDataById حتى لا تفقد الورقة بياناتها أثناء الإغلاق
 
     for (final ann in annotations) {
       try {
@@ -222,22 +262,21 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       } catch (_) {}
     }
 
-    // لا تلمس ValueNotifier إذا تم dispose
     _safeSetDriversCount(0);
   }
 
-  /// ترتيب آمن: إيقاف البث → مسح الماركرات → ثم dispose للـ notifier
   void disposeLiveTracking() {
     if (_liveTrackingDisposed) return;
     _liveTrackingDisposed = true;
 
     stopLiveDriverTracking();
 
-    // مسح الماركرات بدون انتظار (لا يكتب على notifier بعد العلم بالـ dispose)
     final annotations = List<PointAnnotation>.from(_driverAnnotations.values);
     _driverAnnotations.clear();
+    _annotationToDriverId.clear();
     _lastDrawnPos.clear();
     _lastCapacity.clear();
+    _driverDataById.clear();
     for (final ann in annotations) {
       unawaited(() async {
         try {
@@ -246,9 +285,188 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }());
     }
 
-    // أخيراً: dispose بعد إيقاف كل المصادر التي قد تكتب عليه
     try {
       liveDriversCount.dispose();
     } catch (_) {}
+  }
+}
+
+/// ورقة منبثقة بمعلومات السائق عند الضغط على الماركر.
+class _DriverInfoSheet extends StatelessWidget {
+  final LiveDriverLocation driver;
+
+  const _DriverInfoSheet({required this.driver});
+
+  @override
+  Widget build(BuildContext context) {
+    final isService = driver.capacity == BusCapacity.service;
+    final vehicleIcon =
+        isService ? Icons.airport_shuttle_rounded : Icons.directions_bus_filled;
+    final statusColor =
+        driver.isTripActive ? Colors.red.shade700 : Colors.green.shade700;
+    final statusText = driver.isTripActive
+        ? 'في رحلة نشطة'
+        : (driver.isOnline ? 'متصل · متاح' : 'غير متصل');
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 12,
+        bottom: MediaQuery.of(context).viewPadding.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.12),
+                child: Icon(
+                  vehicleIcon,
+                  color: AppTheme.primaryColor,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      driver.fullName.isNotEmpty ? driver.fullName : 'سائق',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        statusText,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: statusColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _infoRow(
+            Icons.directions_bus_outlined,
+            'نوع المركبة',
+            driver.vehicleTypeLabel,
+          ),
+          _infoRow(
+            Icons.event_seat_outlined,
+            'السعة',
+            driver.capacityLabel,
+          ),
+          if (driver.busNumber != null &&
+              driver.busNumber!.trim().isNotEmpty)
+            _infoRow(
+              Icons.confirmation_number_outlined,
+              'رقم الباص',
+              driver.busNumber!.trim(),
+            ),
+          if (driver.route != null && driver.route!.trim().isNotEmpty)
+            _infoRow(
+              Icons.route_outlined,
+              'المسار / الخط',
+              driver.route!.trim(),
+            ),
+          if (driver.phoneNumber != null &&
+              driver.phoneNumber!.trim().isNotEmpty)
+            _infoRow(
+              Icons.phone_outlined,
+              'الهاتف',
+              driver.phoneNumber!.trim(),
+            ),
+          if (driver.speed != null &&
+              driver.speed!.isFinite &&
+              driver.speed! > 0)
+            _infoRow(
+              Icons.speed,
+              'السرعة',
+              '${(driver.speed! * 3.6).toStringAsFixed(0)} كم/س',
+            ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => Navigator.pop(context),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.primaryColor,
+                side: const BorderSide(color: AppTheme.primaryColor),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: const Text(
+                'إغلاق',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: AppTheme.primaryColor),
+          const SizedBox(width: 10),
+          Text(
+            '$label: ',
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

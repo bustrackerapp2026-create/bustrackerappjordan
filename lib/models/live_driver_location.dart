@@ -6,6 +6,7 @@ import '../core/constants/bus_capacity.dart';
 class LiveDriverLocation {
   final String driverId;
   final String fullName;
+  final String? phoneNumber;
   final String? busNumber;
   final String? route;
   /// سعة الباص: 5 سرفيس / 23 متوسط / 50 كبير
@@ -23,6 +24,7 @@ class LiveDriverLocation {
     required this.fullName,
     required this.latitude,
     required this.longitude,
+    this.phoneNumber,
     this.busNumber,
     this.route,
     this.capacity,
@@ -40,7 +42,7 @@ class LiveDriverLocation {
       longitude <= 180 &&
       !(latitude == 0 && longitude == 0);
 
-  /// هل التحديث حديث؟ (أقل من 15 دقيقة — يسمح ببقاء الظهور بعد إغلاق التطبيق)
+  /// هل التحديث حديث؟ (أقل من 15 دقيقة)
   bool get isFresh {
     if (updatedAt == null) return true;
     return DateTime.now().difference(updatedAt!) < const Duration(minutes: 15);
@@ -58,9 +60,12 @@ class LiveDriverLocation {
     if (raw is Timestamp) updated = raw.toDate();
     if (raw is DateTime) updated = raw;
 
+    final phone = data['phoneNumber']?.toString().trim();
+
     return LiveDriverLocation(
       driverId: id,
       fullName: data['fullName']?.toString() ?? 'سائق',
+      phoneNumber: (phone != null && phone.isNotEmpty) ? phone : null,
       busNumber: data['busNumber']?.toString(),
       route: data['route']?.toString(),
       capacity: BusCapacity.normalize(data['capacity']),
@@ -80,4 +85,8 @@ class LiveDriverLocation {
     if (bus != null && bus.isNotEmpty) return '$type $bus';
     return '$type · $fullName';
   }
+
+  String get capacityLabel => BusCapacity.label(capacity);
+
+  String get vehicleTypeLabel => BusCapacity.shortLabel(capacity);
 }
