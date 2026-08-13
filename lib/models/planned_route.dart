@@ -103,6 +103,12 @@ class PlannedRoute {
   /// بعد موافقة الأدمن على طلب التعديل يُسمح بإعادة التسجيل
   final bool reRecordAllowed;
 
+  /// مفاتيح بحث عربية مطبّعة (تُخزَّن في Firestore)
+  final List<String> searchKeys;
+
+  /// أسماء بديلة للخط (مثال: الزرقاء — عمان)
+  final List<String> aliases;
+
   const PlannedRoute({
     required this.id,
     required this.createdBy,
@@ -119,6 +125,8 @@ class PlannedRoute {
     this.notes,
     this.source = RouteSource.driver,
     this.reRecordAllowed = false,
+    this.searchKeys = const [],
+    this.aliases = const [],
   });
 
   bool get isApproved => status == PlannedRouteStatus.approved;
@@ -149,6 +157,8 @@ class PlannedRoute {
       if (notes != null) 'notes': notes,
       'source': source.firestoreValue,
       'reRecordAllowed': reRecordAllowed,
+      'searchKeys': searchKeys,
+      'aliases': aliases,
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -173,6 +183,14 @@ class PlannedRoute {
 
     final createdBy = (data['createdBy'] ?? data['driverId'])?.toString() ?? '';
 
+    List<String> readStringList(dynamic raw) {
+      if (raw is! List) return const [];
+      return raw
+          .map((e) => e?.toString().trim() ?? '')
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+
     return PlannedRoute(
       id: id,
       createdBy: createdBy,
@@ -189,6 +207,8 @@ class PlannedRoute {
       notes: data['notes']?.toString(),
       source: RouteSourceX.fromString(data['source']?.toString()),
       reRecordAllowed: data['reRecordAllowed'] == true,
+      searchKeys: readStringList(data['searchKeys']),
+      aliases: readStringList(data['aliases']),
     );
   }
 
