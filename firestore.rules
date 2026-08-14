@@ -67,6 +67,12 @@ service cloud.firestore {
         ]);
     }
 
+    /// الراكب يلغي رحلته فقط: status + completedAt + cancelledBy
+    function passengerCancelOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['status', 'completedAt', 'cancelledBy']);
+    }
+
     // ═══════════════════════════════════════════════════════════
     // users — كل وثيقة = مستخدم واحد فقط
     // ═══════════════════════════════════════════════════════════
@@ -139,11 +145,22 @@ service cloud.firestore {
         );
 
       allow update: if isAdmin()
+        // السائق يعدّل رحلاته (قبول / إنهاء / رفض)
         || (isSignedIn() && resource.data.driverId == request.auth.uid)
         || (
           isDriver()
           && resource.data.status == 'pending'
           && request.resource.data.driverId == request.auth.uid
+        )
+        // الراكب يلغي طلبه فقط (pending أو active → cancelled)
+        || (
+          isSignedIn()
+          && resource.data.passengerId == request.auth.uid
+          && resource.data.status in ['pending', 'active']
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.passengerId == resource.data.passengerId
+          && request.resource.data.driverId == resource.data.driverId
+          && passengerCancelOnly()
         );
 
       allow delete: if isAdmin()
