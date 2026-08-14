@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../services/firestore_service.dart';
 
 class StatsTab extends StatefulWidget {
