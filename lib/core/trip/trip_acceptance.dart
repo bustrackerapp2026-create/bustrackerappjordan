@@ -10,7 +10,7 @@ class TripAcceptance {
     return currentStatus == TripStatus.pending.stringValue;
   }
 
-  /// يتحقق قبل قبول الرحلة داخل Transaction.
+  /// يتحقق قبل قبول الرحلة.
   /// يرمي [TripServiceException] إذا الرحلة غير موجودة أو ليست معلّقة.
   static void ensureCanAccept({
     required bool exists,
@@ -27,7 +27,24 @@ class TripAcceptance {
     }
   }
 
-  /// بيانات التحديث عند القبول الناجح.
+  /// الطلب يجب أن يكون موجّهاً لنفس السائق الذي يحاول القبول.
+  static void ensureAssignedDriver({
+    required String? assignedDriverId,
+    required String actingDriverId,
+  }) {
+    if (actingDriverId.isEmpty) {
+      throw const TripServiceException('معرف السائق مطلوب.');
+    }
+    if (assignedDriverId == null || assignedDriverId.isEmpty) {
+      throw const TripServiceException('الطلب غير مخصّص لسائق.');
+    }
+    if (assignedDriverId != actingDriverId) {
+      throw const TripServiceException('هذا الطلب موجّه لسائق آخر.');
+    }
+  }
+
+  /// بيانات التحديث عند القبول (مرجع للاختبارات / توافق قديم).
+  /// التطبيق يستخدم حالياً status + startedAt فقط ليتوافق مع القواعد.
   static Map<String, dynamic> acceptanceUpdateFields(String driverId) {
     return {
       'status': TripStatus.active.stringValue,

@@ -26,7 +26,6 @@ class TripService {
       try {
         return await operation().timeout(timeout);
       } catch (e) {
-        // لا نعيد محاولة أخطاء الصلاحيات / المنطق — تفشل فوراً
         if (e is TripServiceException) rethrow;
         if (e is FirebaseException &&
             (e.code == 'permission-denied' || e.code == 'not-found')) {
@@ -150,7 +149,6 @@ class TripService {
   }
 
   /// قبول طلب موجّه لهذا السائق (pending → active).
-  /// بدون Transaction؛ القواعد تمنع سائقاً آخر من التعديل.
   Future<void> acceptTripTransaction(String tripId, String driverId) async {
     if (tripId.isEmpty || driverId.isEmpty) {
       throw const TripServiceException('بيانات القبول غير مكتملة.');
@@ -166,14 +164,12 @@ class TripService {
         currentStatus: data?['status'] as String?,
       );
 
-      final assigned = data!['driverId'] as String? ?? '';
-      if (assigned != driverId) {
-        throw const TripServiceException(
-          'هذا الطلب موجّه لسائق آخر.',
-        );
-      }
+      TripAcceptance.ensureAssignedDriver(
+        assignedDriverId: data?['driverId'] as String?,
+        actingDriverId: driverId,
+      );
 
-      // حقول محدودة فقط — متوافقة مع firestore.rules (driverTripUpdateKeys)
+      // حقول محدودة — متوافقة مع firestore.rules
       await docRef.update({
         'status': TripStatus.active.stringValue,
         'startedAt': FieldValue.serverTimestamp(),
@@ -369,7 +365,6 @@ class TripService {
 
     await _verifyOwnership(trip.id, driverId);
 
-    // تحديث محدود الحقول ليتوافق مع القواعد
     await _withRetryAndTimeout(() async {
       final data = <String, dynamic>{
         'status': trip.status.stringValue,

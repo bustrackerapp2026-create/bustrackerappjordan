@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../services/trip_service.dart';
+import '../../../services/trip_service_exception.dart';
 import '../../../models/trip_model.dart';
 import '../../../models/trip_status.dart';
 import '../../../features/auth/providers/auth_provider.dart';
@@ -61,6 +62,29 @@ class _BookingsTabState extends State<BookingsTab> {
     });
   }
 
+  String _friendlyError(Object e, AppLocalizations l10n) {
+    final raw = e is TripServiceException ? e.message : e.toString();
+    if (raw.contains('غير موجودة') || raw.contains('not-found')) {
+      return l10n.tripNotFound;
+    }
+    if (raw.contains('سائق آخر') ||
+        raw.contains('تم تغيير حالة') ||
+        raw.contains('another')) {
+      return l10n.tripTakenByOther;
+    }
+    if (raw.contains('صلاحيات') || raw.contains('permission')) {
+      return 'رفض الصلاحيات — تأكد من نشر قواعد Firestore';
+    }
+    if (raw.contains('الاتصال') || raw.contains('unavailable')) {
+      return 'تحقق من اتصال الإنترنت ثم أعد المحاولة';
+    }
+    // اعرض رسالة الخدمة إن كانت عربية ومختصرة
+    if (e is TripServiceException && raw.length <= 120) {
+      return raw;
+    }
+    return l10n.acceptRequestFailed;
+  }
+
   Future<bool> _acceptTrip(String tripId, String passengerDisplay) async {
     if (_currentUserId == null) return false;
     final l10n = AppLocalizations.of(context);
@@ -75,19 +99,14 @@ class _BookingsTabState extends State<BookingsTab> {
           ),
         );
       }
+      // القائمة تُحدَّث تلقائياً من الـ stream (pending يختفي بعد active)
       return true;
     } catch (e) {
+      debugPrint('accept trip: $e');
       if (mounted) {
-        final raw = e.toString();
-        final errorMessage = raw.contains('غير موجودة') ||
-                raw.contains('not found')
-            ? l10n.tripNotFound
-            : raw.contains('تم تغيير حالة') || raw.contains('another')
-                ? l10n.tripTakenByOther
-                : l10n.acceptRequestFailed;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(errorMessage),
+            content: Text(_friendlyError(e, l10n)),
             backgroundColor: Colors.red,
           ),
         );
@@ -98,6 +117,7 @@ class _BookingsTabState extends State<BookingsTab> {
 
   Future<bool> _rejectTrip(String tripId) async {
     if (_currentUserId == null) return false;
+    final l10n = AppLocalizations.of(context);
     try {
       await _tripService.updateTripStatus(
         tripId,
@@ -116,9 +136,12 @@ class _BookingsTabState extends State<BookingsTab> {
     } catch (e) {
       debugPrint('reject trip: $e');
       if (mounted) {
+        final msg = e is TripServiceException
+            ? _friendlyError(e, l10n)
+            : 'تعذر رفض الطلب';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تعذر رفض الطلب'),
+          SnackBar(
+            content: Text(msg),
             backgroundColor: Colors.red,
           ),
         );

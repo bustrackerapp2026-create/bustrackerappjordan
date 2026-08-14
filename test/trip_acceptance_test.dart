@@ -14,7 +14,7 @@ void main() {
     });
   });
 
-  group('TripAcceptance.ensureCanAccept (محاكاة قبول الرحلة)', () {
+  group('TripAcceptance.ensureCanAccept', () {
     test('ينجح عندما تكون الرحلة موجودة وحالتها pending', () {
       expect(
         () => TripAcceptance.ensureCanAccept(
@@ -68,6 +68,44 @@ void main() {
           reason: 'status=$status',
         );
       }
+    });
+  });
+
+  group('TripAcceptance.ensureAssignedDriver', () {
+    test('ينجح عندما السائق المعيّن = السائق الحالي', () {
+      expect(
+        () => TripAcceptance.ensureAssignedDriver(
+          assignedDriverId: 'd1',
+          actingDriverId: 'd1',
+        ),
+        returnsNormally,
+      );
+    });
+
+    test('يرفض سائقاً آخر', () {
+      expect(
+        () => TripAcceptance.ensureAssignedDriver(
+          assignedDriverId: 'd1',
+          actingDriverId: 'd2',
+        ),
+        throwsA(
+          isA<TripServiceException>().having(
+            (e) => e.message,
+            'message',
+            contains('سائق آخر'),
+          ),
+        ),
+      );
+    });
+
+    test('يرفض عند غياب التعيين', () {
+      expect(
+        () => TripAcceptance.ensureAssignedDriver(
+          assignedDriverId: null,
+          actingDriverId: 'd1',
+        ),
+        throwsA(isA<TripServiceException>()),
+      );
     });
   });
 
@@ -144,17 +182,18 @@ void main() {
   });
 
   group('سيناريو محاكاة سائقين يتنافسان على نفس الطلب', () {
-    test('الأول يقبل، والثاني يُرفض', () {
-      // محاكاة: الرحلة ما زالت معلّقة → السائق الأول ينجح
+    test('الأول يقبل، والثاني يُرفض بالحالة', () {
       TripAcceptance.ensureCanAccept(
         exists: true,
         currentStatus: 'pending',
       );
+      TripAcceptance.ensureAssignedDriver(
+        assignedDriverId: 'driver-A',
+        actingDriverId: 'driver-A',
+      );
       final afterFirst = TripAcceptance.acceptanceUpdateFields('driver-A');
       expect(afterFirst['status'], 'active');
-      expect(afterFirst['driverId'], 'driver-A');
 
-      // محاكاة: بعد قبول الأول أصبحت active → السائق الثاني يفشل
       expect(
         () => TripAcceptance.ensureCanAccept(
           exists: true,
