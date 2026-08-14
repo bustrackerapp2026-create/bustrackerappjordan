@@ -1,7 +1,16 @@
 import '../../models/trip_status.dart';
 import '../../services/trip_service_exception.dart';
 
-/// قواعد قبول الرحلة وانتقال الحالات — منطق نقي قابل للاختبار بدون Firebase.
+/// نتيجة تقييم إلغاء الراكب (بدون Firebase).
+enum PassengerCancelDecision {
+  /// نفّذ التحديث إلى cancelled
+  applyCancel,
+
+  /// الرحلة منتهية مسبقاً — لا خطأ ولا تحديث
+  alreadyTerminal,
+}
+
+/// قواعد قبول/إلغاء/رفض الرحلة — منطق نقي قابل للاختبار بدون Firebase.
 class TripAcceptance {
   const TripAcceptance._();
 
@@ -43,8 +52,62 @@ class TripAcceptance {
     }
   }
 
+  /// قواعد إلغاء الراكب — نفس شروط [TripService.cancelTripByPassenger].
+  static PassengerCancelDecision evaluatePassengerCancel({
+    required bool exists,
+    required String? tripPassengerId,
+    required String actingPassengerId,
+    required String? currentStatus,
+  }) {
+    if (!exists) {
+      throw const TripServiceException('الرحلة غير موجودة.');
+    }
+    if (actingPassengerId.isEmpty) {
+      throw const TripServiceException('بيانات الإلغاء غير مكتملة.');
+    }
+    if (tripPassengerId != actingPassengerId) {
+      throw const TripServiceException('غير مصرح بإلغاء هذه الرحلة.');
+    }
+
+    final status = currentStatus ?? TripStatus.pending.stringValue;
+
+    if (status == TripStatus.completed.stringValue ||
+        status == TripStatus.cancelled.stringValue) {
+      return PassengerCancelDecision.alreadyTerminal;
+    }
+
+    if (status != TripStatus.pending.stringValue &&
+        status != TripStatus.active.stringValue) {
+      throw const TripServiceException(
+        'لا يمكن إلغاء هذه الرحلة بحالتها الحالية.',
+      );
+    }
+
+    return PassengerCancelDecision.applyCancel;
+  }
+
+  /// رفض السائق للطلب: يجب أن يكون معيّناً والحالة تسمح بالانتقال إلى cancelled.
+  static void ensureDriverCanReject({
+    required bool exists,
+    required String? currentStatus,
+    required String? assignedDriverId,
+    required String actingDriverId,
+  }) {
+    if (!exists) {
+      throw const TripServiceException('الرحلة غير موجودة.');
+    }
+    ensureAssignedDriver(
+      assignedDriverId: assignedDriverId,
+      actingDriverId: actingDriverId,
+    );
+
+    final status = TripStatusExtension.fromString(
+      currentStatus ?? TripStatus.pending.stringValue,
+    );
+    ensureValidStatusTransition(status, TripStatus.cancelled);
+  }
+
   /// بيانات التحديث عند القبول (مرجع للاختبارات / توافق قديم).
-  /// التطبيق يستخدم حالياً status + startedAt فقط ليتوافق مع القواعد.
   static Map<String, dynamic> acceptanceUpdateFields(String driverId) {
     return {
       'status': TripStatus.active.stringValue,
