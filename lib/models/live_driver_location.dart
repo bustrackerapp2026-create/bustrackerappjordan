@@ -3,13 +3,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/constants/bus_capacity.dart';
 
 /// موقع سائق متصل يظهر مباشرة على خرائط الركاب/الأدمن.
+/// يُفضّل بناؤه من [driverPublic] وليس من users الكاملة.
 class LiveDriverLocation {
   final String driverId;
   final String fullName;
   final String? phoneNumber;
   final String? busNumber;
   final String? route;
-  /// سعة الباص: 5 سرفيس / 23 متوسط / 50 كبير
   final int? capacity;
   final double latitude;
   final double longitude;
@@ -42,19 +42,16 @@ class LiveDriverLocation {
       longitude <= 180 &&
       !(latitude == 0 && longitude == 0);
 
-  /// هل التحديث حديث؟ (أقل من 15 دقيقة)
   bool get isFresh {
     if (updatedAt == null) return true;
     return DateTime.now().difference(updatedAt!) < const Duration(minutes: 15);
   }
 
-  /// الموقع قديم نسبياً (أكثر من 3 دقائق) — تحذير خفيف للراكب
   bool get isStaleWarning {
     if (updatedAt == null) return false;
     return DateTime.now().difference(updatedAt!) > const Duration(minutes: 3);
   }
 
-  /// نص عربي نسبي لآخر تحديث موقع
   String get updatedAgoLabel {
     if (updatedAt == null) return 'وقت التحديث غير معروف';
     final diff = DateTime.now().difference(updatedAt!);
@@ -65,7 +62,7 @@ class LiveDriverLocation {
     return 'قبل ${diff.inDays} يوم';
   }
 
-  factory LiveDriverLocation.fromUserDoc(
+  factory LiveDriverLocation.fromPublicDoc(
     String id,
     Map<String, dynamic> data,
   ) {
@@ -73,16 +70,14 @@ class LiveDriverLocation {
     final lng = (data['currentLongitude'] as num?)?.toDouble() ?? 0;
 
     DateTime? updated;
-    final raw = data['locationUpdatedAt'] ?? data['lastUpdated'];
+    final raw = data['locationUpdatedAt'] ?? data['updatedAt'];
     if (raw is Timestamp) updated = raw.toDate();
     if (raw is DateTime) updated = raw;
-
-    final phone = data['phoneNumber']?.toString().trim();
 
     return LiveDriverLocation(
       driverId: id,
       fullName: data['fullName']?.toString() ?? 'سائق',
-      phoneNumber: (phone != null && phone.isNotEmpty) ? phone : null,
+      phoneNumber: null,
       busNumber: data['busNumber']?.toString(),
       route: data['route']?.toString(),
       capacity: BusCapacity.normalize(data['capacity']),
@@ -95,6 +90,13 @@ class LiveDriverLocation {
       updatedAt: updated,
     );
   }
+
+  /// توافق قديم — تجنّب استخدامه للعامة.
+  factory LiveDriverLocation.fromUserDoc(
+    String id,
+    Map<String, dynamic> data,
+  ) =>
+      LiveDriverLocation.fromPublicDoc(id, data);
 
   String get displayLabel {
     final type = BusCapacity.shortLabel(capacity);
