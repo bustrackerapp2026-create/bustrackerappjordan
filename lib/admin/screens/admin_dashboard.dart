@@ -37,6 +37,7 @@ class AdminDashboard extends StatefulWidget {
 }
 
 class _AdminDashboardState extends State<AdminDashboard> {
+  /// 0 تحقق · 1 معلّق · 2 خريطة · 3 إعدادات
   int _currentIndex = 0;
   AdminMapFocusRequest? _mapFocus;
   int _focusToken = 0;
@@ -117,12 +118,27 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
 
-    final tabs = <Widget>[
-      _verifyTab,
-      _pendingTab,
-      AdminMapTab(focusRequest: _mapFocus),
-      _settingsTab,
-    ];
+    // خريطة الأدمن تُبنى فقط عند تبويب الخريطة — لا IndexedStack لـ Mapbox.
+    final Widget body;
+    switch (_currentIndex) {
+      case 0:
+        body = _verifyTab;
+        break;
+      case 1:
+        body = _pendingTab;
+        break;
+      case 2:
+        body = AdminMapTab(
+          key: ValueKey('admin_map_$_focusToken'),
+          focusRequest: _mapFocus,
+        );
+        break;
+      case 3:
+        body = _settingsTab;
+        break;
+      default:
+        body = const SizedBox.shrink();
+    }
 
     return Scaffold(
       appBar: AppTopBar.admin(title: l10n.adminDashboardTitle),
@@ -177,12 +193,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 ),
               ),
             ),
-          Expanded(
-            child: IndexedStack(
-              index: _currentIndex,
-              children: tabs,
-            ),
-          ),
+          Expanded(child: body),
         ],
       ),
       bottomNavigationBar: AdminBottomNavBar(
