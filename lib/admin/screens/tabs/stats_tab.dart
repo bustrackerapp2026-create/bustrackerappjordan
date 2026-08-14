@@ -18,24 +18,28 @@ class _StatsTabState extends State<StatsTab> {
   @override
   void initState() {
     super.initState();
-    _loadStats();
+    _reloadFutures();
+  }
+
+  void _reloadFutures() {
+    _usersStatsFuture = _service.getAllUsersStats(useFallback: false);
+    _pointsStatsFuture = _service.getPickupPointsStats(useFallback: false);
+    _routesCountFuture = _service.getActiveRoutesCount(useFallback: false);
   }
 
   void _loadStats() {
-    setState(() {
-      _usersStatsFuture = _service.getAllUsersStats(useFallback: false);
-      _pointsStatsFuture = _service.getPickupPointsStats(useFallback: false);
-      _routesCountFuture = _service.getActiveRoutesCount(useFallback: false);
-    });
+    setState(_reloadFutures);
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('📊 الإحصائيات'),
-        backgroundColor: Colors.white,
-        foregroundColor: AppTheme.textColor,
+        backgroundColor: scheme.surface,
+        foregroundColor: scheme.onSurface,
         elevation: 1,
         actions: [
           IconButton(
