@@ -112,16 +112,23 @@ class FirestoreService {
     return type == 'driver' || type == 'service' || type == 'bus_company';
   }
 
-  /// بث حي بعدد طلبات السائقين بانتظار الموافقة (غير موثّق وغير مرفوض).
+  Future<int> _count(Query<Map<String, dynamic>> query) async {
+    final snap = await query.count().get();
+    return snap.count ?? 0;
+  }
+
+  /// بث بعدد المعلقين — استعلام مفلتر بدل مسح كل users.
   Stream<int> watchPendingDriverApprovals() {
-    return _firestore.collection('users').snapshots().map((snap) {
+    return _firestore
+        .collection('users')
+        .where('userType', whereIn: ['driver', 'service', 'bus_company'])
+        .where('isVerified', isEqualTo: false)
+        .snapshots()
+        .map((snap) {
       var pending = 0;
       for (final doc in snap.docs) {
         final data = doc.data();
-        final type = _str(data, 'userType', 'passenger').toLowerCase();
-        if (!_isDriverLike(type)) continue;
         if (_boolTrue(data, 'isRejected')) continue;
-        if (_boolTrue(data, 'isVerified')) continue;
         pending++;
       }
       return pending;
@@ -142,6 +149,10 @@ class FirestoreService {
       'verified': 0,
       'pending': 0,
       'rejected': 0,
+      'active_buses': 0,
+      'active_passengers': 0,
+      'active_services': 0,
+      'active_others': 0,
     };
   }
 
@@ -154,32 +165,27 @@ class FirestoreService {
     };
   }
 
+  /// إحصاءات السائقين عبر count() مجمّعة.
   Future<Map<String, int>> getDriversStats({bool useFallback = true}) async {
     try {
-      final allDrivers = await _firestore
-          .collection('users')
-          .where('userType', isEqualTo: 'driver')
-          .get();
+      final users = _firestore.collection('users');
+      final results = await Future.wait([
+        _count(users.where('userType', isEqualTo: 'driver')),
+        _count(users
+            .where('userType', isEqualTo: 'driver')
+            .where('isVerified', isEqualTo: true)),
+        _count(users
+            .where('userType', isEqualTo: 'driver')
+            .where('isRejected', isEqualTo: true)),
+      ]);
 
-      var verified = 0;
-      var pending = 0;
-      var rejected = 0;
-
-      for (final doc in allDrivers.docs) {
-        final data = doc.data();
-        final isVerified = _boolTrue(data, 'isVerified');
-        final isRejected = _boolTrue(data, 'isRejected');
-        if (isRejected) {
-          rejected++;
-        } else if (isVerified) {
-          verified++;
-        } else {
-          pending++;
-        }
-      }
+      final total = results[0];
+      final verified = results[1];
+      final rejected = results[2];
+      final pending = (total - verified - rejected).clamp(0, total);
 
       return {
-        'total': allDrivers.docs.length,
+        'total': total,
         'verified': verified,
         'pending': pending,
         'rejected': rejected,
@@ -192,72 +198,51 @@ class FirestoreService {
     }
   }
 
+  /// إحصاءات المستخدمين عبر count() — بدون جلب كل المستندات.
   Future<Map<String, int>> getAllUsersStats({bool useFallback = true}) async {
     try {
-      final allUsers = await _firestore.collection('users').get();
+      final users = _firestore.collection('users');
+      final public = _firestore.collection('driverPublic');
 
-      var total = 0;
-      var admin = 0;
-      var passenger = 0;
-      var driver = 0;
-      var service = 0;
-      var busCompany = 0;
-      var verified = 0;
-      var pending = 0;
-      var rejected = 0;
-      var activeBuses = 0;
-      var activePassengers = 0;
-      var activeServices = 0;
-      var activeOthers = 0;
+      final counts = await Future.wait([
+        _count(users),
+        _count(users.where('userType', isEqualTo: 'admin')),
+        _count(users.where('userType', isEqualTo: 'passenger')),
+        _count(users.where('userType', isEqualTo: 'driver')),
+        _count(users.where('userType', isEqualTo: 'service')),
+        _count(users.where('userType', isEqualTo: 'bus_company')),
+        // موثّقون من أنواع السائقين
+        _count(users
+            .where('userType', whereIn: ['driver', 'service', 'bus_company'])
+            .where('isVerified', isEqualTo: true)),
+        _count(users
+            .where('userType', whereIn: ['driver', 'service', 'bus_company'])
+            .where('isRejected', isEqualTo: true)),
+        // متصلون من المجموعة العامة (أرخص وأكثر دقة للخريطة)
+        _count(public.where('isOnline', isEqualTo: true)),
+        _count(users
+            .where('userType', isEqualTo: 'passenger')
+            .where('isOnline', isEqualTo: true)),
+        _count(users
+            .where('userType', isEqualTo: 'service')
+            .where('isOnline', isEqualTo: true)),
+      ]);
 
-      for (final doc in allUsers.docs) {
-        final data = doc.data();
-        total++;
+      final total = counts[0];
+      final admin = counts[1];
+      final passenger = counts[2];
+      final driver = counts[3];
+      final service = counts[4];
+      final busCompany = counts[5];
+      final verified = counts[6];
+      final rejected = counts[7];
+      final activeBuses = counts[8];
+      final activePassengers = counts[9];
+      final activeServices = counts[10];
 
-        final type = _str(data, 'userType', 'passenger').toLowerCase();
-        switch (type) {
-          case 'admin':
-            admin++;
-            break;
-          case 'passenger':
-            passenger++;
-            break;
-          case 'driver':
-            driver++;
-            break;
-          case 'service':
-            service++;
-            break;
-          case 'bus_company':
-            busCompany++;
-            break;
-        }
-
-        if (_isDriverLike(type)) {
-          final isVerified = _boolTrue(data, 'isVerified');
-          final isRejected = _boolTrue(data, 'isRejected');
-          if (isRejected) {
-            rejected++;
-          } else if (isVerified) {
-            verified++;
-          } else {
-            pending++;
-          }
-        }
-
-        final isOnline = _boolTrue(data, 'isOnline');
-        if (isOnline) {
-          if (type == 'driver') {
-            activeBuses++;
-          } else if (type == 'passenger') {
-            activePassengers++;
-          } else if (type == 'service') {
-            activeServices++;
-          } else if (type != 'admin') {
-            activeOthers++;
-          }
-        }
-      }
+      final driverLike = driver + service + busCompany;
+      final pending =
+          (driverLike - verified - rejected).clamp(0, driverLike);
 
       return {
         'total': total,
@@ -272,60 +257,33 @@ class FirestoreService {
         'active_buses': activeBuses,
         'active_passengers': activePassengers,
         'active_services': activeServices,
-        'active_others': activeOthers,
+        'active_others': 0,
       };
     } catch (e) {
       if (useFallback) {
-        return {
-          ..._emptyUsersStats(),
-          'active_buses': 0,
-          'active_passengers': 0,
-          'active_services': 0,
-          'active_others': 0,
-        };
+        return _emptyUsersStats();
       }
       throw Exception('فشل جلب إحصائيات المستخدمين: $e');
     }
   }
 
+  /// إحصاءات نقاط التجمع عبر count() حسب status.
   Future<Map<String, int>> getPickupPointsStats(
       {bool useFallback = true}) async {
     try {
-      final allPoints = await _firestore.collection('pickupPoints').get();
-
-      var total = 0;
-      var approved = 0;
-      var pending = 0;
-      var rejected = 0;
-
-      for (final doc in allPoints.docs) {
-        final data = doc.data();
-        total++;
-
-        final status = _str(data, 'status', '').toLowerCase();
-
-        if (status == 'approved') {
-          approved++;
-        } else if (status == 'rejected') {
-          rejected++;
-        } else if (status == 'pending' || status.isEmpty) {
-          if (_boolTrue(data, 'isRejected')) {
-            rejected++;
-          } else if (_boolTrue(data, 'isApproved')) {
-            approved++;
-          } else {
-            pending++;
-          }
-        } else {
-          pending++;
-        }
-      }
+      final points = _firestore.collection('pickupPoints');
+      final results = await Future.wait([
+        _count(points),
+        _count(points.where('status', isEqualTo: 'approved')),
+        _count(points.where('status', isEqualTo: 'pending')),
+        _count(points.where('status', isEqualTo: 'rejected')),
+      ]);
 
       return {
-        'total': total,
-        'approved': approved,
-        'pending': pending,
-        'rejected': rejected,
+        'total': results[0],
+        'approved': results[1],
+        'pending': results[2],
+        'rejected': results[3],
       };
     } catch (e) {
       if (useFallback) {
@@ -335,15 +293,11 @@ class FirestoreService {
     }
   }
 
-  /// عدد المسارات النشطة عبر aggregation (بدون جلب كل المستندات).
   Future<int> getActiveRoutesCount({bool useFallback = true}) async {
     try {
-      final snap = await _firestore
-          .collection('routes')
-          .where('isActive', isEqualTo: true)
-          .count()
-          .get();
-      return snap.count ?? 0;
+      return await _count(
+        _firestore.collection('routes').where('isActive', isEqualTo: true),
+      );
     } catch (e) {
       if (useFallback) return 0;
       throw Exception('فشل جلب عدد المسارات: $e');
