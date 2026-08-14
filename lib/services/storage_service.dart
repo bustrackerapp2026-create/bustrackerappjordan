@@ -3,12 +3,32 @@ import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 
 /// خدمة رفع وحذف الصور على Firebase Storage.
+/// إن لم يُفعَّل Storage في Console تظهر رسالة واضحة للمستخدم.
 class StorageService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  /// مسار صورة الملف الشخصي للمستخدم.
   Reference _profileRef(String uid) =>
       _storage.ref().child('profile_photos').child('$uid.jpg');
+
+  String _friendlyError(FirebaseException e) {
+    final code = e.code.toLowerCase();
+    final msg = (e.message ?? '').toLowerCase();
+
+    if (code.contains('object-not-found')) {
+      return 'الصورة غير موجودة.';
+    }
+    if (code.contains('unauthorized') || code.contains('permission')) {
+      return 'لا صلاحية لرفع/حذف الصورة. تحقق من تسجيل الدخول وقواعد Storage.';
+    }
+    if (msg.contains('not been set up') ||
+        msg.contains('bucket') ||
+        code.contains('unknown') ||
+        msg.contains('404')) {
+      return 'تخزين الملفات (Storage) غير مفعّل على مشروع Firebase.\n'
+          'من Console → Storage → Get Started ثم أعد المحاولة.';
+    }
+    return 'فشل عملية التخزين: ${e.message ?? e.code}';
+  }
 
   /// رفع صورة شخصية وإرجاع رابط التحميل (download URL).
   Future<String> uploadProfilePhoto({
@@ -29,8 +49,16 @@ class StorageService {
 
       return await ref.getDownloadURL();
     } on FirebaseException catch (e) {
-      throw Exception('فشل رفع الصورة: ${e.message ?? e.code}');
+      throw Exception(_friendlyError(e));
     } catch (e) {
+      final s = e.toString().toLowerCase();
+      if (s.contains('storage') &&
+          (s.contains('not') || s.contains('bucket') || s.contains('404'))) {
+        throw Exception(
+          'تخزين الملفات (Storage) غير مفعّل على مشروع Firebase.\n'
+          'من Console → Storage → Get Started ثم أعد المحاولة.',
+        );
+      }
       throw Exception('فشل رفع الصورة: $e');
     }
   }
@@ -40,10 +68,8 @@ class StorageService {
     try {
       await _profileRef(uid).delete();
     } on FirebaseException catch (e) {
-      // object-not-found = لا توجد صورة مسبقاً — نتجاهل
-      if (e.code != 'object-not-found') {
-        throw Exception('فشل حذف الصورة: ${e.message ?? e.code}');
-      }
+      if (e.code == 'object-not-found') return;
+      throw Exception(_friendlyError(e));
     } catch (_) {
       // تجاهل أخطاء الحذف غير الحرجة
     }
