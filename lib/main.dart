@@ -24,14 +24,12 @@ import 'l10n/app_localizations.dart';
 import 'services/analytics_service.dart';
 
 Future<void> _initDotEnv() async {
-  // 1) حاول تحميل .env الحقيقي (محلي، غير مرفوع على Git)
   try {
     await dotenv.load(fileName: '.env', isOptional: true);
   } catch (e) {
     debugPrint('⚠️ تحميل .env: $e');
   }
 
-  // 2) إن لم يُهيَّأ بعد، جرّب الملف النموذجي
   if (!dotenv.isInitialized) {
     try {
       await dotenv.load(fileName: '.env.example', isOptional: true);
@@ -40,7 +38,6 @@ Future<void> _initDotEnv() async {
     }
   }
 
-  // 3) ضمان التهيئة دائماً حتى لا يرمي NotInitializedError
   if (!dotenv.isInitialized) {
     dotenv.loadFromString(envString: '');
     debugPrint('⚠️ DotEnv: تهيئة فارغة (لا يوجد ملف بيئة)');
@@ -153,6 +150,7 @@ class _DriverAuthBridgeState extends State<_DriverAuthBridge> {
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
       final driver = context.read<DriverProvider>();
+      // الحالة المحلية فقط — إطفاء السيرفر يتم داخل AuthProvider.signOut
       auth.onBeforeSignOut = () {
         driver.reset();
       };
@@ -211,8 +209,9 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
+  /// يُستخدم فقط لتجنّب وميض شاشة التحميل عند تأخّر بث userData.
+  /// لا يُثبّت isVerified=true بشكل دائم.
   String? _cachedType;
-  bool? _cachedVerified;
   String? _cachedUid;
   String? _loggedRole;
 
@@ -228,7 +227,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
     final isLoggedIn = context.select<AuthProvider, bool>((a) => a.isLoggedIn);
     if (!isLoggedIn) {
       _cachedType = null;
-      _cachedVerified = null;
       _cachedUid = null;
       _loggedRole = null;
       final driver = context.read<DriverProvider>();
@@ -253,7 +251,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
     if (snapshot.uid != null) {
       if (_cachedUid != null && _cachedUid != snapshot.uid) {
         _cachedType = null;
-        _cachedVerified = null;
         _loggedRole = null;
         context.read<DriverProvider>().reset();
       }
@@ -262,17 +259,12 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
     if (snapshot.type != null) {
       _cachedType = snapshot.type;
-      if (snapshot.verified == true) {
-        _cachedVerified = true;
-      } else if (_cachedVerified != true) {
-        _cachedVerified = snapshot.verified;
-      }
     }
 
     final type = snapshot.type ?? _cachedType;
-    final verified = (snapshot.verified == true || _cachedVerified == true)
-        ? true
-        : (snapshot.verified ?? _cachedVerified);
+
+    // التوثيق دائماً من المصدر الحي — إن سُحب التحقق يعود السائق لشاشة الانتظار
+    final verified = snapshot.verified == true;
 
     if (type == null) {
       return const _AuthLoadingScreen();
@@ -284,7 +276,11 @@ class _AuthWrapperState extends State<AuthWrapper> {
     }
 
     if (type == UserRoles.driver) {
-      if (verified != true) {
+      // أثناء تحميل userData لأول مرة قد يكون verified null مؤقتاً
+      if (snapshot.verified == null && snapshot.type == null) {
+        return const _AuthLoadingScreen();
+      }
+      if (!verified) {
         _trackRole('driver_pending');
         return const PendingApprovalScreen();
       }
