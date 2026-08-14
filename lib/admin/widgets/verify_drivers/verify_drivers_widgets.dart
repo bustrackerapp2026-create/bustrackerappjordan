@@ -220,7 +220,7 @@ class VerifyDriversCompactSectionCard extends StatelessWidget {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: items.length,
-            gridDelegate: const SpiverGridDelegateWithMaxCrossAxisExtent(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: 135,
               crossAxisSpacing: 8,
               mainAxisSpacing: 8,
@@ -239,18 +239,6 @@ class VerifyDriversCompactSectionCard extends StatelessWidget {
       ),
     );
   }
-}
-
-// Typo fix - Spiver was wrong, need Sliver
-class SpiverGridDelegateWithMaxCrossAxisExtent
-    extends SliverGridDelegateWithMaxCrossAxisExtent {
-  const SpiverGridDelegateWithMaxCrossAxisExtent({
-    required super.maxCrossAxisExtent,
-    super.mainAxisSpacing = 0.0,
-    super.crossAxisSpacing = 0.0,
-    super.childAspectRatio = 1.0,
-    super.mainAxisExtent,
-  });
 }
 
 class VerifyDriversUltraMiniStatCard extends StatelessWidget {
