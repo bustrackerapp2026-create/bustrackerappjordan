@@ -254,18 +254,27 @@ class _MapTabState extends State<MapTab>
     final trip = _openTrip;
     final uid = context.read<AuthProvider>().userId;
     if (trip == null || uid == null) return;
+
     try {
       await _tripService.cancelTripByPassenger(
         tripId: trip.id,
         passengerId: uid,
       );
-      if (mounted) {
-        MapUtils.showSnackBar(context, 'تم إلغاء الطلب');
-      }
-    } catch (_) {
-      if (mounted) {
-        MapUtils.showSnackBar(context, 'تعذر إلغاء الطلب', isError: true);
-      }
+      if (!mounted) return;
+      // إزالة فورية من الواجهة؛ الـ stream يؤكد لاحقاً
+      setState(() => _openTrip = null);
+      MapUtils.showSnackBar(context, 'تم إلغاء الطلب');
+    } catch (e, st) {
+      debugPrint('cancel trip failed: $e\n$st');
+      if (!mounted) return;
+      final msg = e.toString();
+      final friendly = msg.contains('permission-denied') ||
+              msg.contains('PERMISSION_DENIED')
+          ? 'صلاحيات الإلغاء غير مفعّلة. انشر firestore.rules ثم أعد المحاولة.'
+          : msg.contains('غير موجودة')
+              ? 'الطلب غير موجود أو أُلغي مسبقاً'
+              : 'تعذر إلغاء الطلب';
+      MapUtils.showSnackBar(context, friendly, isError: true);
     }
   }
 
