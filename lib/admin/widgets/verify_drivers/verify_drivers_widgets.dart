@@ -1,0 +1,428 @@
+import 'package:flutter/material.dart';
+
+import '../../../l10n/app_localizations.dart';
+import '../../screens/tabs/stat_details_screen.dart';
+import 'verify_drivers_models.dart';
+
+class VerifyDriversHeroSummaryCard extends StatelessWidget {
+  final int totalUsers;
+  final int activeTotal;
+  final AppLocalizations l10n;
+
+  const VerifyDriversHeroSummaryCard({
+    super.key,
+    required this.totalUsers,
+    required this.activeTotal,
+    required this.l10n,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primaryColor = theme.colorScheme.primary;
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            primaryColor,
+            Color.alphaBlend(Colors.black.withValues(alpha: 0.2), primaryColor)
+          ],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: primaryColor.withValues(alpha: 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.systemOverview,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        l10n.totalUsers,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '$totalUsers',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: Colors.amberAccent,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white24, width: 0.8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: const BoxDecoration(
+                    color: Colors.greenAccent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  l10n.activeNow(activeTotal),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+class VerifyDriversCompactSectionCard extends StatelessWidget {
+  final String sectionId;
+  final String title;
+  final IconData icon;
+  final Color iconColor;
+  final List<VerifyDriversStatItem> items;
+  final bool isLive;
+  final String liveLabel;
+
+  const VerifyDriversCompactSectionCard({
+    super.key,
+    required this.sectionId,
+    required this.title,
+    required this.icon,
+    required this.iconColor,
+    required this.items,
+    required this.liveLabel,
+    this.isLive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: Border.all(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(icon, color: iconColor, size: 16),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (isLive) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 5,
+                        height: 5,
+                        decoration: const BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        liveLabel,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: items.length,
+            gridDelegate: const SpiverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 135,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              mainAxisExtent: 58,
+            ),
+            itemBuilder: (context, index) {
+              final uniqueHeroTag =
+                  'hero_${sectionId}_${items[index].queryType}_$index';
+              return VerifyDriversUltraMiniStatCard(
+                item: items[index],
+                heroTag: uniqueHeroTag,
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Typo fix - Spiver was wrong, need Sliver
+class SpiverGridDelegateWithMaxCrossAxisExtent
+    extends SliverGridDelegateWithMaxCrossAxisExtent {
+  const SpiverGridDelegateWithMaxCrossAxisExtent({
+    required super.maxCrossAxisExtent,
+    super.mainAxisSpacing = 0.0,
+    super.crossAxisSpacing = 0.0,
+    super.childAspectRatio = 1.0,
+    super.mainAxisExtent,
+  });
+}
+
+class VerifyDriversUltraMiniStatCard extends StatelessWidget {
+  final VerifyDriversStatItem item;
+  final String heroTag;
+
+  const VerifyDriversUltraMiniStatCard({
+    super.key,
+    required this.item,
+    required this.heroTag,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Semantics(
+      label: '${item.label}: ${item.count}',
+      button: true,
+      child: Hero(
+        tag: heroTag,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              if (!context.mounted) return;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => StatDetailsScreen(
+                    title: item.label,
+                    queryType: item.queryType,
+                  ),
+                ),
+              );
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              decoration: BoxDecoration(
+                color: item.color.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: item.color.withValues(alpha: 0.14),
+                  width: 1,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(item.icon, color: item.color, size: 14),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            item.count.toString(),
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: item.color,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 1),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      item.label,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class VerifyDriversLoadingSkeleton extends StatelessWidget {
+  const VerifyDriversLoadingSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: 4,
+      itemBuilder: (context, index) {
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          height: 90,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+                color: Theme.of(context)
+                    .colorScheme
+                    .outlineVariant
+                    .withValues(alpha: 0.4)),
+          ),
+          child: const Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class VerifyDriversErrorView extends StatelessWidget {
+  final VoidCallback onRetry;
+  final AppLocalizations l10n;
+
+  const VerifyDriversErrorView({
+    super.key,
+    required this.onRetry,
+    required this.l10n,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.cloud_off_rounded,
+                size: 44, color: theme.colorScheme.error),
+            const SizedBox(height: 10),
+            Text(
+              l10n.dbConnectionFailed,
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: theme.colorScheme.onPrimary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: Text(l10n.retryRefresh),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
