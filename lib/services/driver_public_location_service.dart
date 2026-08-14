@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// يكتب/يقرأ مواقع السائقين العامة بدون كشف بريد/هاتف/حقول حساسة.
 ///
 /// المجموعة: [driverPublic/{uid}]
-/// الحقول المسموحة فقط: اسم العرض، باص، مسار، سعة، إحداثيات، حالة اتصال/رحلة.
+/// الحقول: اسم العرض، باص، مسار، سعة، إحداثيات، حالة اتصال/رحلة.
 class DriverPublicLocationService {
   DriverPublicLocationService._();
   static final DriverPublicLocationService instance =
@@ -16,55 +16,7 @@ class DriverPublicLocationService {
   DocumentReference<Map<String, dynamic>> doc(String uid) =>
       _db.collection(collection).doc(uid);
 
-  /// دمج حقول عامة فقط (merge) — آمن للاستدعاء المتكرر من التتبع.
-  Future<void> upsert({
-    required String uid,
-    String? fullName,
-    String? busNumber,
-    String? route,
-    int? capacity,
-    double? latitude,
-    double? longitude,
-    double? heading,
-    double? speed,
-    bool? isOnline,
-    bool? isTripActive,
-  }) async {
-    if (uid.isEmpty) return;
-
-    final data = <String, dynamic>{
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-
-    if (fullName != null) data['fullName'] = fullName;
-    if (busNumber != null) data['busNumber'] = busNumber;
-    if (route != null) data['route'] = route;
-    if (capacity != null) data['capacity'] = capacity;
-    if (isOnline != null) data['isOnline'] = isOnline;
-    if (isTripActive != null) data['isTripActive'] = isTripActive;
-    if (heading != null) data['heading'] = heading;
-    if (speed != null) data['speed'] = speed;
-
-    if (latitude != null && longitude != null) {
-      data['currentLatitude'] = latitude;
-      data['currentLongitude'] = longitude;
-      data['locationUpdatedAt'] = FieldValue.serverTimestamp();
-    }
-
-    if (!isOnline! && isOnline == false) {
-      // handled below
-    }
-
-    if (isOnline == false) {
-      data['isOnline'] = false;
-      data['isSharingLocation'] = false;
-      data['isTripActive'] = false;
-    }
-
-    await doc(uid).set(data, SetOptions(merge: true));
-  }
-
-  /// تحديث موقع فقط + حالة اتصال (مسار التتبع المستمر).
+  /// تحديث موقع + حالة (مسار التتبع المستمر).
   Future<void> publishLocation({
     required String uid,
     required double latitude,
@@ -79,6 +31,7 @@ class DriverPublicLocationService {
     int? capacity,
   }) async {
     if (uid.isEmpty) return;
+
     if (!isOnline && !isTripActive) {
       await markOffline(uid);
       return;
@@ -95,7 +48,45 @@ class DriverPublicLocationService {
     };
     if (heading != null) data['heading'] = heading;
     if (speed != null) data['speed'] = speed;
-    if (fullName != null) data['fullName'] = fullName;
+    if (fullName != null && fullName.isNotEmpty) data['fullName'] = fullName;
+    if (busNumber != null) data['busNumber'] = busNumber;
+    if (route != null) data['route'] = route;
+    if (capacity != null) data['capacity'] = capacity;
+
+    await doc(uid).set(data, SetOptions(merge: true));
+  }
+
+  /// تحديث حالة الاتصال بدون إحداثيات جديدة.
+  Future<void> publishStatus({
+    required String uid,
+    required bool isOnline,
+    bool? isTripActive,
+    double? latitude,
+    double? longitude,
+    String? fullName,
+    String? busNumber,
+    String? route,
+    int? capacity,
+  }) async {
+    if (uid.isEmpty) return;
+
+    if (!isOnline) {
+      await markOffline(uid);
+      return;
+    }
+
+    final data = <String, dynamic>{
+      'isOnline': true,
+      'isSharingLocation': true,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (isTripActive != null) data['isTripActive'] = isTripActive;
+    if (latitude != null && longitude != null) {
+      data['currentLatitude'] = latitude;
+      data['currentLongitude'] = longitude;
+      data['locationUpdatedAt'] = FieldValue.serverTimestamp();
+    }
+    if (fullName != null && fullName.isNotEmpty) data['fullName'] = fullName;
     if (busNumber != null) data['busNumber'] = busNumber;
     if (route != null) data['route'] = route;
     if (capacity != null) data['capacity'] = capacity;
