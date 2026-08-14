@@ -2,26 +2,23 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/live_driver_location.dart';
 import 'analytics_service.dart';
+import 'driver_public_location_service.dart';
 
-/// خدمة التتبع الحي: بث مواقع السائقين المتصلين من Firestore.
-/// كل تحديث يُكتب على users/{uid} فقط — لا يوجد حالة مشتركة بين السائقين.
+/// خدمة التتبع الحي: بث مواقع السائقين من [driverPublic] فقط.
+/// لا تقرأ مجموعة users للعامة — حماية البريد/الهاتف والحقول الحساسة.
 class LiveTrackingService {
   LiveTrackingService._();
   static final LiveTrackingService instance = LiveTrackingService._();
   factory LiveTrackingService() => instance;
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final DriverPublicLocationService _public = DriverPublicLocationService();
 
   Stream<List<LiveDriverLocation>> watchOnlineDrivers({String? routeFilter}) {
-    Query<Map<String, dynamic>> q = _db
-        .collection('users')
-        .where('userType', isEqualTo: 'driver')
-        .where('isOnline', isEqualTo: true);
-
-    return q.snapshots().map((snap) {
+    return _public.watchOnline().map((snap) {
       final list = <LiveDriverLocation>[];
       for (final doc in snap.docs) {
-        final live = LiveDriverLocation.fromUserDoc(doc.id, doc.data());
+        final live = LiveDriverLocation.fromPublicDoc(doc.id, doc.data());
         if (!live.hasValidCoords) continue;
         if (!live.isFresh && !live.isOnline) continue;
         if (routeFilter != null &&
@@ -38,9 +35,9 @@ class LiveTrackingService {
   }
 
   Stream<LiveDriverLocation?> watchDriver(String driverId) {
-    return _db.collection('users').doc(driverId).snapshots().map((doc) {
+    return _public.watchDriver(driverId).map((doc) {
       if (!doc.exists || doc.data() == null) return null;
-      final live = LiveDriverLocation.fromUserDoc(doc.id, doc.data()!);
+      final live = LiveDriverLocation.fromPublicDoc(doc.id, doc.data()!);
       if (!live.hasValidCoords) return null;
       return live;
     });
@@ -53,6 +50,9 @@ class LiveTrackingService {
     double? longitude,
     String? route,
     bool? isTripActive,
+    String? fullName,
+    String? busNumber,
+    int? capacity,
   }) async {
     if (uid.isEmpty) {
       throw ArgumentError('uid مطلوب لتحديث حالة السائق');
@@ -82,7 +82,21 @@ class LiveTrackingService {
       data['route'] = route;
     }
 
+    // ملف المستخدم الخاص (المالك فقط يقرأه الآخرون عبر القواعد الجديدة)
     await _db.collection('users').doc(uid).update(data);
+
+    // النسخة العامة للخريطة
+    await _public.publishStatus(
+      uid: uid,
+      isOnline: isOnline,
+      isTripActive: isTripActive,
+      latitude: latitude,
+      longitude: longitude,
+      fullName: fullName,
+      busNumber: busNumber,
+      route: route,
+      capacity: capacity,
+    );
 
     if (isOnline) {
       AnalyticsService().goOnline();
@@ -102,6 +116,12 @@ class LiveTrackingService {
       'isTripActive': isTripActive,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+
+    await _public.publishStatus(
+      uid: uid,
+      isOnline: true,
+      isTripActive: isTripActive,
+    );
 
     if (isTripActive) {
       AnalyticsService().startTrip();
