@@ -95,21 +95,11 @@ class FirestoreService {
     }
   }
 
-  static String _str(Map<String, dynamic> data, String key, [String def = '']) {
-    final v = data[key];
-    if (v == null) return def;
-    return v.toString().trim();
-  }
-
   static bool _boolTrue(Map<String, dynamic> data, String key) {
     final v = data[key];
     if (v is bool) return v;
     if (v is String) return v.toLowerCase() == 'true';
     return false;
-  }
-
-  static bool _isDriverLike(String type) {
-    return type == 'driver' || type == 'service' || type == 'bus_company';
   }
 
   Future<int> _count(Query<Map<String, dynamic>> query) async {
@@ -211,14 +201,12 @@ class FirestoreService {
         _count(users.where('userType', isEqualTo: 'driver')),
         _count(users.where('userType', isEqualTo: 'service')),
         _count(users.where('userType', isEqualTo: 'bus_company')),
-        // موثّقون من أنواع السائقين
         _count(users
             .where('userType', whereIn: ['driver', 'service', 'bus_company'])
             .where('isVerified', isEqualTo: true)),
         _count(users
             .where('userType', whereIn: ['driver', 'service', 'bus_company'])
             .where('isRejected', isEqualTo: true)),
-        // متصلون من المجموعة العامة (أرخص وأكثر دقة للخريطة)
         _count(public.where('isOnline', isEqualTo: true)),
         _count(users
             .where('userType', isEqualTo: 'passenger')
@@ -267,7 +255,6 @@ class FirestoreService {
     }
   }
 
-  /// إحصاءات نقاط التجمع عبر count() حسب status.
   Future<Map<String, int>> getPickupPointsStats(
       {bool useFallback = true}) async {
     try {
