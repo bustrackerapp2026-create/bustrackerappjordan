@@ -67,14 +67,34 @@ service cloud.firestore {
         ]);
     }
 
-    /// الراكب يلغي رحلته فقط: status + completedAt + cancelledBy
+    /// الراكب يلغي رحلته فقط
     function passengerCancelOnly() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['status', 'completedAt', 'cancelledBy']);
     }
 
+    /// السائق يعدّل حقول تشغيل الرحلة فقط (لا يغيّر الراكب/نقاط الصعود الأساسية)
+    function driverTripUpdateKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly([
+          'status',
+          'startedAt',
+          'completedAt',
+          'driverId',
+          'notes',
+          'routePoints',
+          'cancelledBy'
+        ]);
+    }
+
+    /// لا يُسمح بتغيير هوية الراكب أو السائق المعيّن إلى غير المصرّح
+    function tripPartiesIntact() {
+      return request.resource.data.passengerId == resource.data.passengerId
+        && request.resource.data.driverId == resource.data.driverId;
+    }
+
     // ═══════════════════════════════════════════════════════════
-    // users — كل وثيقة = مستخدم واحد فقط
+    // users
     // ═══════════════════════════════════════════════════════════
 
     match /users/{userId} {
@@ -86,7 +106,6 @@ service cloud.firestore {
         && request.resource.data.isVerified == false
         && request.resource.data.get('isRejected', false) == false;
 
-      // المالك يعدّل حقوله فقط؛ الأدمن يعدّل أي شيء (موافقة سائقين...)
       allow update: if isOwner(userId) && onlySelfServiceFields()
         && request.resource.data.userType == resource.data.userType
         && request.resource.data.isVerified == resource.data.isVerified
@@ -127,7 +146,7 @@ service cloud.firestore {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // trips — مرتبطة بـ driverId / passengerId
+    // trips — مرحلة 1.A: حقول محدودة حسب الدور
     // ═══════════════════════════════════════════════════════════
 
     match /trips/{tripId} {
@@ -135,31 +154,53 @@ service cloud.firestore {
         isAdmin()
         || resource.data.driverId == request.auth.uid
         || resource.data.passengerId == request.auth.uid
-        || (isDriver() && resource.data.status == 'pending')
+        || (isDriver() && resource.data.status == 'pending'
+            && resource.data.driverId == request.auth.uid)
       );
 
+      // إنشاء: راكب يطلب لسائق، أو سائق ينشئ لرحلته
       allow create: if isSignedIn()
         && (
           request.resource.data.driverId == request.auth.uid
           || request.resource.data.passengerId == request.auth.uid
-        );
+        )
+        && request.resource.data.keys().hasAll([
+          'passengerId', 'driverId', 'status', 'pickupPoint', 'dropoffPoint'
+        ])
+        && request.resource.data.status in ['pending', 'active'];
 
       allow update: if isAdmin()
-        // السائق يعدّل رحلاته (قبول / إنهاء / رفض)
-        || (isSignedIn() && resource.data.driverId == request.auth.uid)
+
+        // السائق المعيّن فقط — قبول / رفض / إكمال / ملاحظات مسار
         || (
-          isDriver()
-          && resource.data.status == 'pending'
+          isSignedIn()
+          && resource.data.driverId == request.auth.uid
           && request.resource.data.driverId == request.auth.uid
+          && request.resource.data.passengerId == resource.data.passengerId
+          && driverTripUpdateKeys()
+          && (
+            // قبول
+            (resource.data.status == 'pending'
+              && request.resource.data.status == 'active')
+            // رفض أو إلغاء من السائق
+            || (resource.data.status in ['pending', 'active']
+              && request.resource.data.status == 'cancelled')
+            // إكمال
+            || (resource.data.status == 'active'
+              && request.resource.data.status == 'completed')
+            // تحديث ملاحظات/نقاط أثناء النشط دون تغيير الحالة
+            || (resource.data.status == request.resource.data.status
+              && resource.data.status in ['pending', 'active'])
+          )
         )
-        // الراكب يلغي طلبه فقط (pending أو active → cancelled)
+
+        // الراكب يلغي طلبه فقط
         || (
           isSignedIn()
           && resource.data.passengerId == request.auth.uid
           && resource.data.status in ['pending', 'active']
           && request.resource.data.status == 'cancelled'
-          && request.resource.data.passengerId == resource.data.passengerId
-          && request.resource.data.driverId == resource.data.driverId
+          && tripPartiesIntact()
           && passengerCancelOnly()
         );
 
@@ -187,14 +228,12 @@ service cloud.firestore {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // plannedRoutes — مسارات الخطوط المرسومة/المسجّلة (ذهاب/إياب)
+    // plannedRoutes
     // ═══════════════════════════════════════════════════════════
 
     match /plannedRoutes/{routeId} {
-      // الجميع المسجّلون يقرأون المسارات المعتمدة للعرض على الخريطة
       allow read: if isSignedIn();
 
-      // الأدمن يحفظ/يعدّل أي مسار؛ السائق ينشئ/يحدّث مساراً مرتبطاً به
       allow create: if isAdmin()
         || (
           isDriver()

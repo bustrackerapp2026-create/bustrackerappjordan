@@ -6,7 +6,7 @@ import '../models/trip_status.dart';
 import '../models/route_point.dart';
 import 'trip_service_exception.dart';
 
-/// خدمة إدارة الرحلات مع أمان العمليات المتزامنة (Transactions)
+/// خدمة إدارة الرحلات — قبول/إلغاء بدون Transaction (توافق أجهزة MIUI).
 class TripService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final String _collection = 'trips';
@@ -26,14 +26,37 @@ class TripService {
       try {
         return await operation().timeout(timeout);
       } catch (e) {
+        // لا نعيد محاولة أخطاء الصلاحيات / المنطق — تفشل فوراً
+        if (e is TripServiceException) rethrow;
+        if (e is FirebaseException &&
+            (e.code == 'permission-denied' || e.code == 'not-found')) {
+          throw _mapFirebaseError(e);
+        }
         attempt++;
         if (attempt >= retries) {
-          if (e is TripServiceException) rethrow;
+          if (e is FirebaseException) throw _mapFirebaseError(e);
           throw TripServiceException('فشلت العملية بعد $retries محاولات: $e');
         }
         await Future.delayed(delay);
         delay = Duration(milliseconds: delay.inMilliseconds * 2);
       }
+    }
+  }
+
+  TripServiceException _mapFirebaseError(FirebaseException e) {
+    switch (e.code) {
+      case 'permission-denied':
+        return const TripServiceException(
+          'رفض الصلاحيات. تأكد من نشر firestore.rules ثم أعد المحاولة.',
+        );
+      case 'not-found':
+        return const TripServiceException('الرحلة غير موجودة.');
+      case 'unavailable':
+        return const TripServiceException(
+          'الخدمة غير متاحة مؤقتاً. تحقق من الاتصال.',
+        );
+      default:
+        return TripServiceException('خطأ Firebase (${e.code}): ${e.message}');
     }
   }
 
@@ -57,7 +80,6 @@ class TripService {
         .map((snapshot) => _mapDocs(snapshot.docs));
   }
 
-  /// رحلات الراكب المفتوحة (انتظار أو نشطة)
   Stream<List<TripModel>> watchPassengerOpenTrips(String passengerId) {
     return _firestore
         .collection(_collection)
@@ -127,8 +149,13 @@ class TripService {
         .map((snapshot) => _mapDocs(snapshot.docs));
   }
 
+  /// قبول طلب موجّه لهذا السائق (pending → active).
+  /// بدون Transaction؛ القواعد تمنع سائقاً آخر من التعديل.
   Future<void> acceptTripTransaction(String tripId, String driverId) async {
-    // تحديث مباشر بدل Transaction لتجنب MissingPluginException على بعض الأجهزة
+    if (tripId.isEmpty || driverId.isEmpty) {
+      throw const TripServiceException('بيانات القبول غير مكتملة.');
+    }
+
     await _withRetryAndTimeout(() async {
       final docRef = _firestore.collection(_collection).doc(tripId);
       final snapshot = await docRef.get();
@@ -139,9 +166,18 @@ class TripService {
         currentStatus: data?['status'] as String?,
       );
 
-      final fields = TripAcceptance.acceptanceUpdateFields(driverId);
-      fields['startedAt'] = FieldValue.serverTimestamp();
-      await docRef.update(fields);
+      final assigned = data!['driverId'] as String? ?? '';
+      if (assigned != driverId) {
+        throw const TripServiceException(
+          'هذا الطلب موجّه لسائق آخر.',
+        );
+      }
+
+      // حقول محدودة فقط — متوافقة مع firestore.rules (driverTripUpdateKeys)
+      await docRef.update({
+        'status': TripStatus.active.stringValue,
+        'startedAt': FieldValue.serverTimestamp(),
+      });
     });
   }
 
@@ -154,7 +190,6 @@ class TripService {
     });
   }
 
-  /// طلب صعود من الراكب إلى سائق محدد (محطة قريبة / موقعي)
   Future<String> createBoardRequest({
     required String passengerId,
     required String driverId,
@@ -171,7 +206,6 @@ class TripService {
       throw const TripServiceException('معرف الراكب أو السائق مفقود.');
     }
 
-    // منع تكرار طلب مفتوح لنفس السائق
     final existing = await _firestore
         .collection(_collection)
         .where('passengerId', isEqualTo: passengerId)
@@ -211,8 +245,6 @@ class TripService {
     return docRef.id;
   }
 
-  /// إلغاء من الراكب — تحديث مباشر (بدون Transaction) لتفادي
-  /// MissingPluginException على قناة transaction/cancel.
   Future<void> cancelTripByPassenger({
     required String tripId,
     required String passengerId,
@@ -240,10 +272,11 @@ class TripService {
         return;
       }
 
-      // فقط pending أو active يمكن إلغاؤهما من الراكب
       if (status != TripStatus.pending.stringValue &&
           status != TripStatus.active.stringValue) {
-        throw const TripServiceException('لا يمكن إلغاء هذه الرحلة بحالتها الحالية.');
+        throw const TripServiceException(
+          'لا يمكن إلغاء هذه الرحلة بحالتها الحالية.',
+        );
       }
 
       await docRef.update({
@@ -268,8 +301,8 @@ class TripService {
 
     final tripDriverId = tripData['driverId'] as String?;
     if (tripDriverId != driverId) {
-      throw TripServiceException(
-        'غير مصرح لك بتعديل هذه الرحلة. السائق الحالي: $tripDriverId',
+      throw const TripServiceException(
+        'غير مصرح لك بتعديل هذه الرحلة.',
       );
     }
   }
@@ -314,6 +347,10 @@ class TripService {
         data['completedAt'] = FieldValue.serverTimestamp();
       }
 
+      if (newStatus == TripStatus.cancelled) {
+        data['cancelledBy'] = 'driver';
+      }
+
       if (routePoints != null && routePoints.isNotEmpty) {
         data['routePoints'] = routePoints.map((p) => p.toMap()).toList();
       }
@@ -332,11 +369,19 @@ class TripService {
 
     await _verifyOwnership(trip.id, driverId);
 
+    // تحديث محدود الحقول ليتوافق مع القواعد
     await _withRetryAndTimeout(() async {
-      await _firestore
-          .collection(_collection)
-          .doc(trip.id)
-          .update(trip.toMap());
+      final data = <String, dynamic>{
+        'status': trip.status.stringValue,
+        if (trip.notes != null) 'notes': trip.notes,
+        if (trip.startedAt != null)
+          'startedAt': Timestamp.fromDate(trip.startedAt!),
+        if (trip.completedAt != null)
+          'completedAt': Timestamp.fromDate(trip.completedAt!),
+        if (trip.routePoints != null && trip.routePoints!.isNotEmpty)
+          'routePoints': trip.routePoints!.map((p) => p.toMap()).toList(),
+      };
+      await _firestore.collection(_collection).doc(trip.id).update(data);
     });
   }
 
