@@ -128,22 +128,20 @@ class TripService {
   }
 
   Future<void> acceptTripTransaction(String tripId, String driverId) async {
+    // تحديث مباشر بدل Transaction لتجنب MissingPluginException على بعض الأجهزة
     await _withRetryAndTimeout(() async {
       final docRef = _firestore.collection(_collection).doc(tripId);
+      final snapshot = await docRef.get();
+      final data = snapshot.data();
 
-      await _firestore.runTransaction((transaction) async {
-        final snapshot = await transaction.get(docRef);
-        final data = snapshot.data();
+      TripAcceptance.ensureCanAccept(
+        exists: snapshot.exists,
+        currentStatus: data?['status'] as String?,
+      );
 
-        TripAcceptance.ensureCanAccept(
-          exists: snapshot.exists,
-          currentStatus: data?['status'] as String?,
-        );
-
-        final fields = TripAcceptance.acceptanceUpdateFields(driverId);
-        fields['startedAt'] = FieldValue.serverTimestamp();
-        transaction.update(docRef, fields);
-      });
+      final fields = TripAcceptance.acceptanceUpdateFields(driverId);
+      fields['startedAt'] = FieldValue.serverTimestamp();
+      await docRef.update(fields);
     });
   }
 
@@ -213,30 +211,45 @@ class TripService {
     return docRef.id;
   }
 
+  /// إلغاء من الراكب — تحديث مباشر (بدون Transaction) لتفادي
+  /// MissingPluginException على قناة transaction/cancel.
   Future<void> cancelTripByPassenger({
     required String tripId,
     required String passengerId,
   }) async {
+    if (tripId.isEmpty || passengerId.isEmpty) {
+      throw const TripServiceException('بيانات الإلغاء غير مكتملة.');
+    }
+
     await _withRetryAndTimeout(() async {
       final docRef = _firestore.collection(_collection).doc(tripId);
-      await _firestore.runTransaction((tx) async {
-        final snap = await tx.get(docRef);
-        if (!snap.exists) {
-          throw const TripServiceException('الرحلة غير موجودة.');
-        }
-        final data = snap.data()!;
-        if (data['passengerId'] != passengerId) {
-          throw const TripServiceException('غير مصرح بإلغاء هذه الرحلة.');
-        }
-        final status = data['status'] as String? ?? 'pending';
-        if (status == TripStatus.completed.stringValue ||
-            status == TripStatus.cancelled.stringValue) {
-          return;
-        }
-        tx.update(docRef, {
-          'status': TripStatus.cancelled.stringValue,
-          'completedAt': FieldValue.serverTimestamp(),
-        });
+      final snap = await docRef.get();
+
+      if (!snap.exists || snap.data() == null) {
+        throw const TripServiceException('الرحلة غير موجودة.');
+      }
+
+      final data = snap.data()!;
+      if (data['passengerId'] != passengerId) {
+        throw const TripServiceException('غير مصرح بإلغاء هذه الرحلة.');
+      }
+
+      final status = data['status'] as String? ?? 'pending';
+      if (status == TripStatus.completed.stringValue ||
+          status == TripStatus.cancelled.stringValue) {
+        return;
+      }
+
+      // فقط pending أو active يمكن إلغاؤهما من الراكب
+      if (status != TripStatus.pending.stringValue &&
+          status != TripStatus.active.stringValue) {
+        throw const TripServiceException('لا يمكن إلغاء هذه الرحلة بحالتها الحالية.');
+      }
+
+      await docRef.update({
+        'status': TripStatus.cancelled.stringValue,
+        'completedAt': FieldValue.serverTimestamp(),
+        'cancelledBy': 'passenger',
       });
     });
   }
@@ -296,7 +309,8 @@ class TripService {
 
       if (completedAt != null) {
         data['completedAt'] = Timestamp.fromDate(completedAt);
-      } else if (newStatus == TripStatus.completed) {
+      } else if (newStatus == TripStatus.completed ||
+          newStatus == TripStatus.cancelled) {
         data['completedAt'] = FieldValue.serverTimestamp();
       }
 
