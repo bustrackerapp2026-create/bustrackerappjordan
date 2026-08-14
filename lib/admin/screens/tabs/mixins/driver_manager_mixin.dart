@@ -49,8 +49,19 @@ class DriverLocationData {
 mixin DriverManagerMixin<T extends StatefulWidget>
     on State<T>, MapCoreMixin<T> {
   final Map<String, PointAnnotation> driverAnnotations = {};
+  final Map<String, DriverLocationData> driverDataById = {};
   final Map<String, Uint8List> _driverMarkerCache = {};
   StreamSubscription<QuerySnapshot>? _driversSubscription;
+
+  DriverLocationData? getDriverData(String driverId) =>
+      driverDataById[driverId];
+
+  String? findDriverIdByAnnotation(PointAnnotation annotation) {
+    for (final e in driverAnnotations.entries) {
+      if (e.value.id == annotation.id) return e.key;
+    }
+    return null;
+  }
 
   void listenToActiveDrivers() {
     _driversSubscription?.cancel();
@@ -84,11 +95,13 @@ mixin DriverManagerMixin<T extends StatefulWidget>
         await pointAnnotationManager?.delete(annotation);
         driverAnnotations.remove(driverId);
       }
+      driverDataById.remove(driverId);
     }
 
     for (final doc in snapshot.docs) {
       if (!mounted) return;
       final driver = DriverLocationData.fromFirestore(doc);
+      driverDataById[driver.id] = driver;
       if (driver.latitude == 0.0 || driver.longitude == 0.0) {
         continue;
       }
@@ -232,6 +245,7 @@ mixin DriverManagerMixin<T extends StatefulWidget>
   void disposeDrivers() {
     _driversSubscription?.cancel();
     driverAnnotations.clear();
+    driverDataById.clear();
     _driverMarkerCache.clear();
   }
 
