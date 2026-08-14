@@ -335,13 +335,15 @@ class FirestoreService {
     }
   }
 
+  /// عدد المسارات النشطة عبر aggregation (بدون جلب كل المستندات).
   Future<int> getActiveRoutesCount({bool useFallback = true}) async {
     try {
       final snap = await _firestore
           .collection('routes')
           .where('isActive', isEqualTo: true)
+          .count()
           .get();
-      return snap.docs.length;
+      return snap.count ?? 0;
     } catch (e) {
       if (useFallback) return 0;
       throw Exception('فشل جلب عدد المسارات: $e');
