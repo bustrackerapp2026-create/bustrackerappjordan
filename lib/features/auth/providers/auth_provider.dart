@@ -4,18 +4,19 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 import 'package:jordan_bus_tracker_new/models/user_model.dart';
 import 'package:jordan_bus_tracker_new/services/firestore_service.dart';
+import 'package:jordan_bus_tracker_new/services/live_tracking_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
+  final LiveTrackingService _liveTracking = LiveTrackingService();
 
   firebase_auth.User? _user;
   UserModel? _userData;
   bool _isLoading = false;
   StreamSubscription<UserModel?>? _userDataSubscription;
 
-  /// يُستدعى عند تسجيل الخروج لتصفير الحالة المحلية فقط (DriverProvider)
-  /// دون المساس بـ isOnline / isTripActive على السيرفر.
+  /// يُستدعى عند تسجيل الخروج لتصفير الحالة المحلية فقط (DriverProvider).
   VoidCallback? onBeforeSignOut;
 
   firebase_auth.User? get user => _user;
@@ -156,7 +157,7 @@ class AuthProvider extends ChangeNotifier {
       await user.reauthenticateWithCredential(credential);
       await user.updatePassword(newPassword);
 
-      // لا نوقف التوصيل/الرحلة — تبقى حتى الإيقاف من شاشة السائق
+      await _goOfflineIfDriver();
       onBeforeSignOut?.call();
 
       await _auth.signOut();
@@ -182,12 +183,29 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// تسجيل الخروج من التطبيق فقط.
-  /// لا يغيّر isOnline ولا isTripActive على Firestore —
-  /// الإيقاف يتم فقط من أزرار شاشة السائق (إيقاف التوصيل / إنهاء الرحلة).
+  /// إطفاء التوصيل على السيرفر (users + driverPublic) إن كان سائقاً.
+  Future<void> _goOfflineIfDriver() async {
+    final uid = _user?.uid ?? _userData?.uid;
+    if (uid == null || uid.isEmpty) return;
+
+    final type = _userData?.userType;
+    if (type != 'driver') return;
+
+    try {
+      await _liveTracking.setDriverOnlineStatus(
+        uid: uid,
+        isOnline: false,
+        isTripActive: false,
+      );
+    } catch (e) {
+      debugPrint('تعذر إطفاء حالة السائق عند الخروج: $e');
+    }
+  }
+
+  /// تسجيل الخروج + إطفاء isOnline للسائق على Firestore.
   Future<void> signOut() async {
     try {
-      // تصفير الحالة المحلية على الجهاز فقط (لا تُكتب على السيرفر)
+      await _goOfflineIfDriver();
       onBeforeSignOut?.call();
 
       _cancelUserDataSubscription();
