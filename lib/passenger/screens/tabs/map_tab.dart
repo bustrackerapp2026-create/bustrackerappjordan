@@ -15,6 +15,7 @@ import '../../../features/auth/providers/auth_provider.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../models/live_driver_location.dart';
+import '../../../models/planned_route.dart';
 import '../../../models/trip_model.dart';
 import '../../../passenger/widgets/active_trip_banner.dart';
 import '../../../passenger/widgets/passenger_live_status_bar.dart';
