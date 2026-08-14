@@ -4,34 +4,23 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 
+import '../../services/driver_public_location_service.dart';
 import '../../services/location_service.dart';
 
-/// حالات خدمة تتبع موقع السائق.
 enum DriverTrackingState {
-  /// متوقفة بالكامل
   stopped,
-
-  /// جاري التشغيل (طلب صلاحيات / فتح stream)
   starting,
-
-  /// تعمل وتستقبل مواقع
   running,
-
-  /// جاري الإيقاف
   stopping,
 }
 
-/// يدير دورة حياة تتبع GPS للسائق بشكل متسلسل وآمن:
-/// - لا تشغيل مزدوج
-/// - لا إيقاف أثناء التشغيل المتداخل
-/// - إعادة تشغيل عند تغيّر الملف (idle ↔ trip)
-/// - نبض قلب لاكتشاف توقف الـ stream
 class DriverTrackingLifecycle {
   DriverTrackingLifecycle({
     LocationService? locationService,
   }) : _location = locationService ?? LocationService();
 
   final LocationService _location;
+  final DriverPublicLocationService _public = DriverPublicLocationService();
 
   StreamSubscription<geo.Position>? _sub;
   Timer? _heartbeat;
@@ -43,11 +32,9 @@ class DriverTrackingLifecycle {
   bool _wantRunning = false;
   bool _disposed = false;
 
-  /// آخر موقع خام وصل من الـ stream
   geo.Position? lastPosition;
   DateTime? lastPositionAt;
 
-  /// قفل تسلسلي للعمليات
   Future<void> _chain = Future<void>.value();
 
   void Function(geo.Position position)? onPosition;
@@ -80,8 +67,6 @@ class DriverTrackingLifecycle {
     return c.future;
   }
 
-  /// طلب تشغيل التتبع لهذا السائق بهذا الملف.
-  /// آمن للاستدعاء المتكرر.
   Future<void> requestStart({
     required String uid,
     required LocationTrackingProfile profile,
@@ -92,7 +77,6 @@ class DriverTrackingLifecycle {
     return _enqueue(() => _startInternal(uid: uid, profile: profile));
   }
 
-  /// طلب إيقاف التتبع — يلغي أي نية للتشغيل.
   Future<void> requestStop() {
     _wantRunning = false;
     _startDebounce?.cancel();
@@ -105,7 +89,6 @@ class DriverTrackingLifecycle {
   }) async {
     if (_disposed || !_wantRunning) return;
 
-    // نفس الحالة تعمل بالفعل
     if (_state == DriverTrackingState.running &&
         _activeProfile == profile &&
         _boundUid == uid &&
@@ -115,8 +98,6 @@ class DriverTrackingLifecycle {
     }
 
     _setState(DriverTrackingState.starting);
-
-    // أوقف السابق إن وُجد
     await _cancelStreamOnly();
 
     final permission = await _location.ensureBackgroundLocationPermission();
@@ -144,7 +125,6 @@ class DriverTrackingLifecycle {
         },
         onError: (e) {
           debugPrint('🛰️ stream error: $e');
-          // محاولة إعادة تشغيل بعد خطأ
           if (_wantRunning && !_disposed) {
             unawaited(
               _enqueue(() async {
@@ -204,7 +184,6 @@ class DriverTrackingLifecycle {
     _sub = null;
   }
 
-  /// إن لم يصل موقع خلال المهلة أثناء التشغيل، أعد تشغيل الـ stream.
   void _armHeartbeat() {
     _heartbeat?.cancel();
     final timeout = _activeProfile == LocationTrackingProfile.driverTrip
@@ -229,11 +208,15 @@ class DriverTrackingLifecycle {
     });
   }
 
-  /// رفع موقع مباشر إلى Firestore بدون الاعتماد على الواجهة.
+  /// رفع موقع إلى users (خاص) + driverPublic (عام).
   Future<void> uploadLocation({
     required geo.Position position,
     required bool isOnline,
     required bool isTripActive,
+    String? fullName,
+    String? busNumber,
+    String? route,
+    int? capacity,
   }) async {
     final uid = _boundUid;
     if (uid == null || uid.isEmpty) return;
@@ -248,6 +231,20 @@ class DriverTrackingLifecycle {
         'isOnline': isOnline,
         'isTripActive': isTripActive,
       });
+
+      await _public.publishLocation(
+        uid: uid,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        isOnline: isOnline,
+        isTripActive: isTripActive,
+        heading: position.heading.isFinite ? position.heading : null,
+        speed: position.speed.isFinite ? position.speed : null,
+        fullName: fullName,
+        busNumber: busNumber,
+        route: route,
+        capacity: capacity,
+      );
     } catch (e) {
       debugPrint('🛰️ upload failed: $e');
     }
