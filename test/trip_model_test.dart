@@ -57,21 +57,23 @@ void main() {
       );
     });
 
-    test('completed trip requires route points', () {
+    test('completed trip may omit route points (current model)', () {
+      // النموذج الحالي لا يفرض routePoints عند completed
+      // حتى لا يكسر إكمال الرحلة من الواجهة بدون مسار مسجّل.
       expect(
         () => buildTrip(status: TripStatus.completed),
-        throwsA(isA<ArgumentError>()),
-      );
-
-      expect(
-        () => buildTrip(
-          status: TripStatus.completed,
-          routePoints: [
-            RoutePoint(latitude: 31.95, longitude: 35.91, timestamp: createdAt),
-          ],
-        ),
         returnsNormally,
       );
+
+      final withPoints = buildTrip(
+        status: TripStatus.completed,
+        routePoints: [
+          RoutePoint(latitude: 31.95, longitude: 35.91, timestamp: createdAt),
+        ],
+      );
+      expect(withPoints.routePoints, isNotNull);
+      expect(withPoints.routePoints!.length, 1);
+      expect(withPoints.status, TripStatus.completed);
     });
   });
 
