@@ -17,6 +17,7 @@ import '../../../../driver/services/driver_tracking_lifecycle.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../map/utils/map_helpers.dart';
 import '../../../../services/location_service.dart';
+import '../../../../services/driver_public_location_service.dart';
 
 mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PointAnnotation? _driverUserAnnotation;
@@ -65,7 +66,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   void onDriverPositionSample(geo.Position position) {}
 
-  /// يُتجاوز من DriverMapTab عند إخفاء التبويب
   bool get isMapTabActive => true;
 
   void pauseMapUiUpdates() {
@@ -463,6 +463,20 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         'isOnline': driver.isOnline,
         'isTripActive': driver.isTripActive,
       });
+      final ud = auth.userData;
+      await DriverPublicLocationService().publishLocation(
+        uid: uid,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        isOnline: driver.isOnline,
+        isTripActive: driver.isTripActive,
+        heading: position.heading.isFinite ? position.heading : null,
+        speed: position.speed.isFinite ? position.speed : null,
+        fullName: ud?.fullName,
+        busNumber: ud?.busNumber,
+        route: ud?.route,
+        capacity: ud?.capacity,
+      );
       _lastFirestoreLocationWrite = now;
       _lastUploadedLat = position.latitude;
       _lastUploadedLng = position.longitude;
