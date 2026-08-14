@@ -171,6 +171,7 @@ class LocationPermissionSheet {
     // ── GPS / خدمة الموقع متوقفة ───────────────────────────
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
+      if (!context.mounted) return false;
       final open = await _confirmAction(
         context,
         title: 'خدمة الموقع متوقفة',
@@ -191,6 +192,7 @@ class LocationPermissionSheet {
 
     // ── رفض دائم: يجب التعديل من إعدادات التطبيق ───────────
     if (permission == LocationPermission.deniedForever) {
+      if (!context.mounted) return false;
       final open = await _confirmAction(
         context,
         title: 'الصلاحية مرفوضة',
@@ -220,6 +222,10 @@ class LocationPermissionSheet {
     // خيار «دائماً»: غالباً يحتاج إعدادات النظام بعد While In Use
     if (choice == LocationPermissionChoice.always &&
         permission != LocationPermission.always) {
+      if (!context.mounted) {
+        return permission == LocationPermission.whileInUse ||
+            permission == LocationPermission.always;
+      }
       final open = await _confirmAction(
         context,
         title: 'الوصول الدائم للموقع',
