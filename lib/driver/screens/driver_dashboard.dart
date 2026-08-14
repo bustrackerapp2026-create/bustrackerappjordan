@@ -19,11 +19,10 @@ class DriverDashboard extends StatefulWidget {
 }
 
 class _DriverDashboardState extends State<DriverDashboard> {
-  /// البدء من تبويب الخريطة
+  /// 0 خريطة · 1 عمليات · 2 طلبات · 3 حساب
   int _currentIndex = 0;
 
-  final Set<int> _visited = {0};
-  final Map<int, Widget> _tabCache = {};
+  final Map<int, Widget> _nonMapCache = {};
 
   String? _boundUid;
   bool _sessionReady = false;
@@ -55,12 +54,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
       if (!mounted) return;
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        final isOnline = data['isOnline'] == true;
-        final isTripActive = data['isTripActive'] == true;
         driver.syncFromRemote(
           userId: uid,
-          isOnline: isOnline,
-          isTripActive: isTripActive,
+          isOnline: data['isOnline'] == true,
+          isTripActive: data['isTripActive'] == true,
         );
       } else {
         driver.syncFromRemote(
@@ -91,12 +88,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  Widget _tabFor(int index) {
-    // الخريطة تُحدَّث بـ isActive عند كل بناء لتخفيف ضغط Mapbox عند التبويبات الأخرى
-    if (index == 0) {
-      return DriverMapTab(isActive: _currentIndex == 0);
-    }
-    return _tabCache.putIfAbsent(index, () {
+  Widget _nonMapTab(int index) {
+    return _nonMapCache.putIfAbsent(index, () {
       switch (index) {
         case 1:
           return const OperationsTab();
@@ -118,32 +111,29 @@ class _DriverDashboardState extends State<DriverDashboard> {
       );
     }
 
+    // مهم: لا نُبقي Mapbox في الشجرة عند تبويب الطلبات/غيره.
+    // IndexedStack كان يبني الخريطة باستمرار ويسبب ANR/تعطل على أجهزة MIUI.
+    final Widget body;
+    if (_currentIndex == 0) {
+      body = DriverMapTab(
+        key: ValueKey('driver_map_$_boundUid'),
+        isActive: true,
+      );
+    } else {
+      body = KeyedSubtree(
+        key: ValueKey('driver_tab_${_boundUid}_$_currentIndex'),
+        child: _nonMapTab(_currentIndex),
+      );
+    }
+
     return Scaffold(
       appBar: const DriverCustomAppBar(),
-      body: IndexedStack(
-        index: _currentIndex,
-        sizing: StackFit.expand,
-        children: List.generate(4, (i) {
-          if (!_visited.contains(i)) {
-            return const ColoredBox(
-              color: Colors.transparent,
-              child: SizedBox.expand(),
-            );
-          }
-          return KeyedSubtree(
-            key: ValueKey('driver_tab_${_boundUid}_$i'),
-            child: _tabFor(i),
-          );
-        }),
-      ),
+      body: body,
       bottomNavigationBar: DriverCustomBottomNavBar(
         currentIndex: _currentIndex,
         onTap: (index) {
           if (index == _currentIndex) return;
-          setState(() {
-            _visited.add(index);
-            _currentIndex = index;
-          });
+          setState(() => _currentIndex = index);
         },
       ),
     );
