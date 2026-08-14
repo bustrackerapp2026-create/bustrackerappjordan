@@ -169,7 +169,6 @@ class TripService {
         actingDriverId: driverId,
       );
 
-      // حقول محدودة — متوافقة مع firestore.rules
       await docRef.update({
         'status': TripStatus.active.stringValue,
         'startedAt': FieldValue.serverTimestamp(),
@@ -252,27 +251,17 @@ class TripService {
     await _withRetryAndTimeout(() async {
       final docRef = _firestore.collection(_collection).doc(tripId);
       final snap = await docRef.get();
+      final data = snap.data();
 
-      if (!snap.exists || snap.data() == null) {
-        throw const TripServiceException('الرحلة غير موجودة.');
-      }
+      final decision = TripAcceptance.evaluatePassengerCancel(
+        exists: snap.exists && data != null,
+        tripPassengerId: data?['passengerId'] as String?,
+        actingPassengerId: passengerId,
+        currentStatus: data?['status'] as String?,
+      );
 
-      final data = snap.data()!;
-      if (data['passengerId'] != passengerId) {
-        throw const TripServiceException('غير مصرح بإلغاء هذه الرحلة.');
-      }
-
-      final status = data['status'] as String? ?? 'pending';
-      if (status == TripStatus.completed.stringValue ||
-          status == TripStatus.cancelled.stringValue) {
+      if (decision == PassengerCancelDecision.alreadyTerminal) {
         return;
-      }
-
-      if (status != TripStatus.pending.stringValue &&
-          status != TripStatus.active.stringValue) {
-        throw const TripServiceException(
-          'لا يمكن إلغاء هذه الرحلة بحالتها الحالية.',
-        );
       }
 
       await docRef.update({
