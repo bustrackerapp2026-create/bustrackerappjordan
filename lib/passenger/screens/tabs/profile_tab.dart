@@ -15,8 +15,11 @@ import '../../../features/auth/providers/auth_provider.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../services/firestore_service.dart';
 import '../../../services/storage_service.dart';
+import '../../widgets/profile/passenger_edit_profile_sheet.dart';
+import '../../widgets/profile/passenger_photo_options_sheet.dart';
+import '../../widgets/profile/passenger_profile_ui.dart';
 
-/// تبويب حساب الراكب — الملف الشخصي + الإعدادات داخل نفس الشاشة.
+/// تبويب حساب الراكب — المنطق هنا؛ الواجهة في widgets/profile.
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
 
@@ -120,51 +123,12 @@ class _ProfileTabState extends State<ProfileTab> {
     final hasPhoto =
         context.read<AuthProvider>().userData?.hasPhoto == true;
 
-    await showModalBottomSheet(
+    await PassengerPhotoOptionsSheet.show(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            const Text(
-              'صورة الملف الشخصي',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined,
-                  color: AppTheme.primaryColor),
-              title: const Text('اختيار من المعرض'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickFrom(ImageSource.gallery);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined,
-                  color: AppTheme.primaryColor),
-              title: const Text('التقاط صورة'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickFrom(ImageSource.camera);
-              },
-            ),
-            if (hasPhoto)
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('إزالة الصورة'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _removeProfilePhoto();
-                },
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+      hasPhoto: hasPhoto,
+      onGallery: () => _pickFrom(ImageSource.gallery),
+      onCamera: () => _pickFrom(ImageSource.camera),
+      onRemove: _removeProfilePhoto,
     );
   }
 
@@ -258,162 +222,20 @@ class _ProfileTabState extends State<ProfileTab> {
     final user = auth.userData;
     if (user == null) return;
 
-    final nameCtrl = TextEditingController(text: user.fullName);
-    final phoneCtrl = TextEditingController(text: user.phoneNumber ?? '');
-    final emailCtrl = TextEditingController(text: user.email);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sheetColor = isDark ? AppTheme.darkSurface : Colors.white;
-
-    final saved = await showModalBottomSheet<bool>(
+    final result = await PassengerEditProfileSheet.show(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              color: sheetColor,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(22)),
-            ),
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade400,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'تعديل الملف الشخصي',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 20),
-                  Center(
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.pop(ctx, false);
-                        _showPhotoOptions();
-                      },
-                      child: Stack(
-                        alignment: Alignment.bottomLeft,
-                        children: [
-                          _buildAvatar(
-                            photoUrl: user.photoUrl,
-                            initial: user.fullName.isNotEmpty
-                                ? user.fullName.characters.first
-                                : 'ر',
-                            size: 88,
-                          ),
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryColor,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              size: 16,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'اضغط لتغيير الصورة',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.55),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: nameCtrl,
-                    textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'الاسم الكامل',
-                      prefixIcon: const Icon(Icons.person_outline),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: phoneCtrl,
-                    keyboardType: TextInputType.phone,
-                    textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'رقم الهاتف',
-                      prefixIcon: const Icon(Icons.phone_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: emailCtrl,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.done,
-                    decoration: InputDecoration(
-                      labelText: 'البريد الإلكتروني',
-                      prefixIcon: const Icon(Icons.email_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'حفظ',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+      fullName: user.fullName,
+      phoneNumber: user.phoneNumber ?? '',
+      email: user.email,
+      photoUrl: user.photoUrl,
+      onRequestPhotoChange: _showPhotoOptions,
     );
 
-    if (saved != true || !mounted) return;
+    if (result == null || !mounted) return;
 
-    final name = nameCtrl.text.trim();
-    final phone = phoneCtrl.text.trim();
-    final email = emailCtrl.text.trim();
+    final name = result.fullName;
+    final phone = result.phoneNumber;
+    final email = result.email;
 
     if (name.isEmpty) {
       _snack('⚠️ الاسم مطلوب');
@@ -525,54 +347,6 @@ class _ProfileTabState extends State<ProfileTab> {
     );
   }
 
-  Widget _buildAvatar({
-    String? photoUrl,
-    required String initial,
-    double size = 64,
-  }) {
-    final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
-
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: hasPhoto
-            ? null
-            : LinearGradient(
-                colors: [
-                  AppTheme.primaryColor,
-                  AppTheme.primaryColor.withValues(alpha: 0.75),
-                ],
-              ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withValues(alpha: 0.35),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        image: hasPhoto
-            ? DecorationImage(
-                image: NetworkImage(photoUrl),
-                fit: BoxFit.cover,
-              )
-            : null,
-      ),
-      alignment: Alignment.center,
-      child: hasPhoto
-          ? null
-          : Text(
-              initial,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: size * 0.4,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().userData;
@@ -585,7 +359,8 @@ class _ProfileTabState extends State<ProfileTab> {
     final initial = name.isNotEmpty ? name.characters.first : 'P';
     final email = user?.email ?? '';
     final bgColor = Theme.of(context).scaffoldBackgroundColor;
-    final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+    final muted =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -594,7 +369,7 @@ class _ProfileTabState extends State<ProfileTab> {
           ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
             children: [
-              _sectionCard(
+              PassengerProfileSectionCard(
                 child: Row(
                   children: [
                     GestureDetector(
@@ -602,7 +377,7 @@ class _ProfileTabState extends State<ProfileTab> {
                       child: Stack(
                         alignment: Alignment.bottomLeft,
                         children: [
-                          _buildAvatar(
+                          PassengerProfileAvatar(
                             photoUrl: user?.photoUrl,
                             initial: initial,
                             size: 64,
@@ -649,8 +424,8 @@ class _ProfileTabState extends State<ProfileTab> {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color:
-                                  AppTheme.primaryColor.withValues(alpha: 0.12),
+                              color: AppTheme.primaryColor
+                                  .withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
@@ -669,18 +444,18 @@ class _ProfileTabState extends State<ProfileTab> {
                 ),
               ),
               const SizedBox(height: 14),
-              _sectionTitle(l10n.account),
-              _sectionCard(
+              PassengerProfileSectionTitle(l10n.account),
+              PassengerProfileSectionCard(
                 padding: EdgeInsets.zero,
                 child: Column(
                   children: [
-                    _tile(
+                    PassengerProfileTile(
                       icon: Icons.edit_outlined,
                       title: l10n.editProfile,
                       onTap: _editProfile,
                     ),
-                    _divider(),
-                    _tile(
+                    const PassengerProfileDivider(),
+                    PassengerProfileTile(
                       icon: Icons.lock_outline,
                       title: l10n.changePassword,
                       onTap: _changePassword,
@@ -689,8 +464,8 @@ class _ProfileTabState extends State<ProfileTab> {
                 ),
               ),
               const SizedBox(height: 14),
-              _sectionTitle(l10n.settings),
-              _sectionCard(
+              PassengerProfileSectionTitle(l10n.settings),
+              PassengerProfileSectionCard(
                 padding: EdgeInsets.zero,
                 child: Column(
                   children: [
@@ -708,7 +483,7 @@ class _ProfileTabState extends State<ProfileTab> {
                       activeThumbColor: AppTheme.primaryColor,
                       onChanged: _setNotifications,
                     ),
-                    _divider(),
+                    const PassengerProfileDivider(),
                     SwitchListTile(
                       secondary: const Icon(
                         Icons.my_location_outlined,
@@ -723,16 +498,16 @@ class _ProfileTabState extends State<ProfileTab> {
                       activeThumbColor: AppTheme.primaryColor,
                       onChanged: _setShareLocation,
                     ),
-                    _divider(),
-                    _tile(
+                    const PassengerProfileDivider(),
+                    PassengerProfileTile(
                       icon: Icons.language,
                       title: l10n.language,
                       subtitle: localeProvider.displayName,
                       onTap: _showLanguagePicker,
                     ),
-                    _divider(),
+                    const PassengerProfileDivider(),
                     const PickupLabelSizeTile(),
-                    _divider(),
+                    const PassengerProfileDivider(),
                     SwitchListTile(
                       secondary: Icon(
                         isDark ? Icons.dark_mode : Icons.light_mode_outlined,
@@ -802,68 +577,4 @@ class _ProfileTabState extends State<ProfileTab> {
       ),
     );
   }
-
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, right: 4),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
-        ),
-      ),
-    );
-  }
-
-  Widget _sectionCard({required Widget child, EdgeInsetsGeometry? padding}) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: double.infinity,
-      padding: padding ?? const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? AppTheme.darkCard : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
-
-  Widget _tile({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-  }) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return ListTile(
-      leading: Icon(icon, color: AppTheme.primaryColor),
-      title: Text(
-        title,
-        style: TextStyle(fontWeight: FontWeight.w600, color: onSurface),
-      ),
-      subtitle: subtitle != null
-          ? Text(
-              subtitle,
-              style: TextStyle(color: onSurface.withValues(alpha: 0.6)),
-            )
-          : null,
-      trailing: Icon(
-        Icons.chevron_left,
-        color: onSurface.withValues(alpha: 0.35),
-      ),
-      onTap: onTap,
-    );
-  }
-
-  Widget _divider() =>
-      Divider(height: 1, color: Theme.of(context).dividerColor);
 }
