@@ -15,8 +15,9 @@
 7. [أدوار المستخدمين](#أدوار-المستخدمين)
 8. [هيكل المشروع](#هيكل-المشروع)
 9. [الاختبارات](#الاختبارات)
-10. [أوامر مفيدة](#أوامر-مفيدة)
-11. [استكشاف الأخطاء](#استكشاف-الأخطاء)
+10. [قائمة ما قبل الإطلاق التجريبي](#قائمة-ما-قبل-الإطلاق-التجريبي)
+11. [أوامر مفيدة](#أوامر-مفيدة)
+12. [استكشاف الأخطاء](#استكشاف-الأخطاء)
 
 ---
 
@@ -70,6 +71,8 @@ MAPBOX_ACCESS_TOKEN=pk.your_real_mapbox_token_here
 
 بدون هذا المفتاح تظهر الخريطة فارغة أو يظهر تحذير في سجل التشغيل.
 
+**أمان Mapbox:** من لوحة Mapbox قيّد التوكن بنطاق URL / Bundle ID للتطبيق قدر الإمكان.
+
 ---
 
 ## Firebase
@@ -79,6 +82,7 @@ MAPBOX_ACCESS_TOKEN=pk.your_real_mapbox_token_here
 - **Firestore** — قواعد: `firestore.rules` — فهارس: `firestore.indexes.json`
 - **Storage** — قواعد: `storage.rules`
 - **Auth** — البريد وكلمة المرور
+- **Analytics** — مفعّل في الاعتماديات (`firebase_analytics`)
 
 الإعدادات المحلية للمنصة موجودة في `lib/firebase_options.dart`.
 
@@ -114,7 +118,9 @@ firebase deploy --only firestore:rules,firestore:indexes,storage
 - **`users`** — `userType` + `isVerified` + `isOnline` — فلترة السائقين / المتصلين
 - **`trips`** — `driverId` + `status` + `createdAt` (تنازلي) — طلبات ورحلات السائق
 - **`trips`** — `passengerId` + `createdAt` (تنازلي) — سجل رحلات الراكب
+- **`trips`** — `passengerId` + `status` — رحلات الراكب المفتوحة (pending/active)
 - **`routeCoordinates`** — `routeId` + `chunkIndex` — تحميل أجزاء مسار الخط
+- **`plannedRoutes`** — فهارس الخطوط المخططة (اسم/اتجاه/حالة)
 
 ### نشر الفهارس فقط
 
@@ -197,10 +203,12 @@ storage.rules               # قواعد الملفات
 
 ## الاختبارات
 
-اختبارات وحدات أساسية في مجلد `test/`:
+اختبارات وحدات في مجلد `test/`:
 
 - `trip_status_test.dart` — تحويل حالات الرحلة
 - `trip_model_test.dart` — التحقق من المدخلات وحالات `TripModel`
+- `trip_acceptance_test.dart` — قبول الرحلة وتعيين السائق وانتقال الحالات
+- `trip_cancel_rules_test.dart` — إلغاء الراكب ورفض السائق
 - `user_model_test.dart` — تحليل `UserModel` ودوال العرض
 - `user_roles_test.dart` — ثوابت الأدوار
 - `pickup_point_model_test.dart` — ملاحظات مراجعة نقاط التجمع
@@ -214,8 +222,32 @@ flutter test
 تشغيل ملف واحد:
 
 ```bash
-flutter test test/trip_model_test.dart
+flutter test test/trip_cancel_rules_test.dart
 ```
+
+---
+
+## قائمة ما قبل الإطلاق التجريبي
+
+استخدمها قبل إعطاء التطبيق لمختبرين حقيقيين:
+
+1. **أسرار**
+   - تأكد أن `.env` غير مرفوع إلى Git (`git status` لا يظهره)
+   - قيّد توكن Mapbox في لوحة Mapbox (تطبيق / URL إن أمكن)
+2. **Firebase**
+   - `firebase deploy --only firestore:rules,firestore:indexes,storage`
+   - تحقق من مشروع `.firebaserc` الصحيح (ليس مشروع تجريبي بالخطأ)
+3. **جودة**
+   - `flutter analyze` بدون أخطاء جديدة
+   - `flutter test` ينجح
+4. **سيناريو يدوي قصير**
+   - راكب يطلب صعوداً → سائق يرى الطلب → يقبل / يرفض → راكب يلغي إن كان pending/active
+   - أدمن يوافق على سائق معلّق
+5. **نسخة التطبيق**
+   - راجع `version` في `pubspec.yaml` قبل توزيع APK/IPA
+6. **مراقبة (اختياري لاحقاً)**
+   - Analytics مفعّل جزئياً
+   - Crashlytics يمكن إضافته عند الحاجة دون إعادة بناء البنية
 
 ---
 
