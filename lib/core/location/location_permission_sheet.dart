@@ -133,6 +133,36 @@ class LocationPermissionSheet {
     );
   }
 
+  /// حوار إجراء بسيط موحّد (إلغاء / تأكيد).
+  static Future<bool> _confirmAction(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required String confirmLabel,
+    String cancelLabel = 'إلغاء',
+  }) async {
+    if (!context.mounted) return false;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(cancelLabel),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
   /// يعرض الورقة إن لزم، ثم يطلب صلاحية النظام ويعيد true عند المنح.
   static Future<bool> ensurePermission(
     BuildContext context, {
@@ -141,35 +171,14 @@ class LocationPermissionSheet {
     // ── GPS / خدمة الموقع متوقفة ───────────────────────────
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      if (context.mounted) {
-        final open = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: const Text(
-              'خدمة الموقع متوقفة',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-            content: const Text(
-              'الجي بي إس (GPS) غير مفعّل على جهازك.\n'
-              'فعّله من الإعدادات ثم أعد المحاولة.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('إلغاء'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('فتح الإعدادات'),
-              ),
-            ],
-          ),
-        );
-        if (open == true) await Geolocator.openLocationSettings();
-      }
+      final open = await _confirmAction(
+        context,
+        title: 'خدمة الموقع متوقفة',
+        message:
+            'الجي بي إس (GPS) غير مفعّل على جهازك.\nفعّله من الإعدادات ثم أعد المحاولة.',
+        confirmLabel: 'فتح الإعدادات',
+      );
+      if (open) await Geolocator.openLocationSettings();
       return false;
     }
 
@@ -182,34 +191,14 @@ class LocationPermissionSheet {
 
     // ── رفض دائم: يجب التعديل من إعدادات التطبيق ───────────
     if (permission == LocationPermission.deniedForever) {
-      if (!context.mounted) return false;
-      final open = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(
-            'الصلاحية مرفوضة',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-          content: const Text(
-            'تم رفض صلاحية الموقع بشكل دائم.\n'
-            'افتح إعدادات التطبيق وفعّل الموقع يدوياً.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('فتح الإعدادات'),
-            ),
-          ],
-        ),
+      final open = await _confirmAction(
+        context,
+        title: 'الصلاحية مرفوضة',
+        message:
+            'تم رفض صلاحية الموقع بشكل دائم.\nافتح إعدادات التطبيق وفعّل الموقع يدوياً.',
+        confirmLabel: 'فتح الإعدادات',
       );
-      if (open == true) await Geolocator.openAppSettings();
+      if (open) await Geolocator.openAppSettings();
       return false;
     }
 
@@ -231,36 +220,15 @@ class LocationPermissionSheet {
     // خيار «دائماً»: غالباً يحتاج إعدادات النظام بعد While In Use
     if (choice == LocationPermissionChoice.always &&
         permission != LocationPermission.always) {
-      if (context.mounted) {
-        final open = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: const Text(
-              'الوصول الدائم للموقع',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-            content: const Text(
-              'تم منح الوصول أثناء استخدام التطبيق.\n\n'
-              'لتفعيله «دائماً»، افتح إعدادات التطبيق واختر:\n'
-              'الموقع → السماح طوال الوقت / Always.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('لاحقاً'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('فتح الإعدادات'),
-              ),
-            ],
-          ),
-        );
-        if (open == true) await Geolocator.openAppSettings();
-      }
+      final open = await _confirmAction(
+        context,
+        title: 'الوصول الدائم للموقع',
+        message:
+            'تم منح الوصول أثناء استخدام التطبيق.\n\nلتفعيله «دائماً»، افتح إعدادات التطبيق واختر:\nالموقع → السماح طوال الوقت / Always.',
+        confirmLabel: 'فتح الإعدادات',
+        cancelLabel: 'لاحقاً',
+      );
+      if (open) await Geolocator.openAppSettings();
       return permission == LocationPermission.whileInUse ||
           permission == LocationPermission.always;
     }
