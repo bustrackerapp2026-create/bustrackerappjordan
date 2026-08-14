@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
-import '../../../../core/theme/app_theme.dart';
+
 import '../../../../core/map/map_utils.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/pickup_point_sheet.dart';
@@ -17,6 +17,9 @@ import '../../../../services/location_service.dart';
 import '../../../../services/route_seed_service.dart';
 import '../../../../map/widgets/search_bar_widget.dart';
 import '../../../../map/utils/map_helpers.dart';
+import '../../widgets/admin_draw_route_banner.dart';
+import '../../widgets/admin_map_fabs.dart';
+import '../../widgets/admin_seed_routes_chip.dart';
 import '../admin_dashboard.dart';
 import 'mixins/driver_manager_mixin.dart';
 import 'mixins/passenger_manager_mixin.dart';
@@ -202,7 +205,8 @@ class _AdminMapTabState extends State<AdminMapTab>
       if (!mounted) return;
 
       if (position == null && !shown) {
-        _safeSnack('⚠️ تعذر الحصول على الموقع. تأكد من تفعيل GPS', isError: true);
+        _safeSnack('⚠️ تعذر الحصول على الموقع. تأكد من تفعيل GPS',
+            isError: true);
         return;
       }
 
@@ -486,56 +490,14 @@ class _AdminMapTabState extends State<AdminMapTab>
             top: 72,
             left: 16,
             right: 16,
-            child: Material(
-              elevation: 5,
-              borderRadius: BorderRadius.circular(14),
-              color: const Color(0xFFF5F3FF),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      isSnappingSegment
-                          ? 'جاري لصق القطعة على الشارع…'
-                          : 'رسم على الشارع · $drawPointCount نقطة — انقر بالتسلسل',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF6D28D9),
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: drawPointCount >= 2 && !isSnappingSegment
-                                ? finishAndSaveDrawnRoute
-                                : null,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF7C3AED),
-                              foregroundColor: Colors.white,
-                            ),
-                            child: const Text('حفظ وتسمية'),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        OutlinedButton(
-                          onPressed:
-                              isSnappingSegment ? null : undoLastDrawPoint,
-                          child: const Text('تراجع'),
-                        ),
-                        const SizedBox(width: 6),
-                        OutlinedButton(
-                          onPressed: cancelDrawingRoute,
-                          child: const Text('إلغاء'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+            child: AdminDrawRouteBanner(
+              drawPointCount: drawPointCount,
+              isSnappingSegment: isSnappingSegment,
+              onSave: drawPointCount >= 2 && !isSnappingSegment
+                  ? finishAndSaveDrawnRoute
+                  : null,
+              onUndo: isSnappingSegment ? null : undoLastDrawPoint,
+              onCancel: cancelDrawingRoute,
             ),
           )
         else
@@ -545,138 +507,27 @@ class _AdminMapTabState extends State<AdminMapTab>
             child: ValueListenableBuilder<int>(
               valueListenable: routesUiTick,
               builder: (_, __, ___) {
-                return Material(
-                  elevation: 4,
-                  borderRadius: BorderRadius.circular(12),
-                  color: Colors.white,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: _isSeeding ? null : _seedRoutesFromMap,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_isSeeding)
-                            const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          else
-                            Icon(Icons.route,
-                                color: Colors.blue.shade700, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            routes.isEmpty
-                                ? 'زرع مسارات الأردن'
-                                : 'تحديث المسارات',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                              color: Colors.blue.shade800,
-                            ),
-                          ),
-                          if (routes.isNotEmpty) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.green.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                '${routes.length}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green.shade800,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
+                return AdminSeedRoutesChip(
+                  isSeeding: _isSeeding,
+                  routesCount: routes.length,
+                  onTap: _isSeeding ? null : _seedRoutesFromMap,
                 );
               },
             ),
           ),
-        Positioned(
-          bottom: 30,
-          left: 16,
-          child: FloatingActionButton(
-            heroTag: 'admin_passengers_toggle',
-            onPressed: togglePassengersVisibility,
-            backgroundColor:
-                showPassengers ? Colors.blue.shade700 : Colors.grey,
-            foregroundColor: Colors.white,
-            child: Icon(showPassengers ? Icons.person : Icons.person_off),
-          ),
-        ),
-        Positioned(
-          bottom: 100,
-          right: 16,
-          child: FloatingActionButton(
-            heroTag: 'admin_add_pickup',
-            onPressed: _isAddingPickupPoint
+        Positioned.fill(
+          child: AdminMapFabs(
+            showPassengers: showPassengers,
+            isAddingPickupPoint: _isAddingPickupPoint,
+            isDrawingRoute: isDrawingRoute,
+            isLoadingLocation: _isLoadingLocation,
+            onTogglePassengers: togglePassengersVisibility,
+            onTogglePickup: _isAddingPickupPoint
                 ? _cancelAddPickupPoint
                 : _startAddPickupPoint,
-            backgroundColor: _isAddingPickupPoint ? Colors.red : Colors.orange,
-            foregroundColor: Colors.white,
-            child: Icon(
-              _isAddingPickupPoint ? Icons.close : Icons.add_location,
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 180,
-          right: 16,
-          child: FloatingActionButton(
-            heroTag: 'admin_draw_route',
-            onPressed: _toggleDrawRoute,
-            backgroundColor:
-                isDrawingRoute ? const Color(0xFF7C3AED) : Colors.white,
-            foregroundColor:
-                isDrawingRoute ? Colors.white : const Color(0xFF7C3AED),
-            child: Icon(
-              isDrawingRoute ? Icons.close : Icons.timeline_rounded,
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 260,
-          right: 16,
-          child: FloatingActionButton(
-            heroTag: 'admin_map_location_fab',
-            onPressed: _goToMyLocation,
-            backgroundColor: Colors.white,
-            foregroundColor: AppTheme.primaryColor,
-            elevation: 4,
-            shape: const CircleBorder(),
-            child: _isLoadingLocation
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.my_location_rounded),
-          ),
-        ),
-        Positioned(
-          bottom: 30,
-          right: 16,
-          child: FloatingActionButton(
-            heroTag: 'admin_map_layers_fab',
-            onPressed: () => showMapSettingsSheet(context),
-            backgroundColor: Colors.white,
-            foregroundColor: AppTheme.textColor,
-            elevation: 4,
-            shape: const CircleBorder(),
-            child: const Icon(Icons.layers_rounded, size: 26),
+            onToggleDrawRoute: _toggleDrawRoute,
+            onMyLocation: _goToMyLocation,
+            onMapLayers: () => showMapSettingsSheet(context),
           ),
         ),
       ],
