@@ -18,6 +18,7 @@ import '../../../../services/route_seed_service.dart';
 import '../../../../map/widgets/search_bar_widget.dart';
 import '../../../../map/utils/map_helpers.dart';
 import '../../widgets/admin_draw_route_banner.dart';
+import '../../widgets/admin_driver_details_sheet.dart';
 import '../../widgets/admin_map_fabs.dart';
 import '../../widgets/admin_seed_routes_chip.dart';
 import '../admin_dashboard.dart';
@@ -134,11 +135,18 @@ class _AdminMapTabState extends State<AdminMapTab>
   @override
   void handleAnnotationTap(PointAnnotation annotation) {
     if (!mounted || isDrawingRoute) return;
-    final driverId = _findId(driverAnnotations, annotation);
+
+    final driverId = findDriverIdByAnnotation(annotation);
     if (driverId != null) {
-      _safeSnack('🔄 جاري تحميل بيانات السائق (ID: $driverId)...');
+      final data = getDriverData(driverId);
+      if (data != null) {
+        unawaited(AdminDriverDetailsSheet.show(context, data));
+      } else {
+        _safeSnack('لا تتوفر بيانات هذا السائق حالياً', isError: true);
+      }
       return;
     }
+
     final pickupId = _findId(pickupAnnotations, annotation);
     if (pickupId != null) _showPickupActionsSheet(pickupId);
   }
