@@ -19,17 +19,46 @@ class _BookingsTabState extends State<BookingsTab> {
   Stream<List<TripModel>>? _pendingTripsStream;
   String? _currentUserId;
 
-  List<TripModel> _latestTrips = const [];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureStream());
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final userId = context.select<AuthProvider, String?>((a) => a.userId);
+    _ensureStream();
+  }
 
-    if (_currentUserId != userId && userId != null) {
-      _currentUserId = userId;
-      _pendingTripsStream = _tripService.getPendingDriverTrips(userId);
+  void _ensureStream() {
+    final userId = context.read<AuthProvider>().userId;
+    if (userId == null || userId.isEmpty) {
+      if (_currentUserId != null) {
+        _currentUserId = null;
+        _pendingTripsStream = null;
+      }
+      return;
     }
+    if (_currentUserId == userId && _pendingTripsStream != null) return;
+    _currentUserId = userId;
+    _pendingTripsStream = _tripService.getPendingDriverTrips(userId).handleError(
+      (e, st) {
+        debugPrint('pending trips stream error: $e\n$st');
+      },
+    );
+  }
+
+  void _refreshStream() {
+    if (_currentUserId == null) return;
+    setState(() {
+      _pendingTripsStream =
+          _tripService.getPendingDriverTrips(_currentUserId!).handleError(
+        (e, st) {
+          debugPrint('pending trips stream error: $e\n$st');
+        },
+      );
+    });
   }
 
   Future<bool> _acceptTrip(String tripId, String passengerDisplay) async {
@@ -84,7 +113,8 @@ class _BookingsTabState extends State<BookingsTab> {
         );
       }
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('reject trip: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -97,20 +127,11 @@ class _BookingsTabState extends State<BookingsTab> {
     }
   }
 
-  int? _indexOfTripKey(Key key) {
-    if (key is! ValueKey<String>) return null;
-    final id = key.value;
-    for (var i = 0; i < _latestTrips.length; i++) {
-      if (_latestTrips[i].id == id) return i;
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
 
-    if (_currentUserId == null) {
+    if (_currentUserId == null || _pendingTripsStream == null) {
       return Center(child: Text(l10n.pleaseLoginRequests));
     }
 
@@ -134,14 +155,7 @@ class _BookingsTabState extends State<BookingsTab> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.refresh),
-                  onPressed: () {
-                    if (_currentUserId != null) {
-                      setState(() {
-                        _pendingTripsStream =
-                            _tripService.getPendingDriverTrips(_currentUserId!);
-                      });
-                    }
-                  },
+                  onPressed: _refreshStream,
                   tooltip: l10n.refresh,
                 ),
               ],
@@ -158,36 +172,44 @@ class _BookingsTabState extends State<BookingsTab> {
               }
 
               if (snapshot.hasError) {
+                debugPrint('BookingsTab snapshot error: ${snapshot.error}');
                 return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline,
-                          size: 60, color: Colors.red),
-                      const SizedBox(height: 12),
-                      Text(
-                        l10n.loadRequestsError,
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () {
-                          if (_currentUserId != null) {
-                            setState(() {
-                              _pendingTripsStream = _tripService
-                                  .getPendingDriverTrips(_currentUserId!);
-                            });
-                          }
-                        },
-                        child: Text(l10n.retry),
-                      ),
-                    ],
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline,
+                            size: 60, color: Colors.red),
+                        const SizedBox(height: 12),
+                        Text(
+                          l10n.loadRequestsError,
+                          style: const TextStyle(fontSize: 16),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${snapshot.error}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 4,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _refreshStream,
+                          child: Text(l10n.retry),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               }
 
               final trips = snapshot.data ?? const <TripModel>[];
-              _latestTrips = trips;
 
               if (trips.isEmpty) {
                 return Center(
@@ -202,25 +224,27 @@ class _BookingsTabState extends State<BookingsTab> {
                             fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        l10n.noIncomingRequestsHint,
-                        style: const TextStyle(color: Colors.grey),
-                        textAlign: TextAlign.center,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(
+                          l10n.noIncomingRequestsHint,
+                          style: const TextStyle(color: Colors.grey),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     ],
                   ),
                 );
               }
 
-              return ListView.builder(
+              return ListView.separated(
                 padding: const EdgeInsets.all(16),
                 itemCount: trips.length,
-                addAutomaticKeepAlives: false,
-                addRepaintBoundaries: true,
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                findChildIndexCallback: _indexOfTripKey,
+                separatorBuilder: (_, __) => const SizedBox(height: 4),
                 itemBuilder: (context, index) {
+                  if (index < 0 || index >= trips.length) {
+                    return const SizedBox.shrink();
+                  }
                   final trip = trips[index];
                   return _BookingRequestCard(
                     key: ValueKey(trip.id),
@@ -264,6 +288,7 @@ class _BookingRequestCardState extends State<_BookingRequestCard> {
     final name = widget.trip.passengerName?.trim();
     if (name != null && name.isNotEmpty) return name;
     final id = widget.trip.passengerId;
+    if (id.isEmpty) return 'راكب';
     return id.length > 8 ? '${id.substring(0, 8)}...' : id;
   }
 
@@ -292,6 +317,10 @@ class _BookingRequestCardState extends State<_BookingRequestCard> {
     final trip = widget.trip;
     final l10n = widget.l10n;
     final route = trip.route?.trim();
+    final pickup =
+        trip.pickupPoint.trim().isEmpty ? 'نقطة صعود' : trip.pickupPoint;
+    final dropoff =
+        trip.dropoffPoint.trim().isEmpty ? 'على طول الخط' : trip.dropoffPoint;
 
     return Card(
       elevation: 2,
@@ -309,7 +338,7 @@ class _BookingRequestCardState extends State<_BookingRequestCard> {
               children: [
                 Expanded(
                   child: Text(
-                    trip.pickupPoint,
+                    pickup,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -336,7 +365,7 @@ class _BookingRequestCardState extends State<_BookingRequestCard> {
             ),
             const SizedBox(height: 6),
             Text(
-              'إلى: ${trip.dropoffPoint}',
+              'إلى: $dropoff',
               style: TextStyle(
                 fontSize: 13,
                 color: Colors.grey.shade700,
@@ -431,12 +460,16 @@ class _BookingRequestCardState extends State<_BookingRequestCard> {
         children: [
           Icon(icon, size: 14, color: const Color(0xFF64748B)),
           const SizedBox(width: 4),
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF334155),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF334155),
+              ),
             ),
           ),
         ],
