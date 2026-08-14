@@ -3,10 +3,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ═══════════════════════════════════════════════════════════
-    // دوال مساعدة
-    // ═══════════════════════════════════════════════════════════
-
     function isSignedIn() {
       return request.auth != null;
     }
@@ -43,7 +39,6 @@ service cloud.firestore {
       return t in ['passenger', 'driver', 'service', 'bus_company'];
     }
 
-    /// حقول يمكن للمستخدم تحديثها بنفسه فقط (لا تشمل isVerified / userType)
     function onlySelfServiceFields() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly([
@@ -67,13 +62,11 @@ service cloud.firestore {
         ]);
     }
 
-    /// الراكب يلغي رحلته فقط
     function passengerCancelOnly() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['status', 'completedAt', 'cancelledBy']);
     }
 
-    /// السائق يعدّل حقول تشغيل الرحلة فقط (لا يغيّر الراكب/نقاط الصعود الأساسية)
     function driverTripUpdateKeys() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly([
@@ -87,18 +80,33 @@ service cloud.firestore {
         ]);
     }
 
-    /// لا يُسمح بتغيير هوية الراكب أو السائق المعيّن إلى غير المصرّح
     function tripPartiesIntact() {
       return request.resource.data.passengerId == resource.data.passengerId
         && request.resource.data.driverId == resource.data.driverId;
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // users
-    // ═══════════════════════════════════════════════════════════
+    /// حقول مسموحة فقط في driverPublic (لا بريد/هاتف/تحقق)
+    function onlyDriverPublicKeys() {
+      return request.resource.data.keys().hasOnly([
+        'fullName',
+        'busNumber',
+        'route',
+        'capacity',
+        'currentLatitude',
+        'currentLongitude',
+        'heading',
+        'speed',
+        'isOnline',
+        'isSharingLocation',
+        'isTripActive',
+        'locationUpdatedAt',
+        'updatedAt'
+      ]);
+    }
 
+    // ── users: قراءة للمالك أو الأدمن فقط ─────────────────────
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isOwner(userId) || isAdmin();
 
       allow create: if isOwner(userId)
         && request.resource.data.uid == userId
@@ -115,9 +123,15 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // pickupPoints
-    // ═══════════════════════════════════════════════════════════
+    // ── مواقع السائقين العامة للخريطة ─────────────────────────
+    match /driverPublic/{userId} {
+      allow read: if isSignedIn();
+
+      allow create, update: if isOwner(userId)
+        && onlyDriverPublicKeys();
+
+      allow delete: if isOwner(userId) || isAdmin();
+    }
 
     match /pickupPoints/{pointId} {
       allow read: if isSignedIn();
@@ -145,20 +159,14 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // trips — مرحلة 1.A: حقول محدودة حسب الدور
-    // ═══════════════════════════════════════════════════════════
-
     match /trips/{tripId} {
       allow read: if isSignedIn() && (
         isAdmin()
         || resource.data.driverId == request.auth.uid
         || resource.data.passengerId == request.auth.uid
-        || (isDriver() && resource.data.status == 'pending'
-            && resource.data.driverId == request.auth.uid)
       );
 
-      // إنشاء: راكب يطلب لسائق، أو سائق ينشئ لرحلته
+      // إنشاء: pending فقط (لا active من العميل)
       allow create: if isSignedIn()
         && (
           request.resource.data.driverId == request.auth.uid
@@ -167,11 +175,9 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll([
           'passengerId', 'driverId', 'status', 'pickupPoint', 'dropoffPoint'
         ])
-        && request.resource.data.status in ['pending', 'active'];
+        && request.resource.data.status == 'pending';
 
       allow update: if isAdmin()
-
-        // السائق المعيّن فقط — قبول / رفض / إكمال / ملاحظات مسار
         || (
           isSignedIn()
           && resource.data.driverId == request.auth.uid
@@ -179,22 +185,16 @@ service cloud.firestore {
           && request.resource.data.passengerId == resource.data.passengerId
           && driverTripUpdateKeys()
           && (
-            // قبول
             (resource.data.status == 'pending'
               && request.resource.data.status == 'active')
-            // رفض أو إلغاء من السائق
             || (resource.data.status in ['pending', 'active']
               && request.resource.data.status == 'cancelled')
-            // إكمال
             || (resource.data.status == 'active'
               && request.resource.data.status == 'completed')
-            // تحديث ملاحظات/نقاط أثناء النشط دون تغيير الحالة
             || (resource.data.status == request.resource.data.status
               && resource.data.status in ['pending', 'active'])
           )
         )
-
-        // الراكب يلغي طلبه فقط
         || (
           isSignedIn()
           && resource.data.passengerId == request.auth.uid
@@ -207,10 +207,6 @@ service cloud.firestore {
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.driverId == request.auth.uid);
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // routes
-    // ═══════════════════════════════════════════════════════════
 
     match /routes/{routeId} {
       allow read: if isSignedIn();
@@ -226,10 +222,6 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // plannedRoutes
-    // ═══════════════════════════════════════════════════════════
 
     match /plannedRoutes/{routeId} {
       allow read: if isSignedIn();
