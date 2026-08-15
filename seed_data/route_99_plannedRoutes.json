@@ -1,0 +1,15 @@
+{
+  "meta": {
+    "displayRouteCode": "99",
+    "lineName": "متحف الأردن → صويلح",
+    "collection": "plannedRoutes",
+    "importNote": "بيانات لمرة واحدة فقط — لا ربط حي مع Amman Bus",
+    "outboundFile": "seed_data/route_99_outbound.json",
+    "returnFile": "seed_data/route_99_return.json",
+    "outboundPoints": 118,
+    "returnPoints": 106,
+    "outboundDistanceKm": 16.63,
+    "returnDistanceKm": 16.65
+  },
+  "note": "استخدم route_99_outbound.json و route_99_return.json كمستندين منفصلين في مجموعة plannedRoutes"
+}
