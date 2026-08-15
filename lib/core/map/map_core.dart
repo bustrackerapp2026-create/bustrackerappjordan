@@ -13,17 +13,17 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   PolylineAnnotationManager? polylineAnnotationManager;
 
   bool showPlaceLabels = true;
-  bool showPoiLabels = true;
+  bool showPoiLabels = false;
   bool showRoadLabels = true;
 
-  static const String initialMapStyle = MapboxStyles.MAPBOX_STREETS;
+  /// ستايل فاتح أوضح للمسارات والنقاط (أقرب لمظهر تطبيقات المواصلات)
+  static const String initialMapStyle = MapboxStyles.LIGHT;
   String currentMapStyle = initialMapStyle;
   bool isMapReady = false;
 
   double lastLoggedZoom = MapConstants.defaultZoom;
   Timer? _zoomLogDebounce;
 
-  /// لمنع استعلامات POI أثناء الحركة
   bool _cameraMoving = false;
   Timer? _cameraIdleTimer;
   Timer? _arabicLabelsRetry;
@@ -49,7 +49,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     MapUtils.log('✅ تم إنشاء الخريطة بنجاح');
   }
 
-  /// إعادة تعريب بعد استقرار تحميل الستايل (بعض الطبقات تظهر متأخرة)
   void _scheduleArabicLabelsRetry() {
     _arabicLabelsRetry?.cancel();
     _arabicLabelsRetry = Timer(const Duration(milliseconds: 600), () async {
@@ -135,7 +134,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         pitch: 0.0,
         bearing: 0.0,
       ),
-      MapAnimationOptions(duration: 450, startDelay: 0),
+      MapAnimationOptions(duration: 480, startDelay: 0),
     );
   }
 
@@ -253,7 +252,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     } catch (e) {
       MapUtils.log('⚠️ خطأ في تحويل اللون: $e');
     }
-    return Colors.blue;
+    return const Color(MapConstants.defaultRouteColor);
   }
 
   void handleAnnotationTap(PointAnnotation annotation) {}
@@ -333,7 +332,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        '⚙️ إعدادات طبقات الخريطة',
+                        'إعدادات الخريطة',
                         style: TextStyle(
                             fontSize: 18, fontWeight: FontWeight.bold),
                       ),
@@ -346,7 +345,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
                   const Divider(),
                   const SizedBox(height: 12),
                   const Text(
-                    'اختر ستايل المظهر:',
+                    'مظهر الخريطة:',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 12),
@@ -354,6 +353,12 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
+                      _buildStyleOption(
+                        title: 'فاتح',
+                        icon: Icons.light_mode_outlined,
+                        styleUri: MapboxStyles.LIGHT,
+                        setSheetState: setSheetState,
+                      ),
                       _buildStyleOption(
                         title: 'شوارع',
                         icon: Icons.map_outlined,
@@ -382,7 +387,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
                   const SizedBox(height: 8),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('📍 المدن والأماكن الكبرى'),
+                    title: const Text('المدن والأماكن الكبرى'),
                     value: showPlaceLabels,
                     activeThumbColor: AppTheme.primaryColor,
                     onChanged: (val) async {
@@ -393,7 +398,11 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
                   ),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('🏛️ معالم الجذب (POI)'),
+                    title: const Text('معالم الجذب (POI)'),
+                    subtitle: const Text(
+                      'يُفضّل إيقافها لتقليل الازدحام على الخريطة',
+                      style: TextStyle(fontSize: 12),
+                    ),
                     value: showPoiLabels,
                     activeThumbColor: AppTheme.primaryColor,
                     onChanged: (val) async {
@@ -404,7 +413,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
                   ),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('🛣️ أسماء الشوارع'),
+                    title: const Text('أسماء الشوارع'),
                     value: showRoadLabels,
                     activeThumbColor: AppTheme.primaryColor,
                     onChanged: (val) async {

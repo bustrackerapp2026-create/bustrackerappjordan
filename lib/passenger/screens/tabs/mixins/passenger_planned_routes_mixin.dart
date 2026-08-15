@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 
 import '../../../../core/map/map_core.dart';
+import '../../../../core/map/map_route_painter.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../models/planned_route.dart';
 import '../../../../services/route_plan_service.dart';
@@ -19,9 +20,9 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
   bool _drawingPlannedRoutes = false;
   List<PlannedRoute> _lastPlannedRoutes = const [];
 
-  /// ألوان ثابتة: ذهاب أزرق، إياب أخضر
-  static const int _outboundColor = 0xFF2563EB;
-  static const int _returnColor = 0xFF059669;
+  /// ذهاب أزرق، إياب أخضر مواصلات
+  static const int _outboundColor = 0xFF1D8FE1;
+  static const int _returnColor = 0xFF0E9F5D;
 
   void startWatchingPlannedRoutes(String lineName) {
     if (lineName.trim().isEmpty) return;
@@ -70,18 +71,20 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
             .map((p) => Position(p.longitude, p.latitude))
             .toList();
         final isOutbound = route.direction == RouteDirection.outbound;
-        try {
-          final ann = await polylineAnnotationManager!.create(
-            PolylineAnnotationOptions(
-              geometry: LineString(coordinates: coords),
-              lineColor: isOutbound ? _outboundColor : _returnColor,
-              lineWidth: 4.5,
-              lineOpacity: 0.85,
-            ),
-          );
-          _plannedLineAnnotations.add(ann);
-        } catch (e) {
-          MapUtils.log('draw planned route: $e', tag: 'PassengerRoutes');
+        final color = isOutbound ? _outboundColor : _returnColor;
+
+        final strokes = MapRoutePainter.buildDualStroke(
+          coordinates: coords,
+          lineColor: color,
+        );
+
+        for (final options in strokes) {
+          try {
+            final ann = await polylineAnnotationManager!.create(options);
+            _plannedLineAnnotations.add(ann);
+          } catch (e) {
+            MapUtils.log('draw planned route: $e', tag: 'PassengerRoutes');
+          }
         }
       }
     } finally {

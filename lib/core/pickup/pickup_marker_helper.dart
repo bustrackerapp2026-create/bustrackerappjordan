@@ -9,16 +9,17 @@ class PickupMarkerHelper {
 
   static final Map<String, Uint8List> _cache = {};
 
+  /// باص: أزرق مواصلات | راكب: نيلي
   static Color primaryColorFor(String pointType) {
     return pointType == 'passenger'
-        ? Colors.indigo.shade700
-        : Colors.orange.shade600;
+        ? const Color(0xFF3949AB)
+        : const Color(0xFF1D8FE1);
   }
 
   static Color glowColorFor(String pointType) {
     return pointType == 'passenger'
-        ? Colors.indigo.shade600
-        : Colors.orange.shade600;
+        ? const Color(0xFF5C6BC0)
+        : const Color(0xFF42A5F5);
   }
 
   static IconData iconFor(String pointType) {
@@ -28,7 +29,6 @@ class PickupMarkerHelper {
   }
 
   /// إنشاء صورة PNG للعلامة.
-  /// [textScale] يكبّر نص الاسم وفقاعة التسمية (1.0 عادي).
   static Future<Uint8List?> createMarkerBytes({
     required String name,
     required String pointType,
@@ -38,7 +38,7 @@ class PickupMarkerHelper {
     final safeName = name.trim().isEmpty ? 'نقطة' : name.trim();
     final scale = textScale.clamp(0.85, 2.2);
     final scaleKey = (scale * 100).round();
-    final cacheKey = 'pickup_${pointType}_${safeName.hashCode}_s$scaleKey';
+    final cacheKey = 'pickup_v2_${pointType}_${safeName.hashCode}_s$scaleKey';
 
     final cached = _cache[cacheKey];
     if (cached != null) return cached;
@@ -50,36 +50,45 @@ class PickupMarkerHelper {
       final double width = 140.0 + (scale - 1.0) * 48;
       final double fontSize = 12.0 * scale;
       final double bubbleHeight = (26.0 * scale).clamp(26.0, 44.0);
-      final double height = 120.0 + (bubbleHeight - 26.0) + (scale - 1.0) * 8;
-      const Offset pinCenterBase = Offset(70, 42);
-      final Offset pinCenter = Offset(width / 2, pinCenterBase.dy);
+      final double height = 118.0 + (bubbleHeight - 26.0) + (scale - 1.0) * 8;
+      final Offset pinCenter = Offset(width / 2, 40);
 
       canvas.drawColor(Colors.transparent, BlendMode.clear);
 
       final Color primary = primaryColorFor(pointType);
       final Color glow = glowColorFor(pointType);
 
+      // هالة خفيفة
       final glowPaint = Paint()
-        ..color = glow.withValues(alpha: 0.28)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-      canvas.drawCircle(pinCenter, 36, glowPaint);
+        ..color = glow.withValues(alpha: 0.22)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+      canvas.drawCircle(pinCenter, 32, glowPaint);
 
-      final outerPaint = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(pinCenter, 26, outerPaint);
+      // حلقة بيضاء خارجية
+      canvas.drawCircle(
+        pinCenter,
+        24,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.fill,
+      );
 
-      final innerPaint = Paint()
-        ..color = primary
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(pinCenter, 20, innerPaint);
+      // الدائرة الرئيسية
+      canvas.drawCircle(
+        pinCenter,
+        18.5,
+        Paint()
+          ..color = primary
+          ..style = PaintingStyle.fill,
+      );
 
+      // أيقونة
       final iconData = iconFor(pointType);
       final iconPainter = TextPainter(textDirection: TextDirection.ltr);
       iconPainter.text = TextSpan(
         text: String.fromCharCode(iconData.codePoint),
         style: TextStyle(
-          fontSize: 22,
+          fontSize: 18,
           fontFamily: iconData.fontFamily,
           package: iconData.fontPackage,
           color: Colors.white,
@@ -90,22 +99,23 @@ class PickupMarkerHelper {
         canvas,
         Offset(
           pinCenter.dx - iconPainter.width / 2,
-          pinCenter.dy - iconPainter.height / 2 - 1,
+          pinCenter.dy - iconPainter.height / 2 - 0.5,
         ),
       );
 
+      // رأس الدبوس
       final tipPath = Path()
-        ..moveTo(pinCenter.dx - 10, pinCenter.dy + 16)
-        ..lineTo(pinCenter.dx, pinCenter.dy + 34)
-        ..lineTo(pinCenter.dx + 10, pinCenter.dy + 16)
+        ..moveTo(pinCenter.dx - 9, pinCenter.dy + 14)
+        ..lineTo(pinCenter.dx, pinCenter.dy + 30)
+        ..lineTo(pinCenter.dx + 9, pinCenter.dy + 14)
         ..close();
-      canvas.drawPath(tipPath, innerPaint);
+      canvas.drawPath(tipPath, Paint()..color = primary);
       canvas.drawPath(
         tipPath,
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.85)
+          ..color = Colors.white.withValues(alpha: 0.9)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5,
+          ..strokeWidth = 1.2,
       );
 
       final maxChars = scale >= 1.5 ? 20 : (scale >= 1.25 ? 18 : 16);
@@ -117,7 +127,7 @@ class PickupMarkerHelper {
         text: TextSpan(
           text: displayName,
           style: TextStyle(
-            color: Colors.grey.shade900,
+            color: const Color(0xFF1F2937),
             fontSize: fontSize,
             fontWeight: FontWeight.w700,
           ),
@@ -136,12 +146,12 @@ class PickupMarkerHelper {
 
       final bubbleRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(bubbleLeft, bubbleTop, bubbleWidth, bubbleHeight),
-        Radius.circular(13 * scale.clamp(1.0, 1.4)),
+        Radius.circular(12 * scale.clamp(1.0, 1.35)),
       );
 
       canvas.drawRRect(
         bubbleRect.shift(const Offset(0, 1.5)),
-        Paint()..color = Colors.black.withValues(alpha: 0.12),
+        Paint()..color = Colors.black.withValues(alpha: 0.10),
       );
 
       canvas.drawRRect(
@@ -153,9 +163,9 @@ class PickupMarkerHelper {
       canvas.drawRRect(
         bubbleRect,
         Paint()
-          ..color = primary.withValues(alpha: 0.35)
+          ..color = primary.withValues(alpha: 0.28)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2,
+          ..strokeWidth = 1.1,
       );
 
       namePainter.paint(

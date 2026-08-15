@@ -6,6 +6,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../services/route_service.dart';
 import '../../../../models/route_model.dart';
 import '../../../../core/map/map_core.dart';
+import '../../../../core/map/map_constants.dart';
+import '../../../../core/map/map_route_painter.dart';
 
 mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
   final List<RouteModel> routes = [];
@@ -16,7 +18,6 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
 
   String selectedRouteName = 'الكل';
 
-  /// يمنع إعادة الرسم المتكررة أثناء تحميل الإحداثيات
   Timer? _drawDebounce;
   bool _isDrawing = false;
   int _drawGeneration = 0;
@@ -67,10 +68,8 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
       return;
     }
 
-    // جلب متوازٍ بدل التسلسل — أسرع بكثير
     await Future.wait(snapshot.map((route) async {
       if (!mounted) return;
-      // لا تعِد الجلب إن كانت الإحداثيات موجودة
       if (routeCoordinates.containsKey(route.id) &&
           (routeCoordinates[route.id]?.length ?? 0) >= 2) {
         return;
@@ -98,7 +97,6 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
 
   Future<void> drawRoutes() async {
     if (!mounted || _isDrawing) {
-      // جدول رسم لاحق إذا كان هناك رسم جارٍ
       if (_isDrawing) _scheduleDraw();
       return;
     }
@@ -120,7 +118,6 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
           ? routes
           : routes.where((r) => r.name == selectedRouteName).toList();
 
-      // إنشاء التعليقات بشكل متسلسل لكن بدون انتظار غير ضروري بين الفشل
       for (final route in toDraw) {
         if (!mounted || gen != _drawGeneration) return;
         final coords = routeCoordinates[route.id];
@@ -129,18 +126,18 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
         final positions =
             coords.map((geo) => Position(geo.longitude, geo.latitude)).toList();
 
-        final color = hexToColor(route.routeColor);
-        final options = PolylineAnnotationOptions(
-          geometry: LineString(coordinates: positions),
-          lineColor: color.toARGB32(),
-          lineWidth: 5.0,
-          lineOpacity: 0.9,
+        final lineColor = MapRoutePainter.parseHexColor(route.routeColor);
+        final strokes = MapRoutePainter.buildDualStroke(
+          coordinates: positions,
+          lineColor: lineColor,
         );
 
-        try {
-          await polylineAnnotationManager?.create(options);
-        } catch (e) {
-          _log('⚠️ خطأ في رسم ${route.id}: $e');
+        for (final options in strokes) {
+          try {
+            await polylineAnnotationManager?.create(options);
+          } catch (e) {
+            _log('⚠️ خطأ في رسم ${route.id}: $e');
+          }
         }
       }
     } finally {
@@ -168,7 +165,7 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
           flyToFlat(
             latitude: mid.latitude,
             longitude: mid.longitude,
-            zoom: 10.5,
+            zoom: MapConstants.routeFocusZoom,
           );
         }
       }
