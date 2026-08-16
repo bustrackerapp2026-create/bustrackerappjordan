@@ -5,10 +5,12 @@ import '../../core/theme/app_theme.dart';
 /// أزرار خريطة الأدمن العائمة.
 class AdminMapFabs extends StatelessWidget {
   final bool showPassengers;
+  final bool showRoutes;
   final bool isAddingPickupPoint;
   final bool isDrawingRoute;
   final bool isLoadingLocation;
   final VoidCallback onTogglePassengers;
+  final VoidCallback onToggleRoutes;
   final VoidCallback onTogglePickup;
   final VoidCallback onToggleDrawRoute;
   final VoidCallback onMyLocation;
@@ -17,10 +19,12 @@ class AdminMapFabs extends StatelessWidget {
   const AdminMapFabs({
     super.key,
     required this.showPassengers,
+    required this.showRoutes,
     required this.isAddingPickupPoint,
     required this.isDrawingRoute,
     required this.isLoadingLocation,
     required this.onTogglePassengers,
+    required this.onToggleRoutes,
     required this.onTogglePickup,
     required this.onToggleDrawRoute,
     required this.onMyLocation,
@@ -40,7 +44,21 @@ class AdminMapFabs extends StatelessWidget {
             backgroundColor:
                 showPassengers ? Colors.blue.shade700 : Colors.grey,
             foregroundColor: Colors.white,
+            tooltip: showPassengers ? 'إخفاء الركاب' : 'إظهار الركاب',
             child: Icon(showPassengers ? Icons.person : Icons.person_off),
+          ),
+        ),
+        Positioned(
+          bottom: 100,
+          left: 16,
+          child: FloatingActionButton(
+            heroTag: 'admin_routes_toggle',
+            onPressed: onToggleRoutes,
+            backgroundColor:
+                showRoutes ? Colors.teal.shade700 : Colors.grey.shade600,
+            foregroundColor: Colors.white,
+            tooltip: showRoutes ? 'إخفاء المسارات' : 'إظهار المسارات',
+            child: Icon(showRoutes ? Icons.route : Icons.hide_source),
           ),
         ),
         Positioned(
