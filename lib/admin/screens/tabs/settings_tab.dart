@@ -7,7 +7,7 @@ import '../../../core/widgets/pickup_label_size_setting.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../services/pickup_point_service.dart';
-import '../../../services/route_seed_service.dart';
+import '../../../services/sample_amman_data_service.dart';
 
 class SettingsTab extends StatefulWidget {
   const SettingsTab({super.key});
@@ -18,7 +18,7 @@ class SettingsTab extends StatefulWidget {
 
 class _SettingsTabState extends State<SettingsTab> {
   bool _isMigrating = false;
-  bool _isSeedingRoutes = false;
+  bool _isSampleBusy = false;
 
   static const String _migrationDialogMessage =
       'سيتم ضبط كل النقاط في Firestore:\n'
@@ -119,15 +119,28 @@ class _SettingsTabState extends State<SettingsTab> {
     }
   }
 
-  Future<void> _seedDemoRoutes() async {
-    if (_isSeedingRoutes) return;
+  Future<void> _importAmmanSample() async {
+    if (_isSampleBusy) return;
+
+    final auth = context.read<AuthProvider>();
+    final adminId = auth.userId;
+    if (adminId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('يجب تسجيل الدخول كأدمن'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('زرع مسارات تجريبية'),
+        title: const Text('عيّنة عمّان (5+5)'),
         content: const Text(
-          'سيتم إضافة 8 مسارات بين محافظات الأردن مع محطات وإحداثيات.\n\n'
+          'سيتم إضافة 5 مسارات و5 نقاط تجمع للتجربة البصرية على الخريطة.\n\n'
+          'لن تُكرَّر إن كانت العيّنة موجودة مسبقاً.\n\n'
           'هل تريد المتابعة؟',
         ),
         actions: [
@@ -137,7 +150,7 @@ class _SettingsTabState extends State<SettingsTab> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('زرع المسارات'),
+            child: const Text('استيراد'),
           ),
         ],
       ),
@@ -145,11 +158,12 @@ class _SettingsTabState extends State<SettingsTab> {
 
     if (confirm != true || !mounted) return;
 
-    setState(() => _isSeedingRoutes = true);
+    setState(() => _isSampleBusy = true);
     final messenger = ScaffoldMessenger.of(context);
 
     try {
-      final result = await RouteSeedService().seedJordanDemoRoutes();
+      final result = await SampleAmmanDataService()
+          .importSampleIfNeeded(adminId: adminId);
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
@@ -162,24 +176,24 @@ class _SettingsTabState extends State<SettingsTab> {
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
-          content: Text('❌ فشل الزرع: $e'),
+          content: Text('❌ فشل الاستيراد: $e'),
           backgroundColor: Colors.red.shade700,
         ),
       );
     } finally {
-      if (mounted) setState(() => _isSeedingRoutes = false);
+      if (mounted) setState(() => _isSampleBusy = false);
     }
   }
 
-  Future<void> _clearDemoRoutes() async {
-    if (_isSeedingRoutes) return;
+  Future<void> _clearAmmanSample() async {
+    if (_isSampleBusy) return;
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('حذف المسارات التجريبية'),
+        title: const Text('حذف عيّنة عمّان'),
         content: const Text(
-          'سيتم حذف كل المسارات التي وُسمت كتجريبية (isDemo).\n\n'
+          'سيتم حذف المسارات ونقاط التجمع الموسومة كعيّنة تجريبية فقط.\n\n'
           'هل تريد المتابعة؟',
         ),
         actions: [
@@ -201,11 +215,11 @@ class _SettingsTabState extends State<SettingsTab> {
 
     if (confirm != true || !mounted) return;
 
-    setState(() => _isSeedingRoutes = true);
+    setState(() => _isSampleBusy = true);
     final messenger = ScaffoldMessenger.of(context);
 
     try {
-      final result = await RouteSeedService().clearDemoRoutes();
+      final result = await SampleAmmanDataService().clearSample();
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
@@ -223,7 +237,7 @@ class _SettingsTabState extends State<SettingsTab> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _isSeedingRoutes = false);
+      if (mounted) setState(() => _isSampleBusy = false);
     }
   }
 
@@ -311,7 +325,7 @@ class _SettingsTabState extends State<SettingsTab> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              user?.fullName ?? 'Admin',
+                              user?.fullName ?? 'Admin exclude',
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -415,25 +429,25 @@ class _SettingsTabState extends State<SettingsTab> {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: _isSeedingRoutes
+                  leading: _isSampleBusy
                       ? const SizedBox(
                           width: 24,
                           height: 24,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(
-                          Icons.route,
+                          Icons.map_outlined,
                           color: AppTheme.primaryColor,
                         ),
                   title: const Text(
-                    'زرع مسارات تجريبية (الأردن)',
+                    'استيراد عيّنة عمّان (5 مسارات + 5 نقاط)',
                     style: TextStyle(fontWeight: FontWeight.w500),
                   ),
                   subtitle: const Text(
-                    'خطوط بين المحافظات للتجربة على الخريطة',
+                    'بيانات محدودة للتجربة البصرية قبل الإضافة الكاملة',
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: _isSeedingRoutes ? null : _seedDemoRoutes,
+                  onTap: _isSampleBusy ? null : _importAmmanSample,
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -442,14 +456,14 @@ class _SettingsTabState extends State<SettingsTab> {
                     color: Colors.red,
                   ),
                   title: const Text(
-                    'حذف المسارات التجريبية',
+                    'حذف عيّنة عمّان',
                     style: TextStyle(fontWeight: FontWeight.w500),
                   ),
                   subtitle: const Text(
-                    'إزالة المسارات الموسومة isDemo فقط',
+                    'إزالة المسارات والنقاط الموسومة كعيّنة فقط',
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: _isSeedingRoutes ? null : _clearDemoRoutes,
+                  onTap: _isSampleBusy ? null : _clearAmmanSample,
                 ),
               ],
             ),

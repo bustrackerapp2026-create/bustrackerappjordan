@@ -14,19 +14,18 @@ import '../../../../core/pickup/pickup_point_manager.dart';
 import '../../../../core/pickup/pickup_point_dialog.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../services/location_service.dart';
-import '../../../../services/route_seed_service.dart';
 import '../../../../map/widgets/search_bar_widget.dart';
 import '../../../../map/utils/map_helpers.dart';
 import '../../widgets/admin_draw_route_banner.dart';
 import '../../widgets/admin_driver_details_sheet.dart';
 import '../../widgets/admin_map_fabs.dart';
-import '../../widgets/admin_seed_routes_chip.dart';
 import '../admin_dashboard.dart';
 import 'mixins/driver_manager_mixin.dart';
 import 'mixins/passenger_manager_mixin.dart';
 import 'mixins/route_manager_mixin.dart';
 import 'mixins/pickup_point_mixin.dart';
 import 'mixins/admin_draw_route_mixin.dart';
+import 'mixins/admin_planned_routes_mixin.dart';
 
 class AdminMapTab extends StatefulWidget {
   final AdminMapFocusRequest? focusRequest;
@@ -43,12 +42,12 @@ class _AdminMapTabState extends State<AdminMapTab>
         PassengerManagerMixin<AdminMapTab>,
         RouteManagerMixin<AdminMapTab>,
         PickupPointMixin<AdminMapTab>,
-        AdminDrawRouteMixin<AdminMapTab> {
+        AdminDrawRouteMixin<AdminMapTab>,
+        AdminPlannedRoutesMixin<AdminMapTab> {
   final PickupPointManager _pickupManager = PickupPointManager();
   final LocationService _locationService = LocationService();
   bool _isAddingPickupPoint = false;
   bool _isLoadingLocation = false;
-  bool _isSeeding = false;
   StreamSubscription? _locationSubscription;
   int? _lastHandledFocusToken;
 
@@ -70,6 +69,7 @@ class _AdminMapTabState extends State<AdminMapTab>
   void onStyleChanged() {
     _adminLocationAnnotation = null;
     redrawRoutes();
+    unawaited(redrawPlannedRoutes());
     listenToPickupPoints();
     listenToActiveDrivers();
     listenToActivePassengers();
@@ -92,6 +92,7 @@ class _AdminMapTabState extends State<AdminMapTab>
       listenToActiveDrivers();
       listenToActivePassengers();
       listenToRoutes();
+      listenToPlannedRoutes();
       listenToPickupPoints();
       applyLabelLayersFilter();
       _scheduleFocusRequest();
@@ -125,6 +126,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     _locationSubscription?.cancel();
     _adminLocationAnnotation = null;
     disposeAdminDrawRoute();
+    disposePlannedRoutes();
     disposePickupPoints();
     disposeRoutes();
     disposePassengers();
@@ -180,6 +182,14 @@ class _AdminMapTabState extends State<AdminMapTab>
       }
       startDrawingRoute();
     }
+  }
+
+  Future<void> _toggleRoutesVisibility() async {
+    await togglePlannedRoutesVisibility();
+    if (!mounted) return;
+    _safeSnack(
+      showPlannedRoutes ? '🚌 تم إظهار المسارات' : '🙈 تم إخفاء المسارات',
+    );
   }
 
   Future<void> _goToMyLocation() async {
@@ -322,44 +332,6 @@ class _AdminMapTabState extends State<AdminMapTab>
     );
     if (!mounted) return;
     _safeSnack('🔎 تم الانتقال إلى ${result.name}');
-  }
-
-  Future<void> _seedRoutesFromMap() async {
-    if (_isSeeding) return;
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('زرع مسارات الأردن'),
-        content: const Text(
-          'سيتم إضافة 8 خطوط بين المحافظات إلى Firestore ثم عرضها على الخريطة.\n\n'
-          'هل تريد المتابعة؟',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('زرع'),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true || !mounted) return;
-
-    setState(() => _isSeeding = true);
-    try {
-      final msg = await RouteSeedService().seedJordanDemoRoutes();
-      if (!mounted) return;
-      _safeSnack('✅ $msg');
-      listenToRoutes();
-    } catch (e) {
-      if (!mounted) return;
-      _safeSnack('❌ فشل الزرع: $e', isError: true);
-    } finally {
-      if (mounted) setState(() => _isSeeding = false);
-    }
   }
 
   Future<void> _handleMapTap(Point point) async {
@@ -507,35 +479,27 @@ class _AdminMapTabState extends State<AdminMapTab>
               onUndo: isSnappingSegment ? null : undoLastDrawPoint,
               onCancel: cancelDrawingRoute,
             ),
-          )
-        else
-          Positioned(
-            top: 72,
-            left: 16,
-            child: ValueListenableBuilder<int>(
-              valueListenable: routesUiTick,
-              builder: (_, __, ___) {
-                return AdminSeedRoutesChip(
-                  isSeeding: _isSeeding,
-                  routesCount: routes.length,
-                  onTap: _isSeeding ? null : _seedRoutesFromMap,
-                );
-              },
-            ),
           ),
         Positioned.fill(
-          child: AdminMapFabs(
-            showPassengers: showPassengers,
-            isAddingPickupPoint: _isAddingPickupPoint,
-            isDrawingRoute: isDrawingRoute,
-            isLoadingLocation: _isLoadingLocation,
-            onTogglePassengers: togglePassengersVisibility,
-            onTogglePickup: _isAddingPickupPoint
-                ? _cancelAddPickupPoint
-                : _startAddPickupPoint,
-            onToggleDrawRoute: _toggleDrawRoute,
-            onMyLocation: _goToMyLocation,
-            onMapLayers: () => showMapSettingsSheet(context),
+          child: ValueListenableBuilder<int>(
+            valueListenable: plannedRoutesUiTick,
+            builder: (_, __, ___) {
+              return AdminMapFabs(
+                showPassengers: showPassengers,
+                showRoutes: showPlannedRoutes,
+                isAddingPickupPoint: _isAddingPickupPoint,
+                isDrawingRoute: isDrawingRoute,
+                isLoadingLocation: _isLoadingLocation,
+                onTogglePassengers: togglePassengersVisibility,
+                onToggleRoutes: () => unawaited(_toggleRoutesVisibility()),
+                onTogglePickup: _isAddingPickupPoint
+                    ? _cancelAddPickupPoint
+                    : _startAddPickupPoint,
+                onToggleDrawRoute: _toggleDrawRoute,
+                onMyLocation: _goToMyLocation,
+                onMapLayers: () => showMapSettingsSheet(context),
+              );
+            },
           ),
         ),
       ],
