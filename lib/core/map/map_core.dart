@@ -16,8 +16,8 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   bool showPoiLabels = false;
   bool showRoadLabels = true;
 
-  /// ستايل فاتح أوضح للمسارات والنقاط (أقرب لمظهر تطبيقات المواصلات)
-  static const String initialMapStyle = MapboxStyles.LIGHT;
+  /// الستايل الافتراضي عند فتح الخريطة: شوارع
+  static const String initialMapStyle = MapboxStyles.MAPBOX_STREETS;
   String currentMapStyle = initialMapStyle;
   bool isMapReady = false;
 
@@ -383,15 +383,15 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
                     runSpacing: 8,
                     children: [
                       _buildStyleOption(
-                        title: 'فاتح',
-                        icon: Icons.light_mode_outlined,
-                        styleUri: MapboxStyles.LIGHT,
-                        setSheetState: setSheetState,
-                      ),
-                      _buildStyleOption(
                         title: 'شوارع',
                         icon: Icons.map_outlined,
                         styleUri: MapboxStyles.MAPBOX_STREETS,
+                        setSheetState: setSheetState,
+                      ),
+                      _buildStyleOption(
+                        title: 'فاتح',
+                        icon: Icons.light_mode_outlined,
+                        styleUri: MapboxStyles.LIGHT,
                         setSheetState: setSheetState,
                       ),
                       _buildStyleOption(
