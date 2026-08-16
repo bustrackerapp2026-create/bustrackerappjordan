@@ -42,6 +42,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
       applyStableGestures(),
     ]);
     _setDefaultCamera();
+    await applyMapConstraints();
     await Future<void>.delayed(const Duration(milliseconds: 80));
     await applyLabelLayersFilter();
     _scheduleArabicLabelsRetry();
@@ -83,12 +84,39 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  Future<void> applyZoomLimitsOnly() async {
-    MapUtils.log('ℹ️ تم تخطي setBounds عمداً لثبات الزوم');
+  /// تقييد الكاميرا داخل حدود المملكة الأردنية الهاشمية
+  Future<void> applyMapConstraints() async {
+    if (mapboxMap == null) return;
+    try {
+      await mapboxMap!.setBounds(
+        CameraBoundsOptions(
+          bounds: CoordinateBounds(
+            southwest: Point(
+              coordinates: Position(
+                MapConstants.minLng,
+                MapConstants.minLat,
+              ),
+            ),
+            northeast: Point(
+              coordinates: Position(
+                MapConstants.maxLng,
+                MapConstants.maxLat,
+              ),
+            ),
+            infiniteBounds: false,
+          ),
+          minZoom: MapConstants.minZoom,
+          maxZoom: MapConstants.maxZoom,
+        ),
+      );
+      MapUtils.log('✅ تم تقييد الكاميرا داخل حدود الأردن');
+    } catch (e) {
+      MapUtils.log('⚠️ تعذر فرض حدود الأردن: $e');
+    }
   }
 
+  Future<void> applyZoomLimitsOnly() => applyMapConstraints();
   Future<void> applyGoogleLikeCameraBehavior() => applyStableGestures();
-  Future<void> applyMapConstraints() => applyZoomLimitsOnly();
 
   void onCameraChangedForDebug(CameraChangedEventData data) {
     _cameraMoving = true;
@@ -228,6 +256,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         initPolylineManager(),
         applyStableGestures(),
       ]);
+      await applyMapConstraints();
       await applyLabelLayersFilter();
       _scheduleArabicLabelsRetry();
       onStyleChanged();
