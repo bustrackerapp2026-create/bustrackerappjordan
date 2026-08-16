@@ -64,7 +64,7 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
     final routeService = RouteService();
     final snapshot = List<RouteModel>.from(routes);
     if (snapshot.isEmpty) {
-      if (mounted) await drawRoutes();
+      // لا نستدعي drawRoutes هنا حتى لا يُمسح رسم plannedRoutes عبر deleteAll
       return;
     }
 
@@ -100,6 +100,9 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
       if (_isDrawing) _scheduleDraw();
       return;
     }
+    // لا تمسح كل الـ polylines إن لم توجد مسارات routes (حتى تبقى plannedRoutes)
+    if (routes.isEmpty) return;
+
     _isDrawing = true;
     final gen = ++_drawGeneration;
 
@@ -111,8 +114,6 @@ mixin RouteManagerMixin<T extends StatefulWidget> on State<T>, MapCoreMixin<T> {
 
       await polylineAnnotationManager?.deleteAll();
       if (!mounted || gen != _drawGeneration) return;
-
-      if (routes.isEmpty) return;
 
       final toDraw = selectedRouteName == 'الكل'
           ? routes
