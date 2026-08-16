@@ -137,10 +137,14 @@ class _SettingsTabState extends State<SettingsTab> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('عيّنة عمّان (5+5)'),
+        title: const Text('عيّنة خط 99 (ملصق على الشوارع)'),
         content: const Text(
-          'سيتم إضافة 5 مسارات و5 نقاط تجمع للتجربة البصرية على الخريطة.\n\n'
-          'لن تُكرَّر إن كانت العيّنة موجودة مسبقاً.\n\n'
+          'سيتم:\n'
+          '• حذف العيّنة التقريبية القديمة إن وُجدت\n'
+          '• استيراد خط 99 ذهاب وإياب من ملفاتك\n'
+          '• لصق المسار على شبكة الطرق عبر Mapbox\n'
+          '• إضافة 5 نقاط تجمع\n\n'
+          'يتطلب إنترنت ومفتاح Mapbox صالح.\n\n'
           'هل تريد المتابعة؟',
         ),
         actions: [
@@ -193,7 +197,7 @@ class _SettingsTabState extends State<SettingsTab> {
       builder: (ctx) => AlertDialog(
         title: const Text('حذف عيّنة عمّان'),
         content: const Text(
-          'سيتم حذف المسارات ونقاط التجمع الموسومة كعيّنة تجريبية فقط.\n\n'
+          'سيتم حذف المسارات ونقاط التجمع الموسومة كعيّنة فقط.\n\n'
           'هل تريد المتابعة؟',
         ),
         actions: [
@@ -440,11 +444,11 @@ class _SettingsTabState extends State<SettingsTab> {
                           color: AppTheme.primaryColor,
                         ),
                   title: const Text(
-                    'استيراد عيّنة عمّان (5 مسارات + 5 نقاط)',
+                    'استيراد خط 99 ملصق على الشوارع',
                     style: TextStyle(fontWeight: FontWeight.w500),
                   ),
                   subtitle: const Text(
-                    'بيانات محدودة للتجربة البصرية قبل الإضافة الكاملة',
+                    'ذهاب/إياب من ملفاتك + 5 نقاط · عبر Mapbox Directions',
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: _isSampleBusy ? null : _importAmmanSample,
