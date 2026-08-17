@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import '../../core/theme/app_theme.dart';
@@ -20,9 +19,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   static const String initialMapStyle = MapboxStyles.MAPBOX_STREETS;
   String currentMapStyle = initialMapStyle;
   bool isMapReady = false;
-
-  double lastLoggedZoom = MapConstants.defaultZoom;
-  Timer? _zoomLogDebounce;
 
   bool _cameraMoving = false;
   Timer? _cameraIdleTimer;
@@ -63,29 +59,25 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     });
   }
 
-  /// إعدادات إيماءات: زوم سلس + تدوير الخريطة (بدون ميل 3D لتقليل التعليق).
+  /// إعدادات إيماءات: زوم + تدوير (بدون pitch وبدون تسارع بعد الإفلات).
   Future<void> applyStableGestures() async {
     if (mapboxMap == null) return;
     try {
       await mapboxMap!.gestures.updateSettings(
         GesturesSettings(
-          // بدون pitch — الميل ثلاثي الأبعاد يثقّل البلاطات ويزيد التعليق
           pitchEnabled: false,
-          // السماح بتدوير الخريطة (اتجاه / التفاف) بإصبعين
           rotateEnabled: true,
           scrollEnabled: true,
           pinchToZoomEnabled: true,
           doubleTapToZoomInEnabled: true,
           doubleTouchToZoomOutEnabled: true,
-          // quickZoom بإصبع واحد غالباً يسبب رجّة — مُعطّل عمداً
           quickZoomEnabled: false,
-          // تدوير + زوم معاً بإصبعين
           simultaneousRotateAndPinchToZoomEnabled: true,
-          // pan أثناء القرص يتعارض مع الزوم على بعض الأجهزة
           pinchPanEnabled: false,
-          pinchToZoomDecelerationEnabled: true,
-          scrollDecelerationEnabled: true,
-          rotateDecelerationEnabled: true,
+          // بدون تسارع بعد الإفلات — يقلل إعادة الرسم المستمرة على بعض الأجهزة
+          pinchToZoomDecelerationEnabled: false,
+          scrollDecelerationEnabled: false,
+          rotateDecelerationEnabled: false,
         ),
       );
     } catch (e) {
@@ -93,7 +85,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  /// تقييد الكاميرا داخل حدود الأردن (هوامش بسيطة لتقليل الارتداد عند الحافة)
+  /// تقييد الكاميرا داخل حدود الأردن
   Future<void> applyMapConstraints() async {
     if (mapboxMap == null) return;
     try {
@@ -127,44 +119,20 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   Future<void> applyZoomLimitsOnly() => applyMapConstraints();
   Future<void> applyGoogleLikeCameraBehavior() => applyStableGestures();
 
-  /// خفيف جداً — لا يستدعي setCamera/easeTo (ذلك كان يسبب حلقة رجّة).
+  /// يتتبع أن المستخدم يحرّك الخريطة فقط — بدون طباعة أو setCamera.
   void onCameraChangedForDebug(CameraChangedEventData data) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    // تخفيف استدعاءات المستمع أثناء السحب/القرص
-    if (now - _lastCameraEventMs < 48) {
-      _cameraMoving = true;
-      _cameraIdleTimer?.cancel();
-      _cameraIdleTimer = Timer(const Duration(milliseconds: 220), () {
-        _cameraMoving = false;
-      });
-      return;
-    }
-    _lastCameraEventMs = now;
-
     _cameraMoving = true;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // لا نُنشئ Timer في كل إطار — فقط كل ~120ms
+    if (now - _lastCameraEventMs < 120) return;
+    _lastCameraEventMs = now;
     _cameraIdleTimer?.cancel();
-    _cameraIdleTimer = Timer(const Duration(milliseconds: 220), () {
+    _cameraIdleTimer = Timer(const Duration(milliseconds: 320), () {
       _cameraMoving = false;
-    });
-
-    // سجلات التشخيص فقط في وضع التطوير وبمعدل منخفض
-    if (!kDebugMode) return;
-    final zoom = data.cameraState.zoom;
-    if ((zoom - lastLoggedZoom).abs() < 0.4) return;
-    lastLoggedZoom = zoom;
-    _zoomLogDebounce?.cancel();
-    _zoomLogDebounce = Timer(const Duration(milliseconds: 400), () {
-      debugPrint(
-        '🔍 [MapZoom] zoom=${zoom.toStringAsFixed(2)} '
-        'center=(${data.cameraState.center.coordinates.lat.toStringAsFixed(4)}, '
-        '${data.cameraState.center.coordinates.lng.toStringAsFixed(4)})',
-      );
     });
   }
 
   void disposeMapDebug() {
-    _zoomLogDebounce?.cancel();
-    _zoomLogDebounce = null;
     _cameraIdleTimer?.cancel();
     _cameraIdleTimer = null;
     _arabicLabelsRetry?.cancel();
