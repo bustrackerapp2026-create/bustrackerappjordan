@@ -1,9 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// يكتب/يقرأ مواقع السائقين العامة بدون كشف بريد/هاتف/حقول حساسة.
+/// يكتب/يقرأ مواقع السائقين العامة للخريطة وبطاقة المعلومات.
 ///
 /// المجموعة: [driverPublic/{uid}]
-/// الحقول: اسم العرض، باص، مسار، سعة، إحداثيات، حالة اتصال/رحلة.
 class DriverPublicLocationService {
   DriverPublicLocationService._();
   static final DriverPublicLocationService instance =
@@ -16,7 +15,6 @@ class DriverPublicLocationService {
   DocumentReference<Map<String, dynamic>> doc(String uid) =>
       _db.collection(collection).doc(uid);
 
-  /// تحديث موقع + حالة (مسار التتبع المستمر).
   Future<void> publishLocation({
     required String uid,
     required double latitude,
@@ -28,6 +26,8 @@ class DriverPublicLocationService {
     String? fullName,
     String? busNumber,
     String? route,
+    String? routeDetail,
+    String? phoneNumber,
     int? capacity,
   }) async {
     if (uid.isEmpty) return;
@@ -51,12 +51,13 @@ class DriverPublicLocationService {
     if (fullName != null && fullName.isNotEmpty) data['fullName'] = fullName;
     if (busNumber != null) data['busNumber'] = busNumber;
     if (route != null) data['route'] = route;
+    if (routeDetail != null) data['routeDetail'] = routeDetail;
+    if (phoneNumber != null) data['phoneNumber'] = phoneNumber;
     if (capacity != null) data['capacity'] = capacity;
 
     await doc(uid).set(data, SetOptions(merge: true));
   }
 
-  /// تحديث حالة الاتصال بدون إحداثيات جديدة.
   Future<void> publishStatus({
     required String uid,
     required bool isOnline,
@@ -66,6 +67,8 @@ class DriverPublicLocationService {
     String? fullName,
     String? busNumber,
     String? route,
+    String? routeDetail,
+    String? phoneNumber,
     int? capacity,
   }) async {
     if (uid.isEmpty) return;
@@ -89,6 +92,8 @@ class DriverPublicLocationService {
     if (fullName != null && fullName.isNotEmpty) data['fullName'] = fullName;
     if (busNumber != null) data['busNumber'] = busNumber;
     if (route != null) data['route'] = route;
+    if (routeDetail != null) data['routeDetail'] = routeDetail;
+    if (phoneNumber != null) data['phoneNumber'] = phoneNumber;
     if (capacity != null) data['capacity'] = capacity;
 
     await doc(uid).set(data, SetOptions(merge: true));
