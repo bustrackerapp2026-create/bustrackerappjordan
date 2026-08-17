@@ -19,6 +19,7 @@ import '../../../../map/utils/map_helpers.dart';
 import '../../widgets/admin_draw_route_banner.dart';
 import '../../widgets/admin_driver_details_sheet.dart';
 import '../../widgets/admin_map_fabs.dart';
+import '../../widgets/admin_routes_search_sheet.dart';
 import '../admin_dashboard.dart';
 import 'mixins/driver_manager_mixin.dart';
 import 'mixins/passenger_manager_mixin.dart';
@@ -512,6 +513,20 @@ class _AdminMapTabState extends State<AdminMapTab>
                 onToggleDrawRoute: _toggleDrawRoute,
                 onMyLocation: _goToMyLocation,
                 onMapLayers: () => showMapSettingsSheet(context),
+                onSearchRoutes: () {
+                  AdminRoutesSearchSheet.show(
+                    context,
+                    onFocusRoute: (route) {
+                      if (route.points.isEmpty) return;
+                      final p = route.points[route.points.length ~/ 2];
+                      unawaited(flyToFlat(
+                        latitude: p.latitude,
+                        longitude: p.longitude,
+                        zoom: 13,
+                      ));
+                    },
+                  );
+                },
               );
             },
           ),
