@@ -19,6 +19,7 @@ import '../../../../map/utils/map_helpers.dart';
 import '../../widgets/admin_draw_route_banner.dart';
 import '../../widgets/admin_driver_details_sheet.dart';
 import '../../widgets/admin_map_fabs.dart';
+import '../../widgets/admin_route_direction_filter.dart';
 import '../admin_dashboard.dart';
 import 'mixins/driver_manager_mixin.dart';
 import 'mixins/passenger_manager_mixin.dart';
@@ -26,7 +27,6 @@ import 'mixins/route_manager_mixin.dart';
 import 'mixins/pickup_point_mixin.dart';
 import 'mixins/admin_draw_route_mixin.dart';
 import 'mixins/admin_planned_routes_mixin.dart';
-import '../../widgets/admin_route_direction_filter.dart';
 
 class AdminMapTab extends StatefulWidget {
   final AdminMapFocusRequest? focusRequest;
@@ -121,40 +121,36 @@ class _AdminMapTabState extends State<AdminMapTab>
     _safeSnack('📍 تم التوجيه إلى: ${focus.pointName}');
   }
 
-  Future<void> _showAdminLocation(
-    double lat,
-    double lng, {
-    required bool moveCamera,
-  }) async {
-    if (mapboxMap == null || !mounted) return;
-
-    if (moveCamera) {
-      await flyToFlat(latitude: lat, longitude: lng, zoom: 16.0);
+  @override
+  void handleAnnotationTap(PointAnnotation annotation) {
+    final id = annotation.id;
+    final driverData = driverAnnotations[id];
+    if (driverData != null) {
+      unawaited(AdminDriverDetailsSheet.show(context, driverData));
+      return;
     }
-
-    try {
-      if (pointAnnotationManager == null) await initAnnotationManager();
-      final manager = pointAnnotationManager;
-      if (manager == null) return;
-
-      if (_adminLocationAnnotation != null) {
-        try {
-          await manager.delete(_adminLocationAnnotation!);
-        } catch (_) {}
-        _adminLocationAnnotation = null;
-      }
-
-      _adminLocationAnnotation = await manager.create(
-        PointAnnotationOptions(
-          geometry: Point(coordinates: Position(lng, lat)),
-          iconSize: 1.0,
-          image: _adminMarkerBytes,
-          iconColor: const Color(0xFF1565C0).toARGB32(),
-        ),
-      );
-    } catch (e) {
-      MapUtils.log('admin location marker: $e');
+    final passengerData = passengerAnnotations[id];
+    if (passengerData != null) {
+      // يمكن لاحقاً فتح تفاصيل الراكب
+      return;
     }
+    final pickup = pickupAnnotations[id];
+    if (pickup != null) {
+      unawaited(_onPickupAnnotationTap(pickup));
+    }
+  }
+
+  Future<void> _onPickupAnnotationTap(dynamic point) async {
+    final adderName = await PickupPointSheet.loadAdderName(point.addedBy);
+    if (!mounted) return;
+    final action = await PickupPointSheet.show(
+      context,
+      point: point,
+      adderName: adderName,
+      canEdit: true,
+    );
+    if (action == null || !mounted) return;
+    // المعالجة داخل الـ sheet / المدير حسب نوع الإجراء
   }
 
   void _startAddPickupPoint() {
@@ -243,6 +239,42 @@ class _AdminMapTabState extends State<AdminMapTab>
     }
   }
 
+  Future<void> _showAdminLocation(
+    double lat,
+    double lng, {
+    required bool moveCamera,
+  }) async {
+    if (mapboxMap == null || !mounted) return;
+
+    if (moveCamera) {
+      await flyToFlat(latitude: lat, longitude: lng, zoom: 16.0);
+    }
+
+    try {
+      if (pointAnnotationManager == null) await initAnnotationManager();
+      final manager = pointAnnotationManager;
+      if (manager == null) return;
+
+      if (_adminLocationAnnotation != null) {
+        try {
+          await manager.delete(_adminLocationAnnotation!);
+        } catch (_) {}
+        _adminLocationAnnotation = null;
+      }
+
+      _adminLocationAnnotation = await manager.create(
+        PointAnnotationOptions(
+          geometry: Point(coordinates: Position(lng, lat)),
+          iconSize: 1.0,
+          image: _adminMarkerBytes,
+          iconColor: const Color(0xFF1565C0).toARGB32(),
+        ),
+      );
+    } catch (e) {
+      MapUtils.log('admin location marker: $e');
+    }
+  }
+
   Future<void> _onMapTap(MapContentGestureContext gesture) async {
     if (!mounted) return;
 
@@ -289,11 +321,6 @@ class _AdminMapTabState extends State<AdminMapTab>
     }
 
     await handleMapBackgroundTap(gesture);
-  }
-
-  @override
-  void handleAnnotationTap(PointAnnotation annotation) {
-    // تفويض للخلطات حسب نوع العلامة إن وُجدت
   }
 
   @override
