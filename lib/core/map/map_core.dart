@@ -63,24 +63,29 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     });
   }
 
-  /// إعدادات إيماءات تقلّل الرجّة بعد التكبير/التحريك.
+  /// إعدادات إيماءات: زوم سلس + تدوير الخريطة (بدون ميل 3D لتقليل التعليق).
   Future<void> applyStableGestures() async {
     if (mapboxMap == null) return;
     try {
       await mapboxMap!.gestures.updateSettings(
         GesturesSettings(
+          // بدون pitch — الميل ثلاثي الأبعاد يثقّل البلاطات ويزيد التعليق
           pitchEnabled: false,
-          rotateEnabled: false,
+          // السماح بتدوير الخريطة (اتجاه / التفاف) بإصبعين
+          rotateEnabled: true,
           scrollEnabled: true,
           pinchToZoomEnabled: true,
-          doubleTapToZoomInEnabled: false,
-          doubleTouchToZoomOutEnabled: false,
+          doubleTapToZoomInEnabled: true,
+          doubleTouchToZoomOutEnabled: true,
+          // quickZoom بإصبع واحد غالباً يسبب رجّة — مُعطّل عمداً
           quickZoomEnabled: false,
-          simultaneousRotateAndPinchToZoomEnabled: false,
+          // تدوير + زوم معاً بإصبعين
+          simultaneousRotateAndPinchToZoomEnabled: true,
+          // pan أثناء القرص يتعارض مع الزوم على بعض الأجهزة
           pinchPanEnabled: false,
-          pinchToZoomDecelerationEnabled: false,
-          scrollDecelerationEnabled: false,
-          rotateDecelerationEnabled: false,
+          pinchToZoomDecelerationEnabled: true,
+          scrollDecelerationEnabled: true,
+          rotateDecelerationEnabled: true,
         ),
       );
     } catch (e) {
@@ -125,8 +130,8 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   /// خفيف جداً — لا يستدعي setCamera/easeTo (ذلك كان يسبب حلقة رجّة).
   void onCameraChangedForDebug(CameraChangedEventData data) {
     final now = DateTime.now().millisecondsSinceEpoch;
-    // تخفيف استدعاءات المستمع أثناء السحب السريع
-    if (now - _lastCameraEventMs < 32) {
+    // تخفيف استدعاءات المستمع أثناء السحب/القرص
+    if (now - _lastCameraEventMs < 48) {
       _cameraMoving = true;
       _cameraIdleTimer?.cancel();
       _cameraIdleTimer = Timer(const Duration(milliseconds: 220), () {
