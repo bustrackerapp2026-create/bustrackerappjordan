@@ -41,7 +41,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return out;
   }
 
-  Future<void> startDrawingRoute() async {
+  void startDrawingRoute() {
     if (!mounted) return;
     setState(() {
       isDrawingRoute = true;
@@ -49,13 +49,11 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _drawPoints.clear();
       _roadSegments.clear();
     });
-    await _clearDrawVisuals();
-    if (mounted) {
-      MapUtils.showSnackBar(
-        context,
-        'وضع الرسم: انقر على الخريطة لإضافة نقاط المسار',
-      );
-    }
+    unawaited(_clearDrawVisuals());
+    MapUtils.showSnackBar(
+      context,
+      'وضع الرسم: انقر على الخريطة لإضافة نقاط المسار',
+    );
   }
 
   Future<void> cancelDrawingRoute() async {
@@ -84,8 +82,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _drawPointMarkers.clear();
   }
 
-  Future<void> onMapTapWhileDrawing(double lat, double lng) async {
-    if (!isDrawingRoute || isSnappingSegment || !mounted) return;
+  Future<void> onDrawRouteMapTap(Point point) async {
+    if (!isDrawingRoute || !mounted || isSnappingSegment) return;
+    final lat = point.coordinates.lat.toDouble();
+    final lng = point.coordinates.lng.toDouble();
     setState(() => isSnappingSegment = true);
     try {
       final raw = RoutePoint(latitude: lat, longitude: lng);
@@ -130,14 +130,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           to.latitude,
           to.longitude,
         );
-        if (road.length >= 2) {
-          _roadSegments.add(road);
-        } else {
-          _roadSegments.add([from, to]);
-        }
+        _roadSegments.add(road.length >= 2 ? road : [from, to]);
       }
 
-      await _refreshDrawLine();
+      await _redrawDrawLine();
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw tap: $e', tag: 'AdminDraw');
@@ -149,7 +145,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  Future<void> _refreshDrawLine() async {
+  Future<void> _redrawDrawLine() async {
     final path = _flattenedRoadPath;
     if (path.length < 2 || polylineAnnotationManager == null) {
       if (_drawLine != null) {
@@ -192,7 +188,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         await pointAnnotationManager?.delete(last);
       } catch (_) {}
     }
-    await _refreshDrawLine();
+    await _redrawDrawLine();
     if (mounted) setState(() {});
   }
 
