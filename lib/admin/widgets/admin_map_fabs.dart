@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
+import 'admin_route_direction_filter.dart';
 
-/// أزرار خريطة الأدمن العائمة.
+/// أزرار خريطة الأدمن العائمة + فلتر اتجاه المسارات.
 class AdminMapFabs extends StatelessWidget {
   final bool showPassengers;
   final bool showRoutes;
   final bool isAddingPickupPoint;
   final bool isDrawingRoute;
   final bool isLoadingLocation;
+  final AdminRouteDirectionFilter routeFilter;
+  final int outboundCount;
+  final int returnCount;
   final VoidCallback onTogglePassengers;
   final VoidCallback onToggleRoutes;
+  final ValueChanged<AdminRouteDirectionFilter> onRouteFilterChanged;
   final VoidCallback onTogglePickup;
   final VoidCallback onToggleDrawRoute;
   final VoidCallback onMyLocation;
@@ -23,8 +28,12 @@ class AdminMapFabs extends StatelessWidget {
     required this.isAddingPickupPoint,
     required this.isDrawingRoute,
     required this.isLoadingLocation,
+    required this.routeFilter,
+    required this.outboundCount,
+    required this.returnCount,
     required this.onTogglePassengers,
     required this.onToggleRoutes,
+    required this.onRouteFilterChanged,
     required this.onTogglePickup,
     required this.onToggleDrawRoute,
     required this.onMyLocation,
@@ -35,6 +44,18 @@ class AdminMapFabs extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
+        // فلتر الاتجاه فوق زر المسارات (يسار)
+        if (showRoutes)
+          Positioned(
+            bottom: 170,
+            left: 12,
+            child: AdminRouteDirectionFilterBar(
+              value: routeFilter,
+              outboundCount: outboundCount,
+              returnCount: returnCount,
+              onChanged: onRouteFilterChanged,
+            ),
+          ),
         Positioned(
           bottom: 30,
           left: 16,
@@ -55,10 +76,12 @@ class AdminMapFabs extends StatelessWidget {
             heroTag: 'admin_routes_toggle',
             onPressed: onToggleRoutes,
             backgroundColor:
-                showRoutes ? Colors.teal.shade700 : Colors.grey.shade600,
+                showRoutes ? routeFilter.accent : Colors.grey.shade600,
             foregroundColor: Colors.white,
-            tooltip: showRoutes ? 'إخفاء المسارات' : 'إظهار المسارات',
-            child: Icon(showRoutes ? Icons.route : Icons.hide_source),
+            tooltip: showRoutes
+                ? 'إخفاء المسارات (${routeFilter.labelAr})'
+                : 'إظهار المسارات',
+            child: Icon(showRoutes ? routeFilter.icon : Icons.hide_source),
           ),
         ),
         Positioned(

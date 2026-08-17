@@ -8,8 +8,10 @@ import '../../../../core/map/map_route_painter.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../models/planned_route.dart';
 import '../../../../services/route_plan_service.dart';
+import '../../../widgets/admin_route_direction_filter.dart';
 
-/// عرض وإخفاء مسارات plannedRoutes المعتمدة على خريطة الأدمن.
+/// عرض وإخفاء مسارات plannedRoutes المعتمدة على خريطة الأدمن
+/// مع فلتر ذهاب / إياب / الكل.
 mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final RoutePlanService _plannedService = RoutePlanService();
   StreamSubscription<List<PlannedRoute>>? _plannedSub;
@@ -21,9 +23,21 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   /// إظهار المسارات على الخريطة (افتراضي: ظاهر)
   bool showPlannedRoutes = true;
 
+  /// فلتر الاتجاه: الكل / ذهاب / إياب
+  AdminRouteDirectionFilter plannedRouteFilter =
+      AdminRouteDirectionFilter.all;
+
   final ValueNotifier<int> plannedRoutesUiTick = ValueNotifier<int>(0);
 
   int get plannedRoutesCount => _plannedRoutes.length;
+
+  int get outboundRoutesCount => _plannedRoutes
+      .where((r) => r.direction == RouteDirection.outbound)
+      .length;
+
+  int get returnRoutesCount => _plannedRoutes
+      .where((r) => r.direction == RouteDirection.returnTrip)
+      .length;
 
   static const int _outboundColor = 0xFF1D8FE1;
   static const int _returnColor = 0xFF0E9F5D;
@@ -52,6 +66,33 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
+  /// تغيير فلتر الاتجاه ثم إعادة الرسم
+  Future<void> setPlannedRouteFilter(AdminRouteDirectionFilter filter) async {
+    if (plannedRouteFilter == filter) return;
+    plannedRouteFilter = filter;
+    // عند اختيار فلتر نضمن أن العرض مفعّل
+    if (!showPlannedRoutes) {
+      showPlannedRoutes = true;
+    }
+    plannedRoutesUiTick.value++;
+    await _drawPlannedRoutes();
+  }
+
+  List<PlannedRoute> get _filteredRoutes {
+    switch (plannedRouteFilter) {
+      case AdminRouteDirectionFilter.all:
+        return _plannedRoutes;
+      case AdminRouteDirectionFilter.outbound:
+        return _plannedRoutes
+            .where((r) => r.direction == RouteDirection.outbound)
+            .toList();
+      case AdminRouteDirectionFilter.returnTrip:
+        return _plannedRoutes
+            .where((r) => r.direction == RouteDirection.returnTrip)
+            .toList();
+    }
+  }
+
   Future<void> _drawPlannedRoutes() async {
     if (!mounted || _drawingPlanned) return;
     if (!showPlannedRoutes) {
@@ -68,7 +109,8 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       await _clearPlannedLines();
 
-      for (final route in _plannedRoutes) {
+      final toDraw = _filteredRoutes;
+      for (final route in toDraw) {
         if (route.points.length < 2) continue;
         final coords = route.points
             .map((p) => Position(p.longitude, p.latitude))
