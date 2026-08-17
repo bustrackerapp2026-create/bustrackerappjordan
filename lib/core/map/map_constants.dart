@@ -1,10 +1,11 @@
 /// ثوابت الخريطة المشتركة بين جميع الخرائط
 class MapConstants {
   // ─── حدود الأردن (تُفرض على الكاميرا) ───────────────────────────
-  static const double minLat = 29.1;
-  static const double maxLat = 33.45;
-  static const double minLng = 34.85;
-  static const double maxLng = 39.35;
+  // هوامش طفيفة حول الحدود الحقيقية لتقليل الارتداد عند الحافة
+  static const double minLat = 28.95;
+  static const double maxLat = 33.55;
+  static const double minLng = 34.70;
+  static const double maxLng = 39.45;
 
   // ─── مركز الأردن (عمّان) ──────────────────────────────────────────
   static const double centerLat = 31.9522;
@@ -14,9 +15,9 @@ class MapConstants {
   /// مستوى التكبير الافتراضي لإظهار معظم الأردن بوضوح
   static const double defaultZoom = 7.2;
 
-  /// حدود الزوم داخل الأردن
-  static const double minZoom = 5.8;
-  static const double maxZoom = 18.5;
+  /// حدود الزوم — max أقل قليلاً يقلل ضغط البلاطات والرجّة
+  static const double minZoom = 6.0;
+  static const double maxZoom = 17.5;
 
   static const double detailZoom = 15.5;
   static const double cityZoom = 12.5;
