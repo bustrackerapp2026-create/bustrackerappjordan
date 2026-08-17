@@ -49,6 +49,12 @@ class RoutePlanService with RoutePlanGeometry, RoutePlanMapbox {
     return PlannedRoute.fromDoc(d.id, d.data());
   }
 
+  Future<PlannedRoute?> getById(String id) async {
+    final doc = await _col.doc(id).get();
+    if (!doc.exists || doc.data() == null) return null;
+    return PlannedRoute.fromDoc(doc.id, doc.data()!);
+  }
+
   Map<String, dynamic> _searchPayload(String lineName, List<String> aliases) {
     final keys = ArabicSearch.buildSearchKeys(lineName, aliases: aliases);
     return {
@@ -159,6 +165,19 @@ class RoutePlanService with RoutePlanGeometry, RoutePlanMapbox {
       aliases: List<String>.from(search['aliases'] as List),
       notes: notes,
     );
+  }
+
+  Future<void> requestEdit({
+    required String routeId,
+    required String reason,
+    required String requestedBy,
+  }) async {
+    final r = reason.trim();
+    await _col.doc(routeId).update({
+      'editRequestPending': true,
+      if (r.isNotEmpty) 'notes': r,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> deleteRoute(String routeId) async {
