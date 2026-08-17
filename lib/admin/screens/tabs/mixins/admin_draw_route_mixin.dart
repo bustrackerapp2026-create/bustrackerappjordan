@@ -1,13 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:provider/provider.dart';
 
-import '../../../../core/constants/app_constants.dart';
-import '../../../../core/map/map_constants.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
@@ -118,17 +115,15 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             iconSize: 0.6,
           ),
         );
-        if (ann != null) _drawPointMarkers.add(ann);
+        _drawPointMarkers.add(ann);
       }
 
       if (_drawPoints.length >= 2) {
         final from = _drawPoints[_drawPoints.length - 2];
         final to = _drawPoints.last;
         final road = await _drawRouteService.getDrivingPath(
-          from.latitude,
-          from.longitude,
-          to.latitude,
-          to.longitude,
+          from: from,
+          to: to,
         );
         _roadSegments.add(road.length >= 2 ? road : [from, to]);
       }
