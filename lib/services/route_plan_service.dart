@@ -28,8 +28,6 @@ class RoutePlanService {
   static const int maxPointsToStore = RoutePlanGeometry.maxPointsToStore;
   static const double pointSnapRadiusM = RoutePlanMapbox.pointSnapRadiusM;
 
-  // ─── تفويض Mapbox / هندسة (نفس الـ API العام) ───
-
   Future<RoutePoint> snapPointToRoad(RoutePoint point) =>
       _mapbox.snapPointToRoad(point);
 
@@ -75,8 +73,6 @@ class RoutePlanService {
 
   double totalDistanceMeters(List<RoutePoint> points) =>
       RoutePlanGeometry.totalDistanceMeters(points);
-
-  // ─── Firestore ───
 
   Stream<List<PlannedRoute>> watchLineRoutes(String lineName) {
     return _col.where('lineName', isEqualTo: lineName).snapshots().map((snap) {
@@ -449,6 +445,28 @@ class RoutePlanService {
             .map((d) => PlannedRoute.fromDoc(d.id, d.data()))
             .where((r) => r.points.length >= 2)
             .toList());
+  }
+
+  /// تحديث بيانات المسار النصية فقط (بدون تغيير الهندسة).
+  Future<void> updateRouteMetadata({
+    required String routeId,
+    required String lineName,
+    required RouteDirection direction,
+    List<String> aliases = const [],
+    String? notes,
+  }) async {
+    if (routeId.isEmpty) throw ArgumentError('routeId مطلوب');
+    if (lineName.trim().isEmpty) throw ArgumentError('اسم الخط مطلوب');
+    final search = _searchPayload(lineName.trim(), aliases);
+    await _col.doc(routeId).update({
+      'lineName': lineName.trim(),
+      'direction': direction.firestoreValue,
+      'notes': (notes == null || notes.trim().isEmpty)
+          ? FieldValue.delete()
+          : notes.trim(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      ...search,
+    });
   }
 
   Future<void> deleteRoute(String routeId) async {
