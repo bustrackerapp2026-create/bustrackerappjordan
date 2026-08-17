@@ -47,6 +47,7 @@ service cloud.firestore {
           'email',
           'busNumber',
           'route',
+          'routeDetail',
           'capacity',
           'photoUrl',
           'currentLatitude',
@@ -85,12 +86,14 @@ service cloud.firestore {
         && request.resource.data.driverId == resource.data.driverId;
     }
 
-    /// حقول مسموحة فقط في driverPublic (لا بريد/هاتف/تحقق)
+    /// حقول مسموحة في driverPublic للخريطة والبطاقة (بدون بريد/تحقق)
     function onlyDriverPublicKeys() {
       return request.resource.data.keys().hasOnly([
         'fullName',
         'busNumber',
         'route',
+        'routeDetail',
+        'phoneNumber',
         'capacity',
         'currentLatitude',
         'currentLongitude',
@@ -104,7 +107,6 @@ service cloud.firestore {
       ]);
     }
 
-    // ── users: قراءة للمالك أو الأدمن فقط ─────────────────────
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
 
@@ -123,7 +125,6 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ── مواقع السائقين العامة للخريطة ─────────────────────────
     match /driverPublic/{userId} {
       allow read: if isSignedIn();
 
@@ -166,7 +167,6 @@ service cloud.firestore {
         || resource.data.passengerId == request.auth.uid
       );
 
-      // إنشاء: pending فقط (لا active من العميل)
       allow create: if isSignedIn()
         && (
           request.resource.data.driverId == request.auth.uid
