@@ -28,6 +28,9 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   Timer? _cameraIdleTimer;
   Timer? _arabicLabelsRetry;
 
+  /// لمنع ضغط مستمع الكاميرا (كل إطار أثناء السحب)
+  int _lastCameraEventMs = 0;
+
   bool get suppressPoiTap => false;
 
   void onMapCreated(MapboxMap map) {
@@ -66,19 +69,15 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     try {
       await mapboxMap!.gestures.updateSettings(
         GesturesSettings(
-          // تثبيت المستوى — يمنع ميلان الكاميرا أثناء القرص
           pitchEnabled: false,
           rotateEnabled: false,
           scrollEnabled: true,
           pinchToZoomEnabled: true,
-          // النقر المزدوج قد يسبب قفزة مفاجئة مع الحدود
           doubleTapToZoomInEnabled: false,
           doubleTouchToZoomOutEnabled: false,
           quickZoomEnabled: false,
           simultaneousRotateAndPinchToZoomEnabled: false,
-          // منع انزلاق المركز أثناء القرص (مصدر شائع للرجّة)
           pinchPanEnabled: false,
-          // التباطؤ بعد رفع الأصابع يسبب اهتزازاً خفيفاً — يُعطَّل
           pinchToZoomDecelerationEnabled: false,
           scrollDecelerationEnabled: false,
           rotateDecelerationEnabled: false,
@@ -89,7 +88,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  /// تقييد الكاميرا داخل حدود المملكة الأردنية الهاشمية
+  /// تقييد الكاميرا داخل حدود الأردن (هوامش بسيطة لتقليل الارتداد عند الحافة)
   Future<void> applyMapConstraints() async {
     if (mapboxMap == null) return;
     try {
@@ -123,51 +122,39 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   Future<void> applyZoomLimitsOnly() => applyMapConstraints();
   Future<void> applyGoogleLikeCameraBehavior() => applyStableGestures();
 
+  /// خفيف جداً — لا يستدعي setCamera/easeTo (ذلك كان يسبب حلقة رجّة).
   void onCameraChangedForDebug(CameraChangedEventData data) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // تخفيف استدعاءات المستمع أثناء السحب السريع
+    if (now - _lastCameraEventMs < 32) {
+      _cameraMoving = true;
+      _cameraIdleTimer?.cancel();
+      _cameraIdleTimer = Timer(const Duration(milliseconds: 220), () {
+        _cameraMoving = false;
+      });
+      return;
+    }
+    _lastCameraEventMs = now;
+
     _cameraMoving = true;
     _cameraIdleTimer?.cancel();
-    // مهلة أقصر قليلاً لاكتشاف انتهاء الحركة دون setState
-    _cameraIdleTimer = Timer(const Duration(milliseconds: 180), () {
+    _cameraIdleTimer = Timer(const Duration(milliseconds: 220), () {
       _cameraMoving = false;
-      // تثبيت الميلان إن انحرفت الكاميرا قليلاً أثناء الإيماءة
-      unawaited(_ensureFlatCamera());
     });
 
+    // سجلات التشخيص فقط في وضع التطوير وبمعدل منخفض
     if (!kDebugMode) return;
     final zoom = data.cameraState.zoom;
-    if ((zoom - lastLoggedZoom).abs() < 0.25) return;
+    if ((zoom - lastLoggedZoom).abs() < 0.4) return;
     lastLoggedZoom = zoom;
     _zoomLogDebounce?.cancel();
-    _zoomLogDebounce = Timer(const Duration(milliseconds: 150), () {
+    _zoomLogDebounce = Timer(const Duration(milliseconds: 400), () {
       debugPrint(
         '🔍 [MapZoom] zoom=${zoom.toStringAsFixed(2)} '
         'center=(${data.cameraState.center.coordinates.lat.toStringAsFixed(4)}, '
         '${data.cameraState.center.coordinates.lng.toStringAsFixed(4)})',
       );
     });
-  }
-
-  /// إن وُجد ميلان بسيط غير مقصود، أعد المستوى بدون تحريك مفاجئ كبير
-  Future<void> _ensureFlatCamera() async {
-    if (mapboxMap == null || !mounted) return;
-    try {
-      final state = await mapboxMap!.getCameraState();
-      final pitch = state.pitch;
-      final bearing = state.bearing;
-      if (pitch.abs() < 0.15 && bearing.abs() < 0.15) return;
-      if (pitch.abs() > 8 || bearing.abs() > 12) {
-        // انحراف واضح فقط — صحّح بلطف
-        await mapboxMap!.easeTo(
-          CameraOptions(
-            center: state.center,
-            zoom: state.zoom,
-            pitch: 0.0,
-            bearing: 0.0,
-          ),
-          MapAnimationOptions(duration: 120, startDelay: 0),
-        );
-      }
-    } catch (_) {}
   }
 
   void disposeMapDebug() {
