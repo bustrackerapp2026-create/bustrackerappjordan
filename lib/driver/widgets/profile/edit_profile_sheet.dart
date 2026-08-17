@@ -29,6 +29,8 @@ class EditProfileSheet {
     final emailCtrl = TextEditingController(text: user.email);
     final busCtrl = TextEditingController(text: user.busNumber ?? '');
     final routeCtrl = TextEditingController(text: user.route ?? '');
+    final routeDetailCtrl =
+        TextEditingController(text: user.routeDetail ?? '');
     int? selectedCapacity =
         BusCapacity.normalize(user.capacity) ?? BusCapacity.medium;
 
@@ -101,7 +103,7 @@ class EditProfileSheet {
                       const SizedBox(height: 12),
                       _field(
                         controller: phoneCtrl,
-                        label: 'رقم الهاتف',
+                        label: 'رقم الهاتف (يظهر للركاب)',
                         icon: Icons.phone_outlined,
                         keyboard: TextInputType.phone,
                         action: TextInputAction.next,
@@ -117,16 +119,27 @@ class EditProfileSheet {
                       const SizedBox(height: 12),
                       _field(
                         controller: busCtrl,
-                        label: 'رقم الباص',
+                        label: 'رقم المركبة / الباص',
                         icon: Icons.directions_bus_outlined,
                         action: TextInputAction.next,
                       ),
                       const SizedBox(height: 12),
                       _field(
                         controller: routeCtrl,
-                        label: 'المسار / الخط',
+                        label: 'اتجاه الخط العام (من → إلى)',
                         icon: Icons.route_outlined,
                         action: TextInputAction.next,
+                        hint: 'مثال: الجيزة → دوار الشرق الأوسط',
+                      ),
+                      const SizedBox(height: 12),
+                      _field(
+                        controller: routeDetailCtrl,
+                        label: 'مسير الخط التفصيلي (المناطق)',
+                        icon: Icons.alt_route_rounded,
+                        action: TextInputAction.done,
+                        maxLines: 3,
+                        hint:
+                            'مثال: الجيزة - القسطل - شارع المطار - جامعة الإسراء - ...',
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<int>(
@@ -152,8 +165,8 @@ class EditProfileSheet {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'ملاحظة: تغيير البريد قد يتطلب تأكيداً عبر الرابط المرسل.\n'
-                        'تظهر أيقونة الباص للراكب حسب النوع المختار تلقائياً.',
+                        'ملاحظة: اتجاه الخط ومسيره التفصيلي يظهران للراكب عند الضغط على أيقونتك.\n'
+                        'تغيير البريد قد يتطلب تأكيداً عبر الرابط المرسل.',
                         style: TextStyle(
                             fontSize: 11, color: Colors.grey.shade600),
                       ),
@@ -201,6 +214,7 @@ class EditProfileSheet {
     final email = emailCtrl.text.trim();
     final bus = busCtrl.text.trim();
     final route = routeCtrl.text.trim();
+    final routeDetail = routeDetailCtrl.text.trim();
 
     if (name.isEmpty) {
       return const EditProfileResult(
@@ -221,6 +235,7 @@ class EditProfileSheet {
       'phoneNumber': phone,
       'busNumber': bus,
       'route': route,
+      'routeDetail': routeDetail,
       'email': email,
       'capacity': selectedCapacity,
     };
@@ -270,17 +285,22 @@ class EditProfileSheet {
     required IconData icon,
     TextInputType? keyboard,
     TextInputAction action = TextInputAction.next,
+    String? hint,
+    int maxLines = 1,
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboard,
       textInputAction: action,
+      maxLines: maxLines,
       decoration: InputDecoration(
         labelText: label,
+        hintText: hint,
         prefixIcon: Icon(icon),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
         ),
+        alignLabelWithHint: maxLines > 1,
       ),
     );
   }
