@@ -20,6 +20,7 @@ class AdminMapFabs extends StatelessWidget {
   final VoidCallback onToggleDrawRoute;
   final VoidCallback onMyLocation;
   final VoidCallback onMapLayers;
+  final VoidCallback onSearchRoutes;
 
   const AdminMapFabs({
     super.key,
@@ -38,13 +39,13 @@ class AdminMapFabs extends StatelessWidget {
     required this.onToggleDrawRoute,
     required this.onMyLocation,
     required this.onMapLayers,
+    required this.onSearchRoutes,
   });
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // فلتر الاتجاه فوق زر المسارات (يسار)
         if (showRoutes)
           Positioned(
             bottom: 170,
@@ -110,6 +111,20 @@ class AdminMapFabs extends StatelessWidget {
             child: Icon(
               isDrawingRoute ? Icons.close : Icons.timeline_rounded,
             ),
+          ),
+        ),
+        Positioned(
+          bottom: 340,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: 'admin_routes_search_fab',
+            onPressed: onSearchRoutes,
+            backgroundColor: Colors.white,
+            foregroundColor: const Color(0xFF7C3AED),
+            elevation: 4,
+            shape: const CircleBorder(),
+            tooltip: 'بحث المسارات',
+            child: const Icon(Icons.search_rounded, size: 26),
           ),
         ),
         Positioned(
