@@ -9,9 +9,14 @@ class UserModel {
   final String userType;
   final String? phoneNumber;
   final String? busNumber;
+
+  /// اتجاه الخط العام (من → إلى)
   final String? route;
+
+  /// تفاصيل مسار الخط (المناطق بالترتيب)
+  final String? routeDetail;
+
   final String? photoUrl;
-  /// سعة الباص: 5 (سرفيس) / 23 (متوسط) / 50 (كبير) — للسائقين فقط.
   final int? capacity;
   final bool isVerified;
   final bool isRejected;
@@ -27,6 +32,7 @@ class UserModel {
     this.phoneNumber,
     this.busNumber,
     this.route,
+    this.routeDetail,
     this.photoUrl,
     this.capacity,
     this.isVerified = false,
@@ -34,9 +40,6 @@ class UserModel {
     this.createdAt,
   });
 
-  // ─── دوال Factory (من Firestore) ──────────────────────────────────
-
-  /// ✅ إنشاء UserModel من خريطة Firestore (الدالة الأساسية)
   factory UserModel.fromMap(Map<String, dynamic> map, String docId) {
     return UserModel(
       uid: docId,
@@ -46,6 +49,7 @@ class UserModel {
       phoneNumber: _safePhoneNumber(map['phoneNumber']),
       busNumber: map['busNumber'] as String?,
       route: map['route'] as String?,
+      routeDetail: map['routeDetail'] as String?,
       photoUrl: map['photoUrl'] as String?,
       capacity: BusCapacity.normalize(map['capacity']),
       isVerified: map['isVerified'] == true,
@@ -54,15 +58,11 @@ class UserModel {
     );
   }
 
-  /// ✅ إنشاء UserModel من Firestore DocumentSnapshot
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
     return UserModel.fromMap(data, doc.id);
   }
 
-  // ─── دوال التحويل إلى Map ──────────────────────────────────────
-
-  /// ✅ تحويل UserModel إلى خريطة للتخزين في Firestore
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
@@ -72,6 +72,7 @@ class UserModel {
       'phoneNumber': phoneNumber,
       'busNumber': busNumber,
       'route': route,
+      'routeDetail': routeDetail,
       'photoUrl': photoUrl,
       'capacity': capacity,
       'isVerified': isVerified,
@@ -79,9 +80,6 @@ class UserModel {
     };
   }
 
-  // ─── دوال مساعدة (تحويل JSON) ──────────────────────────────────
-
-  /// ✅ تحويل UserModel إلى JSON (لـ API)
   Map<String, dynamic> toJson() {
     return {
       'uid': uid,
@@ -91,6 +89,7 @@ class UserModel {
       'phoneNumber': phoneNumber,
       'busNumber': busNumber,
       'route': route,
+      'routeDetail': routeDetail,
       'photoUrl': photoUrl,
       'capacity': capacity,
       'isVerified': isVerified,
@@ -99,7 +98,6 @@ class UserModel {
     };
   }
 
-  /// ✅ إنشاء UserModel من JSON (لـ API)
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       uid: json['uid'] ?? '',
@@ -109,6 +107,7 @@ class UserModel {
       phoneNumber: json['phoneNumber'] as String?,
       busNumber: json['busNumber'] as String?,
       route: json['route'] as String?,
+      routeDetail: json['routeDetail'] as String?,
       photoUrl: json['photoUrl'] as String?,
       capacity: BusCapacity.normalize(json['capacity']),
       isVerified: json['isVerified'] ?? false,
@@ -118,8 +117,6 @@ class UserModel {
     );
   }
 
-  // ─── دوال مُحدِّثة ─────────────────────────────────────────────
-
   UserModel copyWith({
     String? uid,
     String? email,
@@ -128,6 +125,7 @@ class UserModel {
     String? phoneNumber,
     String? busNumber,
     String? route,
+    String? routeDetail,
     String? photoUrl,
     int? capacity,
     bool? isVerified,
@@ -142,6 +140,7 @@ class UserModel {
       phoneNumber: phoneNumber ?? this.phoneNumber,
       busNumber: busNumber ?? this.busNumber,
       route: route ?? this.route,
+      routeDetail: routeDetail ?? this.routeDetail,
       photoUrl: photoUrl ?? this.photoUrl,
       capacity: capacity ?? this.capacity,
       isVerified: isVerified ?? this.isVerified,
@@ -149,8 +148,6 @@ class UserModel {
       createdAt: createdAt ?? this.createdAt,
     );
   }
-
-  // ─── دوال مساعدة (Getters) ─────────────────────────────────────
 
   String get displayName => fullName.isNotEmpty ? fullName : 'مستخدم';
   String get displayPhone =>
@@ -175,8 +172,6 @@ class UserModel {
         return userType;
     }
   }
-
-  // ─── دوال مساعدة (Private) ─────────────────────────────────────
 
   static String _safeEmail(dynamic email) {
     final str = email?.toString().trim() ?? '';
