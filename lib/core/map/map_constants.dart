@@ -22,14 +22,18 @@ class MapConstants {
   static const double cityZoom = 12.5;
   static const double routeFocusZoom = 11.0;
 
-  // ─── مظهر خطوط الباص (مثل تطبيقات المواصلات) ───────────────────
+  // ─── مظهر خطوط الباص (أرفع حتى لا تغطي تفاصيل الشوارع) ─────────
   /// لون افتراضي للمسار إن لم يُحدد في البيانات
   static const int defaultRouteColor = 0xFF0E9F5D;
 
-  static const double routeLineWidth = 5.5;
-  static const double routeOutlineWidth = 8.0;
-  static const double routeLineOpacity = 0.95;
-  static const double routeOutlineOpacity = 0.35;
+  /// عرض الخط الملوّن (ذهاب/إياب)
+  static const double routeLineWidth = 3.0;
+
+  /// الحد الخارجي الأبيض الخفيف حول الخط
+  static const double routeOutlineWidth = 4.5;
+
+  static const double routeLineOpacity = 0.92;
+  static const double routeOutlineOpacity = 0.28;
 
   static const int routeOutlineColor = 0xFFFFFFFF;
 }
