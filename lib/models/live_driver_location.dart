@@ -9,7 +9,13 @@ class LiveDriverLocation {
   final String fullName;
   final String? phoneNumber;
   final String? busNumber;
+
+  /// اسم اتجاه الخط العام (مثال: الجيزة → دوار الشرق الأوسط)
   final String? route;
+
+  /// مسار تفصيلي للمناطق على الخط (مثال: الجيزة - القسطل - شارع المطار - ...)
+  final String? routeDetail;
+
   final int? capacity;
   final double latitude;
   final double longitude;
@@ -27,6 +33,7 @@ class LiveDriverLocation {
     this.phoneNumber,
     this.busNumber,
     this.route,
+    this.routeDetail,
     this.capacity,
     this.heading,
     this.speed,
@@ -74,12 +81,16 @@ class LiveDriverLocation {
     if (raw is Timestamp) updated = raw.toDate();
     if (raw is DateTime) updated = raw;
 
+    final phone = data['phoneNumber']?.toString().trim();
+    final detail = data['routeDetail']?.toString().trim();
+
     return LiveDriverLocation(
       driverId: id,
       fullName: data['fullName']?.toString() ?? 'سائق',
-      phoneNumber: null,
+      phoneNumber: (phone != null && phone.isNotEmpty) ? phone : null,
       busNumber: data['busNumber']?.toString(),
       route: data['route']?.toString(),
+      routeDetail: (detail != null && detail.isNotEmpty) ? detail : null,
       capacity: BusCapacity.normalize(data['capacity']),
       latitude: lat,
       longitude: lng,
@@ -91,7 +102,6 @@ class LiveDriverLocation {
     );
   }
 
-  /// توافق قديم — تجنّب استخدامه للعامة.
   factory LiveDriverLocation.fromUserDoc(
     String id,
     Map<String, dynamic> data,
