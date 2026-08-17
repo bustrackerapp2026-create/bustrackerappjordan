@@ -1,11 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../core/utils/arabic_search.dart';
 import '../../models/planned_route.dart';
 import '../../services/route_plan_service.dart';
 
-/// بحث وإدارة المسارات المعتمدة من شاشة الأدمن.
+/// بحث وإدارة المسارات المعتمدة من شاشة الأدمن (استعلامات محدودة + debounce).
 class AdminRoutesSearchSheet extends StatefulWidget {
   final void Function(PlannedRoute route)? onFocusRoute;
 
@@ -34,29 +35,52 @@ class _AdminRoutesSearchSheetState extends State<AdminRoutesSearchSheet> {
   final _service = RoutePlanService();
   final _queryCtrl = TextEditingController();
   String _query = '';
+  List<PlannedRoute> _routes = const [];
+  bool _loading = true;
+  String? _error;
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _queryCtrl.dispose();
     super.dispose();
   }
 
-  List<PlannedRoute> _filter(List<PlannedRoute> all) {
-    final q = _query.trim();
-    if (q.isEmpty) {
-      final sorted = List<PlannedRoute>.from(all)
-        ..sort((a, b) => a.lineName.compareTo(b.lineName));
-      return sorted;
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await _service.searchApprovedRoutes(_query, limit: 60);
+      if (!mounted) return;
+      setState(() {
+        _routes = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
-    return all.where((r) {
-      return ArabicSearch.matches(
-        query: q,
-        lineName: r.lineName,
-        searchKeys: r.searchKeys,
-        aliases: r.aliases,
-      );
-    }).toList()
-      ..sort((a, b) => a.lineName.compareTo(b.lineName));
+  }
+
+  void _onQueryChanged(String v) {
+    _query = v;
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 320), () {
+      unawaited(_load());
+    });
+    setState(() {});
   }
 
   Future<void> _openDetails(PlannedRoute route) async {
@@ -77,7 +101,7 @@ class _AdminRoutesSearchSheetState extends State<AdminRoutesSearchSheet> {
         },
         onChanged: () {
           Navigator.pop(ctx);
-          setState(() {});
+          unawaited(_load());
         },
       ),
     );
@@ -130,7 +154,9 @@ class _AdminRoutesSearchSheetState extends State<AdminRoutesSearchSheet> {
                         icon: const Icon(Icons.clear),
                         onPressed: () {
                           _queryCtrl.clear();
-                          setState(() => _query = '');
+                          _query = '';
+                          unawaited(_load());
+                          setState(() {});
                         },
                       ),
                 border: OutlineInputBorder(
@@ -138,80 +164,77 @@ class _AdminRoutesSearchSheetState extends State<AdminRoutesSearchSheet> {
                 ),
                 isDense: true,
               ),
-              onChanged: (v) => setState(() => _query = v),
+              onChanged: _onQueryChanged,
             ),
           ),
           const SizedBox(height: 8),
           Expanded(
-            child: StreamBuilder<List<PlannedRoute>>(
-              stream: _service.watchAllApprovedRoutes(),
-              builder: (context, snap) {
-                if (snap.hasError) {
-                  return Center(child: Text('خطأ: ${snap.error}'));
-                }
-                if (!snap.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final list = _filter(snap.data!);
-                if (list.isEmpty) {
-                  return Center(
-                    child: Text(
-                      _query.isEmpty
-                          ? 'لا توجد مسارات معتمدة بعد'
-                          : 'لا نتائج لـ «$_query»',
-                      style: TextStyle(color: Colors.grey.shade600),
-                    ),
-                  );
-                }
-                return ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
-                  itemCount: list.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 6),
-                  itemBuilder: (context, i) {
-                    final r = list[i];
-                    final km = r.distanceMeters == null
-                        ? '—'
-                        : '${(r.distanceMeters! / 1000).toStringAsFixed(1)} كم';
-                    return Material(
-                      color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      child: ListTile(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        leading: CircleAvatar(
-                          backgroundColor: r.direction == RouteDirection.outbound
-                              ? const Color(0xFF0E9F5D).withValues(alpha: 0.15)
-                              : const Color(0xFF2563EB).withValues(alpha: 0.15),
-                          child: Icon(
-                            r.direction == RouteDirection.outbound
-                                ? Icons.arrow_upward_rounded
-                                : Icons.arrow_downward_rounded,
-                            color: r.direction == RouteDirection.outbound
-                                ? const Color(0xFF0E9F5D)
-                                : const Color(0xFF2563EB),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? Center(child: Text('خطأ: $_error'))
+                    : _routes.isEmpty
+                        ? Center(
+                            child: Text(
+                              _query.isEmpty
+                                  ? 'لا توجد مسارات معتمدة بعد'
+                                  : 'لا نتائج لـ «$_query»',
+                              style: TextStyle(color: Colors.grey.shade600),
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                            itemCount: _routes.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 6),
+                            itemBuilder: (context, i) {
+                              final r = _routes[i];
+                              final km = r.distanceMeters == null
+                                  ? '—'
+                                  : '${(r.distanceMeters! / 1000).toStringAsFixed(1)} كم';
+                              return Material(
+                                color: Colors.grey.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                                child: ListTile(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  leading: CircleAvatar(
+                                    backgroundColor: r.direction ==
+                                            RouteDirection.outbound
+                                        ? const Color(0xFF0E9F5D)
+                                            .withValues(alpha: 0.15)
+                                        : const Color(0xFF2563EB)
+                                            .withValues(alpha: 0.15),
+                                    child: Icon(
+                                      r.direction == RouteDirection.outbound
+                                          ? Icons.arrow_upward_rounded
+                                          : Icons.arrow_downward_rounded,
+                                      color: r.direction ==
+                                              RouteDirection.outbound
+                                          ? const Color(0xFF0E9F5D)
+                                          : const Color(0xFF2563EB),
+                                    ),
+                                  ),
+                                  title: Text(
+                                    r.lineName,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700),
+                                  ),
+                                  subtitle: Text(
+                                    '${r.direction.labelAr} · $km · ${r.points.length} نقطة'
+                                    '${r.notes != null && r.notes!.isNotEmpty ? '\n${r.notes}' : ''}',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  isThreeLine: r.notes != null &&
+                                      r.notes!.trim().isNotEmpty,
+                                  trailing: const Icon(Icons.chevron_left),
+                                  onTap: () => _openDetails(r),
+                                ),
+                              );
+                            },
                           ),
-                        ),
-                        title: Text(
-                          r.lineName,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        subtitle: Text(
-                          '${r.direction.labelAr} · $km · ${r.points.length} نقطة'
-                          '${r.notes != null && r.notes!.isNotEmpty ? '\n${r.notes}' : ''}',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        isThreeLine:
-                            r.notes != null && r.notes!.trim().isNotEmpty,
-                        trailing: const Icon(Icons.chevron_left),
-                        onTap: () => _openDetails(r),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
           ),
         ],
       ),
