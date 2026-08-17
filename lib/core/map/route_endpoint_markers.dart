@@ -3,28 +3,29 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-/// مولّد علامات بداية/نهاية المسار (صور PNG للاستخدام مع PointAnnotation).
+/// علامات بداية/نهاية خفيفة:
+/// - البداية: دائرة ممتلئة + نقطة بيضاء
+/// - النهاية: دائرة مفرّغة (outline)
+/// بدون نص على الخريطة — اللون يتبع اتجاه الخط.
 class RouteEndpointMarkers {
   RouteEndpointMarkers._();
 
   static final Map<String, Uint8List> _cache = {};
 
-  /// بداية المسار — دائرة مع نقطة داخلية ونص «بداية»
+  /// بداية المسار — دائرة ممتلئة
   static Future<Uint8List> start({Color color = const Color(0xFF1D8FE1)}) {
     return _build(
-      key: 'start_${color.toARGB32()}',
+      key: 'start_v2_${color.toARGB32()}',
       color: color,
-      label: 'بداية',
       isStart: true,
     );
   }
 
-  /// نهاية المسار — دائرة مع مربع صغير ونص «نهاية»
-  static Future<Uint8List> end({Color color = const Color(0xFFE11D48)}) {
+  /// نهاية المسار — دائرة مفرّغة بنفس لون الاتجاه
+  static Future<Uint8List> end({Color color = const Color(0xFF1D8FE1)}) {
     return _build(
-      key: 'end_${color.toARGB32()}',
+      key: 'end_v2_${color.toARGB32()}',
       color: color,
-      label: 'نهاية',
       isStart: false,
     );
   }
@@ -32,95 +33,80 @@ class RouteEndpointMarkers {
   static Future<Uint8List> _build({
     required String key,
     required Color color,
-    required String label,
     required bool isStart,
   }) async {
     final cached = _cache[key];
     if (cached != null) return cached;
 
-    const double w = 120;
-    const double h = 140;
+    // صورة مربعة صغيرة — خفيفة على الخريطة
+    const double size = 64;
+    final center = Offset(size / 2, size / 2);
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
-    // ظل
-    final shadow = Paint()
-      ..color = Colors.black.withValues(alpha: 0.22)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-    canvas.drawCircle(const Offset(w / 2, 52), 28, shadow);
+    // ظل خفيف جداً
+    canvas.drawCircle(
+      center.translate(0, 1.2),
+      18,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.16)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+    );
 
-    // دائرة خارجية بيضاء
-    final ring = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(const Offset(w / 2, 50), 26, ring);
-
-    // دائرة اللون
-    final fill = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(const Offset(w / 2, 50), 21, fill);
-
-    // رمز داخلي
-    final white = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
     if (isStart) {
-      // مثلث اتجاه / نقطة انطلاق
-      final path = Path()
-        ..moveTo(w / 2, 38)
-        ..lineTo(w / 2 - 10, 58)
-        ..lineTo(w / 2 + 10, 58)
-        ..close();
-      canvas.drawPath(path, white);
+      // حلقة بيضاء خارجية
+      canvas.drawCircle(
+        center,
+        17.5,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.fill,
+      );
+      // دائرة اللون ممتلئة
+      canvas.drawCircle(
+        center,
+        14.5,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.fill,
+      );
+      // نقطة بيضاء في الوسط
+      canvas.drawCircle(
+        center,
+        4.5,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.fill,
+      );
     } else {
-      // مربع نهاية
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          const Rect.fromLTWH(w / 2 - 8, 42, 16, 16),
-          const Radius.circular(3),
-        ),
-        white,
+      // نهاية: قرص أبيض ثم حلقة لون سميكة (مفرّغة)
+      canvas.drawCircle(
+        center,
+        17.5,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawCircle(
+        center,
+        14.5,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 5.5,
+      );
+      // مركز شفاف يظهر كـ outline واضح
+      canvas.drawCircle(
+        center,
+        8.5,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.95)
+          ..style = PaintingStyle.fill,
       );
     }
 
-    // ساق الدبوس
-    final stem = Paint()
-      ..color = color
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(const Offset(w / 2, 76), const Offset(w / 2, 96), stem);
-    canvas.drawCircle(const Offset(w / 2, 100), 4, fill);
-
-    // شارة النص تحت الدبوس
-    final badgeRect = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(18, 108, w - 36, 26),
-      const Radius.circular(13),
-    );
-    canvas.drawRRect(badgeRect, fill);
-    canvas.drawRRect(
-      badgeRect,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.9)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5,
-    );
-
-    final builder = ui.ParagraphBuilder(
-      ui.ParagraphStyle(
-        textAlign: TextAlign.center,
-        fontSize: 13,
-        fontWeight: FontWeight.w800,
-      ),
-    )
-      ..pushStyle(ui.TextStyle(color: Colors.white))
-      ..addText(label);
-    final paragraph = builder.build()
-      ..layout(const ui.ParagraphConstraints(width: w - 40));
-    canvas.drawParagraph(paragraph, const Offset(20, 112));
-
     final picture = recorder.endRecording();
-    final image = await picture.toImage(w.toInt(), h.toInt());
+    final image = await picture.toImage(size.toInt(), size.toInt());
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     final out = bytes!.buffer.asUint8List();
     _cache[key] = out;

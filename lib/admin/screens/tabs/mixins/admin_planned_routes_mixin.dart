@@ -9,11 +9,12 @@ import '../../../../core/map/map_route_painter.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../core/map/route_endpoint_markers.dart';
 import '../../../../models/planned_route.dart';
+import '../../../../models/route_point.dart';
 import '../../../../services/route_plan_service.dart';
 import '../../../widgets/admin_route_direction_filter.dart';
 
-/// عرض وإخفاء مسارات plannedRoutes المعتمدة على خريطة الأدمن
-/// مع فلتر ذهاب / إياب / الكل + علامات البداية والنهاية.
+/// عرض مسارات plannedRoutes على خريطة الأدمن
+/// مع فلتر ذهاب/إياب وعلامات بداية/نهاية خفيفة.
 mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final RoutePlanService _plannedService = RoutePlanService();
   StreamSubscription<List<PlannedRoute>>? _plannedSub;
@@ -42,9 +43,9 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       .where((r) => r.direction == RouteDirection.returnTrip)
       .length;
 
+  /// نفس ألوان الخطوط — العلامات تتبع الاتجاه
   static const int _outboundColor = 0xFF1D8FE1;
   static const int _returnColor = 0xFF0E9F5D;
-  static const int _endColor = 0xFFE11D48;
 
   void listenToPlannedRoutes() {
     _plannedSub?.cancel();
@@ -70,7 +71,6 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  /// تغيير فلتر الاتجاه ثم إعادة الرسم
   Future<void> setPlannedRouteFilter(AdminRouteDirectionFilter filter) async {
     if (plannedRouteFilter == filter) return;
     plannedRouteFilter = filter;
@@ -117,18 +117,17 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       final toDraw = _filteredRoutes;
 
-      // جهّز صور العلامات مرة واحدة
       final startOut = await RouteEndpointMarkers.start(
+        color: const Color(_outboundColor),
+      );
+      final endOut = await RouteEndpointMarkers.end(
         color: const Color(_outboundColor),
       );
       final startRet = await RouteEndpointMarkers.start(
         color: const Color(_returnColor),
       );
-      final endOut = await RouteEndpointMarkers.end(
-        color: const Color(_endColor),
-      );
       final endRet = await RouteEndpointMarkers.end(
-        color: const Color(0xFFB45309),
+        color: const Color(_returnColor),
       );
 
       for (final route in toDraw) {
@@ -153,7 +152,6 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           }
         }
 
-        // علامات البداية والنهاية
         await _addEndpointMarkers(
           start: route.points.first,
           end: route.points.last,
@@ -167,8 +165,8 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   Future<void> _addEndpointMarkers({
-    required dynamic start,
-    required dynamic end,
+    required RoutePoint start,
+    required RoutePoint end,
     required Uint8List startImage,
     required Uint8List endImage,
   }) async {
@@ -182,8 +180,8 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             coordinates: Position(start.longitude, start.latitude),
           ),
           image: startImage,
-          iconSize: 0.95,
-          iconAnchor: IconAnchor.BOTTOM,
+          iconSize: 0.62,
+          iconAnchor: IconAnchor.CENTER,
           symbolSortKey: 10,
         ),
       );
@@ -199,8 +197,8 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             coordinates: Position(end.longitude, end.latitude),
           ),
           image: endImage,
-          iconSize: 0.95,
-          iconAnchor: IconAnchor.BOTTOM,
+          iconSize: 0.62,
+          iconAnchor: IconAnchor.CENTER,
           symbolSortKey: 11,
         ),
       );
