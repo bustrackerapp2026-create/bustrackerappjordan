@@ -7,6 +7,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:provider/provider.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/map/map_constants.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
@@ -201,8 +202,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           PolylineAnnotationOptions(
             geometry: LineString(coordinates: coords),
             lineColor: const Color(0xFF7C3AED).toARGB32(),
-            lineWidth: 6.0,
-            lineOpacity: 0.95,
+            lineWidth: MapConstants.routeLineWidth + 0.5,
+            lineOpacity: MapConstants.routeLineOpacity,
           ),
         );
       }
