@@ -9,11 +9,13 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import '../../../../core/map/map_utils.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/pickup_point_sheet.dart';
+import '../../../../core/map/landmark_marker_images.dart';
 import '../../../../core/location/location_permission_sheet.dart';
 import '../../../../core/pickup/pickup_point_manager.dart';
 import '../../../../core/pickup/pickup_point_dialog.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../services/location_service.dart';
+import '../../../../models/map_landmark.dart';
 import '../../../../map/widgets/search_bar_widget.dart';
 import '../../../../map/utils/map_helpers.dart';
 import '../../widgets/admin_draw_route_banner.dart';
@@ -27,6 +29,7 @@ import 'mixins/route_manager_mixin.dart';
 import 'mixins/pickup_point_mixin.dart';
 import 'mixins/admin_draw_route_mixin.dart';
 import 'mixins/admin_planned_routes_mixin.dart';
+import 'mixins/admin_landmarks_mixin.dart';
 import '../../widgets/admin_route_direction_filter.dart';
 
 class AdminMapTab extends StatefulWidget {
@@ -45,7 +48,8 @@ class _AdminMapTabState extends State<AdminMapTab>
         RouteManagerMixin<AdminMapTab>,
         PickupPointMixin<AdminMapTab>,
         AdminDrawRouteMixin<AdminMapTab>,
-        AdminPlannedRoutesMixin<AdminMapTab> {
+        AdminPlannedRoutesMixin<AdminMapTab>,
+        AdminLandmarksMixin<AdminMapTab> {
   final PickupPointManager _pickupManager = PickupPointManager();
   final LocationService _locationService = LocationService();
   bool _isAddingPickupPoint = false;
@@ -75,6 +79,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     listenToPickupPoints();
     listenToActiveDrivers();
     listenToActivePassengers();
+    unawaited(redrawLandmarks());
   }
 
   @override
@@ -95,6 +100,7 @@ class _AdminMapTabState extends State<AdminMapTab>
       listenToActivePassengers();
       listenToRoutes();
       listenToPlannedRoutes();
+      listenToLandmarks();
       listenToPickupPoints();
       applyLabelLayersFilter();
       _scheduleFocusRequest();
@@ -129,6 +135,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     _adminLocationAnnotation = null;
     disposeAdminDrawRoute();
     disposePlannedRoutes();
+    disposeLandmarks();
     disposePickupPoints();
     disposeRoutes();
     disposePassengers();
@@ -151,8 +158,79 @@ class _AdminMapTabState extends State<AdminMapTab>
       return;
     }
 
+    final landmarkId = findLandmarkIdByAnnotation(annotation);
+    if (landmarkId != null) {
+      final m = getLandmarkById(landmarkId);
+      if (m != null) {
+        _showLandmarkInfo(m);
+      }
+      return;
+    }
+
     final pickupId = _findId(pickupAnnotations, annotation);
     if (pickupId != null) _showPickupActionsSheet(pickupId);
+  }
+
+  void _showLandmarkInfo(MapLandmark m) {
+    if (!mounted) return;
+    final color = LandmarkMarkerImages.colorFor(m.type);
+    final icon = LandmarkMarkerImages.iconDataFor(m.type);
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 16),
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: color.withValues(alpha: 0.15),
+                child: Icon(icon, color: color, size: 28),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                m.name,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                m.type.labelAr,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (m.notes != null && m.notes!.trim().isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  m.notes!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade700),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
   }
 
   String? _findId(Map<String, PointAnnotation> map, PointAnnotation a) {
