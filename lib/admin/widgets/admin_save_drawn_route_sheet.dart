@@ -34,8 +34,6 @@ class _SaveDrawnRouteSheetState extends State<SaveDrawnRouteSheet> {
     super.dispose();
   }
 
-  List<String> get _suggestions => AppConstants.jordanRoutes;
-
   String _composeLineName(String start, String middle, String end) {
     final parts = <String>[
       start,
