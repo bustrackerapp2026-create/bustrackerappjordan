@@ -140,7 +140,7 @@ class RoutePlanGeometry {
         continue;
       }
 
-      if (out.length >= 1 && i + 1 < input.length) {
+      if (out.isNotEmpty && i + 1 < input.length) {
         final b1 = bearingDegrees(
           prev.latitude,
           prev.longitude,
