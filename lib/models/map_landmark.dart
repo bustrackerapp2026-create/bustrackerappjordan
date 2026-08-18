@@ -1,15 +1,34 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// نوع المعلم على خريطة المشروع (طبقة خاصة بالتطبيق فوق Mapbox).
+/// الأنواع مستوحاة من فئات POI الشائعة في Mapbox.
 enum MapLandmarkType {
   mosque,
   restaurant,
+  cafe,
   university,
   hospital,
+  pharmacy,
   school,
   shop,
+  supermarket,
   park,
   government,
+  bank,
+  atm,
+  hotel,
+  fuel,
+  parking,
+  busStation,
+  police,
+  postOffice,
+  library,
+  museum,
+  cinema,
+  gym,
+  church,
+  airport,
+  carRepair,
   other,
 }
 
@@ -20,18 +39,54 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return 'mosque';
       case MapLandmarkType.restaurant:
         return 'restaurant';
+      case MapLandmarkType.cafe:
+        return 'cafe';
       case MapLandmarkType.university:
         return 'university';
       case MapLandmarkType.hospital:
         return 'hospital';
+      case MapLandmarkType.pharmacy:
+        return 'pharmacy';
       case MapLandmarkType.school:
         return 'school';
       case MapLandmarkType.shop:
         return 'shop';
+      case MapLandmarkType.supermarket:
+        return 'supermarket';
       case MapLandmarkType.park:
         return 'park';
       case MapLandmarkType.government:
         return 'government';
+      case MapLandmarkType.bank:
+        return 'bank';
+      case MapLandmarkType.atm:
+        return 'atm';
+      case MapLandmarkType.hotel:
+        return 'hotel';
+      case MapLandmarkType.fuel:
+        return 'fuel';
+      case MapLandmarkType.parking:
+        return 'parking';
+      case MapLandmarkType.busStation:
+        return 'bus_station';
+      case MapLandmarkType.police:
+        return 'police';
+      case MapLandmarkType.postOffice:
+        return 'post_office';
+      case MapLandmarkType.library:
+        return 'library';
+      case MapLandmarkType.museum:
+        return 'museum';
+      case MapLandmarkType.cinema:
+        return 'cinema';
+      case MapLandmarkType.gym:
+        return 'gym';
+      case MapLandmarkType.church:
+        return 'church';
+      case MapLandmarkType.airport:
+        return 'airport';
+      case MapLandmarkType.carRepair:
+        return 'car_repair';
       case MapLandmarkType.other:
         return 'other';
     }
@@ -43,18 +98,54 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return 'مسجد';
       case MapLandmarkType.restaurant:
         return 'مطعم';
+      case MapLandmarkType.cafe:
+        return 'مقهى';
       case MapLandmarkType.university:
         return 'جامعة';
       case MapLandmarkType.hospital:
         return 'مستشفى';
+      case MapLandmarkType.pharmacy:
+        return 'صيدلية';
       case MapLandmarkType.school:
         return 'مدرسة';
       case MapLandmarkType.shop:
         return 'متجر';
+      case MapLandmarkType.supermarket:
+        return 'سوبرماركت';
       case MapLandmarkType.park:
         return 'حديقة';
       case MapLandmarkType.government:
         return 'مبنى حكومي';
+      case MapLandmarkType.bank:
+        return 'بنك';
+      case MapLandmarkType.atm:
+        return 'صراف آلي';
+      case MapLandmarkType.hotel:
+        return 'فندق';
+      case MapLandmarkType.fuel:
+        return 'محطة بنزين';
+      case MapLandmarkType.parking:
+        return 'موقف سيارات';
+      case MapLandmarkType.busStation:
+        return 'موقف حافلات';
+      case MapLandmarkType.police:
+        return 'مركز شرطة';
+      case MapLandmarkType.postOffice:
+        return 'بريد';
+      case MapLandmarkType.library:
+        return 'مكتبة';
+      case MapLandmarkType.museum:
+        return 'متحف';
+      case MapLandmarkType.cinema:
+        return 'سينما';
+      case MapLandmarkType.gym:
+        return 'نادي رياضي';
+      case MapLandmarkType.church:
+        return 'كنيسة';
+      case MapLandmarkType.airport:
+        return 'مطار';
+      case MapLandmarkType.carRepair:
+        return 'ورشة سيارات';
       case MapLandmarkType.other:
         return 'معلم آخر';
     }
@@ -66,18 +157,65 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return MapLandmarkType.mosque;
       case 'restaurant':
         return MapLandmarkType.restaurant;
+      case 'cafe':
+        return MapLandmarkType.cafe;
       case 'university':
         return MapLandmarkType.university;
       case 'hospital':
         return MapLandmarkType.hospital;
+      case 'pharmacy':
+        return MapLandmarkType.pharmacy;
       case 'school':
         return MapLandmarkType.school;
       case 'shop':
         return MapLandmarkType.shop;
+      case 'supermarket':
+      case 'grocery':
+        return MapLandmarkType.supermarket;
       case 'park':
         return MapLandmarkType.park;
       case 'government':
         return MapLandmarkType.government;
+      case 'bank':
+        return MapLandmarkType.bank;
+      case 'atm':
+        return MapLandmarkType.atm;
+      case 'hotel':
+      case 'lodging':
+        return MapLandmarkType.hotel;
+      case 'fuel':
+      case 'gas_station':
+      case 'petrol':
+        return MapLandmarkType.fuel;
+      case 'parking':
+        return MapLandmarkType.parking;
+      case 'bus_station':
+      case 'bus':
+      case 'transit':
+        return MapLandmarkType.busStation;
+      case 'police':
+        return MapLandmarkType.police;
+      case 'post_office':
+      case 'post':
+        return MapLandmarkType.postOffice;
+      case 'library':
+        return MapLandmarkType.library;
+      case 'museum':
+        return MapLandmarkType.museum;
+      case 'cinema':
+      case 'theater':
+        return MapLandmarkType.cinema;
+      case 'gym':
+      case 'fitness':
+        return MapLandmarkType.gym;
+      case 'church':
+      case 'place_of_worship':
+        return MapLandmarkType.church;
+      case 'airport':
+        return MapLandmarkType.airport;
+      case 'car_repair':
+      case 'garage':
+        return MapLandmarkType.carRepair;
       default:
         return MapLandmarkType.other;
     }
@@ -126,7 +264,7 @@ extension MapLandmarkStatusX on MapLandmarkStatus {
   }
 }
 
-/// معلم خاص بمشروع التطبيق — يُعرض كطبقة واحدة فوق Mapbox ولا يُنشر عالمياً.
+/// معلم خاص بمشروع التطبيق — يُعرض كطبقة خاصة فوق Mapbox ولا يُنشر عالمياً.
 class MapLandmark {
   final String id;
   final String name;
