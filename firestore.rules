@@ -244,13 +244,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // معالم الخريطة الخاصة بالمشروع (طبقة واحدة فوق Mapbox)
+    // معالم الخريطة الخاصة بالمشروع (طبقة خاصة فوق Mapbox)
     match /mapLandmarks/{landmarkId} {
       allow read: if isSignedIn() && (
         resource.data.status == 'approved' || isAdmin()
       );
 
-      // المرحلة 1: الكتابة للأدمن فقط
       allow create: if isAdmin()
         && request.resource.data.keys().hasAll(['name', 'type', 'latitude', 'longitude', 'status', 'createdBy'])
         && request.resource.data.createdBy == request.auth.uid
@@ -260,6 +259,31 @@ service cloud.firestore {
         && request.resource.data.type is string
         && request.resource.data.latitude is number
         && request.resource.data.longitude is number
+        && request.resource.data.status in ['pending', 'approved', 'rejected'];
+
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // تسميات نصية (أسماء شوارع وغيرها) مع حجم واتجاه
+    match /mapTextLabels/{labelId} {
+      allow read: if isSignedIn() && (
+        resource.data.status == 'approved' || isAdmin()
+      );
+
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasAll([
+          'text', 'latitude', 'longitude', 'fontSize', 'rotation', 'colorArgb', 'status', 'createdBy'
+        ])
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 80
+        && request.resource.data.latitude is number
+        && request.resource.data.longitude is number
+        && request.resource.data.fontSize is number
+        && request.resource.data.rotation is number
+        && request.resource.data.colorArgb is number
         && request.resource.data.status in ['pending', 'approved', 'rejected'];
 
       allow update: if isAdmin();
