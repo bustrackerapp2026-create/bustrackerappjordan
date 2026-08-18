@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/map_landmark.dart';
 
 /// أيقونات معالم المشروع — تُولَّد مرة وتُخزَّن في الذاكرة.
-/// أسلوب POI Mapbox: دائرة ملونة + رمز أبيض (قريب من Maki).
+/// أسلوب POI Mapbox: دائرة ملونة + رمز أبيض.
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
@@ -14,10 +14,8 @@ class LandmarkMarkerImages {
 
   static final Map<MapLandmarkType, Uint8List> _cache = {};
 
-  /// ألوان فئات POI بأسلوب قريب من Mapbox Streets.
   static Color colorFor(MapLandmarkType type) {
     switch (type) {
-      // طعام
       case MapLandmarkType.restaurant:
         return const Color(0xFFFB8C00);
       case MapLandmarkType.cafe:
@@ -28,12 +26,10 @@ class LandmarkMarkerImages {
         return const Color(0xFFF57C00);
       case MapLandmarkType.bar:
         return const Color(0xFFE65100);
-
-      // إقامة
       case MapLandmarkType.hotel:
         return const Color(0xFF6A1B9A);
-
-      // تسوق
+      case MapLandmarkType.house:
+        return const Color(0xFF5D4037);
       case MapLandmarkType.shop:
         return const Color(0xFF8E24AA);
       case MapLandmarkType.supermarket:
@@ -44,40 +40,34 @@ class LandmarkMarkerImages {
         return const Color(0xFF9C27B0);
       case MapLandmarkType.market:
         return const Color(0xFF6A1B9A);
-
-      // صحة
       case MapLandmarkType.hospital:
         return const Color(0xFFE53935);
+      case MapLandmarkType.medicalCenter:
+        return const Color(0xFFC62828);
       case MapLandmarkType.pharmacy:
         return const Color(0xFFD81B60);
       case MapLandmarkType.clinic:
         return const Color(0xFFEC407A);
       case MapLandmarkType.dentist:
         return const Color(0xFFF06292);
-
-      // تعليم
       case MapLandmarkType.school:
         return const Color(0xFF1E88E5);
       case MapLandmarkType.university:
         return const Color(0xFF5E35B1);
+      case MapLandmarkType.college:
+        return const Color(0xFF7E57C2);
       case MapLandmarkType.kindergarten:
         return const Color(0xFF42A5F5);
       case MapLandmarkType.library:
         return const Color(0xFF4527A0);
-
-      // عبادة
       case MapLandmarkType.mosque:
         return const Color(0xFF00897B);
       case MapLandmarkType.church:
         return const Color(0xFF5D4037);
-
-      // مالية
       case MapLandmarkType.bank:
         return const Color(0xFF1565C0);
       case MapLandmarkType.atm:
         return const Color(0xFF0277BD);
-
-      // مواصلات
       case MapLandmarkType.fuel:
         return const Color(0xFFF57C00);
       case MapLandmarkType.chargingStation:
@@ -92,8 +82,20 @@ class LandmarkMarkerImages {
         return const Color(0xFF37474F);
       case MapLandmarkType.taxi:
         return const Color(0xFFFBC02D);
-
-      // خدمات عامة
+      case MapLandmarkType.roundabout:
+        return const Color(0xFF455A64);
+      case MapLandmarkType.trafficLight:
+        return const Color(0xFFD32F2F);
+      case MapLandmarkType.pedestrianBridge:
+        return const Color(0xFF00897B);
+      case MapLandmarkType.vehicleBridge:
+        return const Color(0xFF546E7A);
+      case MapLandmarkType.crosswalk:
+        return const Color(0xFF00796B);
+      case MapLandmarkType.tunnel:
+        return const Color(0xFF37474F);
+      case MapLandmarkType.warningTriangle:
+        return const Color(0xFFF9A825);
       case MapLandmarkType.government:
         return const Color(0xFF546E7A);
       case MapLandmarkType.police:
@@ -104,8 +106,6 @@ class LandmarkMarkerImages {
         return const Color(0xFF455A64);
       case MapLandmarkType.embassy:
         return const Color(0xFF37474F);
-
-      // ترفيه وثقافة
       case MapLandmarkType.park:
         return const Color(0xFF2E7D32);
       case MapLandmarkType.playground:
@@ -126,8 +126,6 @@ class LandmarkMarkerImages {
         return const Color(0xFF0288D1);
       case MapLandmarkType.attraction:
         return const Color(0xFF8D6E63);
-
-      // خدمات أخرى
       case MapLandmarkType.carRepair:
         return const Color(0xFF616161);
       case MapLandmarkType.carRental:
@@ -136,15 +134,17 @@ class LandmarkMarkerImages {
         return const Color(0xFF26A69A);
       case MapLandmarkType.hairdresser:
         return const Color(0xFFEC407A);
+      case MapLandmarkType.barber:
+        return const Color(0xFF5D4037);
+      case MapLandmarkType.beautySalon:
+        return const Color(0xFFE91E63);
       case MapLandmarkType.toilet:
         return const Color(0xFF78909C);
-
       case MapLandmarkType.other:
         return const Color(0xFF607D8B);
     }
   }
 
-  /// أيقونات Material الأقرب لرموز Mapbox Maki.
   static IconData iconDataFor(MapLandmarkType type) {
     switch (type) {
       case MapLandmarkType.restaurant:
@@ -159,6 +159,8 @@ class LandmarkMarkerImages {
         return Icons.local_bar_rounded;
       case MapLandmarkType.hotel:
         return Icons.hotel_rounded;
+      case MapLandmarkType.house:
+        return Icons.home_rounded;
       case MapLandmarkType.shop:
         return Icons.storefront_rounded;
       case MapLandmarkType.supermarket:
@@ -171,6 +173,8 @@ class LandmarkMarkerImages {
         return Icons.store_mall_directory_rounded;
       case MapLandmarkType.hospital:
         return Icons.local_hospital_rounded;
+      case MapLandmarkType.medicalCenter:
+        return Icons.health_and_safety_rounded;
       case MapLandmarkType.pharmacy:
         return Icons.local_pharmacy_rounded;
       case MapLandmarkType.clinic:
@@ -181,6 +185,8 @@ class LandmarkMarkerImages {
         return Icons.school_rounded;
       case MapLandmarkType.university:
         return Icons.account_balance_rounded;
+      case MapLandmarkType.college:
+        return Icons.school_outlined;
       case MapLandmarkType.kindergarten:
         return Icons.child_care_rounded;
       case MapLandmarkType.library:
@@ -207,6 +213,20 @@ class LandmarkMarkerImages {
         return Icons.flight_rounded;
       case MapLandmarkType.taxi:
         return Icons.local_taxi_rounded;
+      case MapLandmarkType.roundabout:
+        return Icons.roundabout_left_rounded;
+      case MapLandmarkType.trafficLight:
+        return Icons.traffic_rounded;
+      case MapLandmarkType.pedestrianBridge:
+        return Icons.directions_walk_rounded;
+      case MapLandmarkType.vehicleBridge:
+        return Icons.directions_car_filled_rounded;
+      case MapLandmarkType.crosswalk:
+        return Icons.transfer_within_a_station_rounded;
+      case MapLandmarkType.tunnel:
+        return Icons.subway_rounded;
+      case MapLandmarkType.warningTriangle:
+        return Icons.warning_amber_rounded;
       case MapLandmarkType.government:
         return Icons.account_balance_outlined;
       case MapLandmarkType.police:
@@ -245,6 +265,10 @@ class LandmarkMarkerImages {
         return Icons.local_laundry_service_rounded;
       case MapLandmarkType.hairdresser:
         return Icons.content_cut_rounded;
+      case MapLandmarkType.barber:
+        return Icons.face_retouching_natural_rounded;
+      case MapLandmarkType.beautySalon:
+        return Icons.spa_rounded;
       case MapLandmarkType.toilet:
         return Icons.wc_rounded;
       case MapLandmarkType.other:
@@ -252,7 +276,6 @@ class LandmarkMarkerImages {
     }
   }
 
-  /// PNG جاهز لـ Mapbox PointAnnotation (مع تخزين مؤقت).
   static Future<Uint8List> bytesFor(MapLandmarkType type) async {
     final hit = _cache[type];
     if (hit != null) return hit;
@@ -261,7 +284,6 @@ class LandmarkMarkerImages {
     return bytes;
   }
 
-  /// تحميل مسبق لكل الأنواع (اختياري عند فتح الخريطة).
   static Future<void> preloadAll() async {
     for (final t in MapLandmarkType.values) {
       await bytesFor(t);
