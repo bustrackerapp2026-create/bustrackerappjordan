@@ -5,6 +5,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/map/map_constants.dart';
 import '../../../core/map/map_core.dart';
 import '../../../core/map/map_landmarks_display_mixin.dart';
 import '../../../core/map/map_utils.dart';
@@ -22,6 +23,7 @@ import '../../../passenger/widgets/active_trip_banner.dart';
 import '../../../passenger/widgets/passenger_live_status_bar.dart';
 import '../../../passenger/widgets/passenger_map_fabs.dart';
 import '../../../services/analytics_service.dart';
+import '../../../services/map_camera_prefs_service.dart';
 import '../../../services/route_prefs_service.dart';
 import '../../../services/route_plan_service.dart';
 import '../../../services/trip_service.dart';
@@ -59,6 +61,9 @@ class _MapTabState extends State<MapTab>
 
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  String get mapCameraPrefsRole => MapCameraPrefsService.rolePassenger;
 
   @override
   bool get suppressPoiTap => isAddingPickupPoint;
@@ -155,6 +160,7 @@ class _MapTabState extends State<MapTab>
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
+      unawaited(persistCurrentCamera());
       stopLiveDriverTracking();
     }
   }
@@ -350,14 +356,7 @@ class _MapTabState extends State<MapTab>
     ]);
     if (!mounted) return;
 
-    mapboxMap?.setCamera(
-      CameraOptions(
-        center: Point(coordinates: Position(35.9106, 31.9522)),
-        zoom: 12.0,
-        pitch: 0,
-        bearing: 0,
-      ),
-    );
+    await restoreInitialCamera(fallbackZoom: MapConstants.cityZoom);
 
     await Future<void>.delayed(const Duration(milliseconds: 120));
     if (!mounted) return;
