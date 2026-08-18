@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/map/map_core.dart';
+import '../../../core/map/map_landmarks_display_mixin.dart';
 import '../../../core/map/map_utils.dart';
 import '../../../core/pickup/pickup_point_mixin.dart';
 import '../../../core/trip/trip_manager_mixin.dart';
@@ -35,7 +36,8 @@ class _DriverMapTabState extends State<DriverMapTab>
         PickupPointMixin<DriverMapTab>,
         TripManagerMixin<DriverMapTab>,
         DriverLocationMixin<DriverMapTab>,
-        RoutePlanRecordingMixin<DriverMapTab> {
+        RoutePlanRecordingMixin<DriverMapTab>,
+        MapLandmarksDisplayMixin<DriverMapTab> {
   String _selectedRoute = AppConstants.jordanRoutes.first;
   bool _mapInitialized = false;
   bool _showMap = false;
@@ -82,12 +84,19 @@ class _DriverMapTabState extends State<DriverMapTab>
           (driver.isOnline || driver.isTripActive)) {
         unawaited(ensureDriverTrackingRunning());
       }
+      listenToDisplayLandmarks();
     }
+  }
+
+  void _onCameraChanged(CameraChangedEventData data) {
+    onCameraChangedForDebug(data);
+    onCameraChangedForDisplayLandmarks();
   }
 
   @override
   void dispose() {
     _staleCheckTimer?.cancel();
+    disposeDisplayLandmarks();
     disposeMapDebug();
     WidgetsBinding.instance.removeObserver(this);
     disposeRoutePlanRecording();
@@ -100,18 +109,33 @@ class _DriverMapTabState extends State<DriverMapTab>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     onDriverLocationLifecycle(state);
-    if (state == AppLifecycleState.resumed && mounted) setState(() {});
+    if (state == AppLifecycleState.resumed && mounted) {
+      listenToDisplayLandmarks();
+      setState(() {});
+    }
   }
 
   @override
   void onStyleChanged() {
     listenToPickupPoints();
     unawaited(initRoutePlanLayer());
+    unawaited(redrawDisplayLandmarks());
   }
 
   @override
   void handleAnnotationTap(PointAnnotation annotation) {
     if (!mounted) return;
+
+    final landmarkId = findDisplayLandmarkIdByAnnotation(annotation);
+    if (landmarkId != null) {
+      final m = getDisplayLandmarkById(landmarkId);
+      if (m != null) {
+        MapUtils.lightHaptic();
+        showDisplayLandmarkInfoSheet(context, m);
+      }
+      return;
+    }
+
     final pickupId = findPickupIdByAnnotation(annotation);
     if (pickupId != null) {
       MapUtils.lightHaptic();
@@ -146,6 +170,7 @@ class _DriverMapTabState extends State<DriverMapTab>
       listenToPickupPoints();
       await initRoutePlanLayer();
       if (!mounted) return;
+      listenToDisplayLandmarks();
       final auth = context.read<AuthProvider>();
       if (auth.userId != null && auth.userId!.isNotEmpty) {
         listenLinePlannedRoutes(_selectedRoute);
@@ -280,7 +305,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                   textureView: true,
                   onMapCreated: _onMapCreated,
                   onCameraChangeListener:
-                      widget.isActive ? onCameraChangedForDebug : null,
+                      widget.isActive ? _onCameraChanged : null,
                   styleUri: currentMapStyle,
                   // ignore: deprecated_member_use
                   onTapListener: (event) {
