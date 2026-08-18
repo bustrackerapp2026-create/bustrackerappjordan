@@ -10,6 +10,7 @@ class AdminMapFabs extends StatelessWidget {
   final bool isAddingPickupPoint;
   final bool isDrawingRoute;
   final bool isAddingLandmark;
+  final bool isAddingTextLabel;
   final bool isLoadingLocation;
   final AdminRouteDirectionFilter routeFilter;
   final int outboundCount;
@@ -23,6 +24,7 @@ class AdminMapFabs extends StatelessWidget {
   final VoidCallback onMapLayers;
   final VoidCallback onSearchRoutes;
   final VoidCallback onToggleAddLandmark;
+  final VoidCallback onToggleAddTextLabel;
 
   const AdminMapFabs({
     super.key,
@@ -31,6 +33,7 @@ class AdminMapFabs extends StatelessWidget {
     required this.isAddingPickupPoint,
     required this.isDrawingRoute,
     required this.isAddingLandmark,
+    required this.isAddingTextLabel,
     required this.isLoadingLocation,
     required this.routeFilter,
     required this.outboundCount,
@@ -44,6 +47,7 @@ class AdminMapFabs extends StatelessWidget {
     required this.onMapLayers,
     required this.onSearchRoutes,
     required this.onToggleAddLandmark,
+    required this.onToggleAddTextLabel,
   });
 
   @override
@@ -114,6 +118,24 @@ class AdminMapFabs extends StatelessWidget {
                 isDrawingRoute ? Colors.white : const Color(0xFF7C3AED),
             child: Icon(
               isDrawingRoute ? Icons.close : Icons.timeline_rounded,
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 500,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: 'admin_add_text_label_fab',
+            onPressed: onToggleAddTextLabel,
+            backgroundColor:
+                isAddingTextLabel ? const Color(0xFF1565C0) : Colors.white,
+            foregroundColor:
+                isAddingTextLabel ? Colors.white : const Color(0xFF1565C0),
+            elevation: 4,
+            shape: const CircleBorder(),
+            tooltip: isAddingTextLabel ? 'إلغاء إضافة نص' : 'إضافة نص / اسم شارع',
+            child: Icon(
+              isAddingTextLabel ? Icons.close : Icons.text_fields_rounded,
             ),
           ),
         ),
