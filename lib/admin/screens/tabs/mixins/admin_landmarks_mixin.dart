@@ -81,9 +81,7 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
               iconAnchor: IconAnchor.CENTER,
             ),
           );
-          if (ann != null) {
-            _landmarkAnnotations[m.id] = ann;
-          }
+          _landmarkAnnotations[m.id] = ann;
         } catch (e) {
           MapUtils.log('landmark ann ${m.id}: $e', tag: 'AdminLandmarks');
         }
