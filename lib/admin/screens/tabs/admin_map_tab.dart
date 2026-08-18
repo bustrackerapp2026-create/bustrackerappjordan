@@ -647,7 +647,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     } else if (action == PickupSheetAction.approve) {
       await _pickupManager.updatePickupPoint(
         pointId: pickupId,
-        data: {'status': 'rejected'},
+        data: {'status': 'approved'},
       );
       if (!mounted) return;
       _safeSnack('✅ تم اعتماد النقطة');
