@@ -5,48 +5,152 @@ import 'package:flutter/material.dart';
 
 import '../../models/map_landmark.dart';
 
-/// أيقونات معالم المشروع — أسلوب قريب من Google Maps / Mapbox POI.
-/// الحجم على الشاشة يتغيّر مع الزوم عبر [iconSizeForZoom].
+/// أيقونات معالم المشروع — أسلوب قريب من Google Maps POI:
+/// - حجم صغير وواضح على الشاشة
+/// - ظهور/اختفاء حسب أهمية النوع مع الزوم (LOD)
+/// - الاسم يظهر لاحقاً وبخط بحجم قريب من Google
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
   /// حجم الصورة المولَّدة (px) — دقة كافية للريتينا.
-  static const double markerSize = 80;
+  static const double markerSize = 72;
 
-  /// حجم أساسي عند زوم المدينة (~14) قبل تطبيق منحنى الزوم.
-  static const double baseMapIconSize = 0.95;
-
-  /// حجم اسم المعلم تحت الأيقونة عند الزوم المتوسط.
-  static const double labelTextSize = 12.0;
-
-  /// يظهر الاسم من هذا الزوم فما فوق (مثل تسميات Google POI).
-  static const double labelMinZoom = 13.5;
+  /// حجم أساسي مرجعي (قبل منحنى الزوم).
+  static const double baseMapIconSize = 0.58;
 
   static final Map<MapLandmarkType, Uint8List> _cache = {};
 
-  /// حجم الأيقونة على الشاشة حسب زوم الكاميرا — سلوك قريب من Google Maps:
-  /// الأيقونة تبقى مقروءة عند الابتعاد، وتكبر قليلاً عند الاقتراب دون تضخم مفرط.
-  static double iconSizeForZoom(double zoom) {
-    if (zoom <= 11) return 0.55;
-    if (zoom <= 12.5) return 0.72;
-    if (zoom <= 14) return 0.88;
-    if (zoom <= 15.5) return 1.0;
-    if (zoom <= 17) return 1.12;
-    return 1.22;
+  // ─── Level of Detail (مثل Google Maps) ───────────────────────────
+
+  /// أقل زوم تظهر فيه أيقونة هذا النوع.
+  /// الأنواع الأهم تظهر من بعيد؛ التفاصيل المحلية فقط عند الاقتراب.
+  static double minZoomFor(MapLandmarkType type) {
+    switch (type) {
+      // أولوية عالية جداً — ظاهرة من زوم المدينة
+      case MapLandmarkType.airport:
+      case MapLandmarkType.university:
+      case MapLandmarkType.hospital:
+      case MapLandmarkType.stadium:
+      case MapLandmarkType.trainStation:
+        return 11.0;
+
+      // أولوية عالية
+      case MapLandmarkType.mosque:
+      case MapLandmarkType.church:
+      case MapLandmarkType.government:
+      case MapLandmarkType.police:
+      case MapLandmarkType.fireStation:
+      case MapLandmarkType.school:
+      case MapLandmarkType.college:
+      case MapLandmarkType.medicalCenter:
+      case MapLandmarkType.busStation:
+      case MapLandmarkType.hotel:
+      case MapLandmarkType.park:
+      case MapLandmarkType.museum:
+      case MapLandmarkType.attraction:
+      case MapLandmarkType.zoo:
+      case MapLandmarkType.embassy:
+      case MapLandmarkType.beach:
+        return 12.2;
+
+      // متوسطة
+      case MapLandmarkType.restaurant:
+      case MapLandmarkType.supermarket:
+      case MapLandmarkType.market:
+      case MapLandmarkType.bank:
+      case MapLandmarkType.fuel:
+      case MapLandmarkType.pharmacy:
+      case MapLandmarkType.clinic:
+      case MapLandmarkType.library:
+      case MapLandmarkType.cinema:
+      case MapLandmarkType.gym:
+      case MapLandmarkType.vehicleBridge:
+      case MapLandmarkType.tunnel:
+      case MapLandmarkType.shoppingMallFake: // ignored if not present
+        return 13.4;
+
+      // منخفضة
+      case MapLandmarkType.cafe:
+      case MapLandmarkType.fastFood:
+      case MapLandmarkType.bakery:
+      case MapLandmarkType.shop:
+      case MapLandmarkType.clothing:
+      case MapLandmarkType.convenience:
+      case MapLandmarkType.parking:
+      case MapLandmarkType.atm:
+      case MapLandmarkType.chargingStation:
+      case MapLandmarkType.kindergarten:
+      case MapLandmarkType.dentist:
+      case MapLandmarkType.postOffice:
+      case MapLandmarkType.carRepair:
+      case MapLandmarkType.carRental:
+      case MapLandmarkType.playground:
+      case MapLandmarkType.aquarium:
+      case MapLandmarkType.house:
+      case MapLandmarkType.taxi:
+      case MapLandmarkType.bar:
+        return 14.4;
+
+      // محلية جداً — فقط عند الاقتراب الشديد
+      case MapLandmarkType.laundry:
+      case MapLandmarkType.hairdresser:
+      case MapLandmarkType.barber:
+      case MapLandmarkType.beautySalon:
+      case MapLandmarkType.toilet:
+      case MapLandmarkType.roundabout:
+      case MapLandmarkType.trafficLight:
+      case MapLandmarkType.pedestrianBridge:
+      case MapLandmarkType.crosswalk:
+      case MapLandmarkType.warningTriangle:
+      case MapLandmarkType.other:
+        return 15.4;
+    }
   }
+
+  /// أقل زوم يظهر فيه اسم المعلم (بعد ظهور الأيقونة بقليل).
+  static double labelMinZoomFor(MapLandmarkType type) {
+    final iconMin = minZoomFor(type);
+    // الاسم يظهر متأخراً قليلاً عن الأيقونة — مثل Google
+    return (iconMin + 0.9).clamp(13.0, 16.2);
+  }
+
+  static bool isVisibleAtZoom(MapLandmarkType type, double zoom) =>
+      zoom >= minZoomFor(type);
+
+  static bool showLabelAtZoom(MapLandmarkType type, double zoom) =>
+      zoom >= labelMinZoomFor(type);
+
+  // ─── حجم الأيقونة والخط (قريب من Google POI) ─────────────────────
+
+  /// حجم الأيقونة على الشاشة حسب الزوم.
+  /// Google POI تقريباً 18–28px؛ مع markerSize=72 → iconSize ~0.42–0.72.
+  static double iconSizeForZoom(double zoom) {
+    if (zoom <= 11.5) return 0.40;
+    if (zoom <= 12.5) return 0.46;
+    if (zoom <= 13.5) return 0.52;
+    if (zoom <= 14.5) return 0.58;
+    if (zoom <= 15.5) return 0.64;
+    if (zoom <= 16.5) return 0.70;
+    return 0.76;
+  }
+
+  /// توافق قديم: يظهر الاسم عند زوم متوسط فما فوق (بدون نوع).
+  static const double labelMinZoom = 13.5;
 
   static bool showLabelForZoom(double zoom) => zoom >= labelMinZoom;
 
+  /// حجم خط الاسم — قريب من تسميات Google (~10–12.5).
   static double textSizeForZoom(double zoom) {
-    if (zoom < labelMinZoom) return 0;
-    if (zoom < 15) return 11;
-    if (zoom < 16.5) return 12;
-    return 13;
+    if (zoom < 13.5) return 0;
+    if (zoom < 14.5) return 10.0;
+    if (zoom < 15.5) return 10.8;
+    if (zoom < 16.5) return 11.6;
+    return 12.4;
   }
 
-  /// إزاحة النص تحت الأيقونة (em) — تزداد قليلاً مع كبر الأيقونة.
+  /// إزاحة النص تحت الأيقونة (em).
   static List<double> textOffsetForZoom(double zoom) {
-    final y = zoom >= 16 ? 1.25 : (zoom >= 14 ? 1.15 : 1.05);
+    final y = zoom >= 16 ? 1.20 : (zoom >= 14.5 ? 1.10 : 1.02);
     return [0.0, y];
   }
 
@@ -334,14 +438,14 @@ class LandmarkMarkerImages {
     final canvas = Canvas(recorder);
     final color = colorFor(type);
 
-    // دائرة أوضح — حجم شاشة أقرب لـ Google POI (~28–32px عند scale 1)
-    const radius = 22.0;
-    const inner = 18.0;
+    // دائرة أنظف وأصغر قليلاً — أقرب لحجم Google POI على الشاشة
+    const radius = 18.5;
+    const inner = 15.0;
 
     final shadow = Paint()
-      ..color = Colors.black.withValues(alpha: 0.18)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.5);
-    canvas.drawCircle(const Offset(size / 2, size / 2 + 1.2), radius, shadow);
+      ..color = Colors.black.withValues(alpha: 0.16)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
+    canvas.drawCircle(const Offset(size / 2, size / 2 + 1.0), radius, shadow);
 
     final outer = Paint()..color = Colors.white;
     canvas.drawCircle(const Offset(size / 2, size / 2), radius, outer);
@@ -354,7 +458,7 @@ class LandmarkMarkerImages {
       text: TextSpan(
         text: String.fromCharCode(icon.codePoint),
         style: TextStyle(
-          fontSize: 20,
+          fontSize: 16.5,
           fontFamily: icon.fontFamily,
           package: icon.fontPackage,
           color: Colors.white,
@@ -364,7 +468,7 @@ class LandmarkMarkerImages {
     )..layout();
     tp.paint(
       canvas,
-      Offset((size - tp.width) / 2, (size - tp.height) / 2 - 0.5),
+      Offset((size - tp.width) / 2, (size - tp.height) / 2 - 0.4),
     );
 
     final picture = recorder.endRecording();
