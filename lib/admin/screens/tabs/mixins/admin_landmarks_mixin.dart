@@ -10,9 +10,7 @@ import '../../../../core/map/map_utils.dart';
 import '../../../../models/map_landmark.dart';
 import '../../../../services/map_landmark_service.dart';
 
-/// عرض معالم mapLandmarks مع سلوك زوم قريب من Google Maps:
-/// - حجم أيقونة/خط قريب من Google POI
-/// - ظهور/اختفاء حسب أهمية النوع مع الزوم (LOD)
+/// معالم الأدمن — نفس أسلوب Google Maps POI (حجم/خط/LOD).
 mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final MapLandmarkService _landmarkService = MapLandmarkService();
   StreamSubscription<List<MapLandmark>>? _landmarksSub;
@@ -50,7 +48,6 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     );
   }
 
-  /// يُستدعى من مستمع الكاميرا — يحدّث الحجم/الاسم/الظهور حسب الزوم.
   void onCameraChangedForLandmarks() {
     _landmarkZoomDebounce?.cancel();
     _landmarkZoomDebounce = Timer(const Duration(milliseconds: 160), () {
@@ -100,6 +97,34 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
+  PointAnnotationOptions _optionsFor(
+    MapLandmark m,
+    Uint8List bytes,
+    double zoom,
+  ) {
+    final name = m.name.trim();
+    final showLabel =
+        LandmarkMarkerImages.showLabelAtZoom(m.type, zoom) && name.isNotEmpty;
+    final textSize =
+        showLabel ? LandmarkMarkerImages.textSizeForZoom(zoom) : 0.0;
+    return PointAnnotationOptions(
+      geometry: Point(coordinates: Position(m.longitude, m.latitude)),
+      image: bytes,
+      iconSize: LandmarkMarkerImages.iconSizeForZoom(zoom),
+      iconAnchor: IconAnchor.CENTER,
+      textField: showLabel ? name : null,
+      textSize: textSize,
+      textColor: LandmarkMarkerImages.labelTextColor,
+      textHaloColor: LandmarkMarkerImages.labelHaloColor,
+      textHaloWidth: LandmarkMarkerImages.labelHaloWidth,
+      textLetterSpacing: LandmarkMarkerImages.labelLetterSpacing,
+      textAnchor: TextAnchor.TOP,
+      textOffset: LandmarkMarkerImages.textOffsetForZoom(zoom),
+      textMaxWidth: LandmarkMarkerImages.labelMaxWidth,
+      textJustify: TextJustify.CENTER,
+    );
+  }
+
   Future<void> _syncLandmarksForZoom(double zoom) async {
     if (_drawingLandmarks || pointAnnotationManager == null || !showLandmarks) {
       return;
@@ -128,39 +153,12 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           .toList();
       if (missing.isNotEmpty) {
         await _ensureIconBytes(missing.map((m) => m.type).toSet());
-        final iconSize = LandmarkMarkerImages.iconSizeForZoom(zoom);
-        final textOffset = LandmarkMarkerImages.textOffsetForZoom(zoom);
-
         for (final m in missing) {
           final bytes = _iconBytesCache[m.type];
           if (bytes == null) continue;
-          final name = m.name.trim();
-          final showLabel =
-              LandmarkMarkerImages.showLabelAtZoom(m.type, zoom) &&
-                  name.isNotEmpty;
-          final textSize = showLabel
-              ? LandmarkMarkerImages.textSizeForZoom(zoom)
-              : 0.0;
           try {
-            final ann = await pointAnnotationManager!.create(
-              PointAnnotationOptions(
-                geometry: Point(
-                  coordinates: Position(m.longitude, m.latitude),
-                ),
-                image: bytes,
-                iconSize: iconSize,
-                iconAnchor: IconAnchor.CENTER,
-                textField: showLabel ? name : null,
-                textSize: textSize,
-                textColor: 0xFF212121,
-                textHaloColor: 0xFFFFFFFF,
-                textHaloWidth: 1.15,
-                textAnchor: TextAnchor.TOP,
-                textOffset: textOffset,
-                textMaxWidth: 9,
-                textJustify: TextJustify.CENTER,
-              ),
-            );
+            final ann =
+                await pointAnnotationManager!.create(_optionsFor(m, bytes, zoom));
             _landmarkAnnotations[m.id] = ann;
           } catch (e) {
             MapUtils.log('landmark ann ${m.id}: $e', tag: 'AdminLandmarks');
@@ -197,12 +195,13 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           ann.textField = name;
           ann.textSize = textSize;
           ann.textOffset = textOffset;
-          ann.textColor = 0xFF212121;
-          ann.textHaloColor = 0xFFFFFFFF;
-          ann.textHaloWidth = 1.15;
+          ann.textColor = LandmarkMarkerImages.labelTextColor;
+          ann.textHaloColor = LandmarkMarkerImages.labelHaloColor;
+          ann.textHaloWidth = LandmarkMarkerImages.labelHaloWidth;
+          ann.textLetterSpacing = LandmarkMarkerImages.labelLetterSpacing;
           ann.textAnchor = TextAnchor.TOP;
           ann.textJustify = TextJustify.CENTER;
-          ann.textMaxWidth = 9;
+          ann.textMaxWidth = LandmarkMarkerImages.labelMaxWidth;
         } else {
           ann.textField = '';
           ann.textSize = 0;
@@ -236,6 +235,9 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (_drawingLandmarks) return;
     _drawingLandmarks = true;
     try {
+      LandmarkMarkerImages.clearCache();
+      _iconBytesCache.clear();
+
       await _clearLandmarkAnnotations();
       if (_landmarks.isEmpty) return;
 
@@ -253,38 +255,12 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       await _ensureIconBytes(visible.map((m) => m.type).toSet());
       if (pointAnnotationManager == null) return;
 
-      final iconSize = LandmarkMarkerImages.iconSizeForZoom(zoom);
-      final textOffset = LandmarkMarkerImages.textOffsetForZoom(zoom);
-
       for (final m in visible) {
         final bytes = _iconBytesCache[m.type];
         if (bytes == null) continue;
-        final name = m.name.trim();
-        final showLabel =
-            LandmarkMarkerImages.showLabelAtZoom(m.type, zoom) &&
-                name.isNotEmpty;
-        final textSize =
-            showLabel ? LandmarkMarkerImages.textSizeForZoom(zoom) : 0.0;
         try {
-          final ann = await pointAnnotationManager!.create(
-            PointAnnotationOptions(
-              geometry: Point(
-                coordinates: Position(m.longitude, m.latitude),
-              ),
-              image: bytes,
-              iconSize: iconSize,
-              iconAnchor: IconAnchor.CENTER,
-              textField: showLabel ? name : null,
-              textSize: textSize,
-              textColor: 0xFF212121,
-              textHaloColor: 0xFFFFFFFF,
-              textHaloWidth: 1.15,
-              textAnchor: TextAnchor.TOP,
-              textOffset: textOffset,
-              textMaxWidth: 9,
-              textJustify: TextJustify.CENTER,
-            ),
-          );
+          final ann =
+              await pointAnnotationManager!.create(_optionsFor(m, bytes, zoom));
           _landmarkAnnotations[m.id] = ann;
         } catch (e) {
           MapUtils.log('landmark ann ${m.id}: $e', tag: 'AdminLandmarks');

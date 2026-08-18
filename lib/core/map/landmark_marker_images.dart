@@ -12,7 +12,7 @@ import '../../models/map_landmark.dart';
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
-  /// حجم الصورة المولَّدة (px). الدائرة تملأ معظم المساحة لتقليل الحشو الفارغ.
+  /// حجم الصورة المولَّدة (px). الدائرة تملأ معظم المساحة.
   static const double markerSize = 64;
 
   /// لون نص التسمية — رمادي Google (#3C4043)
@@ -21,11 +21,11 @@ class LandmarkMarkerImages {
   /// لون هالة النص
   static const int labelHaloColor = 0xFFFFFFFF;
 
-  /// عرض هالة النص (px) — خفيف مثل Google
-  static const double labelHaloWidth = 0.9;
+  /// عرض هالة النص (px)
+  static const double labelHaloWidth = 0.85;
 
   /// تباعد حروف خفيف
-  static const double labelLetterSpacing = 0.01;
+  static const double labelLetterSpacing = 0.015;
 
   /// أقصى عرض سطر للاسم (em)
   static const double labelMaxWidth = 8;
@@ -123,10 +123,8 @@ class LandmarkMarkerImages {
       zoom >= labelMinZoomFor(type);
 
   // ─── أحجام الشاشة (هدف: دائرة ~16–22px مثل Google) ───────────────
-  //
-  // الصورة 64px والدائرة المرسومة قطرها ~40px داخلها.
-  // iconSize 0.40 → صورة 26px على الشاشة → دائرة ~16px
-  // iconSize 0.52 → صورة 33px → دائرة ~21px
+  // الصورة 64px، قطر الدائرة المرسومة ~40px.
+  // iconSize 0.40 → ~16px دائرة | 0.52 → ~21px دائرة
 
   static double iconSizeForZoom(double zoom) {
     if (zoom <= 11.5) return 0.36;
@@ -142,7 +140,7 @@ class LandmarkMarkerImages {
 
   static bool showLabelForZoom(double zoom) => zoom >= labelMinZoom;
 
-  /// حجم خط Google POI تقريباً ثابت (~11) مع زيادة طفيفة عند الاقتراب.
+  /// حجم خط Google POI تقريباً ثابت (~11).
   static double textSizeForZoom(double zoom) {
     if (zoom < 13.2) return 0;
     if (zoom < 14.5) return 10.5;
@@ -150,7 +148,6 @@ class LandmarkMarkerImages {
     return 11.5;
   }
 
-  /// إزاحة النص تحت الأيقونة (em) — قريبة من المسافة في Google.
   static List<double> textOffsetForZoom(double zoom) {
     final y = zoom >= 16 ? 1.05 : (zoom >= 14.5 ? 0.98 : 0.92);
     return [0.0, y];
@@ -434,33 +431,27 @@ class LandmarkMarkerImages {
 
   static void clearCache() => _cache.clear();
 
-  /// رسم أيقونة دائرية مضغوطة — قطر الدائرة ~40px داخل صورة 64px.
   static Future<Uint8List> _render(MapLandmarkType type) async {
     const size = markerSize;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final color = colorFor(type);
 
-    // دائرة مضغوطة: قطر ~40 من 64 → عند iconSize 0.45 تصبح ~18px على الشاشة
     const radius = 20.0;
     const inner = 16.5;
     final center = Offset(size / 2, size / 2);
 
-    // ظل خفيف جداً (Google POI له ظل ناعم)
     final shadow = Paint()
       ..color = const Color(0x28000000)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.8);
     canvas.drawCircle(center.translate(0, 0.6), radius, shadow);
 
-    // حلقة بيضاء رفيعة
     final outer = Paint()..color = Colors.white;
     canvas.drawCircle(center, radius, outer);
 
-    // التعبئة الملونة
     final fill = Paint()..color = color;
     canvas.drawCircle(center, inner, fill);
 
-    // أيقونة بيضاء بحجم متناسب مع الدائرة الصغيرة
     final icon = iconDataFor(type);
     final tp = TextPainter(
       text: TextSpan(
@@ -481,8 +472,7 @@ class LandmarkMarkerImages {
     );
 
     final picture = recorder.endRecording();
-    // 2x للحدة على شاشات الريتينا
-    final image = await picture.toImage(size.toInt() * 2, size.toInt() * 2);
+    final image = await picture.toImage(size.toInt(), size.toInt());
     final bd = await image.toByteData(format: ui.ImageByteFormat.png);
     return bd!.buffer.asUint8List();
   }
