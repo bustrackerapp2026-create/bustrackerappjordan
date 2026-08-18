@@ -11,8 +11,8 @@ import '../../../../models/map_landmark.dart';
 import '../../../../services/map_landmark_service.dart';
 
 /// عرض معالم mapLandmarks مع سلوك زوم قريب من Google Maps:
-/// - حجم أيقونة يتغيّر تدريجياً مع الزوم
-/// - الاسم يظهر عند الاقتراب (زوم >= 13.5)
+/// - حجم أيقونة/خط قريب من Google POI
+/// - ظهور/اختفاء حسب أهمية النوع مع الزوم (LOD)
 mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final MapLandmarkService _landmarkService = MapLandmarkService();
   StreamSubscription<List<MapLandmark>>? _landmarksSub;
@@ -26,6 +26,8 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   double _lastLandmarkZoom = -1;
   Timer? _landmarkZoomDebounce;
+
+  final Map<MapLandmarkType, Uint8List> _iconBytesCache = {};
 
   final ValueNotifier<int> landmarksUiTick = ValueNotifier<int>(0);
 
@@ -48,10 +50,10 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     );
   }
 
-  /// يُستدعى من مستمع الكاميرا — يحدّث الحجم/الاسم حسب الزوم مثل Google Maps.
+  /// يُستدعى من مستمع الكاميرا — يحدّث الحجم/الاسم/الظهور حسب الزوم.
   void onCameraChangedForLandmarks() {
     _landmarkZoomDebounce?.cancel();
-    _landmarkZoomDebounce = Timer(const Duration(milliseconds: 180), () {
+    _landmarkZoomDebounce = Timer(const Duration(milliseconds: 160), () {
       unawaited(_applyLandmarkScaleFromCamera());
     });
   }
@@ -59,21 +61,116 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Future<void> _applyLandmarkScaleFromCamera() async {
     if (!showLandmarks ||
         mapboxMap == null ||
-        pointAnnotationManager == null ||
-        _landmarkAnnotations.isEmpty) {
+        pointAnnotationManager == null) {
       return;
     }
     try {
-      final state = await mapboxMap!.getCameraState();
-      final zoom = state.zoom;
-      // تجاهل تغيّرات الزوم الصغيرة جداً لتقليل العمل
-      if (_lastLandmarkZoom >= 0 && (zoom - _lastLandmarkZoom).abs() < 0.15) {
+      final zoom = (await mapboxMap!.getCameraState()).zoom;
+      if (_lastLandmarkZoom >= 0 && (zoom - _lastLandmarkZoom).abs() < 0.12) {
         return;
       }
+      final prev = _lastLandmarkZoom;
       _lastLandmarkZoom = zoom;
-      await _updateLandmarkAnnotationsStyle(zoom);
+
+      if (prev < 0 || _lodSetChanged(prev, zoom)) {
+        await _syncLandmarksForZoom(zoom);
+      } else {
+        await _updateLandmarkAnnotationsStyle(zoom);
+      }
     } catch (e) {
       MapUtils.log('landmark zoom scale: $e', tag: 'AdminLandmarks');
+    }
+  }
+
+  bool _lodSetChanged(double a, double b) {
+    for (final t in MapLandmarkType.values) {
+      if (LandmarkMarkerImages.isVisibleAtZoom(t, a) !=
+          LandmarkMarkerImages.isVisibleAtZoom(t, b)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<void> _ensureIconBytes(Iterable<MapLandmarkType> types) async {
+    for (final t in types) {
+      if (!_iconBytesCache.containsKey(t)) {
+        _iconBytesCache[t] = await LandmarkMarkerImages.bytesFor(t);
+      }
+    }
+  }
+
+  Future<void> _syncLandmarksForZoom(double zoom) async {
+    if (_drawingLandmarks || pointAnnotationManager == null || !showLandmarks) {
+      return;
+    }
+    _drawingLandmarks = true;
+    try {
+      final visible = _landmarks
+          .where((m) => LandmarkMarkerImages.isVisibleAtZoom(m.type, zoom))
+          .toList();
+      final visibleIds = visible.map((m) => m.id).toSet();
+
+      final toRemove = _landmarkAnnotations.keys
+          .where((id) => !visibleIds.contains(id))
+          .toList();
+      for (final id in toRemove) {
+        final ann = _landmarkAnnotations.remove(id);
+        if (ann != null) {
+          try {
+            await pointAnnotationManager!.delete(ann);
+          } catch (_) {}
+        }
+      }
+
+      final missing = visible
+          .where((m) => !_landmarkAnnotations.containsKey(m.id))
+          .toList();
+      if (missing.isNotEmpty) {
+        await _ensureIconBytes(missing.map((m) => m.type).toSet());
+        final iconSize = LandmarkMarkerImages.iconSizeForZoom(zoom);
+        final textOffset = LandmarkMarkerImages.textOffsetForZoom(zoom);
+
+        for (final m in missing) {
+          final bytes = _iconBytesCache[m.type];
+          if (bytes == null) continue;
+          final name = m.name.trim();
+          final showLabel =
+              LandmarkMarkerImages.showLabelAtZoom(m.type, zoom) &&
+                  name.isNotEmpty;
+          final textSize = showLabel
+              ? LandmarkMarkerImages.textSizeForZoom(zoom)
+              : 0.0;
+          try {
+            final ann = await pointAnnotationManager!.create(
+              PointAnnotationOptions(
+                geometry: Point(
+                  coordinates: Position(m.longitude, m.latitude),
+                ),
+                image: bytes,
+                iconSize: iconSize,
+                iconAnchor: IconAnchor.CENTER,
+                textField: showLabel ? name : null,
+                textSize: textSize,
+                textColor: 0xFF212121,
+                textHaloColor: 0xFFFFFFFF,
+                textHaloWidth: 1.15,
+                textAnchor: TextAnchor.TOP,
+                textOffset: textOffset,
+                textMaxWidth: 9,
+                textJustify: TextJustify.CENTER,
+              ),
+            );
+            _landmarkAnnotations[m.id] = ann;
+          } catch (e) {
+            MapUtils.log('landmark ann ${m.id}: $e', tag: 'AdminLandmarks');
+          }
+        }
+      }
+
+      await _updateLandmarkAnnotationsStyle(zoom);
+    } finally {
+      _drawingLandmarks = false;
     }
   }
 
@@ -82,30 +179,31 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _updatingLandmarkScale = true;
     try {
       final iconSize = LandmarkMarkerImages.iconSizeForZoom(zoom);
-      final showLabel = LandmarkMarkerImages.showLabelForZoom(zoom);
-      final textSize = LandmarkMarkerImages.textSizeForZoom(zoom);
       final textOffset = LandmarkMarkerImages.textOffsetForZoom(zoom);
 
       for (final entry in _landmarkAnnotations.entries) {
-        final id = entry.key;
-        final ann = entry.value;
-        final m = _landmarkById[id];
+        final m = _landmarkById[entry.key];
         if (m == null) continue;
+        final ann = entry.value;
         final name = m.name.trim();
+        final showLabel =
+            LandmarkMarkerImages.showLabelAtZoom(m.type, zoom) &&
+                name.isNotEmpty;
+        final textSize =
+            showLabel ? LandmarkMarkerImages.textSizeForZoom(zoom) : 0.0;
 
         ann.iconSize = iconSize;
-        if (showLabel && name.isNotEmpty) {
+        if (showLabel) {
           ann.textField = name;
           ann.textSize = textSize;
           ann.textOffset = textOffset;
           ann.textColor = 0xFF212121;
           ann.textHaloColor = 0xFFFFFFFF;
-          ann.textHaloWidth = 1.2;
+          ann.textHaloWidth = 1.15;
           ann.textAnchor = TextAnchor.TOP;
           ann.textJustify = TextJustify.CENTER;
-          ann.textMaxWidth = 10;
+          ann.textMaxWidth = 9;
         } else {
-          // إخفاء الاسم عند الزوم البعيد (مثل Google)
           ann.textField = '';
           ann.textSize = 0;
         }
@@ -141,30 +239,32 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       await _clearLandmarkAnnotations();
       if (_landmarks.isEmpty) return;
 
-      LandmarkMarkerImages.clearCache();
-
-      final types = _landmarks.map((m) => m.type).toSet();
-      final iconBytes = <MapLandmarkType, Uint8List>{};
-      for (final t in types) {
-        iconBytes[t] = await LandmarkMarkerImages.bytesFor(t);
-      }
-      if (pointAnnotationManager == null) return;
-
       double zoom = 14;
       try {
         zoom = (await mapboxMap!.getCameraState()).zoom;
       } catch (_) {}
       _lastLandmarkZoom = zoom;
 
+      final visible = _landmarks
+          .where((m) => LandmarkMarkerImages.isVisibleAtZoom(m.type, zoom))
+          .toList();
+      if (visible.isEmpty) return;
+
+      await _ensureIconBytes(visible.map((m) => m.type).toSet());
+      if (pointAnnotationManager == null) return;
+
       final iconSize = LandmarkMarkerImages.iconSizeForZoom(zoom);
-      final showLabel = LandmarkMarkerImages.showLabelForZoom(zoom);
-      final textSize = LandmarkMarkerImages.textSizeForZoom(zoom);
       final textOffset = LandmarkMarkerImages.textOffsetForZoom(zoom);
 
-      for (final m in _landmarks) {
-        final bytes = iconBytes[m.type];
+      for (final m in visible) {
+        final bytes = _iconBytesCache[m.type];
         if (bytes == null) continue;
         final name = m.name.trim();
+        final showLabel =
+            LandmarkMarkerImages.showLabelAtZoom(m.type, zoom) &&
+                name.isNotEmpty;
+        final textSize =
+            showLabel ? LandmarkMarkerImages.textSizeForZoom(zoom) : 0.0;
         try {
           final ann = await pointAnnotationManager!.create(
             PointAnnotationOptions(
@@ -174,14 +274,14 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
               image: bytes,
               iconSize: iconSize,
               iconAnchor: IconAnchor.CENTER,
-              textField: (showLabel && name.isNotEmpty) ? name : null,
-              textSize: showLabel ? textSize : 0,
+              textField: showLabel ? name : null,
+              textSize: textSize,
               textColor: 0xFF212121,
               textHaloColor: 0xFFFFFFFF,
-              textHaloWidth: 1.2,
+              textHaloWidth: 1.15,
               textAnchor: TextAnchor.TOP,
               textOffset: textOffset,
-              textMaxWidth: 10,
+              textMaxWidth: 9,
               textJustify: TextJustify.CENTER,
             ),
           );
@@ -224,6 +324,7 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _landmarksSub = null;
     _landmarkAnnotations.clear();
     _landmarkById.clear();
+    _iconBytesCache.clear();
     landmarksUiTick.dispose();
   }
 }
