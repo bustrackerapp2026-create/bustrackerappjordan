@@ -7,10 +7,12 @@ class PassengerMapFabs extends StatelessWidget {
   final bool findingNearest;
   final bool findingNearby;
   final bool nearbyModeActive;
+  final bool hasDestination;
   final bool isLoadingPassengerLocation;
   final bool isAddingPickupPoint;
   final VoidCallback? onNearestBus;
   final VoidCallback? onNearbyBuses;
+  final VoidCallback? onSetDestination;
   final VoidCallback onMapLayers;
   final VoidCallback onMyLocation;
   final VoidCallback onTogglePickup;
@@ -20,10 +22,12 @@ class PassengerMapFabs extends StatelessWidget {
     required this.findingNearest,
     this.findingNearby = false,
     this.nearbyModeActive = false,
+    this.hasDestination = false,
     required this.isLoadingPassengerLocation,
     required this.isAddingPickupPoint,
     required this.onNearestBus,
     this.onNearbyBuses,
+    this.onSetDestination,
     required this.onMapLayers,
     required this.onMyLocation,
     required this.onTogglePickup,
@@ -59,6 +63,24 @@ class PassengerMapFabs extends StatelessWidget {
                 ),
           label: Text(
             nearbyModeActive ? 'خطوط موقعي' : 'باصات من هنا',
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+          ),
+        ),
+        const SizedBox(height: 10),
+        FloatingActionButton.extended(
+          heroTag: 'passenger_destination',
+          onPressed: onSetDestination,
+          backgroundColor:
+              hasDestination ? const Color(0xFF7C3AED) : Colors.white,
+          foregroundColor:
+              hasDestination ? Colors.white : const Color(0xFF6D28D9),
+          elevation: 4,
+          icon: Icon(
+            hasDestination ? Icons.flag_rounded : Icons.flag_outlined,
+            size: 20,
+          ),
+          label: Text(
+            hasDestination ? 'تغيير الوجهة' : 'إلى أين؟',
             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
           ),
         ),
