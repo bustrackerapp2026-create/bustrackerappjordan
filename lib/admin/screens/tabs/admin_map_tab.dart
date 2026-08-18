@@ -15,6 +15,7 @@ import '../../../../core/pickup/pickup_point_manager.dart';
 import '../../../../core/pickup/pickup_point_dialog.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../services/location_service.dart';
+import '../../../../services/map_camera_prefs_service.dart';
 import '../../../../services/map_landmark_service.dart';
 import '../../../../services/map_text_label_service.dart';
 import '../../../../models/map_landmark.dart';
@@ -47,6 +48,7 @@ class AdminMapTab extends StatefulWidget {
 
 class _AdminMapTabState extends State<AdminMapTab>
     with
+        WidgetsBindingObserver,
         AutomaticKeepAliveClientMixin,
         MapCoreMixin<AdminMapTab>,
         DriverManagerMixin<AdminMapTab>,
@@ -72,12 +74,22 @@ class _AdminMapTabState extends State<AdminMapTab>
   @override
   bool get wantKeepAlive => true;
 
+  /// حفظ/استعادة آخر موضع كاميرا للأدمن (SharedPreferences).
+  @override
+  String get mapCameraPrefsRole => MapCameraPrefsService.roleAdmin;
+
   @override
   bool get suppressPoiTap =>
       _isAddingPickupPoint ||
       _isAddingLandmark ||
       _isAddingTextLabel ||
       isDrawingRoute;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   void _safeSnack(String message, {bool isError = false}) {
     if (!mounted) return;
@@ -87,6 +99,15 @@ class _AdminMapTabState extends State<AdminMapTab>
   void _onCameraChanged(CameraChangedEventData data) {
     onCameraChangedForDebug(data);
     onCameraChangedForLandmarks();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      unawaited(persistCurrentCamera());
+    }
   }
 
   @override
@@ -145,12 +166,14 @@ class _AdminMapTabState extends State<AdminMapTab>
       pitch: 0,
       bearing: 0,
     ));
+    unawaited(persistCurrentCamera());
     _safeSnack('📍 تم التوجيه إلى: ${focus.pointName}');
   }
 
   @override
   void dispose() {
     disposeMapDebug();
+    WidgetsBinding.instance.removeObserver(this);
     _locationSubscription?.cancel();
     _adminLocationAnnotation = null;
     disposeAdminDrawRoute();
@@ -711,6 +734,7 @@ class _AdminMapTabState extends State<AdminMapTab>
       } catch (_) {
         await flyToFlat(latitude: lat, longitude: lng, zoom: 16);
       }
+      unawaited(persistCurrentCamera());
     }
 
     final manager = pointAnnotationManager;
