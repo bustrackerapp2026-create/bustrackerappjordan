@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/map/map_core.dart';
+import '../../../core/map/map_landmarks_display_mixin.dart';
 import '../../../core/map/map_utils.dart';
 import '../../../core/pickup/nearest_stop_finder.dart';
 import '../../../core/pickup/pickup_point_mixin.dart';
@@ -43,7 +44,8 @@ class _MapTabState extends State<MapTab>
         PickupPointMixin<MapTab>,
         PassengerLocationMixin<MapTab>,
         PassengerLiveTrackingMixin<MapTab>,
-        PassengerPlannedRoutesMixin<MapTab> {
+        PassengerPlannedRoutesMixin<MapTab>,
+        MapLandmarksDisplayMixin<MapTab> {
   String _selectedRoute = AppConstants.jordanRoutes.first;
   bool _mapInitialized = false;
   bool _loggedMapOpened = false;
@@ -119,12 +121,18 @@ class _MapTabState extends State<MapTab>
     }
   }
 
+  void _onCameraChanged(CameraChangedEventData data) {
+    onCameraChangedForDebug(data);
+    onCameraChangedForDisplayLandmarks();
+  }
+
   @override
   void dispose() {
     _openTripsSub?.cancel();
     try {
       liveDriversCount.removeListener(_onLiveCountChanged);
     } catch (_) {}
+    disposeDisplayLandmarks();
     disposePlannedRoutes();
     disposeLiveTracking();
     disposeMapDebug();
@@ -141,6 +149,7 @@ class _MapTabState extends State<MapTab>
       if (mounted) {
         startLiveDriverTracking(routeFilter: _selectedRoute);
         startWatchingPlannedRoutes(_selectedRoute);
+        listenToDisplayLandmarks();
         _watchOpenTrips();
       }
     } else if (state == AppLifecycleState.paused ||
@@ -155,6 +164,7 @@ class _MapTabState extends State<MapTab>
     listenToPickupPoints();
     startLiveDriverTracking(routeFilter: _selectedRoute);
     unawaited(redrawPlannedRoutes());
+    unawaited(redrawDisplayLandmarks());
   }
 
   Future<void> _openDriverSheet(String driverId) async {
@@ -310,6 +320,16 @@ class _MapTabState extends State<MapTab>
       return;
     }
 
+    final landmarkId = findDisplayLandmarkIdByAnnotation(annotation);
+    if (landmarkId != null) {
+      final m = getDisplayLandmarkById(landmarkId);
+      if (m != null) {
+        MapUtils.lightHaptic();
+        showDisplayLandmarkInfoSheet(context, m);
+      }
+      return;
+    }
+
     final pickupId = findPickupIdByAnnotation(annotation);
     if (pickupId != null) {
       MapUtils.lightHaptic();
@@ -346,6 +366,7 @@ class _MapTabState extends State<MapTab>
     listenToPickupPoints();
     startLiveDriverTracking(routeFilter: _selectedRoute);
     startWatchingPlannedRoutes(_selectedRoute);
+    listenToDisplayLandmarks();
 
     if (!_loggedMapOpened) {
       _loggedMapOpened = true;
@@ -476,7 +497,7 @@ class _MapTabState extends State<MapTab>
             key: const ValueKey('passenger_map'),
             textureView: true,
             onMapCreated: _onMapCreated,
-            onCameraChangeListener: onCameraChangedForDebug,
+            onCameraChangeListener: _onCameraChanged,
             styleUri: currentMapStyle,
             // ignore: deprecated_member_use
             onTapListener: (event) {
