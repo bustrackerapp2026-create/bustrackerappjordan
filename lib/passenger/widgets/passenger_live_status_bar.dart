@@ -8,12 +8,16 @@ class PassengerLiveStatusBar extends StatelessWidget {
   final String routeName;
   final int liveCount;
   final AppLocalizations l10n;
+  final bool nearbyMode;
+  final String? nearbyHint;
 
   const PassengerLiveStatusBar({
     super.key,
     required this.routeName,
     required this.liveCount,
     required this.l10n,
+    this.nearbyMode = false,
+    this.nearbyHint,
   });
 
   @override
@@ -61,7 +65,9 @@ class PassengerLiveStatusBar extends StatelessWidget {
                         : Colors.grey.shade100,
                     radius: 18,
                     child: Icon(
-                      Icons.directions_bus_rounded,
+                      nearbyMode
+                          ? Icons.alt_route_rounded
+                          : Icons.directions_bus_rounded,
                       color: hasLive ? AppTheme.primaryColor : Colors.grey,
                       size: 20,
                     ),
@@ -89,7 +95,7 @@ class PassengerLiveStatusBar extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      l10n.liveTracking,
+                      nearbyMode ? 'باصات تمر من موقعك' : l10n.liveTracking,
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
@@ -100,7 +106,9 @@ class PassengerLiveStatusBar extends StatelessWidget {
                     Text(
                       hasLive
                           ? l10n.liveBusesCount(liveCount)
-                          : l10n.noLiveBuses,
+                          : (nearbyMode
+                              ? 'لا باص حي على الخطوط القريبة حالياً'
+                              : l10n.noLiveBuses),
                       style: TextStyle(
                         fontSize: 12,
                         color: hasLive
@@ -113,25 +121,51 @@ class PassengerLiveStatusBar extends StatelessWidget {
                   ],
                 ),
               ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  routeName,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
+              Flexible(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: nearbyMode
+                        ? const Color(0xFF0F766E)
+                        : AppTheme.primaryColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    routeName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
             ],
           ),
-          if (!hasLive) ...[
+          if (nearbyMode && nearbyHint != null && nearbyHint!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFA7F3D0)),
+              ),
+              child: Text(
+                nearbyHint!,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  height: 1.35,
+                  color: Color(0xFF065F46),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ] else if (!hasLive && !nearbyMode) ...[
             const SizedBox(height: 10),
             Container(
               width: double.infinity,
@@ -152,7 +186,7 @@ class PassengerLiveStatusBar extends StatelessWidget {
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'جرّب تغيير الخط من القائمة أعلاه، أو انتظر قليلاً حتى يتصل سائق على هذا المسار.',
+                      'جرّب «باصات من هنا» حسب موقعك، أو غيّر الخط من القائمة.',
                       style: TextStyle(
                         fontSize: 11.5,
                         height: 1.35,

@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 
-/// أزرار خريطة الراكب (أقرب باص، طبقات، موقعي، إضافة نقطة).
+/// أزرار خريطة الراكب.
 class PassengerMapFabs extends StatelessWidget {
   final bool findingNearest;
+  final bool findingNearby;
+  final bool nearbyModeActive;
   final bool isLoadingPassengerLocation;
   final bool isAddingPickupPoint;
   final VoidCallback? onNearestBus;
+  final VoidCallback? onNearbyBuses;
   final VoidCallback onMapLayers;
   final VoidCallback onMyLocation;
   final VoidCallback onTogglePickup;
@@ -15,9 +18,12 @@ class PassengerMapFabs extends StatelessWidget {
   const PassengerMapFabs({
     super.key,
     required this.findingNearest,
+    this.findingNearby = false,
+    this.nearbyModeActive = false,
     required this.isLoadingPassengerLocation,
     required this.isAddingPickupPoint,
     required this.onNearestBus,
+    this.onNearbyBuses,
     required this.onMapLayers,
     required this.onMyLocation,
     required this.onTogglePickup,
@@ -29,12 +35,14 @@ class PassengerMapFabs extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         FloatingActionButton.extended(
-          heroTag: 'passenger_nearest_bus',
-          onPressed: onNearestBus,
-          backgroundColor: const Color(0xFF0F766E),
+          heroTag: 'passenger_nearby_buses',
+          onPressed: findingNearby ? null : onNearbyBuses,
+          backgroundColor: nearbyModeActive
+              ? const Color(0xFF0F766E)
+              : const Color(0xFF0D9488),
           foregroundColor: Colors.white,
           elevation: 4,
-          icon: findingNearest
+          icon: findingNearby
               ? const SizedBox(
                   width: 18,
                   height: 18,
@@ -43,13 +51,33 @@ class PassengerMapFabs extends StatelessWidget {
                     color: Colors.white,
                   ),
                 )
-              : const Icon(Icons.near_me_rounded, size: 20),
-          label: const Text(
-            'أقرب باص',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+              : Icon(
+                  nearbyModeActive
+                      ? Icons.alt_route_rounded
+                      : Icons.hail_rounded,
+                  size: 20,
+                ),
+          label: Text(
+            nearbyModeActive ? 'خطوط موقعي' : 'باصات من هنا',
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
+        FloatingActionButton.small(
+          heroTag: 'passenger_nearest_bus',
+          onPressed: onNearestBus,
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF0F766E),
+          elevation: 3,
+          child: findingNearest
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.near_me_rounded, size: 20),
+        ),
+        const SizedBox(height: 10),
         FloatingActionButton(
           heroTag: 'passenger_map_layers',
           onPressed: onMapLayers,
