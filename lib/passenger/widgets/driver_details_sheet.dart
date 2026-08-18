@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/bus_capacity.dart';
 import '../../core/theme/app_theme.dart';
@@ -43,6 +44,25 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
     }
   }
 
+  Future<void> _callDriver(String phone) async {
+    final cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
+    if (cleaned.isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: cleaned);
+    try {
+      final ok = await launchUrl(uri);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر فتح تطبيق الاتصال')),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح تطبيق الاتصال')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewPadding.bottom;
@@ -59,6 +79,7 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
     final routeTitle = driver.route?.trim();
     final routeDetail = driver.routeDetail?.trim();
     final phone = driver.phoneNumber?.trim();
+    final hasPhone = phone != null && phone.isNotEmpty;
 
     String? etaText;
     String? distanceText;
@@ -300,13 +321,11 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                         child: _miniStat(
                           icon: Icons.phone_rounded,
                           label: 'الهاتف',
-                          value: (phone != null && phone.isNotEmpty)
-                              ? phone
-                              : '—',
-                          onLongPress: (phone != null && phone.isNotEmpty)
+                          value: hasPhone ? phone! : '—',
+                          onLongPress: hasPhone
                               ? () async {
                                   await Clipboard.setData(
-                                    ClipboardData(text: phone),
+                                    ClipboardData(text: phone!),
                                   );
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
@@ -340,8 +359,35 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                         ? 'آخر تحديث: ${driver.updatedAgoLabel} — قد يكون الموقع غير دقيق'
                         : 'آخر تحديث للموقع: ${driver.updatedAgoLabel}',
                   ),
+                  if (hasPhone) ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _callDriver(phone!),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF0F766E),
+                          side: const BorderSide(
+                            color: Color(0xFF0F766E),
+                            width: 1.4,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        icon: const Icon(Icons.phone_in_talk_rounded),
+                        label: const Text(
+                          'اتصال بالسائق',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   if (widget.onRequestBoard != null) ...[
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     SizedBox(
                       height: 52,
                       child: ElevatedButton.icon(
