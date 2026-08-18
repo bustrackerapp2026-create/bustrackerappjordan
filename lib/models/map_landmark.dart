@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// نوع المعلم على خريطة المشروع (طبقة خاصة بالتطبيق فوق Mapbox).
-/// مجموعة شاملة مستوحاة من أيقونات Mapbox Maki / POI.
+/// مجموعة شاملة مستوحاة من أيقونات Mapbox Maki / POI + معالم طرق محلية.
 enum MapLandmarkType {
   // طعام ومشروبات
   restaurant,
@@ -10,8 +10,9 @@ enum MapLandmarkType {
   bakery,
   bar,
 
-  // إقامة
+  // إقامة وسكن
   hotel,
+  house,
 
   // تسوق
   shop,
@@ -22,6 +23,7 @@ enum MapLandmarkType {
 
   // صحة
   hospital,
+  medicalCenter,
   pharmacy,
   clinic,
   dentist,
@@ -29,6 +31,7 @@ enum MapLandmarkType {
   // تعليم
   school,
   university,
+  college,
   kindergarten,
   library,
 
@@ -40,7 +43,7 @@ enum MapLandmarkType {
   bank,
   atm,
 
-  // مواصلات
+  // مواصلات وبنية تحتية للطرق
   fuel,
   chargingStation,
   parking,
@@ -48,6 +51,13 @@ enum MapLandmarkType {
   trainStation,
   airport,
   taxi,
+  roundabout,
+  trafficLight,
+  pedestrianBridge,
+  vehicleBridge,
+  crosswalk,
+  tunnel,
+  warningTriangle,
 
   // خدمات عامة
   government,
@@ -73,6 +83,8 @@ enum MapLandmarkType {
   carRental,
   laundry,
   hairdresser,
+  barber,
+  beautySalon,
   toilet,
 
   other,
@@ -93,6 +105,8 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return 'bar';
       case MapLandmarkType.hotel:
         return 'hotel';
+      case MapLandmarkType.house:
+        return 'house';
       case MapLandmarkType.shop:
         return 'shop';
       case MapLandmarkType.supermarket:
@@ -105,6 +119,8 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return 'market';
       case MapLandmarkType.hospital:
         return 'hospital';
+      case MapLandmarkType.medicalCenter:
+        return 'medical_center';
       case MapLandmarkType.pharmacy:
         return 'pharmacy';
       case MapLandmarkType.clinic:
@@ -115,6 +131,8 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return 'school';
       case MapLandmarkType.university:
         return 'university';
+      case MapLandmarkType.college:
+        return 'college';
       case MapLandmarkType.kindergarten:
         return 'kindergarten';
       case MapLandmarkType.library:
@@ -141,6 +159,20 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return 'airport';
       case MapLandmarkType.taxi:
         return 'taxi';
+      case MapLandmarkType.roundabout:
+        return 'roundabout';
+      case MapLandmarkType.trafficLight:
+        return 'traffic_light';
+      case MapLandmarkType.pedestrianBridge:
+        return 'pedestrian_bridge';
+      case MapLandmarkType.vehicleBridge:
+        return 'vehicle_bridge';
+      case MapLandmarkType.crosswalk:
+        return 'crosswalk';
+      case MapLandmarkType.tunnel:
+        return 'tunnel';
+      case MapLandmarkType.warningTriangle:
+        return 'warning_triangle';
       case MapLandmarkType.government:
         return 'government';
       case MapLandmarkType.police:
@@ -179,6 +211,10 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return 'laundry';
       case MapLandmarkType.hairdresser:
         return 'hairdresser';
+      case MapLandmarkType.barber:
+        return 'barber';
+      case MapLandmarkType.beautySalon:
+        return 'beauty_salon';
       case MapLandmarkType.toilet:
         return 'toilet';
       case MapLandmarkType.other:
@@ -200,6 +236,8 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return 'مقهى/بار';
       case MapLandmarkType.hotel:
         return 'فندق';
+      case MapLandmarkType.house:
+        return 'منزل';
       case MapLandmarkType.shop:
         return 'متجر';
       case MapLandmarkType.supermarket:
@@ -212,6 +250,8 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return 'سوق';
       case MapLandmarkType.hospital:
         return 'مستشفى';
+      case MapLandmarkType.medicalCenter:
+        return 'مركز طبي';
       case MapLandmarkType.pharmacy:
         return 'صيدلية';
       case MapLandmarkType.clinic:
@@ -222,6 +262,8 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return 'مدرسة';
       case MapLandmarkType.university:
         return 'جامعة';
+      case MapLandmarkType.college:
+        return 'كلية';
       case MapLandmarkType.kindergarten:
         return 'روضة أطفال';
       case MapLandmarkType.library:
@@ -248,6 +290,20 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return 'مطار';
       case MapLandmarkType.taxi:
         return 'موقف تاكسي';
+      case MapLandmarkType.roundabout:
+        return 'دوار';
+      case MapLandmarkType.trafficLight:
+        return 'إشارة مرور';
+      case MapLandmarkType.pedestrianBridge:
+        return 'جسر مشاة';
+      case MapLandmarkType.vehicleBridge:
+        return 'جسر سيارات';
+      case MapLandmarkType.crosswalk:
+        return 'ممر مشاة';
+      case MapLandmarkType.tunnel:
+        return 'نفق';
+      case MapLandmarkType.warningTriangle:
+        return 'مثلث تحذيري';
       case MapLandmarkType.government:
         return 'مبنى حكومي';
       case MapLandmarkType.police:
@@ -286,6 +342,10 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return 'مغسلة';
       case MapLandmarkType.hairdresser:
         return 'صالون حلاقة';
+      case MapLandmarkType.barber:
+        return 'صالون رجال';
+      case MapLandmarkType.beautySalon:
+        return 'صالون نسائي';
       case MapLandmarkType.toilet:
         return 'دورة مياه';
       case MapLandmarkType.other:
@@ -310,6 +370,10 @@ extension MapLandmarkTypeX on MapLandmarkType {
       case 'hotel':
       case 'lodging':
         return MapLandmarkType.hotel;
+      case 'house':
+      case 'home':
+      case 'residential':
+        return MapLandmarkType.house;
       case 'shop':
         return MapLandmarkType.shop;
       case 'supermarket':
@@ -325,6 +389,10 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return MapLandmarkType.market;
       case 'hospital':
         return MapLandmarkType.hospital;
+      case 'medical_center':
+      case 'medicalcentre':
+      case 'health_center':
+        return MapLandmarkType.medicalCenter;
       case 'pharmacy':
         return MapLandmarkType.pharmacy;
       case 'clinic':
@@ -336,8 +404,9 @@ extension MapLandmarkTypeX on MapLandmarkType {
       case 'school':
         return MapLandmarkType.school;
       case 'university':
-      case 'college':
         return MapLandmarkType.university;
+      case 'college':
+        return MapLandmarkType.college;
       case 'kindergarten':
         return MapLandmarkType.kindergarten;
       case 'library':
@@ -372,6 +441,30 @@ extension MapLandmarkTypeX on MapLandmarkType {
         return MapLandmarkType.airport;
       case 'taxi':
         return MapLandmarkType.taxi;
+      case 'roundabout':
+      case 'rotary':
+        return MapLandmarkType.roundabout;
+      case 'traffic_light':
+      case 'traffic_signals':
+      case 'signal':
+        return MapLandmarkType.trafficLight;
+      case 'pedestrian_bridge':
+      case 'footbridge':
+        return MapLandmarkType.pedestrianBridge;
+      case 'vehicle_bridge':
+      case 'bridge':
+      case 'road_bridge':
+        return MapLandmarkType.vehicleBridge;
+      case 'crosswalk':
+      case 'crossing':
+      case 'zebra':
+        return MapLandmarkType.crosswalk;
+      case 'tunnel':
+        return MapLandmarkType.tunnel;
+      case 'warning_triangle':
+      case 'triangle':
+      case 'caution':
+        return MapLandmarkType.warningTriangle;
       case 'government':
       case 'townhall':
       case 'town_hall':
@@ -420,8 +513,14 @@ extension MapLandmarkTypeX on MapLandmarkType {
       case 'laundry':
         return MapLandmarkType.laundry;
       case 'hairdresser':
-      case 'beauty':
         return MapLandmarkType.hairdresser;
+      case 'barber':
+      case 'mens_salon':
+        return MapLandmarkType.barber;
+      case 'beauty_salon':
+      case 'beauty':
+      case 'salon':
+        return MapLandmarkType.beautySalon;
       case 'toilet':
       case 'toilets':
       case 'restroom':
