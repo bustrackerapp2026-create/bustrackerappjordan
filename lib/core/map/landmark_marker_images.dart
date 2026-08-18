@@ -5,21 +5,50 @@ import 'package:flutter/material.dart';
 
 import '../../models/map_landmark.dart';
 
-/// أيقونات معالم المشروع — تُولَّد مرة وتُخزَّن في الذاكرة.
-/// حجم قريب من رموز POI في Mapbox Streets (دائرة ملونة + رمز أبيض).
+/// أيقونات معالم المشروع — أسلوب قريب من Google Maps / Mapbox POI.
+/// الحجم على الشاشة يتغيّر مع الزوم عبر [iconSizeForZoom].
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
-  /// حجم الصورة المولَّدة (px). مع [mapIconSize] يصبح الظهور قريباً من Mapbox POI.
-  static const double markerSize = 64;
+  /// حجم الصورة المولَّدة (px) — دقة كافية للريتينا.
+  static const double markerSize = 80;
 
-  /// مقياس العرض على الخريطة (تقريبي لرموز Maki/POI عند زوم المدينة).
-  static const double mapIconSize = 0.55;
+  /// حجم أساسي عند زوم المدينة (~14) قبل تطبيق منحنى الزوم.
+  static const double baseMapIconSize = 0.95;
 
-  /// حجم اسم المعلم تحت الأيقونة (مثل تسمية Mapbox).
-  static const double labelTextSize = 11.0;
+  /// حجم اسم المعلم تحت الأيقونة عند الزوم المتوسط.
+  static const double labelTextSize = 12.0;
+
+  /// يظهر الاسم من هذا الزوم فما فوق (مثل تسميات Google POI).
+  static const double labelMinZoom = 13.5;
 
   static final Map<MapLandmarkType, Uint8List> _cache = {};
+
+  /// حجم الأيقونة على الشاشة حسب زوم الكاميرا — سلوك قريب من Google Maps:
+  /// الأيقونة تبقى مقروءة عند الابتعاد، وتكبر قليلاً عند الاقتراب دون تضخم مفرط.
+  static double iconSizeForZoom(double zoom) {
+    if (zoom <= 11) return 0.55;
+    if (zoom <= 12.5) return 0.72;
+    if (zoom <= 14) return 0.88;
+    if (zoom <= 15.5) return 1.0;
+    if (zoom <= 17) return 1.12;
+    return 1.22;
+  }
+
+  static bool showLabelForZoom(double zoom) => zoom >= labelMinZoom;
+
+  static double textSizeForZoom(double zoom) {
+    if (zoom < labelMinZoom) return 0;
+    if (zoom < 15) return 11;
+    if (zoom < 16.5) return 12;
+    return 13;
+  }
+
+  /// إزاحة النص تحت الأيقونة (em) — تزداد قليلاً مع كبر الأيقونة.
+  static List<double> textOffsetForZoom(double zoom) {
+    final y = zoom >= 16 ? 1.25 : (zoom >= 14 ? 1.15 : 1.05);
+    return [0.0, y];
+  }
 
   static Color colorFor(MapLandmarkType type) {
     switch (type) {
@@ -305,14 +334,14 @@ class LandmarkMarkerImages {
     final canvas = Canvas(recorder);
     final color = colorFor(type);
 
-    // دائرة أصغر — أقرب لنسبة Maki على الخريطة
-    const radius = 18.0;
-    const inner = 14.5;
+    // دائرة أوضح — حجم شاشة أقرب لـ Google POI (~28–32px عند scale 1)
+    const radius = 22.0;
+    const inner = 18.0;
 
     final shadow = Paint()
-      ..color = Colors.black.withValues(alpha: 0.16)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
-    canvas.drawCircle(const Offset(size / 2, size / 2 + 1), radius, shadow);
+      ..color = Colors.black.withValues(alpha: 0.18)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.5);
+    canvas.drawCircle(const Offset(size / 2, size / 2 + 1.2), radius, shadow);
 
     final outer = Paint()..color = Colors.white;
     canvas.drawCircle(const Offset(size / 2, size / 2), radius, outer);
@@ -325,7 +354,7 @@ class LandmarkMarkerImages {
       text: TextSpan(
         text: String.fromCharCode(icon.codePoint),
         style: TextStyle(
-          fontSize: 17,
+          fontSize: 20,
           fontFamily: icon.fontFamily,
           package: icon.fontPackage,
           color: Colors.white,
