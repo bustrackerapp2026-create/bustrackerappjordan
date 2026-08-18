@@ -66,7 +66,6 @@ class LandmarkMarkerImages {
       case MapLandmarkType.gym:
       case MapLandmarkType.vehicleBridge:
       case MapLandmarkType.tunnel:
-      case MapLandmarkType.shoppingMallFake: // ignored if not present
         return 13.4;
 
       // منخفضة
@@ -123,7 +122,7 @@ class LandmarkMarkerImages {
   // ─── حجم الأيقونة والخط (قريب من Google POI) ─────────────────────
 
   /// حجم الأيقونة على الشاشة حسب الزوم.
-  /// Google POI تقريباً 18–28px؛ مع markerSize=72 → iconSize ~0.42–0.72.
+  /// Google POI تقريباً 18–28px؛ مع markerSize=72 → iconSize ~0.40–0.76.
   static double iconSizeForZoom(double zoom) {
     if (zoom <= 11.5) return 0.40;
     if (zoom <= 12.5) return 0.46;
