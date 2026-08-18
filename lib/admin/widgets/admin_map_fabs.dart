@@ -9,6 +9,7 @@ class AdminMapFabs extends StatelessWidget {
   final bool showRoutes;
   final bool isAddingPickupPoint;
   final bool isDrawingRoute;
+  final bool isAddingLandmark;
   final bool isLoadingLocation;
   final AdminRouteDirectionFilter routeFilter;
   final int outboundCount;
@@ -21,6 +22,7 @@ class AdminMapFabs extends StatelessWidget {
   final VoidCallback onMyLocation;
   final VoidCallback onMapLayers;
   final VoidCallback onSearchRoutes;
+  final VoidCallback onToggleAddLandmark;
 
   const AdminMapFabs({
     super.key,
@@ -28,6 +30,7 @@ class AdminMapFabs extends StatelessWidget {
     required this.showRoutes,
     required this.isAddingPickupPoint,
     required this.isDrawingRoute,
+    required this.isAddingLandmark,
     required this.isLoadingLocation,
     required this.routeFilter,
     required this.outboundCount,
@@ -40,6 +43,7 @@ class AdminMapFabs extends StatelessWidget {
     required this.onMyLocation,
     required this.onMapLayers,
     required this.onSearchRoutes,
+    required this.onToggleAddLandmark,
   });
 
   @override
@@ -110,6 +114,24 @@ class AdminMapFabs extends StatelessWidget {
                 isDrawingRoute ? Colors.white : const Color(0xFF7C3AED),
             child: Icon(
               isDrawingRoute ? Icons.close : Icons.timeline_rounded,
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 420,
+          right: 16,
+          child: FloatingActionButton(
+            heroTag: 'admin_add_landmark_fab',
+            onPressed: onToggleAddLandmark,
+            backgroundColor:
+                isAddingLandmark ? const Color(0xFF00897B) : Colors.white,
+            foregroundColor:
+                isAddingLandmark ? Colors.white : const Color(0xFF00897B),
+            elevation: 4,
+            shape: const CircleBorder(),
+            tooltip: isAddingLandmark ? 'إلغاء إضافة معلم' : 'إضافة معلم',
+            child: Icon(
+              isAddingLandmark ? Icons.close : Icons.add_business_rounded,
             ),
           ),
         ),
