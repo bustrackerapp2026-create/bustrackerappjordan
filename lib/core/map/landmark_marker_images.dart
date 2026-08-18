@@ -5,28 +5,37 @@ import 'package:flutter/material.dart';
 
 import '../../models/map_landmark.dart';
 
-/// أيقونات معالم المشروع — أسلوب قريب من Google Maps POI:
-/// - حجم صغير وواضح على الشاشة
-/// - ظهور/اختفاء حسب أهمية النوع مع الزوم (LOD)
-/// - الاسم يظهر لاحقاً وبخط بحجم قريب من Google
+/// أيقونات معالم المشروع — مطابقة قريبة جداً لأسلوب Google Maps POI:
+/// - قطر الأيقونة على الشاشة ~16–22px
+/// - نص رمادي غامق بحجم ~11px وهالة بيضاء خفيفة
+/// - ظهور/اختفاء حسب الأهمية مع الزوم
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
-  /// حجم الصورة المولَّدة (px) — دقة كافية للريتينا.
-  static const double markerSize = 72;
+  /// حجم الصورة المولَّدة (px). الدائرة تملأ معظم المساحة لتقليل الحشو الفارغ.
+  static const double markerSize = 64;
 
-  /// حجم أساسي مرجعي (قبل منحنى الزوم).
-  static const double baseMapIconSize = 0.58;
+  /// لون نص التسمية — رمادي Google (#3C4043)
+  static const int labelTextColor = 0xFF3C4043;
+
+  /// لون هالة النص
+  static const int labelHaloColor = 0xFFFFFFFF;
+
+  /// عرض هالة النص (px) — خفيف مثل Google
+  static const double labelHaloWidth = 0.9;
+
+  /// تباعد حروف خفيف
+  static const double labelLetterSpacing = 0.01;
+
+  /// أقصى عرض سطر للاسم (em)
+  static const double labelMaxWidth = 8;
 
   static final Map<MapLandmarkType, Uint8List> _cache = {};
 
-  // ─── Level of Detail (مثل Google Maps) ───────────────────────────
+  // ─── Level of Detail ─────────────────────────────────────────────
 
-  /// أقل زوم تظهر فيه أيقونة هذا النوع.
-  /// الأنواع الأهم تظهر من بعيد؛ التفاصيل المحلية فقط عند الاقتراب.
   static double minZoomFor(MapLandmarkType type) {
     switch (type) {
-      // أولوية عالية جداً — ظاهرة من زوم المدينة
       case MapLandmarkType.airport:
       case MapLandmarkType.university:
       case MapLandmarkType.hospital:
@@ -34,7 +43,6 @@ class LandmarkMarkerImages {
       case MapLandmarkType.trainStation:
         return 11.0;
 
-      // أولوية عالية
       case MapLandmarkType.mosque:
       case MapLandmarkType.church:
       case MapLandmarkType.government:
@@ -53,7 +61,6 @@ class LandmarkMarkerImages {
       case MapLandmarkType.beach:
         return 12.2;
 
-      // متوسطة
       case MapLandmarkType.restaurant:
       case MapLandmarkType.supermarket:
       case MapLandmarkType.market:
@@ -68,7 +75,6 @@ class LandmarkMarkerImages {
       case MapLandmarkType.tunnel:
         return 13.4;
 
-      // منخفضة
       case MapLandmarkType.cafe:
       case MapLandmarkType.fastFood:
       case MapLandmarkType.bakery:
@@ -90,7 +96,6 @@ class LandmarkMarkerImages {
       case MapLandmarkType.bar:
         return 14.4;
 
-      // محلية جداً — فقط عند الاقتراب الشديد
       case MapLandmarkType.laundry:
       case MapLandmarkType.hairdresser:
       case MapLandmarkType.barber:
@@ -106,11 +111,9 @@ class LandmarkMarkerImages {
     }
   }
 
-  /// أقل زوم يظهر فيه اسم المعلم (بعد ظهور الأيقونة بقليل).
   static double labelMinZoomFor(MapLandmarkType type) {
     final iconMin = minZoomFor(type);
-    // الاسم يظهر متأخراً قليلاً عن الأيقونة — مثل Google
-    return (iconMin + 0.9).clamp(13.0, 16.2);
+    return (iconMin + 0.85).clamp(13.0, 16.0);
   }
 
   static bool isVisibleAtZoom(MapLandmarkType type, double zoom) =>
@@ -119,299 +122,299 @@ class LandmarkMarkerImages {
   static bool showLabelAtZoom(MapLandmarkType type, double zoom) =>
       zoom >= labelMinZoomFor(type);
 
-  // ─── حجم الأيقونة والخط (قريب من Google POI) ─────────────────────
+  // ─── أحجام الشاشة (هدف: دائرة ~16–22px مثل Google) ───────────────
+  //
+  // الصورة 64px والدائرة المرسومة قطرها ~40px داخلها.
+  // iconSize 0.40 → صورة 26px على الشاشة → دائرة ~16px
+  // iconSize 0.52 → صورة 33px → دائرة ~21px
 
-  /// حجم الأيقونة على الشاشة حسب الزوم.
-  /// Google POI تقريباً 18–28px؛ مع markerSize=72 → iconSize ~0.40–0.76.
   static double iconSizeForZoom(double zoom) {
-    if (zoom <= 11.5) return 0.40;
-    if (zoom <= 12.5) return 0.46;
-    if (zoom <= 13.5) return 0.52;
-    if (zoom <= 14.5) return 0.58;
-    if (zoom <= 15.5) return 0.64;
-    if (zoom <= 16.5) return 0.70;
-    return 0.76;
+    if (zoom <= 11.5) return 0.36;
+    if (zoom <= 12.5) return 0.40;
+    if (zoom <= 13.5) return 0.44;
+    if (zoom <= 14.5) return 0.47;
+    if (zoom <= 15.5) return 0.50;
+    if (zoom <= 16.5) return 0.53;
+    return 0.55;
   }
 
-  /// توافق قديم: يظهر الاسم عند زوم متوسط فما فوق (بدون نوع).
   static const double labelMinZoom = 13.5;
 
   static bool showLabelForZoom(double zoom) => zoom >= labelMinZoom;
 
-  /// حجم خط الاسم — قريب من تسميات Google (~10–12.5).
+  /// حجم خط Google POI تقريباً ثابت (~11) مع زيادة طفيفة عند الاقتراب.
   static double textSizeForZoom(double zoom) {
-    if (zoom < 13.5) return 0;
-    if (zoom < 14.5) return 10.0;
-    if (zoom < 15.5) return 10.8;
-    if (zoom < 16.5) return 11.6;
-    return 12.4;
+    if (zoom < 13.2) return 0;
+    if (zoom < 14.5) return 10.5;
+    if (zoom < 15.8) return 11.0;
+    return 11.5;
   }
 
-  /// إزاحة النص تحت الأيقونة (em).
+  /// إزاحة النص تحت الأيقونة (em) — قريبة من المسافة في Google.
   static List<double> textOffsetForZoom(double zoom) {
-    final y = zoom >= 16 ? 1.20 : (zoom >= 14.5 ? 1.10 : 1.02);
+    final y = zoom >= 16 ? 1.05 : (zoom >= 14.5 ? 0.98 : 0.92);
     return [0.0, y];
   }
 
   static Color colorFor(MapLandmarkType type) {
     switch (type) {
       case MapLandmarkType.restaurant:
-        return const Color(0xFFFB8C00);
+        return const Color(0xFFEA4335);
       case MapLandmarkType.cafe:
-        return const Color(0xFFEF6C00);
+        return const Color(0xFFEA8600);
       case MapLandmarkType.fastFood:
-        return const Color(0xFFFF6F00);
+        return const Color(0xFFEA8600);
       case MapLandmarkType.bakery:
-        return const Color(0xFFF57C00);
+        return const Color(0xFFEA8600);
       case MapLandmarkType.bar:
-        return const Color(0xFFE65100);
+        return const Color(0xFFEA4335);
       case MapLandmarkType.hotel:
-        return const Color(0xFF6A1B9A);
-      case MapLandmarkType.house:
-        return const Color(0xFF5D4037);
-      case MapLandmarkType.shop:
-        return const Color(0xFF8E24AA);
-      case MapLandmarkType.supermarket:
         return const Color(0xFF7B1FA2);
+      case MapLandmarkType.house:
+        return const Color(0xFF5F6368);
+      case MapLandmarkType.shop:
+        return const Color(0xFF9C27B0);
+      case MapLandmarkType.supermarket:
+        return const Color(0xFF9C27B0);
       case MapLandmarkType.clothing:
-        return const Color(0xFFAB47BC);
+        return const Color(0xFF9C27B0);
       case MapLandmarkType.convenience:
         return const Color(0xFF9C27B0);
       case MapLandmarkType.market:
-        return const Color(0xFF6A1B9A);
+        return const Color(0xFF9C27B0);
       case MapLandmarkType.hospital:
-        return const Color(0xFFE53935);
+        return const Color(0xFFEA4335);
       case MapLandmarkType.medicalCenter:
-        return const Color(0xFFC62828);
+        return const Color(0xFFEA4335);
       case MapLandmarkType.pharmacy:
-        return const Color(0xFFD81B60);
+        return const Color(0xFFEA4335);
       case MapLandmarkType.clinic:
-        return const Color(0xFFEC407A);
+        return const Color(0xFFEA4335);
       case MapLandmarkType.dentist:
-        return const Color(0xFFF06292);
+        return const Color(0xFFEA4335);
       case MapLandmarkType.school:
-        return const Color(0xFF1E88E5);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.university:
-        return const Color(0xFF5E35B1);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.college:
-        return const Color(0xFF7E57C2);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.kindergarten:
-        return const Color(0xFF42A5F5);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.library:
-        return const Color(0xFF4527A0);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.mosque:
-        return const Color(0xFF00897B);
+        return const Color(0xFF188038);
       case MapLandmarkType.church:
-        return const Color(0xFF5D4037);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.bank:
-        return const Color(0xFF1565C0);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.atm:
-        return const Color(0xFF0277BD);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.fuel:
-        return const Color(0xFFF57C00);
+        return const Color(0xFFEA8600);
       case MapLandmarkType.chargingStation:
-        return const Color(0xFF43A047);
+        return const Color(0xFF188038);
       case MapLandmarkType.parking:
-        return const Color(0xFF3949AB);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.busStation:
-        return const Color(0xFF00838F);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.trainStation:
-        return const Color(0xFF00695C);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.airport:
-        return const Color(0xFF37474F);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.taxi:
-        return const Color(0xFFFBC02D);
+        return const Color(0xFFF9AB00);
       case MapLandmarkType.roundabout:
-        return const Color(0xFF455A64);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.trafficLight:
-        return const Color(0xFFD32F2F);
+        return const Color(0xFFEA4335);
       case MapLandmarkType.pedestrianBridge:
-        return const Color(0xFF00897B);
+        return const Color(0xFF188038);
       case MapLandmarkType.vehicleBridge:
-        return const Color(0xFF546E7A);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.crosswalk:
-        return const Color(0xFF00796B);
+        return const Color(0xFF188038);
       case MapLandmarkType.tunnel:
-        return const Color(0xFF37474F);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.warningTriangle:
-        return const Color(0xFFF9A825);
+        return const Color(0xFFF9AB00);
       case MapLandmarkType.government:
-        return const Color(0xFF546E7A);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.police:
-        return const Color(0xFF283593);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.fireStation:
-        return const Color(0xFFC62828);
+        return const Color(0xFFEA4335);
       case MapLandmarkType.postOffice:
-        return const Color(0xFF455A64);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.embassy:
-        return const Color(0xFF37474F);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.park:
-        return const Color(0xFF2E7D32);
+        return const Color(0xFF188038);
       case MapLandmarkType.playground:
-        return const Color(0xFF66BB6A);
+        return const Color(0xFF188038);
       case MapLandmarkType.museum:
-        return const Color(0xFF6D4C41);
+        return const Color(0xFF7B1FA2);
       case MapLandmarkType.cinema:
-        return const Color(0xFFAD1457);
+        return const Color(0xFF7B1FA2);
       case MapLandmarkType.gym:
-        return const Color(0xFF00897B);
+        return const Color(0xFF188038);
       case MapLandmarkType.stadium:
-        return const Color(0xFF1565C0);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.beach:
-        return const Color(0xFF29B6F6);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.zoo:
-        return const Color(0xFF558B2F);
+        return const Color(0xFF188038);
       case MapLandmarkType.aquarium:
-        return const Color(0xFF0288D1);
+        return const Color(0xFF1A73E8);
       case MapLandmarkType.attraction:
-        return const Color(0xFF8D6E63);
+        return const Color(0xFF7B1FA2);
       case MapLandmarkType.carRepair:
-        return const Color(0xFF616161);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.carRental:
-        return const Color(0xFF78909C);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.laundry:
-        return const Color(0xFF26A69A);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.hairdresser:
-        return const Color(0xFFEC407A);
+        return const Color(0xFFEA4335);
       case MapLandmarkType.barber:
-        return const Color(0xFF5D4037);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.beautySalon:
-        return const Color(0xFFE91E63);
+        return const Color(0xFFEA4335);
       case MapLandmarkType.toilet:
-        return const Color(0xFF78909C);
+        return const Color(0xFF5F6368);
       case MapLandmarkType.other:
-        return const Color(0xFF607D8B);
+        return const Color(0xFF5F6368);
     }
   }
 
   static IconData iconDataFor(MapLandmarkType type) {
     switch (type) {
       case MapLandmarkType.restaurant:
-        return Icons.restaurant_rounded;
+        return Icons.restaurant;
       case MapLandmarkType.cafe:
-        return Icons.local_cafe_rounded;
+        return Icons.local_cafe;
       case MapLandmarkType.fastFood:
-        return Icons.fastfood_rounded;
+        return Icons.fastfood;
       case MapLandmarkType.bakery:
-        return Icons.bakery_dining_rounded;
+        return Icons.bakery_dining;
       case MapLandmarkType.bar:
-        return Icons.local_bar_rounded;
+        return Icons.local_bar;
       case MapLandmarkType.hotel:
-        return Icons.hotel_rounded;
+        return Icons.hotel;
       case MapLandmarkType.house:
-        return Icons.home_rounded;
+        return Icons.home;
       case MapLandmarkType.shop:
-        return Icons.storefront_rounded;
+        return Icons.storefront;
       case MapLandmarkType.supermarket:
-        return Icons.local_grocery_store_rounded;
+        return Icons.local_grocery_store;
       case MapLandmarkType.clothing:
-        return Icons.checkroom_rounded;
+        return Icons.checkroom;
       case MapLandmarkType.convenience:
-        return Icons.store_rounded;
+        return Icons.store;
       case MapLandmarkType.market:
-        return Icons.store_mall_directory_rounded;
+        return Icons.store_mall_directory;
       case MapLandmarkType.hospital:
-        return Icons.local_hospital_rounded;
+        return Icons.local_hospital;
       case MapLandmarkType.medicalCenter:
-        return Icons.health_and_safety_rounded;
+        return Icons.health_and_safety;
       case MapLandmarkType.pharmacy:
-        return Icons.local_pharmacy_rounded;
+        return Icons.local_pharmacy;
       case MapLandmarkType.clinic:
-        return Icons.medical_services_rounded;
+        return Icons.medical_services;
       case MapLandmarkType.dentist:
         return Icons.medical_services_outlined;
       case MapLandmarkType.school:
-        return Icons.school_rounded;
+        return Icons.school;
       case MapLandmarkType.university:
-        return Icons.account_balance_rounded;
+        return Icons.account_balance;
       case MapLandmarkType.college:
         return Icons.school_outlined;
       case MapLandmarkType.kindergarten:
-        return Icons.child_care_rounded;
+        return Icons.child_care;
       case MapLandmarkType.library:
-        return Icons.local_library_rounded;
+        return Icons.local_library;
       case MapLandmarkType.mosque:
-        return Icons.mosque_rounded;
+        return Icons.mosque;
       case MapLandmarkType.church:
-        return Icons.church_rounded;
+        return Icons.church;
       case MapLandmarkType.bank:
-        return Icons.account_balance_wallet_rounded;
+        return Icons.account_balance_wallet;
       case MapLandmarkType.atm:
-        return Icons.atm_rounded;
+        return Icons.atm;
       case MapLandmarkType.fuel:
-        return Icons.local_gas_station_rounded;
+        return Icons.local_gas_station;
       case MapLandmarkType.chargingStation:
-        return Icons.ev_station_rounded;
+        return Icons.ev_station;
       case MapLandmarkType.parking:
-        return Icons.local_parking_rounded;
+        return Icons.local_parking;
       case MapLandmarkType.busStation:
-        return Icons.directions_bus_rounded;
+        return Icons.directions_bus;
       case MapLandmarkType.trainStation:
-        return Icons.train_rounded;
+        return Icons.train;
       case MapLandmarkType.airport:
-        return Icons.flight_rounded;
+        return Icons.flight;
       case MapLandmarkType.taxi:
-        return Icons.local_taxi_rounded;
+        return Icons.local_taxi;
       case MapLandmarkType.roundabout:
-        return Icons.roundabout_left_rounded;
+        return Icons.roundabout_left;
       case MapLandmarkType.trafficLight:
-        return Icons.traffic_rounded;
+        return Icons.traffic;
       case MapLandmarkType.pedestrianBridge:
-        return Icons.directions_walk_rounded;
+        return Icons.directions_walk;
       case MapLandmarkType.vehicleBridge:
-        return Icons.directions_car_filled_rounded;
+        return Icons.directions_car;
       case MapLandmarkType.crosswalk:
-        return Icons.transfer_within_a_station_rounded;
+        return Icons.transfer_within_a_station;
       case MapLandmarkType.tunnel:
-        return Icons.subway_rounded;
+        return Icons.subway;
       case MapLandmarkType.warningTriangle:
-        return Icons.warning_amber_rounded;
+        return Icons.warning_amber;
       case MapLandmarkType.government:
         return Icons.account_balance_outlined;
       case MapLandmarkType.police:
-        return Icons.local_police_rounded;
+        return Icons.local_police;
       case MapLandmarkType.fireStation:
-        return Icons.local_fire_department_rounded;
+        return Icons.local_fire_department;
       case MapLandmarkType.postOffice:
-        return Icons.local_post_office_rounded;
+        return Icons.local_post_office;
       case MapLandmarkType.embassy:
-        return Icons.flag_rounded;
+        return Icons.flag;
       case MapLandmarkType.park:
-        return Icons.park_rounded;
+        return Icons.park;
       case MapLandmarkType.playground:
-        return Icons.toys_rounded;
+        return Icons.toys;
       case MapLandmarkType.museum:
-        return Icons.museum_rounded;
+        return Icons.museum;
       case MapLandmarkType.cinema:
-        return Icons.movie_rounded;
+        return Icons.movie;
       case MapLandmarkType.gym:
-        return Icons.fitness_center_rounded;
+        return Icons.fitness_center;
       case MapLandmarkType.stadium:
-        return Icons.stadium_rounded;
+        return Icons.stadium;
       case MapLandmarkType.beach:
-        return Icons.beach_access_rounded;
+        return Icons.beach_access;
       case MapLandmarkType.zoo:
-        return Icons.pets_rounded;
+        return Icons.pets;
       case MapLandmarkType.aquarium:
-        return Icons.water_rounded;
+        return Icons.water;
       case MapLandmarkType.attraction:
-        return Icons.attractions_rounded;
+        return Icons.attractions;
       case MapLandmarkType.carRepair:
-        return Icons.car_repair_rounded;
+        return Icons.car_repair;
       case MapLandmarkType.carRental:
-        return Icons.directions_car_rounded;
+        return Icons.directions_car_filled;
       case MapLandmarkType.laundry:
-        return Icons.local_laundry_service_rounded;
+        return Icons.local_laundry_service;
       case MapLandmarkType.hairdresser:
-        return Icons.content_cut_rounded;
+        return Icons.content_cut;
       case MapLandmarkType.barber:
-        return Icons.face_retouching_natural_rounded;
+        return Icons.face_retouching_natural;
       case MapLandmarkType.beautySalon:
-        return Icons.spa_rounded;
+        return Icons.spa;
       case MapLandmarkType.toilet:
-        return Icons.wc_rounded;
+        return Icons.wc;
       case MapLandmarkType.other:
-        return Icons.place_rounded;
+        return Icons.place;
     }
   }
 
@@ -431,47 +434,55 @@ class LandmarkMarkerImages {
 
   static void clearCache() => _cache.clear();
 
+  /// رسم أيقونة دائرية مضغوطة — قطر الدائرة ~40px داخل صورة 64px.
   static Future<Uint8List> _render(MapLandmarkType type) async {
     const size = markerSize;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final color = colorFor(type);
 
-    // دائرة أنظف وأصغر قليلاً — أقرب لحجم Google POI على الشاشة
-    const radius = 18.5;
-    const inner = 15.0;
+    // دائرة مضغوطة: قطر ~40 من 64 → عند iconSize 0.45 تصبح ~18px على الشاشة
+    const radius = 20.0;
+    const inner = 16.5;
+    final center = Offset(size / 2, size / 2);
 
+    // ظل خفيف جداً (Google POI له ظل ناعم)
     final shadow = Paint()
-      ..color = Colors.black.withValues(alpha: 0.16)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
-    canvas.drawCircle(const Offset(size / 2, size / 2 + 1.0), radius, shadow);
+      ..color = const Color(0x28000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.8);
+    canvas.drawCircle(center.translate(0, 0.6), radius, shadow);
 
+    // حلقة بيضاء رفيعة
     final outer = Paint()..color = Colors.white;
-    canvas.drawCircle(const Offset(size / 2, size / 2), radius, outer);
+    canvas.drawCircle(center, radius, outer);
 
+    // التعبئة الملونة
     final fill = Paint()..color = color;
-    canvas.drawCircle(const Offset(size / 2, size / 2), inner, fill);
+    canvas.drawCircle(center, inner, fill);
 
+    // أيقونة بيضاء بحجم متناسب مع الدائرة الصغيرة
     final icon = iconDataFor(type);
     final tp = TextPainter(
       text: TextSpan(
         text: String.fromCharCode(icon.codePoint),
         style: TextStyle(
-          fontSize: 16.5,
+          fontSize: 15.5,
           fontFamily: icon.fontFamily,
           package: icon.fontPackage,
           color: Colors.white,
+          fontWeight: FontWeight.w500,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
     tp.paint(
       canvas,
-      Offset((size - tp.width) / 2, (size - tp.height) / 2 - 0.4),
+      Offset((size - tp.width) / 2, (size - tp.height) / 2 - 0.3),
     );
 
     final picture = recorder.endRecording();
-    final image = await picture.toImage(size.toInt(), size.toInt());
+    // 2x للحدة على شاشات الريتينا
+    final image = await picture.toImage(size.toInt() * 2, size.toInt() * 2);
     final bd = await image.toByteData(format: ui.ImageByteFormat.png);
     return bd!.buffer.asUint8List();
   }
