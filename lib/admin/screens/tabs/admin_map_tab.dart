@@ -16,7 +16,9 @@ import '../../../../core/pickup/pickup_point_dialog.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../services/location_service.dart';
 import '../../../../services/map_landmark_service.dart';
+import '../../../../services/map_text_label_service.dart';
 import '../../../../models/map_landmark.dart';
+import '../../../../models/map_text_label.dart';
 import '../../../../map/widgets/search_bar_widget.dart';
 import '../../../../map/utils/map_helpers.dart';
 import '../../widgets/admin_draw_route_banner.dart';
@@ -24,6 +26,7 @@ import '../../widgets/admin_driver_details_sheet.dart';
 import '../../widgets/admin_map_fabs.dart';
 import '../../widgets/admin_routes_search_sheet.dart';
 import '../../widgets/admin_landmark_form_sheet.dart';
+import '../../widgets/admin_text_label_form_sheet.dart';
 import '../admin_dashboard.dart';
 import 'mixins/driver_manager_mixin.dart';
 import 'mixins/passenger_manager_mixin.dart';
@@ -32,6 +35,7 @@ import 'mixins/pickup_point_mixin.dart';
 import 'mixins/admin_draw_route_mixin.dart';
 import 'mixins/admin_planned_routes_mixin.dart';
 import 'mixins/admin_landmarks_mixin.dart';
+import 'mixins/admin_text_labels_mixin.dart';
 import '../../widgets/admin_route_direction_filter.dart';
 
 class AdminMapTab extends StatefulWidget {
@@ -51,11 +55,13 @@ class _AdminMapTabState extends State<AdminMapTab>
         PickupPointMixin<AdminMapTab>,
         AdminDrawRouteMixin<AdminMapTab>,
         AdminPlannedRoutesMixin<AdminMapTab>,
-        AdminLandmarksMixin<AdminMapTab> {
+        AdminLandmarksMixin<AdminMapTab>,
+        AdminTextLabelsMixin<AdminMapTab> {
   final PickupPointManager _pickupManager = PickupPointManager();
   final LocationService _locationService = LocationService();
   bool _isAddingPickupPoint = false;
   bool _isAddingLandmark = false;
+  bool _isAddingTextLabel = false;
   bool _isLoadingLocation = false;
   StreamSubscription? _locationSubscription;
   int? _lastHandledFocusToken;
@@ -68,7 +74,10 @@ class _AdminMapTabState extends State<AdminMapTab>
 
   @override
   bool get suppressPoiTap =>
-      _isAddingPickupPoint || _isAddingLandmark || isDrawingRoute;
+      _isAddingPickupPoint ||
+      _isAddingLandmark ||
+      _isAddingTextLabel ||
+      isDrawingRoute;
 
   void _safeSnack(String message, {bool isError = false}) {
     if (!mounted) return;
@@ -84,6 +93,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     listenToActiveDrivers();
     listenToActivePassengers();
     unawaited(redrawLandmarks());
+    unawaited(redrawTextLabels());
   }
 
   @override
@@ -105,6 +115,7 @@ class _AdminMapTabState extends State<AdminMapTab>
       listenToRoutes();
       listenToPlannedRoutes();
       listenToLandmarks();
+      listenToTextLabels();
       listenToPickupPoints();
       applyLabelLayersFilter();
       _scheduleFocusRequest();
@@ -140,6 +151,7 @@ class _AdminMapTabState extends State<AdminMapTab>
     disposeAdminDrawRoute();
     disposePlannedRoutes();
     disposeLandmarks();
+    disposeTextLabels();
     disposePickupPoints();
     disposeRoutes();
     disposePassengers();
@@ -162,6 +174,15 @@ class _AdminMapTabState extends State<AdminMapTab>
       return;
     }
 
+    final textLabelId = findTextLabelIdByAnnotation(annotation);
+    if (textLabelId != null) {
+      final label = getTextLabelById(textLabelId);
+      if (label != null) {
+        _showTextLabelInfo(label);
+      }
+      return;
+    }
+
     final landmarkId = findLandmarkIdByAnnotation(annotation);
     if (landmarkId != null) {
       final m = getLandmarkById(landmarkId);
@@ -173,6 +194,136 @@ class _AdminMapTabState extends State<AdminMapTab>
 
     final pickupId = _findId(pickupAnnotations, annotation);
     if (pickupId != null) _showPickupActionsSheet(pickupId);
+  }
+
+  void _showTextLabelInfo(MapTextLabel label) {
+    if (!mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Icon(Icons.text_fields_rounded, size: 36),
+              const SizedBox(height: 12),
+              Text(
+                label.text,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: label.fontSize.clamp(14, 22),
+                  fontWeight: FontWeight.w800,
+                  color: Color(label.colorArgb),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'حجم ${label.fontSize.round()} · اتجاه ${label.rotation.round()}°',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        unawaited(_editTextLabel(label));
+                      },
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('تعديل'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        unawaited(_deleteTextLabel(label));
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                      ),
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('حذف'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _editTextLabel(MapTextLabel label) async {
+    final result = await AdminTextLabelFormSheet.show(
+      context,
+      title: 'تعديل نص على الخريطة',
+      initial: label,
+      latitude: label.latitude,
+      longitude: label.longitude,
+    );
+    if (result == null || !mounted) return;
+    try {
+      await MapTextLabelService().updateLabel(
+        id: label.id,
+        text: result.text,
+        fontSize: result.fontSize,
+        rotation: result.rotation,
+        colorArgb: result.colorArgb,
+      );
+      if (!mounted) return;
+      _safeSnack('✅ تم تحديث النص');
+    } catch (e) {
+      if (!mounted) return;
+      _safeSnack('فشل التحديث: $e', isError: true);
+    }
+  }
+
+  Future<void> _deleteTextLabel(MapTextLabel label) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف النص؟'),
+        content: Text('سيتم حذف «${label.text}» نهائياً.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await MapTextLabelService().deleteLabel(label.id);
+      if (!mounted) return;
+      _safeSnack('🗑️ تم حذف النص');
+    } catch (e) {
+      if (!mounted) return;
+      _safeSnack('فشل الحذف: $e', isError: true);
+    }
   }
 
   void _showLandmarkInfo(MapLandmark m) {
@@ -332,9 +483,8 @@ class _AdminMapTabState extends State<AdminMapTab>
     if (isDrawingRoute) {
       unawaited(cancelDrawingRoute());
     }
-    if (_isAddingLandmark) {
-      setState(() => _isAddingLandmark = false);
-    }
+    if (_isAddingLandmark) setState(() => _isAddingLandmark = false);
+    if (_isAddingTextLabel) setState(() => _isAddingTextLabel = false);
     setState(() => _isAddingPickupPoint = true);
     _safeSnack('📍 اضغط على الخريطة لتحديد موقع النقطة');
   }
@@ -351,11 +501,23 @@ class _AdminMapTabState extends State<AdminMapTab>
       return;
     }
     if (isDrawingRoute) unawaited(cancelDrawingRoute());
-    if (_isAddingPickupPoint) {
-      setState(() => _isAddingPickupPoint = false);
-    }
+    if (_isAddingPickupPoint) setState(() => _isAddingPickupPoint = false);
+    if (_isAddingTextLabel) setState(() => _isAddingTextLabel = false);
     setState(() => _isAddingLandmark = true);
     _safeSnack('📍 اضغط على الخريطة لتحديد موقع المعلم');
+  }
+
+  void _toggleAddTextLabel() {
+    if (_isAddingTextLabel) {
+      setState(() => _isAddingTextLabel = false);
+      _safeSnack('تم إلغاء إضافة النص');
+      return;
+    }
+    if (isDrawingRoute) unawaited(cancelDrawingRoute());
+    if (_isAddingPickupPoint) setState(() => _isAddingPickupPoint = false);
+    if (_isAddingLandmark) setState(() => _isAddingLandmark = false);
+    setState(() => _isAddingTextLabel = true);
+    _safeSnack('✍️ اضغط على الخريطة لوضع النص (اسم شارع...)');
   }
 
   Future<void> _handleLandmarkMapTap(Point point) async {
@@ -399,16 +561,55 @@ class _AdminMapTabState extends State<AdminMapTab>
     }
   }
 
+  Future<void> _handleTextLabelMapTap(Point point) async {
+    if (!_isAddingTextLabel || !mounted) return;
+    final auth = context.read<AuthProvider>();
+    final userId = auth.userId;
+    if (userId == null) {
+      _safeSnack('⚠️ يرجى تسجيل الدخول أولاً', isError: true);
+      setState(() => _isAddingTextLabel = false);
+      return;
+    }
+    final lat = point.coordinates.lat.toDouble();
+    final lng = point.coordinates.lng.toDouble();
+    final result = await AdminTextLabelFormSheet.show(
+      context,
+      title: 'إضافة نص على الخريطة',
+      latitude: lat,
+      longitude: lng,
+    );
+    if (!mounted) return;
+    if (result == null) {
+      setState(() => _isAddingTextLabel = false);
+      return;
+    }
+    try {
+      await MapTextLabelService().createLabel(
+        text: result.text,
+        latitude: lat,
+        longitude: lng,
+        createdBy: userId,
+        fontSize: result.fontSize,
+        rotation: result.rotation,
+        colorArgb: result.colorArgb,
+      );
+      if (!mounted) return;
+      _safeSnack('✅ تم إضافة النص');
+    } catch (e) {
+      if (!mounted) return;
+      _safeSnack('فشل الإضافة: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isAddingTextLabel = false);
+    }
+  }
+
   void _toggleDrawRoute() {
     if (isDrawingRoute) {
       unawaited(cancelDrawingRoute());
     } else {
-      if (_isAddingPickupPoint) {
-        setState(() => _isAddingPickupPoint = false);
-      }
-      if (_isAddingLandmark) {
-        setState(() => _isAddingLandmark = false);
-      }
+      if (_isAddingPickupPoint) setState(() => _isAddingPickupPoint = false);
+      if (_isAddingLandmark) setState(() => _isAddingLandmark = false);
+      if (_isAddingTextLabel) setState(() => _isAddingTextLabel = false);
       startDrawingRoute();
     }
   }
@@ -676,6 +877,8 @@ class _AdminMapTabState extends State<AdminMapTab>
             onTapListener: (event) {
               if (isDrawingRoute) {
                 onDrawRouteMapTap(event.point);
+              } else if (_isAddingTextLabel) {
+                _handleTextLabelMapTap(event.point);
               } else if (_isAddingLandmark) {
                 _handleLandmarkMapTap(event.point);
               } else if (_isAddingPickupPoint) {
@@ -729,6 +932,7 @@ class _AdminMapTabState extends State<AdminMapTab>
                 isAddingPickupPoint: _isAddingPickupPoint,
                 isDrawingRoute: isDrawingRoute,
                 isAddingLandmark: _isAddingLandmark,
+                isAddingTextLabel: _isAddingTextLabel,
                 isLoadingLocation: _isLoadingLocation,
                 routeFilter: plannedRouteFilter,
                 outboundCount: outboundRoutesCount,
@@ -758,6 +962,7 @@ class _AdminMapTabState extends State<AdminMapTab>
                   );
                 },
                 onToggleAddLandmark: _toggleAddLandmark,
+                onToggleAddTextLabel: _toggleAddTextLabel,
               );
             },
           ),
