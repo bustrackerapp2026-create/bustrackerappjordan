@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../models/planned_route.dart';
 import '../models/route_point.dart';
 import 'route_plan/route_plan_geometry.dart';
@@ -91,19 +93,19 @@ class NearbyRoutesService {
     double lat2,
     double lng2,
   ) {
-    final lat0 = ((lat1 + lat2) / 2) * 3.141592653589793 / 180.0;
-    final x = lng * 111320.0 * _cos(lat0);
+    final lat0 = ((lat1 + lat2) / 2) * math.pi / 180.0;
+    final x = lng * 111320.0 * math.cos(lat0);
     final y = lat * 110540.0;
-    final x1 = lng1 * 111320.0 * _cos(lat0);
+    final x1 = lng1 * 111320.0 * math.cos(lat0);
     final y1 = lat1 * 110540.0;
-    final x2 = lng2 * 111320.0 * _cos(lat0);
+    final x2 = lng2 * 111320.0 * math.cos(lat0);
     final y2 = lat2 * 110540.0;
     final dx = x2 - x1;
     final dy = y2 - y1;
     if (dx.abs() < 1e-6 && dy.abs() < 1e-6) {
       final ddx = x - x1;
       final ddy = y - y1;
-      return _sqrt(ddx * ddx + ddy * ddy);
+      return math.sqrt(ddx * ddx + ddy * ddy);
     }
     var t = ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy);
     if (t < 0) t = 0;
@@ -112,26 +114,10 @@ class NearbyRoutesService {
     final sy = y1 + t * dy;
     final ddx = x - sx;
     final ddy = y - sy;
-    return _sqrt(ddx * ddx + ddy * ddy);
-  }
-
-  static double _cos(double r) {
-    // تقريب كافٍ للمسافات القصيرة داخل المدينة
-    final c = 1 - (r * r) / 2 + (r * r * r * r) / 24;
-    return c;
-  }
-
-  static double _sqrt(double v) {
-    if (v <= 0) return 0;
-    var x = v;
-    for (var i = 0; i < 6; i++) {
-      x = 0.5 * (x + v / x);
-    }
-    return x;
+    return math.sqrt(ddx * ddx + ddy * ddy);
   }
 
   /// يعيد الخطوط التي تمر ضمن [maxDistanceM] من موقع الراكب.
-  /// مرتبة من الأقرب، مع إزالة تكرار اسم الخط (أفضل اتجاه).
   Future<List<NearbyLineMatch>> findNearbyLines({
     required double latitude,
     required double longitude,
@@ -157,7 +143,6 @@ class NearbyRoutesService {
 
     matches.sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
 
-    // أفضل مطابقة لكل اسم خط
     final bestByLine = <String, NearbyLineMatch>{};
     for (final m in matches) {
       final prev = bestByLine[m.lineName];
