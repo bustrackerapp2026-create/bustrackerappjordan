@@ -22,6 +22,7 @@ class _SaveDrawnRouteSheetState extends State<SaveDrawnRouteSheet> {
   final _endCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   RouteDirection _direction = RouteDirection.outbound;
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -41,6 +42,25 @@ class _SaveDrawnRouteSheetState extends State<SaveDrawnRouteSheet> {
     if (b.isNotEmpty) parts.add(b);
     if (c.isNotEmpty) parts.add(c);
     return parts.join(' ');
+  }
+
+  void _submit() {
+    final start = _startCtrl.text.trim();
+    final end = _endCtrl.text.trim();
+    if (start.isEmpty || end.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أدخل اسم البداية والنهاية')),
+      );
+      return;
+    }
+    Navigator.pop(context, {
+      'lineName': _composedLineName,
+      'lineStart': start,
+      'lineMiddle': _middleCtrl.text.trim(),
+      'lineEnd': end,
+      'direction': _direction,
+      'notes': _notesCtrl.text.trim(),
+    });
   }
 
   @override
@@ -78,6 +98,7 @@ class _SaveDrawnRouteSheetState extends State<SaveDrawnRouteSheet> {
             const SizedBox(height: 16),
             TextField(
               controller: _startCtrl,
+              textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
                 labelText: 'اسم بداية الخط *',
                 border: OutlineInputBorder(),
@@ -87,67 +108,72 @@ class _SaveDrawnRouteSheetState extends State<SaveDrawnRouteSheet> {
             const SizedBox(height: 12),
             TextField(
               controller: _middleCtrl,
+              textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
                 labelText: 'اسم أوسط (اختياري)',
                 border: OutlineInputBorder(),
+                hintText: 'مثل: القصر',
               ),
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _endCtrl,
+              textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
                 labelText: 'اسم نهاية الخط *',
                 border: OutlineInputBorder(),
               ),
               onChanged: (_) => setState(() {}),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(
               'الاسم المركّب: ${_composedLineName.isEmpty ? '—' : _composedLineName}',
-              style: TextStyle(color: Colors.grey.shade700),
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
+            const Text('الاتجاه', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
             SegmentedButton<RouteDirection>(
               segments: const [
                 ButtonSegment(
                   value: RouteDirection.outbound,
                   label: Text('ذهاب'),
+                  icon: Icon(Icons.arrow_upward, size: 16),
                 ),
                 ButtonSegment(
                   value: RouteDirection.returnTrip,
                   label: Text('إياب'),
+                  icon: Icon(Icons.arrow_downward, size: 16),
                 ),
               ],
               selected: {_direction},
               onSelectionChanged: (s) => setState(() => _direction = s.first),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             TextField(
               controller: _notesCtrl,
-              maxLines: 3,
+              maxLines: 4,
               decoration: const InputDecoration(
-                labelText: 'تفاصيل خط السير (المناطق)',
+                labelText: 'تفاصيل خط السير (المناطق التي يمر بها)',
                 border: OutlineInputBorder(),
                 alignLabelWithHint: true,
+                hintText:
+                    'مثال: الجيزة - القسطل - شارع المطار - جامعة الإسراء ...',
               ),
             ),
             const SizedBox(height: 18),
-            FilledButton(
-              onPressed: () {
-                final start = _startCtrl.text.trim();
-                final end = _endCtrl.text.trim();
-                if (start.isEmpty || end.isEmpty) return;
-                Navigator.pop(context, {
-                  'lineName': _composedLineName,
-                  'lineStart': start,
-                  'lineMiddle': _middleCtrl.text.trim(),
-                  'lineEnd': end,
-                  'direction': _direction,
-                  'notes': _notesCtrl.text.trim(),
-                });
-              },
-              child: const Text('حفظ'),
+            FilledButton.icon(
+              onPressed: _saving ? null : _submit,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppConstants.primaryColor,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              icon: const Icon(Icons.save_rounded),
+              label: const Text('حفظ المسار'),
             ),
           ],
         ),
