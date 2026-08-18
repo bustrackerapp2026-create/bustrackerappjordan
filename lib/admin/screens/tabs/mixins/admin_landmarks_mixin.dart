@@ -10,7 +10,7 @@ import '../../../../core/map/map_utils.dart';
 import '../../../../models/map_landmark.dart';
 import '../../../../services/map_landmark_service.dart';
 
-/// عرض معالم mapLandmarks المعتمدة على خريطة الأدمن (طبقة واحدة).
+/// عرض معالم mapLandmarks المعتمدة على خريطة الأدمن (طبقة خاصة).
 mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final MapLandmarkService _landmarkService = MapLandmarkService();
   StreamSubscription<List<MapLandmark>>? _landmarksSub;
@@ -60,6 +60,9 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       await _clearLandmarkAnnotations();
       if (_landmarks.isEmpty) return;
 
+      // صور جديدة بعد تصغير الحجم
+      LandmarkMarkerImages.clearCache();
+
       final types = _landmarks.map((m) => m.type).toSet();
       final iconBytes = <MapLandmarkType, Uint8List>{};
       for (final t in types) {
@@ -70,6 +73,7 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       for (final m in _landmarks) {
         final bytes = iconBytes[m.type];
         if (bytes == null) continue;
+        final name = m.name.trim();
         try {
           final ann = await pointAnnotationManager!.create(
             PointAnnotationOptions(
@@ -77,8 +81,19 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
                 coordinates: Position(m.longitude, m.latitude),
               ),
               image: bytes,
-              iconSize: 0.85,
+              iconSize: LandmarkMarkerImages.mapIconSize,
               iconAnchor: IconAnchor.CENTER,
+              // اسم المعلم تحت الأيقونة — أسلوب تسمية Mapbox POI
+              textField: name.isEmpty ? null : name,
+              textSize: LandmarkMarkerImages.labelTextSize,
+              textColor: 0xFF212121,
+              textHaloColor: 0xFFFFFFFF,
+              textHaloWidth: 1.2,
+              textAnchor: TextAnchor.TOP,
+              // إزاحة لأسفل تحت الأيقونة (بوحدة em تقريباً)
+              textOffset: [0.0, 1.15],
+              textMaxWidth: 10,
+              textJustify: TextJustify.CENTER,
             ),
           );
           _landmarkAnnotations[m.id] = ann;
