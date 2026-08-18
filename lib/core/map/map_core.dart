@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import '../../core/theme/app_theme.dart';
+import '../../services/map_camera_prefs_service.dart';
 import 'map_constants.dart';
 import 'map_layer_controller.dart';
 import 'map_utils.dart';
@@ -22,12 +23,16 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
 
   bool _cameraMoving = false;
   Timer? _cameraIdleTimer;
+  Timer? _cameraSaveTimer;
   Timer? _arabicLabelsRetry;
 
   /// لمنع ضغط مستمع الكاميرا (كل إطار أثناء السحب)
   int _lastCameraEventMs = 0;
 
   bool get suppressPoiTap => false;
+
+  /// دور حفظ الكاميرا: admin / passenger / driver — فارغ = بدون حفظ.
+  String get mapCameraPrefsRole => '';
 
   void onMapCreated(MapboxMap map) {
     mapboxMap = map;
@@ -40,7 +45,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
       initPolylineManager(),
       applyStableGestures(),
     ]);
-    _setDefaultCamera();
+    await restoreInitialCamera();
     await applyMapConstraints();
     await Future<void>.delayed(const Duration(milliseconds: 80));
     await applyLabelLayersFilter();
@@ -59,6 +64,59 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     });
   }
 
+  /// استعادة آخر موضع كاميرا محفوظ، أو العودة لمركز الأردن.
+  Future<void> restoreInitialCamera({
+    double fallbackZoom = MapConstants.defaultZoom,
+  }) async {
+    if (mapboxMap == null) return;
+
+    double lat = MapConstants.centerLat;
+    double lng = MapConstants.centerLng;
+    double zoom = fallbackZoom;
+    double bearing = 0;
+
+    final role = mapCameraPrefsRole;
+    if (role.isNotEmpty) {
+      final saved = await MapCameraPrefsService().load(role);
+      if (saved != null) {
+        lat = saved.latitude;
+        lng = saved.longitude;
+        zoom = saved.zoom;
+        bearing = saved.bearing;
+      }
+    }
+
+    try {
+      await mapboxMap!.setCamera(
+        CameraOptions(
+          center: Point(coordinates: Position(lng, lat)),
+          zoom: zoom.clamp(MapConstants.minZoom, MapConstants.maxZoom),
+          pitch: 0.0,
+          bearing: bearing,
+        ),
+      );
+    } catch (e) {
+      MapUtils.log('restore camera: $e');
+    }
+  }
+
+  /// حفظ موضع الكاميرا الحالي لهذا الدور.
+  Future<void> persistCurrentCamera() async {
+    final role = mapCameraPrefsRole;
+    if (role.isEmpty || mapboxMap == null) return;
+    try {
+      final state = await mapboxMap!.getCameraState();
+      final coords = state.center.coordinates;
+      await MapCameraPrefsService().save(
+        role,
+        latitude: coords.lat.toDouble(),
+        longitude: coords.lng.toDouble(),
+        zoom: state.zoom,
+        bearing: state.bearing,
+      );
+    } catch (_) {}
+  }
+
   /// إعدادات إيماءات: زوم + تدوير (بدون pitch وبدون تسارع بعد الإفلات).
   Future<void> applyStableGestures() async {
     if (mapboxMap == null) return;
@@ -74,7 +132,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
           quickZoomEnabled: false,
           simultaneousRotateAndPinchToZoomEnabled: true,
           pinchPanEnabled: false,
-          // بدون تسارع بعد الإفلات — يقلل إعادة الرسم المستمرة على بعض الأجهزة
           pinchToZoomDecelerationEnabled: false,
           scrollDecelerationEnabled: false,
           rotateDecelerationEnabled: false,
@@ -119,22 +176,28 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   Future<void> applyZoomLimitsOnly() => applyMapConstraints();
   Future<void> applyGoogleLikeCameraBehavior() => applyStableGestures();
 
-  /// يتتبع أن المستخدم يحرّك الخريطة فقط — بدون طباعة أو setCamera.
+  /// يتتبع حركة الكاميرا ويحفظ الموضع بعد التوقف.
   void onCameraChangedForDebug(CameraChangedEventData data) {
     _cameraMoving = true;
     final now = DateTime.now().millisecondsSinceEpoch;
-    // لا نُنشئ Timer في كل إطار — فقط كل ~120ms
     if (now - _lastCameraEventMs < 120) return;
     _lastCameraEventMs = now;
     _cameraIdleTimer?.cancel();
     _cameraIdleTimer = Timer(const Duration(milliseconds: 320), () {
       _cameraMoving = false;
     });
+    _cameraSaveTimer?.cancel();
+    _cameraSaveTimer = Timer(const Duration(milliseconds: 500), () {
+      unawaited(persistCurrentCamera());
+    });
   }
 
   void disposeMapDebug() {
+    unawaited(persistCurrentCamera());
     _cameraIdleTimer?.cancel();
     _cameraIdleTimer = null;
+    _cameraSaveTimer?.cancel();
+    _cameraSaveTimer = null;
     _arabicLabelsRetry?.cancel();
     _arabicLabelsRetry = null;
   }
@@ -155,6 +218,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
       ),
       MapAnimationOptions(duration: 480, startDelay: 0),
     );
+    unawaited(persistCurrentCamera());
   }
 
   Future<void> resetNorth() async {
@@ -168,19 +232,6 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
         bearing: 0.0,
       ),
       MapAnimationOptions(duration: 250, startDelay: 0),
-    );
-  }
-
-  void _setDefaultCamera() {
-    mapboxMap?.setCamera(
-      CameraOptions(
-        center: Point(
-          coordinates: Position(MapConstants.centerLng, MapConstants.centerLat),
-        ),
-        zoom: MapConstants.defaultZoom,
-        pitch: 0.0,
-        bearing: 0.0,
-      ),
     );
   }
 
