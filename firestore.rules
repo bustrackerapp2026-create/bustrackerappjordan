@@ -86,7 +86,6 @@ service cloud.firestore {
         && request.resource.data.driverId == resource.data.driverId;
     }
 
-    /// حقول مسموحة في driverPublic للخريطة والبطاقة (بدون بريد/تحقق)
     function onlyDriverPublicKeys() {
       return request.resource.data.keys().hasOnly([
         'fullName',
@@ -242,6 +241,28 @@ service cloud.firestore {
           && request.resource.data.lineName == resource.data.lineName
         );
 
+      allow delete: if isAdmin();
+    }
+
+    // معالم الخريطة الخاصة بالمشروع (طبقة واحدة فوق Mapbox)
+    match /mapLandmarks/{landmarkId} {
+      allow read: if isSignedIn() && (
+        resource.data.status == 'approved' || isAdmin()
+      );
+
+      // المرحلة 1: الكتابة للأدمن فقط
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasAll(['name', 'type', 'latitude', 'longitude', 'status', 'createdBy'])
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.type is string
+        && request.resource.data.latitude is number
+        && request.resource.data.longitude is number
+        && request.resource.data.status in ['pending', 'approved', 'rejected'];
+
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
   }
