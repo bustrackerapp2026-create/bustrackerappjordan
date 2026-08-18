@@ -6,11 +6,18 @@ import 'package:flutter/material.dart';
 import '../../models/map_landmark.dart';
 
 /// أيقونات معالم المشروع — تُولَّد مرة وتُخزَّن في الذاكرة.
-/// أسلوب POI Mapbox: دائرة ملونة + رمز أبيض.
+/// حجم قريب من رموز POI في Mapbox Streets (دائرة ملونة + رمز أبيض).
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
-  static const double markerSize = 88;
+  /// حجم الصورة المولَّدة (px). مع [mapIconSize] يصبح الظهور قريباً من Mapbox POI.
+  static const double markerSize = 64;
+
+  /// مقياس العرض على الخريطة (تقريبي لرموز Maki/POI عند زوم المدينة).
+  static const double mapIconSize = 0.55;
+
+  /// حجم اسم المعلم تحت الأيقونة (مثل تسمية Mapbox).
+  static const double labelTextSize = 11.0;
 
   static final Map<MapLandmarkType, Uint8List> _cache = {};
 
@@ -298,23 +305,27 @@ class LandmarkMarkerImages {
     final canvas = Canvas(recorder);
     final color = colorFor(type);
 
+    // دائرة أصغر — أقرب لنسبة Maki على الخريطة
+    const radius = 18.0;
+    const inner = 14.5;
+
     final shadow = Paint()
-      ..color = Colors.black.withValues(alpha: 0.18)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-    canvas.drawCircle(const Offset(size / 2, size / 2 + 1.5), 28, shadow);
+      ..color = Colors.black.withValues(alpha: 0.16)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawCircle(const Offset(size / 2, size / 2 + 1), radius, shadow);
 
     final outer = Paint()..color = Colors.white;
-    canvas.drawCircle(const Offset(size / 2, size / 2), 28, outer);
+    canvas.drawCircle(const Offset(size / 2, size / 2), radius, outer);
 
     final fill = Paint()..color = color;
-    canvas.drawCircle(const Offset(size / 2, size / 2), 23, fill);
+    canvas.drawCircle(const Offset(size / 2, size / 2), inner, fill);
 
     final icon = iconDataFor(type);
     final tp = TextPainter(
       text: TextSpan(
         text: String.fromCharCode(icon.codePoint),
         style: TextStyle(
-          fontSize: 26,
+          fontSize: 17,
           fontFamily: icon.fontFamily,
           package: icon.fontPackage,
           color: Colors.white,
@@ -324,7 +335,7 @@ class LandmarkMarkerImages {
     )..layout();
     tp.paint(
       canvas,
-      Offset((size - tp.width) / 2, (size - tp.height) / 2 - 1),
+      Offset((size - tp.width) / 2, (size - tp.height) / 2 - 0.5),
     );
 
     final picture = recorder.endRecording();
