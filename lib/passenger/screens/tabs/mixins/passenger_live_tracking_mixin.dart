@@ -26,6 +26,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final ValueNotifier<int> liveDriversCount = ValueNotifier<int>(0);
 
   String? _routeFilterForTracking;
+  Set<String>? _routeNamesForTracking;
   bool _updatingMarkers = false;
   bool _liveTrackingDisposed = false;
   List<LiveDriverLocation>? _pendingDrivers;
@@ -96,12 +97,19 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   double _rad(double d) => d * math.pi / 180;
 
-  void startLiveDriverTracking({String? routeFilter}) {
+  void startLiveDriverTracking({
+    String? routeFilter,
+    Set<String>? routeNames,
+  }) {
     if (_liveTrackingDisposed || !mounted) return;
     _routeFilterForTracking = routeFilter;
+    _routeNamesForTracking = routeNames;
     _liveDriversSub?.cancel();
     _liveDriversSub = _tracking
-        .watchOnlineDrivers(routeFilter: routeFilter)
+        .watchOnlineDrivers(
+          routeFilter: routeFilter,
+          routeNames: routeNames,
+        )
         .listen(_onDriversUpdated, onError: (e) {
       MapUtils.log('خطأ تتبع السائقين: $e', tag: 'LiveTracking');
     });
@@ -109,8 +117,19 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   void updateLiveTrackingRouteFilter(String? route) {
     if (_liveTrackingDisposed) return;
-    if (_routeFilterForTracking == route) return;
+    _routeNamesForTracking = null;
+    if (_routeFilterForTracking == route && _routeNamesForTracking == null) {
+      // قد نكون في وضع متعدد الخطوط — أعد الاشتراك دائماً عند طلب خط واحد
+    }
     startLiveDriverTracking(routeFilter: route);
+  }
+
+  /// عرض باصات عدة خطوط معاً (وضع «باصات من هنا»).
+  void updateLiveTrackingRouteNames(Set<String> routeNames) {
+    if (_liveTrackingDisposed) return;
+    final cleaned =
+        routeNames.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet();
+    startLiveDriverTracking(routeNames: cleaned);
   }
 
   void _onDriversUpdated(List<LiveDriverLocation> drivers) {
@@ -265,7 +284,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  /// [passengerLat/Lng] لعرض ETA. [onRequestBoard] طلب صعود.
   Future<void> showDriverInfoSheet(
     String driverId, {
     double? passengerLat,
