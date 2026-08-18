@@ -84,6 +84,11 @@ class _AdminMapTabState extends State<AdminMapTab>
     MapUtils.showSnackBar(context, message, isError: isError);
   }
 
+  void _onCameraChanged(CameraChangedEventData data) {
+    onCameraChangedForDebug(data);
+    onCameraChangedForLandmarks();
+  }
+
   @override
   void onStyleChanged() {
     _adminLocationAnnotation = null;
@@ -872,7 +877,7 @@ class _AdminMapTabState extends State<AdminMapTab>
             key: const ValueKey('admin_map_widget'),
             textureView: true,
             onMapCreated: onMapCreated,
-            onCameraChangeListener: onCameraChangedForDebug,
+            onCameraChangeListener: _onCameraChanged,
             // ignore: deprecated_member_use
             onTapListener: (event) {
               if (isDrawingRoute) {
