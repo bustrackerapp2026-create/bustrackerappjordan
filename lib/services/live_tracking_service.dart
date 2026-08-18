@@ -5,7 +5,6 @@ import 'analytics_service.dart';
 import 'driver_public_location_service.dart';
 
 /// خدمة التتبع الحي: بث مواقع السائقين من [driverPublic] فقط.
-/// لا تقرأ مجموعة users للعامة — حماية البريد/الهاتف والحقول الحساسة.
 class LiveTrackingService {
   LiveTrackingService._();
   static final LiveTrackingService instance = LiveTrackingService._();
@@ -14,20 +13,38 @@ class LiveTrackingService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final DriverPublicLocationService _public = DriverPublicLocationService();
 
-  Stream<List<LiveDriverLocation>> watchOnlineDrivers({String? routeFilter}) {
+  /// [routeFilter]: خط واحد.
+  /// [routeNames]: مجموعة خطوط (وضع «باصات من هنا»).
+  /// إن وُجدت [routeNames] تُفضَّل على [routeFilter].
+  Stream<List<LiveDriverLocation>> watchOnlineDrivers({
+    String? routeFilter,
+    Set<String>? routeNames,
+  }) {
     return _public.watchOnline().map((snap) {
       final list = <LiveDriverLocation>[];
+      final names = routeNames
+          ?.map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toSet();
+
       for (final doc in snap.docs) {
         final live = LiveDriverLocation.fromPublicDoc(doc.id, doc.data());
         if (!live.hasValidCoords) continue;
         if (!live.isFresh && !live.isOnline) continue;
-        if (routeFilter != null &&
+
+        final driverRoute = live.route?.trim() ?? '';
+
+        if (names != null && names.isNotEmpty) {
+          if (driverRoute.isEmpty || !names.contains(driverRoute)) {
+            continue;
+          }
+        } else if (routeFilter != null &&
             routeFilter.isNotEmpty &&
-            live.route != null &&
-            live.route!.isNotEmpty &&
-            live.route != routeFilter) {
+            driverRoute.isNotEmpty &&
+            driverRoute != routeFilter) {
           continue;
         }
+
         list.add(live);
       }
       return list;
@@ -82,10 +99,8 @@ class LiveTrackingService {
       data['route'] = route;
     }
 
-    // ملف المستخدم الخاص (المالك فقط يقرأه الآخرون عبر القواعد الجديدة)
     await _db.collection('users').doc(uid).update(data);
 
-    // النسخة العامة للخريطة
     await _public.publishStatus(
       uid: uid,
       isOnline: isOnline,
