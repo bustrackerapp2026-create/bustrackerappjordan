@@ -105,6 +105,14 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "lineName", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "mapLandmarks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "name", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
