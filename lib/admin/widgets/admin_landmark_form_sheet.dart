@@ -16,6 +16,104 @@ class AdminLandmarkFormResult {
   });
 }
 
+/// تصنيف أنواع المعالم للعرض في الشيت.
+class _LandmarkCategory {
+  final String title;
+  final List<MapLandmarkType> types;
+
+  const _LandmarkCategory(this.title, this.types);
+}
+
+const List<_LandmarkCategory> _categories = [
+  _LandmarkCategory('طعام ومشروبات', [
+    MapLandmarkType.restaurant,
+    MapLandmarkType.cafe,
+    MapLandmarkType.fastFood,
+    MapLandmarkType.bakery,
+    MapLandmarkType.bar,
+  ]),
+  _LandmarkCategory('إقامة وسكن', [
+    MapLandmarkType.hotel,
+    MapLandmarkType.house,
+  ]),
+  _LandmarkCategory('تسوق', [
+    MapLandmarkType.shop,
+    MapLandmarkType.supermarket,
+    MapLandmarkType.clothing,
+    MapLandmarkType.convenience,
+    MapLandmarkType.market,
+  ]),
+  _LandmarkCategory('صحة', [
+    MapLandmarkType.hospital,
+    MapLandmarkType.medicalCenter,
+    MapLandmarkType.pharmacy,
+    MapLandmarkType.clinic,
+    MapLandmarkType.dentist,
+  ]),
+  _LandmarkCategory('تعليم', [
+    MapLandmarkType.school,
+    MapLandmarkType.university,
+    MapLandmarkType.college,
+    MapLandmarkType.kindergarten,
+    MapLandmarkType.library,
+  ]),
+  _LandmarkCategory('عبادة', [
+    MapLandmarkType.mosque,
+    MapLandmarkType.church,
+  ]),
+  _LandmarkCategory('مالية', [
+    MapLandmarkType.bank,
+    MapLandmarkType.atm,
+  ]),
+  _LandmarkCategory('مواصلات', [
+    MapLandmarkType.fuel,
+    MapLandmarkType.chargingStation,
+    MapLandmarkType.parking,
+    MapLandmarkType.busStation,
+    MapLandmarkType.trainStation,
+    MapLandmarkType.airport,
+    MapLandmarkType.taxi,
+  ]),
+  _LandmarkCategory('طرق وبنية تحتية', [
+    MapLandmarkType.roundabout,
+    MapLandmarkType.trafficLight,
+    MapLandmarkType.pedestrianBridge,
+    MapLandmarkType.vehicleBridge,
+    MapLandmarkType.crosswalk,
+    MapLandmarkType.tunnel,
+    MapLandmarkType.warningTriangle,
+  ]),
+  _LandmarkCategory('خدمات عامة', [
+    MapLandmarkType.government,
+    MapLandmarkType.police,
+    MapLandmarkType.fireStation,
+    MapLandmarkType.postOffice,
+    MapLandmarkType.embassy,
+  ]),
+  _LandmarkCategory('ترفيه وثقافة', [
+    MapLandmarkType.park,
+    MapLandmarkType.playground,
+    MapLandmarkType.museum,
+    MapLandmarkType.cinema,
+    MapLandmarkType.gym,
+    MapLandmarkType.stadium,
+    MapLandmarkType.beach,
+    MapLandmarkType.zoo,
+    MapLandmarkType.aquarium,
+    MapLandmarkType.attraction,
+  ]),
+  _LandmarkCategory('خدمات أخرى', [
+    MapLandmarkType.carRepair,
+    MapLandmarkType.carRental,
+    MapLandmarkType.laundry,
+    MapLandmarkType.hairdresser,
+    MapLandmarkType.barber,
+    MapLandmarkType.beautySalon,
+    MapLandmarkType.toilet,
+    MapLandmarkType.other,
+  ]),
+];
+
 class AdminLandmarkFormSheet extends StatefulWidget {
   final String title;
   final MapLandmark? initial;
@@ -91,9 +189,65 @@ class _AdminLandmarkFormSheetState extends State<AdminLandmarkFormSheet> {
     );
   }
 
+  Widget _buildTypeChip(MapLandmarkType t) {
+    final selected = _type == t;
+    final color = LandmarkMarkerImages.colorFor(t);
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(end: 8),
+      child: ChoiceChip(
+        selected: selected,
+        label: Text(t.labelAr),
+        avatar: Icon(
+          LandmarkMarkerImages.iconDataFor(t),
+          size: 18,
+          color: selected ? Colors.white : color,
+        ),
+        selectedColor: color,
+        backgroundColor: color.withValues(alpha: 0.08),
+        side: BorderSide(
+          color: selected ? color : color.withValues(alpha: 0.35),
+        ),
+        labelStyle: TextStyle(
+          color: selected ? Colors.white : Colors.black87,
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+        ),
+        onSelected: (_) => setState(() => _type = t),
+      ),
+    );
+  }
+
+  Widget _buildCategorySection(_LandmarkCategory cat) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            cat.title,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: cat.types.map(_buildTypeChip).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final selectedColor = LandmarkMarkerImages.colorFor(_type);
+
     return Padding(
       padding: EdgeInsets.only(bottom: bottom),
       child: SingleChildScrollView(
@@ -134,33 +288,48 @@ class _AdminLandmarkFormSheetState extends State<AdminLandmarkFormSheet> {
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 14),
-            const Text('النوع', style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: MapLandmarkType.values.map((t) {
-                final selected = _type == t;
-                final color = LandmarkMarkerImages.colorFor(t);
-                return ChoiceChip(
-                  selected: selected,
-                  label: Text(t.labelAr),
-                  avatar: Icon(
-                    LandmarkMarkerImages.iconDataFor(t),
-                    size: 18,
-                    color: selected ? Colors.white : color,
+            const SizedBox(height: 12),
+            // النوع المختار حالياً
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: selectedColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: selectedColor.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: selectedColor,
+                    child: Icon(
+                      LandmarkMarkerImages.iconDataFor(_type),
+                      size: 18,
+                      color: Colors.white,
+                    ),
                   ),
-                  selectedColor: color,
-                  labelStyle: TextStyle(
-                    color: selected ? Colors.white : Colors.black87,
-                    fontWeight: FontWeight.w600,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'النوع المحدد: ${_type.labelAr}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: selectedColor,
+                      ),
+                    ),
                   ),
-                  onSelected: (_) => setState(() => _type = t),
-                );
-              }).toList(),
+                ],
+              ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
+            const Text(
+              'اختر نوع المعلم',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+            ),
+            const SizedBox(height: 10),
+            // أقسام أفقية حسب التصنيف
+            ..._categories.map(_buildCategorySection),
+            const SizedBox(height: 4),
             TextField(
               controller: _notesCtrl,
               maxLines: 2,
