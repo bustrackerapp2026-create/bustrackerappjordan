@@ -5,15 +5,16 @@ import 'package:flutter/material.dart';
 
 import '../../models/map_landmark.dart';
 
-/// أيقونات معالم المشروع — مطابقة قريبة جداً لأسلوب Google Maps POI:
-/// - قطر الأيقونة على الشاشة ~16–22px
-/// - نص رمادي غامق بحجم ~11px وهالة بيضاء خفيفة
+/// أيقونات معالم المشروع — أسلوب Google Maps POI بحجم واضح ومقروء:
+/// - قطر الدائرة على الشاشة تقريباً 28–36px
+/// - رمز أبيض واضح داخل دائرة ملونة + حلقة بيضاء
+/// - نص رمادي Google مع هالة بيضاء
 /// - ظهور/اختفاء حسب الأهمية مع الزوم
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
-  /// حجم الصورة المولَّدة (px). الدائرة تملأ معظم المساحة.
-  static const double markerSize = 64;
+  /// حجم الصورة المولَّدة — دقة جيدة بدون تضخيم مفرط على الخريطة.
+  static const double markerSize = 96;
 
   /// لون نص التسمية — رمادي Google (#3C4043)
   static const int labelTextColor = 0xFF3C4043;
@@ -22,13 +23,13 @@ class LandmarkMarkerImages {
   static const int labelHaloColor = 0xFFFFFFFF;
 
   /// عرض هالة النص (px)
-  static const double labelHaloWidth = 0.85;
+  static const double labelHaloWidth = 1.1;
 
   /// تباعد حروف خفيف
-  static const double labelLetterSpacing = 0.015;
+  static const double labelLetterSpacing = 0.01;
 
   /// أقصى عرض سطر للاسم (em)
-  static const double labelMaxWidth = 8;
+  static const double labelMaxWidth = 9;
 
   static final Map<MapLandmarkType, Uint8List> _cache = {};
 
@@ -122,34 +123,39 @@ class LandmarkMarkerImages {
   static bool showLabelAtZoom(MapLandmarkType type, double zoom) =>
       zoom >= labelMinZoomFor(type);
 
-  // ─── أحجام الشاشة (هدف: دائرة ~16–22px مثل Google) ───────────────
-  // الصورة 64px، قطر الدائرة المرسومة ~40px.
-  // iconSize 0.40 → ~16px دائرة | 0.52 → ~21px دائرة
+  // ─── حجم الشاشة ─────────────────────────────────────────────────
+  // الصورة 96px، قطر الدائرة المرسومة ~72px (نسبة عالية من الصورة).
+  // iconSize 0.78 → صورة ~75px → دائرة ~56px؟ لا:
+  // قطر الدائرة في الصورة = 36*2 = 72 من 96 → نسبة 0.75 من الصورة.
+  // iconSize 0.55 → صورة 53px → دائرة ~40px  (كبير قليلاً)
+  // iconSize 0.42 → صورة 40px → دائرة ~30px  ✓
+  // iconSize 0.48 → صورة 46px → دائرة ~35px  ✓
+  // هدف واضح ومقروء: دائرة ~28–36px على الشاشة.
 
   static double iconSizeForZoom(double zoom) {
-    if (zoom <= 11.5) return 0.36;
-    if (zoom <= 12.5) return 0.40;
-    if (zoom <= 13.5) return 0.44;
-    if (zoom <= 14.5) return 0.47;
-    if (zoom <= 15.5) return 0.50;
-    if (zoom <= 16.5) return 0.53;
-    return 0.55;
+    if (zoom <= 11.5) return 0.40;
+    if (zoom <= 12.5) return 0.44;
+    if (zoom <= 13.5) return 0.48;
+    if (zoom <= 14.5) return 0.52;
+    if (zoom <= 15.5) return 0.56;
+    if (zoom <= 16.5) return 0.60;
+    return 0.64;
   }
 
   static const double labelMinZoom = 13.5;
 
   static bool showLabelForZoom(double zoom) => zoom >= labelMinZoom;
 
-  /// حجم خط Google POI تقريباً ثابت (~11).
+  /// حجم خط الاسم — أوضح قليلاً مع بقاء طابع Google.
   static double textSizeForZoom(double zoom) {
     if (zoom < 13.2) return 0;
-    if (zoom < 14.5) return 10.5;
-    if (zoom < 15.8) return 11.0;
-    return 11.5;
+    if (zoom < 14.5) return 11.5;
+    if (zoom < 15.8) return 12.0;
+    return 12.5;
   }
 
   static List<double> textOffsetForZoom(double zoom) {
-    final y = zoom >= 16 ? 1.05 : (zoom >= 14.5 ? 0.98 : 0.92);
+    final y = zoom >= 16 ? 1.15 : (zoom >= 14.5 ? 1.08 : 1.00);
     return [0.0, y];
   }
 
@@ -431,44 +437,50 @@ class LandmarkMarkerImages {
 
   static void clearCache() => _cache.clear();
 
+  /// دائرة ملونة واضحة + رمز أبيض كبير نسبياً داخلها.
   static Future<Uint8List> _render(MapLandmarkType type) async {
     const size = markerSize;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final color = colorFor(type);
 
-    const radius = 20.0;
-    const inner = 16.5;
+    // دائرة تملأ معظم الصورة (قطر ~72 من 96)
+    const radius = 36.0;
+    const inner = 30.5;
     final center = Offset(size / 2, size / 2);
 
+    // ظل ناعم
     final shadow = Paint()
-      ..color = const Color(0x28000000)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.8);
-    canvas.drawCircle(center.translate(0, 0.6), radius, shadow);
+      ..color = const Color(0x33000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.4);
+    canvas.drawCircle(center.translate(0, 1.0), radius, shadow);
 
+    // حلقة بيضاء
     final outer = Paint()..color = Colors.white;
     canvas.drawCircle(center, radius, outer);
 
+    // التعبئة الملونة
     final fill = Paint()..color = color;
     canvas.drawCircle(center, inner, fill);
 
+    // رمز أبيض واضح
     final icon = iconDataFor(type);
     final tp = TextPainter(
       text: TextSpan(
         text: String.fromCharCode(icon.codePoint),
         style: TextStyle(
-          fontSize: 15.5,
+          fontSize: 30,
           fontFamily: icon.fontFamily,
           package: icon.fontPackage,
           color: Colors.white,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w600,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
     tp.paint(
       canvas,
-      Offset((size - tp.width) / 2, (size - tp.height) / 2 - 0.3),
+      Offset((size - tp.width) / 2, (size - tp.height) / 2 - 0.5),
     );
 
     final picture = recorder.endRecording();
