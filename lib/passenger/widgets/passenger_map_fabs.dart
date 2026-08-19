@@ -2,20 +2,26 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 
-/// أزرار خريطة الراكب.
+/// أزرار خريطة الراكب — الأساسية فقط لتجربة بسيطة.
+///
+/// الترتيب من الأعلى للأسفل (قرب أسفل الشاشة):
+/// 1) باصات من هنا
+/// 2) إلى أين؟
+/// 3) أقرب باص
+/// 4) موقعي
 class PassengerMapFabs extends StatelessWidget {
   final bool findingNearest;
   final bool findingNearby;
   final bool nearbyModeActive;
   final bool hasDestination;
   final bool isLoadingPassengerLocation;
-  final bool isAddingPickupPoint;
   final VoidCallback? onNearestBus;
   final VoidCallback? onNearbyBuses;
   final VoidCallback? onSetDestination;
-  final VoidCallback onMapLayers;
   final VoidCallback onMyLocation;
-  final VoidCallback onTogglePickup;
+
+  /// اختياري: إعدادات الطبقات (غير ظاهر كزر رئيسي).
+  final VoidCallback? onMapLayers;
 
   const PassengerMapFabs({
     super.key,
@@ -24,20 +30,20 @@ class PassengerMapFabs extends StatelessWidget {
     this.nearbyModeActive = false,
     this.hasDestination = false,
     required this.isLoadingPassengerLocation,
-    required this.isAddingPickupPoint,
     required this.onNearestBus,
     this.onNearbyBuses,
     this.onSetDestination,
-    required this.onMapLayers,
     required this.onMyLocation,
-    required this.onTogglePickup,
+    this.onMapLayers,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
+        // 1) باصات من هنا — الإجراء الأهم للراكب على الشارع
         FloatingActionButton.extended(
           heroTag: 'passenger_nearby_buses',
           onPressed: findingNearby ? null : onNearbyBuses,
@@ -67,6 +73,8 @@ class PassengerMapFabs extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
+
+        // 2) إلى أين؟ — تصفية حسب الوجهة
         FloatingActionButton.extended(
           heroTag: 'passenger_destination',
           onPressed: onSetDestination,
@@ -85,12 +93,15 @@ class PassengerMapFabs extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
+
+        // 3) أقرب باص حي (زر صغير)
         FloatingActionButton.small(
           heroTag: 'passenger_nearest_bus',
           onPressed: onNearestBus,
           backgroundColor: Colors.white,
           foregroundColor: const Color(0xFF0F766E),
           elevation: 3,
+          tooltip: 'أقرب باص',
           child: findingNearest
               ? const SizedBox(
                   width: 18,
@@ -100,16 +111,8 @@ class PassengerMapFabs extends StatelessWidget {
               : const Icon(Icons.near_me_rounded, size: 20),
         ),
         const SizedBox(height: 10),
-        FloatingActionButton(
-          heroTag: 'passenger_map_layers',
-          onPressed: onMapLayers,
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.textColor,
-          elevation: 4,
-          shape: const CircleBorder(),
-          child: const Icon(Icons.layers, size: 26),
-        ),
-        const SizedBox(height: 12),
+
+        // 4) موقعي
         FloatingActionButton(
           heroTag: 'passenger_my_location',
           onPressed: onMyLocation,
@@ -117,6 +120,7 @@ class PassengerMapFabs extends StatelessWidget {
           foregroundColor: AppTheme.primaryColor,
           elevation: 4,
           shape: const CircleBorder(),
+          tooltip: 'موقعي',
           child: isLoadingPassengerLocation
               ? const SizedBox(
                   width: 24,
@@ -128,21 +132,20 @@ class PassengerMapFabs extends StatelessWidget {
                 )
               : const Icon(Icons.my_location, size: 28),
         ),
-        const SizedBox(height: 12),
-        FloatingActionButton(
-          heroTag: 'passenger_add_pickup',
-          onPressed: onTogglePickup,
-          backgroundColor: isAddingPickupPoint ? Colors.red : Colors.white,
-          foregroundColor:
-              isAddingPickupPoint ? Colors.white : AppTheme.primaryColor,
-          elevation: 4,
-          shape: const CircleBorder(),
-          child: Icon(
-            isAddingPickupPoint
-                ? Icons.close
-                : Icons.add_location_alt_rounded,
+
+        // إعدادات الطبقات — اختياري وصغير إن وُجد
+        if (onMapLayers != null) ...[
+          const SizedBox(height: 10),
+          FloatingActionButton.small(
+            heroTag: 'passenger_map_layers',
+            onPressed: onMapLayers,
+            backgroundColor: Colors.white,
+            foregroundColor: AppTheme.textColor,
+            elevation: 2,
+            tooltip: 'طبقات الخريطة',
+            child: const Icon(Icons.layers_outlined, size: 20),
           ),
-        ),
+        ],
       ],
     );
   }

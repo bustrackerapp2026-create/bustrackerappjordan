@@ -708,29 +708,17 @@ class _MapTabState extends State<MapTab>
               nearbyModeActive: _nearbyMode,
               hasDestination: _destination != null,
               isLoadingPassengerLocation: isLoadingPassengerLocation,
-              isAddingPickupPoint: isAddingPickupPoint,
               onNearbyBuses: _findingNearby ? null : () => _showBusesNearMe(),
               onSetDestination: _pickDestination,
               onNearestBus: _findingNearest ? null : _findNearestBus,
-              onMapLayers: () {
-                MapUtils.lightHaptic();
-                showMapSettingsSheet(context);
-              },
               onMyLocation: () {
                 MapUtils.lightHaptic();
                 goToMyLocation();
               },
-              onTogglePickup: () {
+              // طبقات الخريطة — زر صغير اختياري
+              onMapLayers: () {
                 MapUtils.lightHaptic();
-                toggleAddingPickupPoint();
-                MapUtils.showSnackBar(
-                  context,
-                  isAddingPickupPoint
-                      ? l10n.tapMapAddNewPoint
-                      : l10n.cancelAddPoint,
-                  isError: !isAddingPickupPoint,
-                );
-                setState(() {});
+                showMapSettingsSheet(context);
               },
             ),
           ),
