@@ -17,6 +17,9 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
 
   final List<PolylineAnnotation> _plannedLineAnnotations = [];
   String? _plannedRoutesLineFilter;
+
+  /// عند تفعيل «باصات من هنا» / الوجهة نعرض عدة خطوط دفعة واحدة.
+  Set<String>? _plannedRoutesMultiFilter;
   bool _drawingPlannedRoutes = false;
   List<PlannedRoute> _lastPlannedRoutes = const [];
 
@@ -26,7 +29,11 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
 
   void startWatchingPlannedRoutes(String lineName) {
     if (lineName.trim().isEmpty) return;
-    if (_plannedRoutesLineFilter == lineName) return;
+    // الخروج من وضع متعدد الخطوط
+    _plannedRoutesMultiFilter = null;
+    if (_plannedRoutesLineFilter == lineName && _plannedRoutesSub != null) {
+      return;
+    }
     _plannedRoutesLineFilter = lineName;
 
     _plannedRoutesSub?.cancel();
@@ -41,8 +48,47 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
   }
 
   void updatePlannedRoutesLineFilter(String lineName) {
-    if (_plannedRoutesLineFilter == lineName) return;
     startWatchingPlannedRoutes(lineName);
+  }
+
+  /// عرض مسارات عدة خطوط معاً (وضع الموقع / الوجهة).
+  void updatePlannedRoutesLineNames(Set<String> lineNames) {
+    final cleaned =
+        lineNames.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet();
+    if (cleaned.isEmpty) return;
+
+    // خط واحد → نفس المسار السابق
+    if (cleaned.length == 1) {
+      startWatchingPlannedRoutes(cleaned.first);
+      return;
+    }
+
+    final same = _plannedRoutesMultiFilter != null &&
+        _plannedRoutesMultiFilter!.length == cleaned.length &&
+        _plannedRoutesMultiFilter!.containsAll(cleaned);
+    if (same && _plannedRoutesSub != null) return;
+
+    _plannedRoutesMultiFilter = cleaned;
+    _plannedRoutesLineFilter = null;
+
+    _plannedRoutesSub?.cancel();
+    // نراقب كل المعتمد ثم نفلتر بالأسماء محلياً (عدد الخطوط صغير عادة)
+    _plannedRoutesSub =
+        _plannedRouteService.watchAllApprovedRoutes().listen((all) {
+      final filtered = all
+          .where((r) => cleaned.contains(r.lineName))
+          .toList();
+      _lastPlannedRoutes = filtered;
+      unawaited(_drawPlannedRoutes(filtered));
+    }, onError: (e) {
+      MapUtils.log('multi planned routes: $e', tag: 'PassengerRoutes');
+    });
+  }
+
+  /// رسم فوري من نتائج NearbyRoutesService بدون انتظار الـ stream.
+  Future<void> showPlannedRoutesSnapshot(List<PlannedRoute> routes) async {
+    _lastPlannedRoutes = List<PlannedRoute>.from(routes);
+    await _drawPlannedRoutes(_lastPlannedRoutes);
   }
 
   Future<void> ensurePlannedRoutesPolylineManager() async {
@@ -101,6 +147,7 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
     _plannedRoutesSub?.cancel();
     _plannedRoutesSub = null;
     _plannedRoutesLineFilter = null;
+    _plannedRoutesMultiFilter = null;
   }
 
   Future<void> clearPlannedRouteLines() async {
