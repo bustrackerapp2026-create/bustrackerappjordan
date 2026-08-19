@@ -78,8 +78,10 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
     final bus = driver.busNumber?.trim();
     final routeTitle = driver.route?.trim();
     final routeDetail = driver.routeDetail?.trim();
-    final phone = driver.phoneNumber?.trim();
-    final hasPhone = phone != null && phone.isNotEmpty;
+    final phoneRaw = driver.phoneNumber?.trim();
+    final String? phone =
+        (phoneRaw != null && phoneRaw.isNotEmpty) ? phoneRaw : null;
+    final hasPhone = phone != null;
 
     String? etaText;
     String? distanceText;
@@ -321,22 +323,22 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                         child: _miniStat(
                           icon: Icons.phone_rounded,
                           label: 'الهاتف',
-                          value: hasPhone ? phone! : '—',
-                          onLongPress: hasPhone
-                              ? () async {
+                          value: phone ?? '—',
+                          onLongPress: phone == null
+                              ? null
+                              : () async {
+                                  final p = phone;
                                   await Clipboard.setData(
-                                    ClipboardData(text: phone!),
+                                    ClipboardData(text: p),
                                   );
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('تم نسخ رقم الهاتف'),
-                                        duration: Duration(seconds: 2),
-                                      ),
-                                    );
-                                  }
-                                }
-                              : null,
+                                  if (!mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('تم نسخ رقم الهاتف'),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                },
                         ),
                       ),
                     ],
@@ -364,7 +366,7 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                     SizedBox(
                       height: 50,
                       child: OutlinedButton.icon(
-                        onPressed: () => _callDriver(phone!),
+                        onPressed: () => _callDriver(phone),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFF0F766E),
                           side: const BorderSide(
@@ -397,9 +399,8 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                                 setState(() => _requesting = true);
                                 try {
                                   await widget.onRequestBoard!(driver);
-                                  if (context.mounted) {
-                                    Navigator.pop(context);
-                                  }
+                                  if (!mounted) return;
+                                  Navigator.pop(context);
                                 } catch (_) {
                                   if (mounted) {
                                     setState(() => _requesting = false);

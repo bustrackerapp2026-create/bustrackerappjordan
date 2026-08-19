@@ -78,6 +78,20 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
     }
   }
 
+  Future<void> _onConfirm() async {
+    if (_preview != null) {
+      if (!mounted) return;
+      Navigator.pop(context, _preview);
+      return;
+    }
+    await _search();
+    if (!mounted) return;
+    final result = _preview;
+    if (result != null) {
+      Navigator.pop(context, result);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
@@ -193,18 +207,7 @@ class _DestinationSearchSheetState extends State<DestinationSearchSheet> {
                 Expanded(
                   flex: 2,
                   child: ElevatedButton(
-                    onPressed: _searching
-                        ? null
-                        : () async {
-                            if (_preview != null) {
-                              Navigator.pop(context, _preview);
-                              return;
-                            }
-                            await _search();
-                            if (_preview != null && mounted) {
-                              Navigator.pop(context, _preview);
-                            }
-                          },
+                    onPressed: _searching ? null : _onConfirm,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryColor,
                       foregroundColor: Colors.white,
