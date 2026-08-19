@@ -63,6 +63,9 @@ class _DriverMapTabState extends State<DriverMapTab>
   bool _completingBoard = false;
   String? _dismissedTripId;
 
+  /// آخر طلب تم تنبيه السائق عليه (اهتزاز + تركيز كاميرا).
+  String? _lastAlertedPendingId;
+
   PointAnnotation? _pickupAnnotation;
   Uint8List? _pickupPinBytes;
   String? _pickupMarkerTripId;
@@ -148,6 +151,27 @@ class _DriverMapTabState extends State<DriverMapTab>
     return bd!.buffer.asUint8List();
   }
 
+  /// تنبيه مرة واحدة لكل طلب جديد: اهتزاز + توجيه الكاميرا لموقع الراكب.
+  void _alertNewPendingIfNeeded(TripModel? next) {
+    if (next == null) return;
+    // لا نكرر التنبيه لنفس الطلب
+    if (next.id == _lastAlertedPendingId) return;
+    // إذا كان هناك رحلة نشطة فالبانر أصلاً لا يظهر
+    if (_activeBoardTrip != null) return;
+    if (!widget.isActive) return;
+
+    _lastAlertedPendingId = next.id;
+    unawaited(MapUtils.alertHaptic());
+
+    if (next.pickupLat != null && next.pickupLng != null) {
+      unawaited(flyToFlat(
+        latitude: next.pickupLat!,
+        longitude: next.pickupLng!,
+        zoom: 16,
+      ));
+    }
+  }
+
   void _watchPendingRequests() {
     _pendingSub?.cancel();
     final uid = context.read<AuthProvider>().userId;
@@ -170,8 +194,10 @@ class _DriverMapTabState extends State<DriverMapTab>
           }
         } else {
           _dismissedTripId = null;
+          _lastAlertedPendingId = null;
         }
         setState(() => _pendingTrip = next);
+        _alertNewPendingIfNeeded(next);
       },
       onError: (e, st) {
         debugPrint('driver pending trips: $e\n$st');
@@ -275,6 +301,7 @@ class _DriverMapTabState extends State<DriverMapTab>
       await _tripService.acceptTripTransaction(trip.id, uid);
       if (!mounted) return;
 
+      MapUtils.mediumHaptic();
       MapUtils.showSnackBar(
         context,
         'تم قبول طلب ${_passengerLabel(trip)}',
