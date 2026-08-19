@@ -14,9 +14,14 @@ import '../../../core/pickup/pickup_point_mixin.dart';
 import '../../../core/trip/trip_manager_mixin.dart';
 import '../../../map/widgets/search_bar_widget.dart';
 import '../../../driver/providers/driver_provider.dart';
+import '../../../driver/widgets/driver_pending_request_banner.dart';
 import '../../../features/auth/providers/auth_provider.dart';
+import '../../../models/trip_model.dart';
+import '../../../models/trip_status.dart';
 import '../../../services/live_tracking_service.dart';
 import '../../../services/map_camera_prefs_service.dart';
+import '../../../services/trip_service.dart';
+import '../../../services/trip_service_exception.dart';
 import '../../../l10n/app_localizations.dart';
 import 'mixins/driver_location_mixin.dart';
 import 'mixins/route_plan_recording_mixin.dart';
@@ -45,6 +50,13 @@ class _DriverMapTabState extends State<DriverMapTab>
   bool _showMap = false;
   Timer? _staleCheckTimer;
 
+  final TripService _tripService = TripService();
+  StreamSubscription<List<TripModel>>? _pendingSub;
+  TripModel? _pendingTrip;
+  bool _handlingRequest = false;
+  /// إخفاء مؤقت لنفس الطلب (يظهر مجدداً إن بقي معلقاً بعد إعادة فتح).
+  String? _dismissedTripId;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -66,6 +78,7 @@ class _DriverMapTabState extends State<DriverMapTab>
       Future<void>.delayed(const Duration(milliseconds: 200), () {
         if (mounted) setState(() => _showMap = true);
       });
+      _watchPendingRequests();
     });
     preloadDriverMarker();
     _staleCheckTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -73,6 +86,135 @@ class _DriverMapTabState extends State<DriverMapTab>
       final driver = context.read<DriverProvider>();
       if (driver.isOnline || isRecordingRoutePlan) setState(() {});
     });
+  }
+
+  void _watchPendingRequests() {
+    _pendingSub?.cancel();
+    final uid = context.read<AuthProvider>().userId;
+    if (uid == null || uid.isEmpty) return;
+
+    _pendingSub = _tripService.getPendingDriverTrips(uid).listen(
+      (list) {
+        if (!mounted) return;
+        TripModel? next;
+        if (list.isNotEmpty) {
+          // أحدث طلب غير مُخفى مؤقتاً
+          for (final t in list) {
+            if (t.id != _dismissedTripId) {
+              next = t;
+              break;
+            }
+          }
+          next ??= list.first;
+          if (next.id == _dismissedTripId && list.length == 1) {
+            // بقي طلب واحد مخفى — لا نعيد إظهاره حتى يتغير
+            next = null;
+          }
+        } else {
+          _dismissedTripId = null;
+        }
+        setState(() => _pendingTrip = next);
+      },
+      onError: (e, st) {
+        debugPrint('driver pending trips: $e\n$st');
+      },
+    );
+  }
+
+  Future<void> _acceptPending() async {
+    final trip = _pendingTrip;
+    final uid = context.read<AuthProvider>().userId;
+    if (trip == null || uid == null || _handlingRequest) return;
+
+    setState(() => _handlingRequest = true);
+    try {
+      await _tripService.acceptTripTransaction(trip.id, uid);
+      if (!mounted) return;
+
+      MapUtils.showSnackBar(
+        context,
+        'تم قبول طلب ${_passengerLabel(trip)}',
+      );
+
+      if (trip.pickupLat != null && trip.pickupLng != null) {
+        await flyToFlat(
+          latitude: trip.pickupLat!,
+          longitude: trip.pickupLng!,
+          zoom: 16,
+        );
+      }
+
+      if (mounted) {
+        setState(() {
+          _pendingTrip = null;
+          _dismissedTripId = null;
+        });
+      }
+    } catch (e) {
+      debugPrint('accept on map: $e');
+      if (!mounted) return;
+      final msg = e is TripServiceException
+          ? e.message
+          : 'تعذر قبول الطلب';
+      MapUtils.showSnackBar(context, msg, isError: true);
+    } finally {
+      if (mounted) setState(() => _handlingRequest = false);
+    }
+  }
+
+  Future<void> _rejectPending() async {
+    final trip = _pendingTrip;
+    final uid = context.read<AuthProvider>().userId;
+    if (trip == null || uid == null || _handlingRequest) return;
+
+    setState(() => _handlingRequest = true);
+    try {
+      await _tripService.updateTripStatus(
+        trip.id,
+        TripStatus.cancelled,
+        driverId: uid,
+      );
+      if (!mounted) return;
+      MapUtils.showSnackBar(context, 'تم رفض الطلب');
+      setState(() {
+        _pendingTrip = null;
+        _dismissedTripId = null;
+      });
+    } catch (e) {
+      debugPrint('reject on map: $e');
+      if (!mounted) return;
+      final msg = e is TripServiceException
+          ? e.message
+          : 'تعذر رفض الطلب';
+      MapUtils.showSnackBar(context, msg, isError: true);
+    } finally {
+      if (mounted) setState(() => _handlingRequest = false);
+    }
+  }
+
+  Future<void> _focusPendingPickup() async {
+    final trip = _pendingTrip;
+    if (trip?.pickupLat == null || trip?.pickupLng == null) return;
+    MapUtils.lightHaptic();
+    await flyToFlat(
+      latitude: trip!.pickupLat!,
+      longitude: trip.pickupLng!,
+      zoom: 16,
+    );
+  }
+
+  void _dismissBanner() {
+    final id = _pendingTrip?.id;
+    setState(() {
+      _dismissedTripId = id;
+      _pendingTrip = null;
+    });
+  }
+
+  String _passengerLabel(TripModel trip) {
+    final name = trip.passengerName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return 'الراكب';
   }
 
   @override
@@ -90,6 +232,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         unawaited(ensureDriverTrackingRunning());
       }
       listenToDisplayLandmarks();
+      _watchPendingRequests();
     }
   }
 
@@ -100,6 +243,7 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   @override
   void dispose() {
+    _pendingSub?.cancel();
     _staleCheckTimer?.cancel();
     disposeDisplayLandmarks();
     disposeMapDebug();
@@ -116,6 +260,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     onDriverLocationLifecycle(state);
     if (state == AppLifecycleState.resumed && mounted) {
       listenToDisplayLandmarks();
+      _watchPendingRequests();
       setState(() {});
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
@@ -294,6 +439,8 @@ class _DriverMapTabState extends State<DriverMapTab>
     final locationAge =
         context.select<DriverProvider, String>((p) => p.locationAgeLabel);
 
+    final showRequestBanner = _pendingTrip != null && widget.isActive;
+
     return Stack(
       children: [
         if (_showMap)
@@ -357,6 +504,20 @@ class _DriverMapTabState extends State<DriverMapTab>
                   ),
                 ),
               ),
+            ),
+          ),
+        if (showRequestBanner)
+          Positioned(
+            top: showStaleBanner ? 140 : 78,
+            left: 16,
+            right: 16,
+            child: DriverPendingRequestBanner(
+              trip: _pendingTrip!,
+              busy: _handlingRequest,
+              onAccept: _acceptPending,
+              onReject: _rejectPending,
+              onFocusPickup: _focusPendingPickup,
+              onDismiss: _dismissBanner,
             ),
           ),
         Positioned(
