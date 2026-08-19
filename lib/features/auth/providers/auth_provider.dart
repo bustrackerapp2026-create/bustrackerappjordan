@@ -129,20 +129,33 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// يغيّر كلمة المرور فقط (إعادة مصادقة + تحديث).
+  /// لا يسجّل خروجاً هنا — الاستدعاء من الواجهة يغلق الورقة ثم يستدعي [signOutAfterPasswordChange].
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
   }) async {
     final user = _auth.currentUser;
-    if (user == null || user.email == null) {
-      throw Exception('⚠️ يجب تسجيل الدخول أولاً');
+    if (user == null || user.email == null || user.email!.trim().isEmpty) {
+      throw Exception('⚠️ يجب تسجيل الدخول بحساب بريد إلكتروني أولاً');
     }
 
-    if (newPassword.length < 6) {
+    // تأكد أن الحساب يدعم البريد/كلمة المرور
+    final providers = user.providerData.map((p) => p.providerId).toList();
+    if (!providers.contains('password')) {
+      throw Exception(
+        '⚠️ هذا الحساب لا يستخدم كلمة مرور (مزوّد آخر). استخدم «نسيت كلمة المرور» من شاشة الدخول إن وُجد بريد.',
+      );
+    }
+
+    final current = currentPassword.trim();
+    final next = newPassword.trim();
+
+    if (next.length < 6) {
       throw Exception('⚠️ كلمة السر الجديدة يجب أن تكون 6 أحرف على الأقل');
     }
 
-    if (currentPassword == newPassword) {
+    if (current == next) {
       throw Exception('⚠️ كلمة السر الجديدة يجب أن تختلف عن الحالية');
     }
 
@@ -151,20 +164,13 @@ class AuthProvider extends ChangeNotifier {
 
       final credential = firebase_auth.EmailAuthProvider.credential(
         email: user.email!,
-        password: currentPassword,
+        password: current,
       );
 
       await user.reauthenticateWithCredential(credential);
-      await user.updatePassword(newPassword);
+      await user.updatePassword(next);
 
-      await _goOfflineIfDriver();
-      onBeforeSignOut?.call();
-
-      await _auth.signOut();
-      _cancelUserDataSubscription();
-      _user = null;
-      _userData = null;
-      notifyListeners();
+      // نجحت — لا signOut هنا حتى تُغلق ورقة التغيير بأمان
     } on firebase_auth.FirebaseAuthException catch (e) {
       throw Exception(_getAuthErrorMessage(e.code));
     } catch (e) {
@@ -172,6 +178,28 @@ class AuthProvider extends ChangeNotifier {
       throw Exception('⚠️ فشل تغيير كلمة المرور: $e');
     } finally {
       _setLoading(false);
+    }
+  }
+
+  /// بعد نجاح تغيير كلمة المرور: إطفاء السائق إن لزم + تسجيل خروج آمن.
+  Future<void> signOutAfterPasswordChange() async {
+    try {
+      await _goOfflineIfDriver();
+      onBeforeSignOut?.call();
+      _cancelUserDataSubscription();
+      await _auth.signOut();
+      _user = null;
+      _userData = null;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('signOutAfterPasswordChange: $e');
+      // حتى لو فشل جزء، حاول الخروج من Auth
+      try {
+        await _auth.signOut();
+      } catch (_) {}
+      _user = null;
+      _userData = null;
+      notifyListeners();
     }
   }
 
@@ -254,6 +282,8 @@ class AuthProvider extends ChangeNotifier {
         return '🔒 لأسباب أمنية، سجّل الخروج ثم الدخول مجدداً وحاول تغيير كلمة المرور';
       case 'too-many-requests':
         return '⚠️ تم إرسال العديد من الطلبات. حاول لاحقاً';
+      case 'network-request-failed':
+        return '⚠️ تحقق من اتصال الإنترنت ثم أعد المحاولة';
       default:
         return '⚠️ حدث خطأ: $code';
     }

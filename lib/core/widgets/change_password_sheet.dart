@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 class ChangePasswordSheet {
   ChangePasswordSheet._();
 
+  /// تُرجع true عند نجاح التغيير (بعدها يُفضّل تسجيل الخروج من المستدعي).
   static Future<bool> show(BuildContext context) async {
     final result = await showModalBottomSheet<bool>(
       context: context,
@@ -60,13 +61,24 @@ class _ChangePasswordBodyState extends State<_ChangePasswordBody> {
     setState(() => _saving = true);
 
     try {
+      // 1) تحديث كلمة المرور فقط (بدون تسجيل خروج هنا)
       await auth.changePassword(
         currentPassword: _currentCtrl.text,
         newPassword: _newCtrl.text,
       );
       if (!mounted) return;
-      // true = نجحت العملية (سيتم إنهاء الجلسة تلقائياً من AuthProvider)
+
+      // 2) أغلق الورقة بنجاح أولاً
       Navigator.pop(context, true);
+
+      // 3) ثم سجّل الخروج بعد إطار واحد حتى لا تُدمَّر الورقة أثناء await
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        try {
+          await auth.signOutAfterPasswordChange();
+        } catch (e) {
+          debugPrint('signOut after password change: $e');
+        }
+      });
     } catch (e) {
       if (!mounted) return;
       final msg = e.toString().replaceFirst('Exception: ', '');
@@ -74,6 +86,7 @@ class _ChangePasswordBodyState extends State<_ChangePasswordBody> {
         SnackBar(
           content: Text(msg),
           backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } finally {
@@ -111,7 +124,6 @@ class _ChangePasswordBodyState extends State<_ChangePasswordBody> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // رأس مع زر إغلاق
                 Row(
                   children: [
                     IconButton(
@@ -149,7 +161,7 @@ class _ChangePasswordBodyState extends State<_ChangePasswordBody> {
                     border: Border.all(color: Colors.orange.shade200),
                   ),
                   child: Text(
-                    '🔒 بعد التغيير سيتم تسجيل خروجك تلقائياً لأمان الجلسة، ثم سجّل الدخول بكلمة المرور الجديدة.',
+                    '🔒 بعد التغيير سيتم تسجيل خروجك تلقائياً، ثم سجّل الدخول بكلمة المرور الجديدة.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,
