@@ -157,10 +157,18 @@ class _MapTabState extends State<MapTab>
     onCameraChangedForDisplayLandmarks();
   }
 
-  void _applyLineFilter(List<String> names) {
+  /// تصفية الباصات الحية + رسم كل المسارات المعتمدة للخطوط المطابقة.
+  void _applyLineFilter(
+    List<String> names, {
+    List<PlannedRoute>? routesSnapshot,
+  }) {
     if (names.isEmpty) return;
-    updateLiveTrackingRouteNames(names.toSet());
-    updatePlannedRoutesLineFilter(names.first);
+    final set = names.toSet();
+    updateLiveTrackingRouteNames(set);
+    updatePlannedRoutesLineNames(set);
+    if (routesSnapshot != null && routesSnapshot.isNotEmpty) {
+      unawaited(showPlannedRoutesSnapshot(routesSnapshot));
+    }
   }
 
   void _clearDestination() {
@@ -204,10 +212,11 @@ class _MapTabState extends State<MapTab>
         if ((_nearbyMode || _destination != null) &&
             _nearbyLineNames.isNotEmpty) {
           updateLiveTrackingRouteNames(_nearbyLineNames.toSet());
+          updatePlannedRoutesLineNames(_nearbyLineNames.toSet());
         } else {
           startLiveDriverTracking(routeFilter: _selectedRoute);
+          startWatchingPlannedRoutes(_selectedRoute);
         }
-        startWatchingPlannedRoutes(_selectedRoute);
         listenToDisplayLandmarks();
         _watchOpenTrips();
       }
@@ -225,6 +234,7 @@ class _MapTabState extends State<MapTab>
     if ((_nearbyMode || _destination != null) &&
         _nearbyLineNames.isNotEmpty) {
       updateLiveTrackingRouteNames(_nearbyLineNames.toSet());
+      updatePlannedRoutesLineNames(_nearbyLineNames.toSet());
     } else {
       startLiveDriverTracking(routeFilter: _selectedRoute);
     }
@@ -549,20 +559,21 @@ class _MapTabState extends State<MapTab>
           context,
           _destination != null
               ? 'لا يوجد خط معتمد يمر من موقعك ويتجه نحو «${_destination!.name}».'
-              : 'لا يوجد مسار معتمد يمر قرب موقعك حالياً.',
+              : 'لا يوجد مسار معتمد يمر قرب موقعك حالياً. سجّل مسارات من الأدمن أو السائق ثم أعد المحاولة.',
           isError: true,
         );
         return;
       }
 
       final names = matches.map((m) => m.lineName).toList();
+      final routesSnap = matches.map((m) => m.route).toList();
       setState(() {
         _nearbyMode = true;
         _nearbyLineNames = names;
         _loggedEmptyState = false;
       });
 
-      _applyLineFilter(names);
+      _applyLineFilter(names, routesSnapshot: routesSnap);
 
       if (!silent) {
         final linesLabel = names.take(3).join(' · ');
