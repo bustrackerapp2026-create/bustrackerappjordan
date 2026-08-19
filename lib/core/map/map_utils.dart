@@ -73,6 +73,18 @@ class MapUtils {
     HapticFeedback.mediumImpact();
   }
 
+  /// تنبيه أقوى (طلب صعود جديد للسائق).
+  static void heavyHaptic() {
+    HapticFeedback.heavyImpact();
+  }
+
+  /// نبضتان متتاليتان لتنبيه السائق دون صوت مزعج.
+  static Future<void> alertHaptic() async {
+    HapticFeedback.heavyImpact();
+    await Future<void>.delayed(const Duration(milliseconds: 160));
+    HapticFeedback.mediumImpact();
+  }
+
   static Color hexToColor(String hex) {
     try {
       final hexCode = hex.replaceAll('#', '');
