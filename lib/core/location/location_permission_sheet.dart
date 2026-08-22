@@ -8,20 +8,15 @@ import 'package:geolocator/geolocator.dart';
 class LocationPermissionSheet {
   LocationPermissionSheet._();
 
-  /// يعيد true إذا مُنحت الصلاحية (whileInUse أو always).
+  /// يعيد true فقط إذا:
+  /// 1) صلاحية التطبيق ممنوحة (whileInUse أو always)
+  /// 2) خدمة الموقع (GPS) مفعّلة على الجهاز
   static Future<bool> ensurePermission(
     BuildContext context, {
     bool forcePrompt = false,
   }) async {
     try {
       var permission = await Geolocator.checkPermission();
-
-      final alreadyGranted = permission == LocationPermission.whileInUse ||
-          permission == LocationPermission.always;
-
-      if (alreadyGranted && !forcePrompt) {
-        return true;
-      }
 
       // رفض دائم → لا تظهر نافذة النظام؛ يجب التعديل من إعدادات التطبيق
       if (permission == LocationPermission.deniedForever) {
@@ -38,25 +33,30 @@ class LocationPermissionSheet {
         return false;
       }
 
-      // ── هنا تظهر نافذة النظام الرسمية (مثل الصورة) ──
-      // أندرويد: تقريبي/دقيق + أثناء الاستخدام / هذه المرّة فقط / عدم السماح
-      permission = await Geolocator.requestPermission();
+      final alreadyGranted = permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always;
+
+      // طلب صلاحية النظام إذا لم تُمنح بعد (أو عند forcePrompt)
+      if (!alreadyGranted || forcePrompt) {
+        // ── نافذة النظام الرسمية ──
+        // أندرويد: تقريبي/دقيق + أثناء الاستخدام / هذه المرّة فقط / عدم السماح
+        permission = await Geolocator.requestPermission();
+      }
 
       final granted = permission == LocationPermission.whileInUse ||
           permission == LocationPermission.always;
 
       if (!granted) return false;
 
-      // بعد الموافقة فقط: إذا كانت خدمة الموقع متوقفة ننبّه بلطف
-      // (بدون إجبار من أول ضغطة)
+      // دائماً نتحقق من خدمة الموقع — حتى لو كانت الصلاحية ممنوحة مسبقاً
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         if (!context.mounted) return false;
         final open = await _confirmAction(
           context,
-          title: 'الموقع متوقف على الجهاز',
+          title: 'خدمة الموقع متوقفة',
           message:
-              'صلاحية التطبيق ممنوحة، لكن خدمة الموقع (GPS) متوقفة على الجهاز.\nفعّلها لإظهار موقعك على الخريطة.',
+              'الموقع (GPS) غير مفعّل على جهازك.\nفعّله من الإعدادات ثم أعد المحاولة لإظهار موقعك على الخريطة.',
           confirmLabel: 'فتح الإعدادات',
           cancelLabel: 'لاحقاً',
         );
