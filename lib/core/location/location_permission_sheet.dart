@@ -2,15 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
-/// يطلب صلاحية الموقع عبر نافذة النظام الرسمية (أندرويد/iOS)
-/// مثل: أثناء استخدام التطبيق / هذه المرّة فقط / عدم السماح
-/// مع خيار تقريبي / دقيق على أندرويد 12+.
+/// يطلب صلاحية الموقع عبر نافذة النظام الرسمية أولاً
+/// (تقريبي / دقيق + أثناء الاستخدام / هذه المرّة فقط / عدم السماح)
+/// حتى لو كانت خدمة الموقع (GPS) متوقفة على الجهاز.
 class LocationPermissionSheet {
   LocationPermissionSheet._();
 
-  /// يعيد true فقط إذا:
-  /// 1) صلاحية التطبيق ممنوحة (whileInUse أو always)
-  /// 2) خدمة الموقع (GPS) مفعّلة على الجهاز
+  /// يعيد true إذا مُنحت صلاحية التطبيق (whileInUse أو always).
+  /// لا يفحص GPS قبل نافذة النظام — الفحص يكون لاحقاً عند جلب الموقع.
   static Future<bool> ensurePermission(
     BuildContext context, {
     bool forcePrompt = false,
@@ -18,7 +17,7 @@ class LocationPermissionSheet {
     try {
       var permission = await Geolocator.checkPermission();
 
-      // رفض دائم → لا تظهر نافذة النظام؛ يجب التعديل من إعدادات التطبيق
+      // رفض دائم فقط: لا يمكن إظهار نافذة النظام
       if (permission == LocationPermission.deniedForever) {
         if (!context.mounted) return false;
         final open = await _confirmAction(
@@ -33,40 +32,44 @@ class LocationPermissionSheet {
         return false;
       }
 
+      // إذا ممنوحة مسبقاً ولا نريد إعادة الطلب — نجح
       final alreadyGranted = permission == LocationPermission.whileInUse ||
           permission == LocationPermission.always;
-
-      // طلب صلاحية النظام إذا لم تُمنح بعد (أو عند forcePrompt)
-      if (!alreadyGranted || forcePrompt) {
-        // ── نافذة النظام الرسمية ──
-        // أندرويد: تقريبي/دقيق + أثناء الاستخدام / هذه المرّة فقط / عدم السماح
-        permission = await Geolocator.requestPermission();
+      if (alreadyGranted && !forcePrompt) {
+        return true;
       }
 
-      final granted = permission == LocationPermission.whileInUse ||
+      // ── دائماً نطلب صلاحية النظام هنا (حتى لو GPS مغلق) ──
+      // هذه هي نافذة أندرويد الرسمية مثل صورة Vision City Bus
+      permission = await Geolocator.requestPermission();
+
+      return permission == LocationPermission.whileInUse ||
           permission == LocationPermission.always;
-
-      if (!granted) return false;
-
-      // دائماً نتحقق من خدمة الموقع — حتى لو كانت الصلاحية ممنوحة مسبقاً
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (!context.mounted) return false;
-        final open = await _confirmAction(
-          context,
-          title: 'خدمة الموقع متوقفة',
-          message:
-              'الموقع (GPS) غير مفعّل على جهازك.\nفعّله من الإعدادات ثم أعد المحاولة لإظهار موقعك على الخريطة.',
-          confirmLabel: 'فتح الإعدادات',
-          cancelLabel: 'لاحقاً',
-        );
-        if (open) await Geolocator.openLocationSettings();
-        return false;
-      }
-
-      return true;
     } catch (e) {
       debugPrint('LocationPermissionSheet.ensurePermission: $e');
+      return false;
+    }
+  }
+
+  /// بعد منح الصلاحية: إذا كان GPS متوقفاً نعرض حوار فتح الإعدادات.
+  static Future<bool> ensureLocationService(BuildContext context) async {
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (enabled) return true;
+
+      if (!context.mounted) return false;
+      final open = await _confirmAction(
+        context,
+        title: 'خدمة الموقع متوقفة',
+        message:
+            'تم السماح للتطبيق، لكن الموقع (GPS) مغلق على الجهاز.\nفعّله لإظهار موقعك على الخريطة.',
+        confirmLabel: 'فتح الإعدادات',
+        cancelLabel: 'لاحقاً',
+      );
+      if (open) await Geolocator.openLocationSettings();
+      return await Geolocator.isLocationServiceEnabled();
+    } catch (e) {
+      debugPrint('LocationPermissionSheet.ensureLocationService: $e');
       return false;
     }
   }
