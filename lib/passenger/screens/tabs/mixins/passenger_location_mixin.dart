@@ -112,7 +112,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (!mounted) return;
 
       if (!hasPermission) {
-        _safeSnack('⚠️ لم يتم منح صلاحية الموقع.', isError: true);
+        // الحوار المناسب (صلاحية أو GPS) ظهر داخل ensurePermission
         return;
       }
 
@@ -134,7 +134,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       if (position == null && !gotAnyFix) {
         _safeSnack(
-          '❌ تعذر تحديد موقعك. تأكد من تفعيل GPS.',
+          '❌ تعذر تحديد موقعك حالياً. حاول مرة أخرى.',
           isError: true,
         );
         return;
