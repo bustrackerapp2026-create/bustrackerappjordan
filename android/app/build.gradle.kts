@@ -40,3 +40,8 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // نافذة النظام لتفعيل الموقع بضغطة واحدة (SettingsClient)
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+}
