@@ -107,14 +107,17 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     setState(() => isLoadingPassengerLocation = true);
 
     try {
+      // 1) نافذة النظام أولاً (حتى لو GPS مغلق)
       final hasPermission =
           await LocationPermissionSheet.ensurePermission(context);
       if (!mounted) return;
+      if (!hasPermission) return;
 
-      if (!hasPermission) {
-        // الحوار المناسب (صلاحية أو GPS) ظهر داخل ensurePermission
-        return;
-      }
+      // 2) بعد الموافقة: تأكد أن خدمة الموقع مفعّلة
+      final serviceOn =
+          await LocationPermissionSheet.ensureLocationService(context);
+      if (!mounted) return;
+      if (!serviceOn) return;
 
       _passengerLocationSubscription?.cancel();
 
