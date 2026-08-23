@@ -1,6 +1,9 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../core/theme/app_theme.dart';
 import '../../services/map_camera_prefs_service.dart';
 import 'map_constants.dart';
@@ -13,8 +16,12 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   PolylineAnnotationManager? polylineAnnotationManager;
 
   bool showPlaceLabels = true;
-  bool showPoiLabels = false;
+
+  /// معالم الجذب: مفعّلة افتراضياً — تُطفى فقط باختيار المستخدم.
+  bool showPoiLabels = true;
   bool showRoadLabels = true;
+
+  static const _poiPrefKey = 'map_show_poi_labels';
 
   /// الستايل الافتراضي عند فتح الخريطة: شوارع
   static const String initialMapStyle = MapboxStyles.MAPBOX_STREETS;
@@ -48,6 +55,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     await restoreInitialCamera();
     await applyMapConstraints();
     await Future<void>.delayed(const Duration(milliseconds: 80));
+    await _loadPoiLabelsPreference();
     await applyLabelLayersFilter();
     _scheduleArabicLabelsRetry();
     if (mounted) setState(() => isMapReady = true);
@@ -275,6 +283,27 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
+  Future<void> _loadPoiLabelsPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // إن لم يختر المستخدم بعد: يبقى true (مفعّل)
+      if (prefs.containsKey(_poiPrefKey)) {
+        showPoiLabels = prefs.getBool(_poiPrefKey) ?? true;
+      } else {
+        showPoiLabels = true;
+      }
+    } catch (_) {
+      showPoiLabels = true;
+    }
+  }
+
+  Future<void> _savePoiLabelsPreference(bool value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_poiPrefKey, value);
+    } catch (_) {}
+  }
+
   Future<void> applyLabelLayersFilter() async {
     if (mapboxMap == null) return;
     await MapLayerController.applyLabelFilters(
@@ -471,7 +500,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
                     contentPadding: EdgeInsets.zero,
                     title: const Text('معالم الجذب (POI)'),
                     subtitle: const Text(
-                      'يُفضّل إيقافها لتقليل الازدحام على الخريطة',
+                      'مفعّلة تلقائياً — يمكنك إيقافها إن رغبت',
                       style: TextStyle(fontSize: 12),
                     ),
                     value: showPoiLabels,
@@ -479,6 +508,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
                     onChanged: (val) async {
                       setState(() => showPoiLabels = val);
                       setSheetState(() {});
+                      await _savePoiLabelsPreference(val);
                       await applyLabelLayersFilter();
                     },
                   ),
