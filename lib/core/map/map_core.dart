@@ -22,6 +22,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
   bool showRoadLabels = true;
 
   static const _poiPrefKey = 'map_show_poi_labels';
+  bool _poiPrefLoaded = false;
 
   /// الستايل الافتراضي عند فتح الخريطة: شوارع
   static const String initialMapStyle = MapboxStyles.MAPBOX_STREETS;
@@ -55,7 +56,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     await restoreInitialCamera();
     await applyMapConstraints();
     await Future<void>.delayed(const Duration(milliseconds: 80));
-    await _loadPoiLabelsPreference();
+    await loadPoiLabelsPreference();
     await applyLabelLayersFilter();
     _scheduleArabicLabelsRetry();
     if (mounted) setState(() => isMapReady = true);
@@ -283,7 +284,10 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  Future<void> _loadPoiLabelsPreference() async {
+  /// تحميل تفضيل معالم الجذب. الافتراضي: مفعّل (true).
+  /// يُستدعى قبل [applyLabelLayersFilter] من كل مسار إنشاء خريطة.
+  Future<void> loadPoiLabelsPreference() async {
+    if (_poiPrefLoaded) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       // إن لم يختر المستخدم بعد: يبقى true (مفعّل)
@@ -295,6 +299,7 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
     } catch (_) {
       showPoiLabels = true;
     }
+    _poiPrefLoaded = true;
   }
 
   Future<void> _savePoiLabelsPreference(bool value) async {
@@ -306,6 +311,8 @@ mixin MapCoreMixin<T extends StatefulWidget> on State<T> {
 
   Future<void> applyLabelLayersFilter() async {
     if (mapboxMap == null) return;
+    // ضمان تحميل التفضيل قبل تطبيق الإظهار (مهم لمسارات الراكب/السائق)
+    await loadPoiLabelsPreference();
     await MapLayerController.applyLabelFilters(
       mapboxMap: mapboxMap!,
       showPlaceLabels: showPlaceLabels,
