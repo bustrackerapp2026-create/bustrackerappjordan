@@ -19,11 +19,11 @@ class PassengerDashboard extends StatefulWidget {
 class _PassengerDashboardState extends State<PassengerDashboard> {
   /// 0 خريطة · 1 رحلات · 2 حساب
   int _currentIndex = 0;
+  int _mapGeneration = 0;
 
   bool _loadingOnboarding = true;
   bool _showOnboarding = false;
 
-  /// كاش للتبويبات غير الخريطة فقط — لا نُبقي Mapbox في الشجرة.
   final Map<int, Widget> _nonMapCache = {};
 
   @override
@@ -42,7 +42,11 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
   }
 
   void _finishOnboarding() {
-    setState(() => _showOnboarding = false);
+    setState(() {
+      _showOnboarding = false;
+      _mapGeneration++;
+      _currentIndex = 0;
+    });
   }
 
   Widget _nonMapTab(int index) {
@@ -74,8 +78,7 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
 
     final Widget body;
     if (_currentIndex == 0) {
-      // مفتاح يتجدد بعد onboarding لإعادة تحميل الخط المحفوظ
-      body = const MapTab(key: ValueKey('passenger_map'));
+      body = MapTab(key: ValueKey('passenger_map_$_mapGeneration'));
     } else {
       body = KeyedSubtree(
         key: ValueKey('passenger_tab_$_currentIndex'),
