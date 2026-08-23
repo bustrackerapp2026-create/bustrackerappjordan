@@ -1,10 +1,8 @@
 package com.example.jordan_bus_tracker
 
 import android.app.Activity
+import android.content.Intent
 import android.content.IntentSender
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.IntentSenderRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
@@ -16,14 +14,8 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.example.jordan_bus_tracker/location_service"
+    private val requestCheckSettings = 2404
     private var pendingResult: MethodChannel.Result? = null
-
-    /** Modern replacement for the deprecated startActivityForResult / onActivityResult. */
-    private val locationSettingsLauncher: ActivityResultLauncher<IntentSenderRequest> =
-        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-            pendingResult?.success(result.resultCode == Activity.RESULT_OK)
-            pendingResult = null
-        }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -56,17 +48,13 @@ class MainActivity : FlutterActivity() {
         LocationServices.getSettingsClient(this)
             .checkLocationSettings(settingsRequest)
             .addOnSuccessListener {
-                // Location already on
                 pendingResult?.success(true)
                 pendingResult = null
             }
             .addOnFailureListener { exception ->
                 if (exception is ResolvableApiException) {
                     try {
-                        // System one-tap dialog to enable location
-                        val intentSenderRequest =
-                            IntentSenderRequest.Builder(exception.resolution).build()
-                        locationSettingsLauncher.launch(intentSenderRequest)
+                        exception.startResolutionForResult(this, requestCheckSettings)
                     } catch (sendEx: IntentSender.SendIntentException) {
                         pendingResult?.success(false)
                         pendingResult = null
@@ -81,9 +69,16 @@ class MainActivity : FlutterActivity() {
             }
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == requestCheckSettings) {
+            pendingResult?.success(resultCode == Activity.RESULT_OK)
+            pendingResult = null
+        }
+    }
+
     override fun onDestroy() {
-        // Avoid stuck pendingResult if Activity is destroyed while the dialog is showing
-        // (rotation, low memory, process death). Resolves the Flutter Future so it does not hang.
         pendingResult?.success(false)
         pendingResult = null
         super.onDestroy()
