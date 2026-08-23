@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:location/location.dart' as loc;
 
 /// تدفق الموقع:
 /// 1) نافذة صلاحية التطبيق الرسمية (تقريبي/دقيق — أثناء الاستخدام / هذه المرّة فقط)
@@ -61,7 +60,7 @@ class LocationPermissionSheet {
       }
 
       if (!kIsWeb && Platform.isAndroid) {
-        // 1) نافذة Google Play Services الرسمية — تفعّل الموقع مباشرة عند الموافقة
+        // نافذة Google Play Services الرسمية — تفعّل الموقع مباشرة عند الموافقة
         try {
           final enabled =
               await _locationChannel.invokeMethod<bool>('enableLocationService');
@@ -72,18 +71,10 @@ class LocationPermissionSheet {
           debugPrint('enableLocationService channel: $e');
         }
 
-        // 2) احتياطي: حزمة location
-        try {
-          final turnedOn = await loc.Location().requestService();
-          if (turnedOn) return true;
-        } catch (e) {
-          debugPrint('location.requestService: $e');
-        }
-
         return await Geolocator.isLocationServiceEnabled();
       }
 
-      // iOS: لا توجد نافذة تفعيل GPS برمجياً
+      // iOS: لا توجد نافذة تفعيل GPS برمجياً — نوجّه لإعدادات الموقع
       if (!context.mounted) return false;
       final open = await _confirmAction(
         context,
