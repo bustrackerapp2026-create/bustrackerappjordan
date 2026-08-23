@@ -34,8 +34,8 @@ class CustomBottomNavBar extends StatelessWidget {
         label: l10n.navMyTrips,
       ),
       const _NavItemData(
-        icon: Icons.stars_outline_rounded,
-        activeIcon: Icons.stars_rounded,
+        icon: Icons.star_border_rounded,
+        activeIcon: Icons.star_rounded,
         label: 'نقاطي',
         accent: Color(0xFFF59E0B),
       ),
