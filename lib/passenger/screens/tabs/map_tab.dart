@@ -61,7 +61,6 @@ class _MapTabState extends State<MapTab>
   bool _nearbyMode = false;
   List<String> _nearbyLineNames = const [];
 
-  /// وجهة اختيارية لتصفية الباصات.
   PlaceSearchResult? _destination;
 
   final TripService _tripService = TripService();
@@ -157,7 +156,6 @@ class _MapTabState extends State<MapTab>
     onCameraChangedForDisplayLandmarks();
   }
 
-  /// تصفية الباصات الحية + رسم كل المسارات المعتمدة للخطوط المطابقة.
   void _applyLineFilter(
     List<String> names, {
     List<PlannedRoute>? routesSnapshot,
@@ -175,7 +173,6 @@ class _MapTabState extends State<MapTab>
     setState(() {
       _destination = null;
     });
-    // إن كنا في وضع الموقع فقط أعد حسابه، وإلا ارجع لخط محدد
     if (_nearbyMode && hasPassengerLocation) {
       unawaited(_showBusesNearMe(silent: true));
     } else {
@@ -606,7 +603,6 @@ class _MapTabState extends State<MapTab>
 
     setState(() => _destination = result);
 
-    // حرّك الكاميرا قليلاً نحو الوجهة للوضوح
     unawaited(flyToFlat(
       latitude: result.latitude,
       longitude: result.longitude,
@@ -710,7 +706,7 @@ class _MapTabState extends State<MapTab>
           ),
         ),
         Positioned(
-          bottom: hasOpenTrip ? 200 : 120,
+          bottom: hasOpenTrip ? 220 : 140,
           right: 16,
           child: RepaintBoundary(
             child: PassengerMapFabs(
@@ -726,7 +722,6 @@ class _MapTabState extends State<MapTab>
                 MapUtils.lightHaptic();
                 goToMyLocation();
               },
-              // طبقات الخريطة — زر صغير اختياري
               onMapLayers: () {
                 MapUtils.lightHaptic();
                 showMapSettingsSheet(context);
@@ -736,7 +731,7 @@ class _MapTabState extends State<MapTab>
         ),
         if (hasOpenTrip)
           Positioned(
-            bottom: 30,
+            bottom: 88,
             left: 16,
             right: 16,
             child: ActiveTripBanner(
@@ -747,7 +742,7 @@ class _MapTabState extends State<MapTab>
           )
         else
           Positioned(
-            bottom: 30,
+            bottom: 88,
             left: 16,
             right: 16,
             child: RepaintBoundary(
