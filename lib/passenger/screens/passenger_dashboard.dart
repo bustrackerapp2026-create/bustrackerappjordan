@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+
 import '../widgets/custom_app_bar.dart';
 import '../widgets/custom_bottom_nav_bar.dart';
 import 'tabs/map_tab.dart';
-import 'tabs/trips_tab.dart';
+import 'tabs/points_tab.dart';
 import 'tabs/profile_tab.dart';
+import 'tabs/trips_tab.dart';
 
 class PassengerDashboard extends StatefulWidget {
   const PassengerDashboard({super.key});
@@ -13,7 +15,7 @@ class PassengerDashboard extends StatefulWidget {
 }
 
 class _PassengerDashboardState extends State<PassengerDashboard> {
-  /// 0 خريطة · 1 رحلات · 2 حساب
+  /// 0 خريطة · 1 رحلات · 2 نقاطي · 3 حساب
   int _currentIndex = 0;
 
   /// كاش للتبويبات غير الخريطة فقط — لا نُبقي Mapbox في الشجرة.
@@ -25,6 +27,8 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
         case 1:
           return const TripsTab();
         case 2:
+          return const PointsTab();
+        case 3:
           return const ProfileTab();
         default:
           return const SizedBox.shrink();
