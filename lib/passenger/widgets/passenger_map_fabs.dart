@@ -7,7 +7,7 @@ import '../../core/theme/app_theme.dart';
 /// الترتيب من الأعلى للأسفل:
 /// 1) باصات من هنا
 /// 2) إلى أين؟
-/// 3) أقرب باص + موقعي + طبقات
+/// 3) صف أفقي أقصى اليمين: أقرب باص · موقعي · طبقات
 class PassengerMapFabs extends StatelessWidget {
   final bool findingNearest;
   final bool findingNearby;
@@ -36,87 +36,91 @@ class PassengerMapFabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        _PrimaryChip(
-          heroTag: 'passenger_nearby_buses',
-          onPressed: findingNearby ? null : onNearbyBuses,
-          loading: findingNearby,
-          active: nearbyModeActive,
-          activeColor: const Color(0xFF0F766E),
-          color: const Color(0xFF0D9488),
-          icon: nearbyModeActive
-              ? Icons.alt_route_rounded
-              : Icons.hail_rounded,
-          label: nearbyModeActive ? 'خطوط موقعي' : 'باصات من هنا',
-        ),
-        const SizedBox(height: 10),
-        _PrimaryChip(
-          heroTag: 'passenger_destination',
-          onPressed: onSetDestination,
-          loading: false,
-          active: hasDestination,
-          activeColor: const Color(0xFF6D28D9),
-          color: Colors.white,
-          foreground: hasDestination ? Colors.white : const Color(0xFF6D28D9),
-          icon: hasDestination ? Icons.flag_rounded : Icons.flag_outlined,
-          label: hasDestination ? 'تغيير الوجهة' : 'إلى أين؟',
-          outlined: !hasDestination,
-        ),
-        const SizedBox(height: 12),
-        // مجموعة دائرية مدمجة
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.10),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-            ],
-            border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+    // في الواجهة العربية بداية اللغة من اليمين → محاذاة كل العناصر لليمين.
+    return Align(
+      alignment: AlignmentDirectional.centerEnd,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          _PrimaryChip(
+            heroTag: 'passenger_nearby_buses',
+            onPressed: findingNearby ? null : onNearbyBuses,
+            loading: findingNearby,
+            active: nearbyModeActive,
+            activeColor: const Color(0xFF0F766E),
+            color: const Color(0xFF0D9488),
+            icon: nearbyModeActive
+                ? Icons.alt_route_rounded
+                : Icons.hail_rounded,
+            label: nearbyModeActive ? 'خطوط موقعي' : 'باصات من هنا',
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _RoundAction(
-                heroTag: 'passenger_nearest_bus',
-                tooltip: 'أقرب باص',
-                onPressed: onNearestBus,
-                color: const Color(0xFF0F766E),
-                loading: findingNearest,
-                icon: Icons.near_me_rounded,
-              ),
-              const SizedBox(height: 8),
-              _RoundAction(
-                heroTag: 'passenger_my_location',
-                tooltip: 'موقعي',
-                onPressed: onMyLocation,
-                color: AppTheme.primaryColor,
-                loading: isLoadingPassengerLocation,
-                icon: Icons.my_location_rounded,
-                large: true,
-              ),
-              if (onMapLayers != null) ...[
-                const SizedBox(height: 8),
-                _RoundAction(
-                  heroTag: 'passenger_map_layers',
-                  tooltip: 'طبقات الخريطة',
-                  onPressed: onMapLayers,
-                  color: const Color(0xFF5F6368),
-                  loading: false,
-                  icon: Icons.layers_outlined,
+          const SizedBox(height: 10),
+          _PrimaryChip(
+            heroTag: 'passenger_destination',
+            onPressed: onSetDestination,
+            loading: false,
+            active: hasDestination,
+            activeColor: const Color(0xFF6D28D9),
+            color: Colors.white,
+            foreground: hasDestination ? Colors.white : const Color(0xFF6D28D9),
+            icon: hasDestination ? Icons.flag_rounded : Icons.flag_outlined,
+            label: hasDestination ? 'تغيير الوجهة' : 'إلى أين؟',
+            outlined: !hasDestination,
+          ),
+          const SizedBox(height: 12),
+          // صف الأيقونات الثلاث — أقصى يمين الشاشة (جهة بداية العربية)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.96),
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
                 ),
               ],
-            ],
+              border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _RoundAction(
+                  heroTag: 'passenger_nearest_bus',
+                  tooltip: 'أقرب باص',
+                  onPressed: onNearestBus,
+                  color: const Color(0xFF0F766E),
+                  loading: findingNearest,
+                  icon: Icons.near_me_rounded,
+                ),
+                const SizedBox(width: 8),
+                _RoundAction(
+                  heroTag: 'passenger_my_location',
+                  tooltip: 'موقعي',
+                  onPressed: onMyLocation,
+                  color: AppTheme.primaryColor,
+                  loading: isLoadingPassengerLocation,
+                  icon: Icons.my_location_rounded,
+                  large: true,
+                ),
+                if (onMapLayers != null) ...[
+                  const SizedBox(width: 8),
+                  _RoundAction(
+                    heroTag: 'passenger_map_layers',
+                    tooltip: 'طبقات الخريطة',
+                    onPressed: onMapLayers,
+                    color: const Color(0xFF5F6368),
+                    loading: false,
+                    icon: Icons.layers_outlined,
+                  ),
+                ],
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
