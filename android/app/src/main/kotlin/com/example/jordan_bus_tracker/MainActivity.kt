@@ -8,11 +8,15 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.LocationSettingsRequest
 import com.google.android.gms.location.Priority
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity() {
+/**
+ * FlutterFragmentActivity مطلوب حتى تصل نتيجة نافذة تفعيل الموقع
+ * (startResolutionForResult) بشكل موثوق.
+ */
+class MainActivity : FlutterFragmentActivity() {
     private val channelName = "com.example.jordan_bus_tracker/location_service"
     private val requestCheckSettings = 2404
     private var pendingResult: MethodChannel.Result? = null
@@ -55,9 +59,6 @@ class MainActivity : FlutterActivity() {
                 if (exception is ResolvableApiException) {
                     try {
                         exception.startResolutionForResult(this, requestCheckSettings)
-                    } catch (sendEx: IntentSender.SendIntentException) {
-                        pendingResult?.success(false)
-                        pendingResult = null
                     } catch (e: Exception) {
                         pendingResult?.success(false)
                         pendingResult = null

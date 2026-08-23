@@ -5,16 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
-/// تدفق الموقع:
-/// 1) نافذة صلاحية التطبيق الرسمية (تقريبي/دقيق — أثناء الاستخدام / هذه المرّة فقط)
-/// 2) إذا GPS مغلق: نافذة النظام لتفعيل الموقع بضغطة واحدة (بدون فتح الإعدادات يدوياً)
+/// 1) صلاحية التطبيق (نافذة النظام)
+/// 2) تفعيل GPS (نافذة Google بضغطة واحدة، ثم إعدادات كاحتياطي)
 class LocationPermissionSheet {
   LocationPermissionSheet._();
 
   static const MethodChannel _locationChannel =
       MethodChannel('com.example.jordan_bus_tracker/location_service');
 
-  /// صلاحية التطبيق — نافذة أندرويد الرسمية.
   static Future<bool> ensurePermission(
     BuildContext context, {
     bool forcePrompt = false,
@@ -39,7 +37,6 @@ class LocationPermissionSheet {
       final alreadyGranted = permission == LocationPermission.whileInUse ||
           permission == LocationPermission.always;
 
-      // أظهر نافذة النظام إذا لم تُمنح بعد، أو عند forcePrompt
       if (!alreadyGranted || forcePrompt) {
         permission = await Geolocator.requestPermission();
       }
@@ -52,7 +49,6 @@ class LocationPermissionSheet {
     }
   }
 
-  /// تفعيل GPS عبر نافذة النظام بضغطة واحدة (LocationSettings dialog).
   static Future<bool> ensureLocationService(BuildContext context) async {
     try {
       if (await Geolocator.isLocationServiceEnabled()) {
@@ -60,30 +56,32 @@ class LocationPermissionSheet {
       }
 
       if (!kIsWeb && Platform.isAndroid) {
-        // نافذة Google Play Services الرسمية — تفعّل الموقع مباشرة عند الموافقة
+        // نافذة النظام: تفعيل الموقع بضغطة واحدة
         try {
           final enabled =
               await _locationChannel.invokeMethod<bool>('enableLocationService');
-          if (enabled == true) {
-            return true;
-          }
+          if (enabled == true) return true;
+          if (await Geolocator.isLocationServiceEnabled()) return true;
         } catch (e) {
           debugPrint('enableLocationService channel: $e');
         }
-
-        return await Geolocator.isLocationServiceEnabled();
       }
 
-      // iOS: لا توجد نافذة تفعيل GPS برمجياً — نوجّه لإعدادات الموقع
+      // احتياطي: حوار ثم صفحة إعدادات الموقع
       if (!context.mounted) return false;
       final open = await _confirmAction(
         context,
-        title: 'خدمة الموقع متوقفة',
-        message: 'فعّل الموقع من إعدادات الجهاز ثم أعد المحاولة.',
-        confirmLabel: 'فتح الإعدادات',
+        title: 'فعّل خدمة الموقع',
+        message:
+            'الموقع مغلق على الجهاز.\nاضغط «تفعيل» لفتح إعدادات الموقع وتشغيله، ثم ارجع للتطبيق.',
+        confirmLabel: 'تفعيل',
         cancelLabel: 'لاحقاً',
       );
-      if (open) await Geolocator.openLocationSettings();
+      if (open) {
+        await Geolocator.openLocationSettings();
+        // بعد العودة من الإعدادات
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+      }
       return await Geolocator.isLocationServiceEnabled();
     } catch (e) {
       debugPrint('LocationPermissionSheet.ensureLocationService: $e');
