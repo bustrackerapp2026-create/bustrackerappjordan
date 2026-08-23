@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+
+import '../../core/theme/app_theme.dart';
+import '../../services/route_prefs_service.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/custom_bottom_nav_bar.dart';
+import 'passenger_onboarding_screen.dart';
 import 'tabs/map_tab.dart';
 import 'tabs/trips_tab.dart';
 import 'tabs/profile_tab.dart';
@@ -16,8 +20,30 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
   /// 0 خريطة · 1 رحلات · 2 حساب
   int _currentIndex = 0;
 
+  bool _loadingOnboarding = true;
+  bool _showOnboarding = false;
+
   /// كاش للتبويبات غير الخريطة فقط — لا نُبقي Mapbox في الشجرة.
   final Map<int, Widget> _nonMapCache = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _checkOnboarding();
+  }
+
+  Future<void> _checkOnboarding() async {
+    final done = await RoutePrefsService().hasCompletedOnboarding();
+    if (!mounted) return;
+    setState(() {
+      _showOnboarding = !done;
+      _loadingOnboarding = false;
+    });
+  }
+
+  void _finishOnboarding() {
+    setState(() => _showOnboarding = false);
+  }
 
   Widget _nonMapTab(int index) {
     return _nonMapCache.putIfAbsent(index, () {
@@ -34,9 +60,21 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    // مهم: لا IndexedStack للخريطة — يحرّر Mapbox عند مغادرة التبويب.
+    if (_loadingOnboarding) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: AppTheme.primaryColor),
+        ),
+      );
+    }
+
+    if (_showOnboarding) {
+      return PassengerOnboardingScreen(onFinished: _finishOnboarding);
+    }
+
     final Widget body;
     if (_currentIndex == 0) {
+      // مفتاح يتجدد بعد onboarding لإعادة تحميل الخط المحفوظ
       body = const MapTab(key: ValueKey('passenger_map'));
     } else {
       body = KeyedSubtree(
@@ -46,7 +84,6 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
     }
 
     return Scaffold(
-      // الخريطة تمتد خلف الشريط العائم لمظهر أحدث
       extendBody: _currentIndex == 0,
       appBar: const CustomAppBar(),
       body: body,
