@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 
-/// أزرار خريطة الراكب — الأساسية فقط لتجربة بسيطة.
+/// أزرار خريطة الراكب — مجموعة موحّدة بمظهر زجاجي مرتب.
 ///
-/// الترتيب من الأعلى للأسفل (قرب أسفل الشاشة):
+/// الترتيب من الأعلى للأسفل:
 /// 1) باصات من هنا
 /// 2) إلى أين؟
-/// 3) أقرب باص
-/// 4) موقعي
+/// 3) أقرب باص + موقعي + طبقات
 class PassengerMapFabs extends StatelessWidget {
   final bool findingNearest;
   final bool findingNearby;
@@ -19,8 +18,6 @@ class PassengerMapFabs extends StatelessWidget {
   final VoidCallback? onNearbyBuses;
   final VoidCallback? onSetDestination;
   final VoidCallback onMyLocation;
-
-  /// اختياري: إعدادات الطبقات (غير ظاهر كزر رئيسي).
   final VoidCallback? onMapLayers;
 
   const PassengerMapFabs({
@@ -43,110 +40,198 @@ class PassengerMapFabs extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        // 1) باصات من هنا — الإجراء الأهم للراكب على الشارع
-        FloatingActionButton.extended(
+        _PrimaryChip(
           heroTag: 'passenger_nearby_buses',
           onPressed: findingNearby ? null : onNearbyBuses,
-          backgroundColor: nearbyModeActive
-              ? const Color(0xFF0F766E)
-              : const Color(0xFF0D9488),
-          foregroundColor: Colors.white,
-          elevation: 4,
-          icon: findingNearby
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : Icon(
-                  nearbyModeActive
-                      ? Icons.alt_route_rounded
-                      : Icons.hail_rounded,
-                  size: 20,
-                ),
-          label: Text(
-            nearbyModeActive ? 'خطوط موقعي' : 'باصات من هنا',
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-          ),
+          loading: findingNearby,
+          active: nearbyModeActive,
+          activeColor: const Color(0xFF0F766E),
+          color: const Color(0xFF0D9488),
+          icon: nearbyModeActive
+              ? Icons.alt_route_rounded
+              : Icons.hail_rounded,
+          label: nearbyModeActive ? 'خطوط موقعي' : 'باصات من هنا',
         ),
         const SizedBox(height: 10),
-
-        // 2) إلى أين؟ — تصفية حسب الوجهة
-        FloatingActionButton.extended(
+        _PrimaryChip(
           heroTag: 'passenger_destination',
           onPressed: onSetDestination,
-          backgroundColor:
-              hasDestination ? const Color(0xFF7C3AED) : Colors.white,
-          foregroundColor:
-              hasDestination ? Colors.white : const Color(0xFF6D28D9),
-          elevation: 4,
-          icon: Icon(
-            hasDestination ? Icons.flag_rounded : Icons.flag_outlined,
-            size: 20,
+          loading: false,
+          active: hasDestination,
+          activeColor: const Color(0xFF6D28D9),
+          color: Colors.white,
+          foreground: hasDestination ? Colors.white : const Color(0xFF6D28D9),
+          icon: hasDestination ? Icons.flag_rounded : Icons.flag_outlined,
+          label: hasDestination ? 'تغيير الوجهة' : 'إلى أين؟',
+          outlined: !hasDestination,
+        ),
+        const SizedBox(height: 12),
+        // مجموعة دائرية مدمجة
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.10),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+            border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
           ),
-          label: Text(
-            hasDestination ? 'تغيير الوجهة' : 'إلى أين؟',
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _RoundAction(
+                heroTag: 'passenger_nearest_bus',
+                tooltip: 'أقرب باص',
+                onPressed: onNearestBus,
+                color: const Color(0xFF0F766E),
+                loading: findingNearest,
+                icon: Icons.near_me_rounded,
+              ),
+              const SizedBox(height: 8),
+              _RoundAction(
+                heroTag: 'passenger_my_location',
+                tooltip: 'موقعي',
+                onPressed: onMyLocation,
+                color: AppTheme.primaryColor,
+                loading: isLoadingPassengerLocation,
+                icon: Icons.my_location_rounded,
+                large: true,
+              ),
+              if (onMapLayers != null) ...[
+                const SizedBox(height: 8),
+                _RoundAction(
+                  heroTag: 'passenger_map_layers',
+                  tooltip: 'طبقات الخريطة',
+                  onPressed: onMapLayers,
+                  color: const Color(0xFF5F6368),
+                  loading: false,
+                  icon: Icons.layers_outlined,
+                ),
+              ],
+            ],
           ),
         ),
-        const SizedBox(height: 10),
-
-        // 3) أقرب باص حي (زر صغير)
-        FloatingActionButton.small(
-          heroTag: 'passenger_nearest_bus',
-          onPressed: onNearestBus,
-          backgroundColor: Colors.white,
-          foregroundColor: const Color(0xFF0F766E),
-          elevation: 3,
-          tooltip: 'أقرب باص',
-          child: findingNearest
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.near_me_rounded, size: 20),
-        ),
-        const SizedBox(height: 10),
-
-        // 4) موقعي
-        FloatingActionButton(
-          heroTag: 'passenger_my_location',
-          onPressed: onMyLocation,
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.primaryColor,
-          elevation: 4,
-          shape: const CircleBorder(),
-          tooltip: 'موقعي',
-          child: isLoadingPassengerLocation
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    color: AppTheme.primaryColor,
-                    strokeWidth: 2.5,
-                  ),
-                )
-              : const Icon(Icons.my_location, size: 28),
-        ),
-
-        // إعدادات الطبقات — اختياري وصغير إن وُجد
-        if (onMapLayers != null) ...[
-          const SizedBox(height: 10),
-          FloatingActionButton.small(
-            heroTag: 'passenger_map_layers',
-            onPressed: onMapLayers,
-            backgroundColor: Colors.white,
-            foregroundColor: AppTheme.textColor,
-            elevation: 2,
-            tooltip: 'طبقات الخريطة',
-            child: const Icon(Icons.layers_outlined, size: 20),
-          ),
-        ],
       ],
+    );
+  }
+}
+
+class _PrimaryChip extends StatelessWidget {
+  final String heroTag;
+  final VoidCallback? onPressed;
+  final bool loading;
+  final bool active;
+  final Color color;
+  final Color activeColor;
+  final Color? foreground;
+  final IconData icon;
+  final String label;
+  final bool outlined;
+
+  const _PrimaryChip({
+    required this.heroTag,
+    required this.onPressed,
+    required this.loading,
+    required this.active,
+    required this.color,
+    required this.activeColor,
+    required this.icon,
+    required this.label,
+    this.foreground,
+    this.outlined = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = active ? activeColor : color;
+    final fg = foreground ?? Colors.white;
+
+    return Material(
+      color: Colors.transparent,
+      child: FloatingActionButton.extended(
+        heroTag: heroTag,
+        onPressed: onPressed,
+        backgroundColor: bg,
+        foregroundColor: fg,
+        elevation: outlined ? 3 : 4,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: outlined
+              ? BorderSide(color: fg.withValues(alpha: 0.25))
+              : BorderSide.none,
+        ),
+        icon: loading
+            ? SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: fg,
+                ),
+              )
+            : Icon(icon, size: 20),
+        label: Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundAction extends StatelessWidget {
+  final String heroTag;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final Color color;
+  final bool loading;
+  final IconData icon;
+  final bool large;
+
+  const _RoundAction({
+    required this.heroTag,
+    required this.tooltip,
+    required this.onPressed,
+    required this.color,
+    required this.loading,
+    required this.icon,
+    this.large = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final size = large ? 48.0 : 40.0;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: color.withValues(alpha: 0.10),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Center(
+              child: loading
+                  ? SizedBox(
+                      width: large ? 22 : 18,
+                      height: large ? 22 : 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        color: color,
+                      ),
+                    )
+                  : Icon(icon, color: color, size: large ? 24 : 20),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

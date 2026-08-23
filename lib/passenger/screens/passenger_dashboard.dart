@@ -46,6 +46,8 @@ class _PassengerDashboardState extends State<PassengerDashboard> {
     }
 
     return Scaffold(
+      // الخريطة تمتد خلف الشريط العائم لمظهر أحدث
+      extendBody: _currentIndex == 0,
       appBar: const CustomAppBar(),
       body: body,
       bottomNavigationBar: CustomBottomNavBar(
