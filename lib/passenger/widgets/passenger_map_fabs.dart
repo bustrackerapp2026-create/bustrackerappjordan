@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 
-/// أزرار خريطة الراكب — مجموعة موحّدة بمظهر زجاجي مرتب.
+/// أزرار خريطة الراكب.
 ///
-/// الترتيب من الأعلى للأسفل:
-/// 1) باصات من هنا
-/// 2) إلى أين؟
-/// 3) عمود أيقونات أقصى اليمين: أقرب باص · موقعي · طبقات
+/// - الأزرار النصية (باصات من هنا / إلى أين؟) فوق
+/// - عمود الأيقونات الثلاث ملتصق بأقصى يمين الشاشة (جهة بداية العربية)
 class PassengerMapFabs extends StatelessWidget {
   final bool findingNearest;
   final bool findingNearby;
@@ -36,54 +34,44 @@ class PassengerMapFabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // يمين الشاشة الفعلي = جهة بداية اللغة العربية
-    return Align(
-      alignment: Alignment.centerRight,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          _PrimaryChip(
-            heroTag: 'passenger_nearby_buses',
-            onPressed: findingNearby ? null : onNearbyBuses,
-            loading: findingNearby,
-            active: nearbyModeActive,
-            activeColor: const Color(0xFF0F766E),
-            color: const Color(0xFF0D9488),
-            icon: nearbyModeActive
-                ? Icons.alt_route_rounded
-                : Icons.hail_rounded,
-            label: nearbyModeActive ? 'خطوط موقعي' : 'باصات من هنا',
-          ),
-          const SizedBox(height: 10),
-          _PrimaryChip(
-            heroTag: 'passenger_destination',
-            onPressed: onSetDestination,
-            loading: false,
-            active: hasDestination,
-            activeColor: const Color(0xFF6D28D9),
-            color: Colors.white,
-            foreground: hasDestination ? Colors.white : const Color(0xFF6D28D9),
-            icon: hasDestination ? Icons.flag_rounded : Icons.flag_outlined,
-            label: hasDestination ? 'تغيير الوجهة' : 'إلى أين؟',
-            outlined: !hasDestination,
-          ),
-          const SizedBox(height: 12),
-          // عمود الأيقونات — ملتصق بأقصى يمين الشاشة
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.96),
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-              border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
-            ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        _PrimaryChip(
+          heroTag: 'passenger_nearby_buses',
+          onPressed: findingNearby ? null : onNearbyBuses,
+          loading: findingNearby,
+          active: nearbyModeActive,
+          activeColor: const Color(0xFF0F766E),
+          color: const Color(0xFF0D9488),
+          icon: nearbyModeActive
+              ? Icons.alt_route_rounded
+              : Icons.hail_rounded,
+          label: nearbyModeActive ? 'خطوط موقعي' : 'باصات من هنا',
+        ),
+        const SizedBox(height: 10),
+        _PrimaryChip(
+          heroTag: 'passenger_destination',
+          onPressed: onSetDestination,
+          loading: false,
+          active: hasDestination,
+          activeColor: const Color(0xFF6D28D9),
+          color: Colors.white,
+          foreground: hasDestination ? Colors.white : const Color(0xFF6D28D9),
+          icon: hasDestination ? Icons.flag_rounded : Icons.flag_outlined,
+          label: hasDestination ? 'تغيير الوجهة' : 'إلى أين؟',
+          outlined: !hasDestination,
+        ),
+        const SizedBox(height: 12),
+        // عمود عمودي: أقرب باص · موقعي · طبقات — أقصى اليمين
+        Material(
+          elevation: 6,
+          shadowColor: Colors.black.withValues(alpha: 0.22),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -119,8 +107,8 @@ class PassengerMapFabs extends StatelessWidget {
               ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
