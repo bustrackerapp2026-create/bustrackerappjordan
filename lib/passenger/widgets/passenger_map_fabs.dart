@@ -12,15 +12,15 @@ class PassengerMapControlPositions {
 
   /// زر «باصات من هنا»
   static const double nearbyRight = 8;
-  static const double nearbyBottom = 280;
+  static const double nearbyBottom = 380;
 
   /// زر «إلى أين؟»
   static const double destinationRight = 8;
-  static const double destinationBottom = 220;
+  static const double destinationBottom = 320;
 
   /// عمود الأيقونات (أقرب باص · موقعي · طبقات)
   static const double iconsRight = 8;
-  static const double iconsBottom = 100;
+  static const double iconsBottom = 150;
 }
 
 /// زر «باصات من هنا»
