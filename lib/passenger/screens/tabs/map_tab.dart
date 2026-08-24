@@ -672,8 +672,10 @@ class _MapTabState extends State<MapTab>
     super.build(context);
     final l10n = AppLocalizations.of(context);
     final hasOpenTrip = _openTrip != null;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Stack(
+      fit: StackFit.expand,
       children: [
         RepaintBoundary(
           child: MapWidget(
@@ -705,11 +707,15 @@ class _MapTabState extends State<MapTab>
             ),
           ),
         ),
-        // أقصى يمين الشاشة الفعلي = جهة بداية اللغة العربية
+        // أقصى يمين الشاشة الفعلي (جهة بداية العربية) — عمودي
         Positioned(
-          right: 8,
-          bottom: hasOpenTrip ? 220 : 140,
-          child: RepaintBoundary(
+          right: 4,
+          bottom: (hasOpenTrip ? 200 : 120) + bottomInset,
+          child: SafeArea(
+            left: false,
+            top: false,
+            bottom: false,
+            right: true,
             child: PassengerMapFabs(
               findingNearest: _findingNearest,
               findingNearby: _findingNearby,
