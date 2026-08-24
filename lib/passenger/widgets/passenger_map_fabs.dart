@@ -36,9 +36,9 @@ class PassengerMapFabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // في الواجهة العربية بداية اللغة من اليمين → محاذاة كل العناصر لليمين.
+    // يمين الشاشة الفعلي = جهة بداية اللغة العربية
     return Align(
-      alignment: AlignmentDirectional.centerEnd,
+      alignment: Alignment.centerRight,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -69,7 +69,7 @@ class PassengerMapFabs extends StatelessWidget {
             outlined: !hasDestination,
           ),
           const SizedBox(height: 12),
-          // عمود الأيقونات — أقصى يمين الشاشة (جهة بداية العربية)
+          // عمود الأيقونات — ملتصق بأقصى يمين الشاشة
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
