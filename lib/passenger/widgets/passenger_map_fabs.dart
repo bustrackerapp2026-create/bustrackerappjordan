@@ -7,7 +7,7 @@ import '../../core/theme/app_theme.dart';
 /// الترتيب من الأعلى للأسفل:
 /// 1) باصات من هنا
 /// 2) إلى أين؟
-/// 3) صف أفقي أقصى اليمين: أقرب باص · موقعي · طبقات
+/// 3) عمود أيقونات أقصى اليمين: أقرب باص · موقعي · طبقات
 class PassengerMapFabs extends StatelessWidget {
   final bool findingNearest;
   final bool findingNearby;
@@ -69,9 +69,9 @@ class PassengerMapFabs extends StatelessWidget {
             outlined: !hasDestination,
           ),
           const SizedBox(height: 12),
-          // صف الأيقونات الثلاث — أقصى يمين الشاشة (جهة بداية العربية)
+          // عمود الأيقونات — أقصى يمين الشاشة (جهة بداية العربية)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.96),
               borderRadius: BorderRadius.circular(28),
@@ -84,7 +84,7 @@ class PassengerMapFabs extends StatelessWidget {
               ],
               border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
             ),
-            child: Row(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 _RoundAction(
@@ -95,7 +95,7 @@ class PassengerMapFabs extends StatelessWidget {
                   loading: findingNearest,
                   icon: Icons.near_me_rounded,
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(height: 8),
                 _RoundAction(
                   heroTag: 'passenger_my_location',
                   tooltip: 'موقعي',
@@ -106,7 +106,7 @@ class PassengerMapFabs extends StatelessWidget {
                   large: true,
                 ),
                 if (onMapLayers != null) ...[
-                  const SizedBox(width: 8),
+                  const SizedBox(height: 8),
                   _RoundAction(
                     heroTag: 'passenger_map_layers',
                     tooltip: 'طبقات الخريطة',
