@@ -705,10 +705,9 @@ class _MapTabState extends State<MapTab>
             ),
           ),
         ),
-        // أقصى اليمين = بداية اللغة العربية (start في RTL)
-        Positioned.directional(
-          textDirection: Directionality.of(context),
-          start: 8,
+        // أقصى يمين الشاشة الفعلي = جهة بداية اللغة العربية
+        Positioned(
+          right: 8,
           bottom: hasOpenTrip ? 220 : 140,
           child: RepaintBoundary(
             child: PassengerMapFabs(
