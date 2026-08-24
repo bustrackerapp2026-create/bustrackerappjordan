@@ -672,7 +672,7 @@ class _MapTabState extends State<MapTab>
     super.build(context);
     final l10n = AppLocalizations.of(context);
     final hasOpenTrip = _openTrip != null;
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final bottomPad = hasOpenTrip ? 80.0 : 0.0;
 
     return Stack(
       fit: StackFit.expand,
@@ -707,35 +707,47 @@ class _MapTabState extends State<MapTab>
             ),
           ),
         ),
-        // أقصى يمين الشاشة الفعلي (جهة بداية العربية) — عمودي
+
+        // ── 1) باصات من هنا ──
         Positioned(
-          right: 4,
-          bottom: (hasOpenTrip ? 200 : 120) + bottomInset,
-          child: SafeArea(
-            left: false,
-            top: false,
-            bottom: false,
-            right: true,
-            child: PassengerMapFabs(
-              findingNearest: _findingNearest,
-              findingNearby: _findingNearby,
-              nearbyModeActive: _nearbyMode,
-              hasDestination: _destination != null,
-              isLoadingPassengerLocation: isLoadingPassengerLocation,
-              onNearbyBuses: _findingNearby ? null : () => _showBusesNearMe(),
-              onSetDestination: _pickDestination,
-              onNearestBus: _findingNearest ? null : _findNearestBus,
-              onMyLocation: () {
-                MapUtils.lightHaptic();
-                goToMyLocation();
-              },
-              onMapLayers: () {
-                MapUtils.lightHaptic();
-                showMapSettingsSheet(context);
-              },
-            ),
+          right: PassengerMapControlPositions.nearbyRight,
+          bottom: PassengerMapControlPositions.nearbyBottom + bottomPad,
+          child: PassengerNearbyChip(
+            loading: _findingNearby,
+            active: _nearbyMode,
+            onPressed: _findingNearby ? null : () => _showBusesNearMe(),
           ),
         ),
+
+        // ── 2) إلى أين؟ ──
+        Positioned(
+          right: PassengerMapControlPositions.destinationRight,
+          bottom: PassengerMapControlPositions.destinationBottom + bottomPad,
+          child: PassengerDestinationChip(
+            hasDestination: _destination != null,
+            onPressed: _pickDestination,
+          ),
+        ),
+
+        // ── 3) عمود: أقرب باص · موقعي · طبقات ──
+        Positioned(
+          right: PassengerMapControlPositions.iconsRight,
+          bottom: PassengerMapControlPositions.iconsBottom + bottomPad,
+          child: PassengerMapIconColumn(
+            findingNearest: _findingNearest,
+            isLoadingLocation: isLoadingPassengerLocation,
+            onNearestBus: _findingNearest ? null : _findNearestBus,
+            onMyLocation: () {
+              MapUtils.lightHaptic();
+              goToMyLocation();
+            },
+            onMapLayers: () {
+              MapUtils.lightHaptic();
+              showMapSettingsSheet(context);
+            },
+          ),
+        ),
+
         if (hasOpenTrip)
           Positioned(
             bottom: 88,
