@@ -777,6 +777,9 @@ class _MapTabState extends State<MapTab>
                     destinationName: _destination?.name,
                     onClearDestination:
                         _destination != null ? _clearDestination : null,
+                    onTryNearby: (!_nearbyMode && _destination == null)
+                        ? () => _showBusesNearMe()
+                        : null,
                   );
                 },
               ),
