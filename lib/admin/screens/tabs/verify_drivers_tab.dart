@@ -116,9 +116,11 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
                     slivers: [
                       SliverPadding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         sliver: SliverList(
-                          delegate: SliiverChildListDelegateFix([
+                          delegate: SliverChildListDelegate([
                             VerifyDriversHeroSummaryCard(
                               totalUsers: totalUsers,
                               activeTotal: activeTotal,
@@ -285,6 +287,3 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
     );
   }
 }
-
-/// اختصار لتفادي خطأ إملائي — نفس SliverChildListDelegate
-typedef SliiverChildListDelegateFix = SliverChildListDelegate;
