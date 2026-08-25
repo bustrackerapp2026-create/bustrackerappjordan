@@ -10,7 +10,7 @@ import 'landmark_marker_images.dart';
 import 'map_core.dart';
 import 'map_utils.dart';
 
-/// عرض المعالم المعتمدة (راكب/سائق) بأسلوب Google Maps POI.
+/// عرض المعالم المعتمدة — الأسماء بخط Flutter العربي (RTL).
 mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final MapLandmarkService _landmarksService = MapLandmarkService();
   StreamSubscription<List<MapLandmark>>? _landmarksDisplaySub;
@@ -25,7 +25,7 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   double _lastDisplayLandmarkZoom = -1;
   Timer? _displayLandmarkZoomDebounce;
 
-  final Map<MapLandmarkType, Uint8List> _displayIconBytes = {};
+  final Map<String, Uint8List> _displayIconBytes = {};
 
   int get displayLandmarksCount => _displayLandmarks.length;
 
@@ -83,16 +83,44 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           LandmarkMarkerImages.isVisibleAtZoom(t, b)) {
         return true;
       }
+      if (LandmarkMarkerImages.showLabelAtZoom(t, a) !=
+          LandmarkMarkerImages.showLabelAtZoom(t, b)) {
+        return true;
+      }
     }
     return false;
   }
 
-  Future<void> _ensureDisplayIconBytes(Iterable<MapLandmarkType> types) async {
-    for (final t in types) {
-      if (!_displayIconBytes.containsKey(t)) {
-        _displayIconBytes[t] = await LandmarkMarkerImages.bytesFor(t);
-      }
+  String _iconKey(MapLandmark m, bool withLabel, double fontSize) {
+    if (!withLabel) return 'icon_${m.type.name}';
+    return 'lbl_${m.id}_${fontSize.round()}';
+  }
+
+  Future<Uint8List> _bytesForLandmark(
+    MapLandmark m,
+    double zoom,
+  ) async {
+    final name = m.name.trim();
+    final showLabel =
+        LandmarkMarkerImages.showLabelAtZoom(m.type, zoom) && name.isNotEmpty;
+    final fontSize = LandmarkMarkerImages.textSizeForZoom(zoom);
+    final key = _iconKey(m, showLabel, fontSize);
+
+    final cached = _displayIconBytes[key];
+    if (cached != null) return cached;
+
+    final Uint8List bytes;
+    if (showLabel) {
+      bytes = await LandmarkMarkerImages.bytesWithLabel(
+        type: m.type,
+        name: name,
+        fontSize: fontSize > 0 ? fontSize : 12,
+      );
+    } else {
+      bytes = await LandmarkMarkerImages.bytesFor(m.type);
     }
+    _displayIconBytes[key] = bytes;
+    return bytes;
   }
 
   PointAnnotationOptions _optionsFor(
@@ -103,23 +131,14 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final name = m.name.trim();
     final showLabel =
         LandmarkMarkerImages.showLabelAtZoom(m.type, zoom) && name.isNotEmpty;
-    final textSize =
-        showLabel ? LandmarkMarkerImages.textSizeForZoom(zoom) : 0.0;
+    // الاسم مرسوم داخل الصورة بخط Flutter — لا نستخدم textField لـ Mapbox
     return PointAnnotationOptions(
       geometry: Point(coordinates: Position(m.longitude, m.latitude)),
       image: bytes,
-      iconSize: LandmarkMarkerImages.iconSizeForZoom(zoom),
-      iconAnchor: IconAnchor.CENTER,
-      textField: showLabel ? name : null,
-      textSize: textSize,
-      textColor: LandmarkMarkerImages.labelTextColor,
-      textHaloColor: LandmarkMarkerImages.labelHaloColor,
-      textHaloWidth: LandmarkMarkerImages.labelHaloWidth,
-      textLetterSpacing: LandmarkMarkerImages.labelLetterSpacing,
-      textAnchor: TextAnchor.TOP,
-      textOffset: LandmarkMarkerImages.textOffsetForZoom(zoom),
-      textMaxWidth: LandmarkMarkerImages.labelMaxWidth,
-      textJustify: TextJustify.CENTER,
+      iconSize: showLabel
+          ? LandmarkMarkerImages.labeledIconSizeForZoom(zoom)
+          : LandmarkMarkerImages.iconSizeForZoom(zoom),
+      iconAnchor: showLabel ? IconAnchor.TOP : IconAnchor.CENTER,
     );
   }
 
@@ -148,26 +167,28 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         }
       }
 
-      final missing = visible
-          .where((m) => !_displayLandmarkAnnotations.containsKey(m.id))
-          .toList();
-      if (missing.isNotEmpty) {
-        await _ensureDisplayIconBytes(missing.map((m) => m.type).toSet());
-        for (final m in missing) {
-          final bytes = _displayIconBytes[m.type];
-          if (bytes == null) continue;
+      // أعد إنشاء الكل عند تغيّر مستوى التسمية لضمان صورة صحيحة
+      final existing = _displayLandmarkAnnotations.keys.toList();
+      for (final id in existing) {
+        final ann = _displayLandmarkAnnotations.remove(id);
+        if (ann != null) {
           try {
-            final ann = await pointAnnotationManager!.create(
-              _optionsFor(m, bytes, zoom),
-            );
-            _displayLandmarkAnnotations[m.id] = ann;
-          } catch (e) {
-            MapUtils.log('display landmark ${m.id}: $e', tag: 'MapLandmarks');
-          }
+            await pointAnnotationManager!.delete(ann);
+          } catch (_) {}
         }
       }
 
-      await _updateDisplayLandmarkStyle(zoom);
+      for (final m in visible) {
+        try {
+          final bytes = await _bytesForLandmark(m, zoom);
+          final ann = await pointAnnotationManager!.create(
+            _optionsFor(m, bytes, zoom),
+          );
+          _displayLandmarkAnnotations[m.id] = ann;
+        } catch (e) {
+          MapUtils.log('display landmark ${m.id}: $e', tag: 'MapLandmarks');
+        }
+      }
     } finally {
       _drawingDisplayLandmarks = false;
     }
@@ -177,9 +198,6 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (_updatingDisplayLandmarkScale || pointAnnotationManager == null) return;
     _updatingDisplayLandmarkScale = true;
     try {
-      final iconSize = LandmarkMarkerImages.iconSizeForZoom(zoom);
-      final textOffset = LandmarkMarkerImages.textOffsetForZoom(zoom);
-
       for (final entry in _displayLandmarkAnnotations.entries) {
         final m = _displayLandmarkById[entry.key];
         if (m == null) continue;
@@ -188,25 +206,14 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         final showLabel =
             LandmarkMarkerImages.showLabelAtZoom(m.type, zoom) &&
                 name.isNotEmpty;
-        final textSize =
-            showLabel ? LandmarkMarkerImages.textSizeForZoom(zoom) : 0.0;
 
-        ann.iconSize = iconSize;
-        if (showLabel) {
-          ann.textField = name;
-          ann.textSize = textSize;
-          ann.textOffset = textOffset;
-          ann.textColor = LandmarkMarkerImages.labelTextColor;
-          ann.textHaloColor = LandmarkMarkerImages.labelHaloColor;
-          ann.textHaloWidth = LandmarkMarkerImages.labelHaloWidth;
-          ann.textLetterSpacing = LandmarkMarkerImages.labelLetterSpacing;
-          ann.textAnchor = TextAnchor.TOP;
-          ann.textJustify = TextJustify.CENTER;
-          ann.textMaxWidth = LandmarkMarkerImages.labelMaxWidth;
-        } else {
-          ann.textField = '';
-          ann.textSize = 0;
-        }
+        ann.iconSize = showLabel
+            ? LandmarkMarkerImages.labeledIconSizeForZoom(zoom)
+            : LandmarkMarkerImages.iconSizeForZoom(zoom);
+        ann.iconAnchor = showLabel ? IconAnchor.TOP : IconAnchor.CENTER;
+        // مسح أي نص Mapbox قديم
+        ann.textField = '';
+        ann.textSize = 0;
 
         try {
           await pointAnnotationManager!.update(ann);
@@ -235,7 +242,6 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (_drawingDisplayLandmarks) return;
     _drawingDisplayLandmarks = true;
     try {
-      // إعادة توليد الأيقونات بعد أي تغيير في الرسم
       LandmarkMarkerImages.clearCache();
       _displayIconBytes.clear();
 
@@ -253,13 +259,9 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           .toList();
       if (visible.isEmpty) return;
 
-      await _ensureDisplayIconBytes(visible.map((m) => m.type).toSet());
-      if (pointAnnotationManager == null) return;
-
       for (final m in visible) {
-        final bytes = _displayIconBytes[m.type];
-        if (bytes == null) continue;
         try {
+          final bytes = await _bytesForLandmark(m, zoom);
           final ann = await pointAnnotationManager!.create(
             _optionsFor(m, bytes, zoom),
           );

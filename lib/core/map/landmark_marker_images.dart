@@ -5,35 +5,21 @@ import 'package:flutter/material.dart';
 
 import '../../models/map_landmark.dart';
 
-/// أيقونات معالم المشروع — أسلوب Google Maps POI بحجم واضح ومقروء:
-/// - قطر الدائرة على الشاشة تقريباً 28–36px
-/// - رمز أبيض واضح داخل دائرة ملونة + حلقة بيضاء
-/// - نص رمادي Google مع هالة بيضاء
-/// - ظهور/اختفاء حسب الأهمية مع الزوم
+/// أيقونات معالم المشروع — أسلوب Google Maps POI.
+/// الأسماء تُرسم بخط النظام العربي (نفس خط واجهة التطبيق) مع RTL.
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
-  /// حجم الصورة المولَّدة — دقة جيدة بدون تضخيم مفرط على الخريطة.
   static const double markerSize = 96;
 
-  /// لون نص التسمية — رمادي Google (#3C4043)
   static const int labelTextColor = 0xFF3C4043;
-
-  /// لون هالة النص
   static const int labelHaloColor = 0xFFFFFFFF;
-
-  /// عرض هالة النص (px)
   static const double labelHaloWidth = 1.1;
-
-  /// تباعد حروف خفيف
   static const double labelLetterSpacing = 0.01;
-
-  /// أقصى عرض سطر للاسم (em)
   static const double labelMaxWidth = 9;
 
-  static final Map<MapLandmarkType, Uint8List> _cache = {};
-
-  // ─── Level of Detail ─────────────────────────────────────────────
+  static final Map<MapLandmarkType, Uint8List> _iconCache = {};
+  static final Map<String, Uint8List> _labeledCache = {};
 
   static double minZoomFor(MapLandmarkType type) {
     switch (type) {
@@ -123,15 +109,6 @@ class LandmarkMarkerImages {
   static bool showLabelAtZoom(MapLandmarkType type, double zoom) =>
       zoom >= labelMinZoomFor(type);
 
-  // ─── حجم الشاشة ─────────────────────────────────────────────────
-  // الصورة 96px، قطر الدائرة المرسومة ~72px (نسبة عالية من الصورة).
-  // iconSize 0.78 → صورة ~75px → دائرة ~56px؟ لا:
-  // قطر الدائرة في الصورة = 36*2 = 72 من 96 → نسبة 0.75 من الصورة.
-  // iconSize 0.55 → صورة 53px → دائرة ~40px  (كبير قليلاً)
-  // iconSize 0.42 → صورة 40px → دائرة ~30px  ✓
-  // iconSize 0.48 → صورة 46px → دائرة ~35px  ✓
-  // هدف واضح ومقروء: دائرة ~28–36px على الشاشة.
-
   static double iconSizeForZoom(double zoom) {
     if (zoom <= 11.5) return 0.40;
     if (zoom <= 12.5) return 0.44;
@@ -142,16 +119,23 @@ class LandmarkMarkerImages {
     return 0.64;
   }
 
+  /// حجم أيقونة مركّبة (أيقونة + اسم مرسوم)
+  static double labeledIconSizeForZoom(double zoom) {
+    if (zoom <= 13.5) return 0.55;
+    if (zoom <= 15.0) return 0.62;
+    if (zoom <= 16.5) return 0.70;
+    return 0.78;
+  }
+
   static const double labelMinZoom = 13.5;
 
   static bool showLabelForZoom(double zoom) => zoom >= labelMinZoom;
 
-  /// حجم خط الاسم — أوضح قليلاً مع بقاء طابع Google.
   static double textSizeForZoom(double zoom) {
     if (zoom < 13.2) return 0;
-    if (zoom < 14.5) return 11.5;
-    if (zoom < 15.8) return 12.0;
-    return 12.5;
+    if (zoom < 14.5) return 12.0;
+    if (zoom < 15.8) return 13.0;
+    return 13.5;
   }
 
   static List<double> textOffsetForZoom(double zoom) {
@@ -422,10 +406,30 @@ class LandmarkMarkerImages {
   }
 
   static Future<Uint8List> bytesFor(MapLandmarkType type) async {
-    final hit = _cache[type];
+    final hit = _iconCache[type];
     if (hit != null) return hit;
-    final bytes = await _render(type);
-    _cache[type] = bytes;
+    final bytes = await _renderIconOnly(type);
+    _iconCache[type] = bytes;
+    return bytes;
+  }
+
+  /// أيقونة + اسم عربي بخط النظام (نفس خط التطبيق) مع تشكيل RTL صحيح.
+  static Future<Uint8List> bytesWithLabel({
+    required MapLandmarkType type,
+    required String name,
+    double fontSize = 13,
+  }) async {
+    final safe = name.trim();
+    if (safe.isEmpty) return bytesFor(type);
+
+    final sizeKey = fontSize.round();
+    final cacheKey = '${type.name}_${safe.hashCode}_f$sizeKey';
+    final hit = _labeledCache[cacheKey];
+    if (hit != null) return hit;
+
+    final bytes = await _renderIconWithLabel(type, safe, fontSize);
+    if (_labeledCache.length > 200) _labeledCache.clear();
+    _labeledCache[cacheKey] = bytes;
     return bytes;
   }
 
@@ -435,35 +439,29 @@ class LandmarkMarkerImages {
     }
   }
 
-  static void clearCache() => _cache.clear();
+  static void clearCache() {
+    _iconCache.clear();
+    _labeledCache.clear();
+  }
 
-  /// دائرة ملونة واضحة + رمز أبيض كبير نسبياً داخلها.
-  static Future<Uint8List> _render(MapLandmarkType type) async {
+  static Future<Uint8List> _renderIconOnly(MapLandmarkType type) async {
     const size = markerSize;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final color = colorFor(type);
 
-    // دائرة تملأ معظم الصورة (قطر ~72 من 96)
     const radius = 36.0;
     const inner = 30.5;
     final center = Offset(size / 2, size / 2);
 
-    // ظل ناعم
     final shadow = Paint()
       ..color = const Color(0x33000000)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.4);
     canvas.drawCircle(center.translate(0, 1.0), radius, shadow);
 
-    // حلقة بيضاء
-    final outer = Paint()..color = Colors.white;
-    canvas.drawCircle(center, radius, outer);
+    canvas.drawCircle(center, radius, Paint()..color = Colors.white);
+    canvas.drawCircle(center, inner, Paint()..color = color);
 
-    // التعبئة الملونة
-    final fill = Paint()..color = color;
-    canvas.drawCircle(center, inner, fill);
-
-    // رمز أبيض واضح
     final icon = iconDataFor(type);
     final tp = TextPainter(
       text: TextSpan(
@@ -485,6 +483,107 @@ class LandmarkMarkerImages {
 
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
+    final bd = await image.toByteData(format: ui.ImageByteFormat.png);
+    return bd!.buffer.asUint8List();
+  }
+
+  /// رسم أيقونة + تسمية عربية بخط النظام (تشكيل طبيعي للعربية).
+  static Future<Uint8List> _renderIconWithLabel(
+    MapLandmarkType type,
+    String name,
+    double fontSize,
+  ) async {
+    const iconBox = 96.0;
+    final maxLabelWidth = 160.0;
+
+    final display = name.length > 18 ? '${name.substring(0, 17)}…' : name;
+
+    // خط النظام — نفس خط واجهة Flutter العربية
+    final namePainter = TextPainter(
+      text: TextSpan(
+        text: display,
+        style: TextStyle(
+          color: const Color(labelTextColor),
+          fontSize: fontSize,
+          fontWeight: FontWeight.w700,
+          height: 1.15,
+          // بدون fontFamily = خط النظام (مثل باقي التطبيق)
+          shadows: const [
+            Shadow(
+              color: Color(0xFFFFFFFF),
+              blurRadius: 2.5,
+              offset: Offset(0, 0),
+            ),
+            Shadow(
+              color: Color(0xFFFFFFFF),
+              blurRadius: 1.2,
+              offset: Offset(0.5, 0.5),
+            ),
+          ],
+        ),
+      ),
+      textDirection: TextDirection.rtl,
+      textAlign: TextAlign.center,
+      maxLines: 2,
+      ellipsis: '…',
+    )..layout(maxWidth: maxLabelWidth);
+
+    final totalWidth =
+        (namePainter.width + 16).clamp(iconBox, maxLabelWidth + 8);
+    final totalHeight = iconBox + namePainter.height + 10;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    // أيقونة في الأعلى
+    final color = colorFor(type);
+    final center = Offset(totalWidth / 2, iconBox / 2);
+    const radius = 36.0;
+    const inner = 30.5;
+
+    final shadow = Paint()
+      ..color = const Color(0x33000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.4);
+    canvas.drawCircle(center.translate(0, 1.0), radius, shadow);
+    canvas.drawCircle(center, radius, Paint()..color = Colors.white);
+    canvas.drawCircle(center, inner, Paint()..color = color);
+
+    final icon = iconDataFor(type);
+    final iconTp = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(icon.codePoint),
+        style: TextStyle(
+          fontSize: 30,
+          fontFamily: icon.fontFamily,
+          package: icon.fontPackage,
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    iconTp.paint(
+      canvas,
+      Offset(
+        center.dx - iconTp.width / 2,
+        center.dy - iconTp.height / 2 - 0.5,
+      ),
+    );
+
+    // الاسم أسفل الأيقونة — خط عربي طبيعي
+    namePainter.paint(
+      canvas,
+      Offset(
+        (totalWidth - namePainter.width) / 2,
+        iconBox - 4,
+      ),
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(
+      totalWidth.ceil(),
+      totalHeight.ceil(),
+    );
     final bd = await image.toByteData(format: ui.ImageByteFormat.png);
     return bd!.buffer.asUint8List();
   }
