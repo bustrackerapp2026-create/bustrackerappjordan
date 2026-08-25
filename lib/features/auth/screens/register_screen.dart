@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:jordan_bus_tracker_new/core/constants/bus_capacity.dart';
+import 'package:jordan_bus_tracker_new/core/constants/user_roles.dart';
 import 'package:jordan_bus_tracker_new/core/theme/app_theme.dart';
 import 'package:jordan_bus_tracker_new/core/utils/validators.dart';
 import 'package:jordan_bus_tracker_new/features/auth/providers/auth_provider.dart';
@@ -29,9 +30,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
-  String _selectedUserType = 'passenger';
+  String _selectedUserType = UserRoles.passenger;
   int? _selectedCapacity = BusCapacity.medium;
-  bool get _showDriverFields => _selectedUserType == 'driver';
+
+  bool get _showDriverFields => UserRoles.isDriverLike(_selectedUserType);
 
   @override
   void dispose() {
@@ -47,6 +49,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _register() async {
     final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
     if (!_formKey.currentState!.validate()) return;
 
     final name = _nameController.text.trim();
@@ -58,7 +63,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final route = _routeController.text.trim();
 
     if (password != confirmPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text(l10n.passwordMismatch),
           backgroundColor: Colors.orange,
@@ -68,7 +73,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     if (_showDriverFields && _selectedCapacity == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(
           content: Text('⚠️ اختر نوع الباص / عدد الركاب'),
           backgroundColor: Colors.orange,
@@ -95,17 +100,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text(l10n.registerSuccess),
           backgroundColor: Colors.green,
         ),
       );
 
-      Navigator.pop(context);
+      navigator.pop();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(e.toString()),
             backgroundColor: Colors.red.shade700,
@@ -122,6 +127,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final isDriverSelected = _selectedUserType == UserRoles.driver;
+    final isPassengerSelected = _selectedUserType == UserRoles.passenger;
 
     return Scaffold(
       body: Container(
@@ -434,18 +441,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             Expanded(
                               child: ChoiceChip(
                                 label: Text('🚗 ${l10n.driver}'),
-                                selected: _selectedUserType == 'driver',
+                                selected: isDriverSelected,
                                 onSelected: (selected) {
                                   if (selected) {
                                     setState(
-                                      () => _selectedUserType = 'driver',
+                                      () => _selectedUserType = UserRoles.driver,
                                     );
                                   }
                                 },
                                 selectedColor: AppTheme.primaryColor,
                                 backgroundColor: Colors.grey.shade200,
                                 labelStyle: TextStyle(
-                                  color: _selectedUserType == 'driver'
+                                  color: isDriverSelected
                                       ? Colors.white
                                       : Colors.black87,
                                 ),
@@ -455,18 +462,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             Expanded(
                               child: ChoiceChip(
                                 label: Text('🚶 ${l10n.passenger}'),
-                                selected: _selectedUserType == 'passenger',
+                                selected: isPassengerSelected,
                                 onSelected: (selected) {
                                   if (selected) {
                                     setState(
-                                      () => _selectedUserType = 'passenger',
+                                      () => _selectedUserType =
+                                          UserRoles.passenger,
                                     );
                                   }
                                 },
                                 selectedColor: AppTheme.primaryColor,
                                 backgroundColor: Colors.grey.shade200,
                                 labelStyle: TextStyle(
-                                  color: _selectedUserType == 'passenger'
+                                  color: isPassengerSelected
                                       ? Colors.white
                                       : Colors.black87,
                                 ),
@@ -476,12 +484,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          _selectedUserType == 'driver'
+                          isDriverSelected
                               ? l10n.driverPendingNote
                               : l10n.passengerReadyNote,
                           style: TextStyle(
                             fontSize: 12,
-                            color: _selectedUserType == 'driver'
+                            color: isDriverSelected
                                 ? Colors.orange.shade700
                                 : Colors.green.shade700,
                           ),
