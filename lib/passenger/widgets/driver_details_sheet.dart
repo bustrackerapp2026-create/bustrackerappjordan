@@ -47,18 +47,38 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
     final cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
     if (cleaned.isEmpty) return;
     final uri = Uri(scheme: 'tel', path: cleaned);
+    final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       final ok = await launchUrl(uri);
       if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger?.showSnackBar(
           const SnackBar(content: Text('تعذر فتح تطبيق الاتصال')),
         );
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger?.showSnackBar(
         const SnackBar(content: Text('تعذر فتح تطبيق الاتصال')),
       );
+    }
+  }
+
+  Future<void> _onRequestBoardPressed() async {
+    final request = widget.onRequestBoard;
+    if (request == null || _requesting) return;
+
+    // التقط Navigator قبل أي await لتفادي use_build_context_synchronously
+    final navigator = Navigator.of(context);
+
+    setState(() => _requesting = true);
+    try {
+      await request(driver);
+      if (!mounted) return;
+      navigator.pop();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _requesting = false);
+      }
     }
   }
 
@@ -289,20 +309,8 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                             width: double.infinity,
                             height: 52,
                             child: ElevatedButton(
-                              onPressed: _requesting
-                                  ? null
-                                  : () async {
-                                      setState(() => _requesting = true);
-                                      try {
-                                        await widget.onRequestBoard!(driver);
-                                        if (!mounted) return;
-                                        Navigator.pop(context);
-                                      } catch (_) {
-                                        if (mounted) {
-                                          setState(() => _requesting = false);
-                                        }
-                                      }
-                                    },
+                              onPressed:
+                                  _requesting ? null : _onRequestBoardPressed,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: _accent,
                                 foregroundColor: Colors.white,
