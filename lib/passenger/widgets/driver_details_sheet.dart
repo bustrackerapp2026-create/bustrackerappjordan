@@ -7,7 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/trip/eta_utils.dart';
 import '../../models/live_driver_location.dart';
 
-/// بطاقة تفاصيل السائق على خريطة الراكب.
+/// بطاقة تفاصيل السائق — تصميم فاخر مع ETA بارز وطلب صعود واضح.
 class DriverDetailsSheet extends StatefulWidget {
   final LiveDriverLocation driver;
   final double? passengerLat;
@@ -63,6 +63,12 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
     }
   }
 
+  String get _initial {
+    final name = driver.fullName.trim();
+    if (name.isEmpty) return 'س';
+    return name.characters.first;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewPadding.bottom;
@@ -71,9 +77,8 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
     final statusColor = isTrip
         ? const Color(0xFFDC2626)
         : (isOnline ? const Color(0xFF16A34A) : const Color(0xFF6B7280));
-    final statusLabel = isTrip
-        ? 'في رحلة نشطة'
-        : (isOnline ? 'متصل · متاح' : 'غير متصل');
+    final statusLabel =
+        isTrip ? 'في رحلة' : (isOnline ? 'متاح' : 'غير متصل');
 
     final bus = driver.busNumber?.trim();
     final routeTitle = driver.route?.trim();
@@ -83,7 +88,7 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
         (phoneRaw != null && phoneRaw.isNotEmpty) ? phoneRaw : null;
     final hasPhone = phone != null;
 
-    String? etaText;
+    int? etaMins;
     String? distanceText;
     if (widget.passengerLat != null &&
         widget.passengerLng != null &&
@@ -94,83 +99,77 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
         driver.latitude,
         driver.longitude,
       );
-      final mins = EtaUtils.estimateMinutes(
+      etaMins = EtaUtils.estimateMinutes(
         distanceMeters: meters,
         speedMps: driver.speed,
       );
-      etaText = EtaUtils.formatEta(mins);
       distanceText = EtaUtils.formatDistance(meters);
     }
 
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.88,
+        maxHeight: MediaQuery.of(context).size.height * 0.90,
       ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 24,
-            offset: const Offset(0, -4),
-          ),
-        ],
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(height: 10),
           Container(
-            width: 44,
-            height: 5,
+            width: 40,
+            height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey.shade300,
-              borderRadius: BorderRadius.circular(3),
+              color: const Color(0xFFCBD5E1),
+              borderRadius: BorderRadius.circular(2),
             ),
           ),
           Flexible(
             child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(16, 14, 16, bottom + 16),
+              padding: EdgeInsets.fromLTRB(16, 16, 16, bottom + 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // ── بطاقة السائق الرئيسية ──
                   Container(
-                    padding: const EdgeInsets.all(18),
+                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topRight,
-                        end: Alignment.bottomLeft,
-                        colors: [
-                          _accent,
-                          _accent.withValues(alpha: 0.78),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(22),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: _accent.withValues(alpha: 0.35),
+                          color: Colors.black.withValues(alpha: 0.06),
                           blurRadius: 16,
                           offset: const Offset(0, 6),
                         ),
                       ],
                     ),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // أفاتار + اسم
                         Row(
                           children: [
                             Container(
-                              width: 56,
-                              height: 56,
+                              width: 58,
+                              height: 58,
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.22),
-                                borderRadius: BorderRadius.circular(16),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: _accent,
+                                  width: 2.5,
+                                ),
+                                color: _accent.withValues(alpha: 0.08),
                               ),
-                              child: const Icon(
-                                Icons.directions_bus_rounded,
-                                color: Colors.white,
-                                size: 30,
+                              alignment: Alignment.center,
+                              child: Text(
+                                _initial,
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                  color: _accent,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 14),
@@ -183,21 +182,21 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                                         ? driver.fullName
                                         : 'سائق',
                                     style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 20,
+                                      fontSize: 18,
                                       fontWeight: FontWeight.w800,
+                                      color: Color(0xFF0F172A),
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(height: 6),
+                                  const SizedBox(height: 4),
                                   Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 10,
                                       vertical: 4,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
+                                      color: statusColor.withValues(alpha: 0.12),
                                       borderRadius: BorderRadius.circular(20),
                                     ),
                                     child: Row(
@@ -228,122 +227,147 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                             ),
                           ],
                         ),
-                        if (bus != null && bus.isNotEmpty) ...[
-                          const SizedBox(height: 14),
-                          Container(
+                        const SizedBox(height: 16),
+                        // شرائح المعلومات
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            if (driver.capacity != null)
+                              _pill(
+                                Icons.event_seat_rounded,
+                                '${driver.capacity} راكب',
+                              ),
+                            if (routeTitle != null && routeTitle.isNotEmpty)
+                              _pill(Icons.route_rounded, routeTitle),
+                            if (bus != null && bus.isNotEmpty)
+                              _pill(
+                                Icons.confirmation_number_rounded,
+                                'كوستر $bus',
+                              ),
+                          ],
+                        ),
+                        // ETA بارز
+                        if (etaMins != null) ...[
+                          const SizedBox(height: 20),
+                          const Text(
+                            'وقت الوصول المتوقع',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF94A3B8),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$etaMins',
+                            style: TextStyle(
+                              fontSize: 52,
+                              fontWeight: FontWeight.w900,
+                              color: _accent,
+                              height: 1.0,
+                            ),
+                          ),
+                          const Text(
+                            'دقائق',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                          if (distanceText != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              distanceText,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF94A3B8),
+                              ),
+                            ),
+                          ],
+                        ],
+                        // زر طلب الصعود
+                        if (widget.onRequestBoard != null) ...[
+                          const SizedBox(height: 20),
+                          SizedBox(
                             width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.18),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.confirmation_number_rounded,
-                                    color: Colors.white, size: 20),
-                                const SizedBox(width: 10),
-                                Text(
-                                  'رقم المركبة: $bus',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 15,
-                                  ),
+                            height: 52,
+                            child: ElevatedButton(
+                              onPressed: _requesting
+                                  ? null
+                                  : () async {
+                                      setState(() => _requesting = true);
+                                      try {
+                                        await widget.onRequestBoard!(driver);
+                                        if (!mounted) return;
+                                        Navigator.pop(context);
+                                      } catch (_) {
+                                        if (mounted) {
+                                          setState(() => _requesting = false);
+                                        }
+                                      }
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _accent,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
-                              ],
+                              ),
+                              child: _requesting
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.4,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          'طلب الصعود',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        SizedBox(width: 8),
+                                        Icon(Icons.arrow_upward_rounded,
+                                            size: 20),
+                                      ],
+                                    ),
                             ),
                           ),
                         ],
                       ],
                     ),
                   ),
-                  if (etaText != null) ...[
+
+                  // ── تفاصيل إضافية ──
+                  if (routeDetail != null && routeDetail.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    _infoBanner(
-                      icon: Icons.schedule_rounded,
-                      color: const Color(0xFF059669),
-                      bg: const Color(0xFFECFDF5),
-                      border: const Color(0xFFA7F3D0),
-                      text: 'الوصول التقريبي: $etaText · المسافة $distanceText',
+                    _section(
+                      title: 'مسير الخط',
+                      icon: Icons.alt_route_rounded,
+                      child: Text(
+                        routeDetail,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          height: 1.55,
+                          color: Color(0xFF334155),
+                        ),
+                      ),
                     ),
                   ],
+
                   const SizedBox(height: 12),
-                  _sectionCard(
-                    title: 'اتجاه الخط',
-                    icon: Icons.route_rounded,
-                    child: Text(
-                      (routeTitle != null && routeTitle.isNotEmpty)
-                          ? routeTitle
-                          : 'لم يُحدَّد اتجاه الخط بعد',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        height: 1.35,
-                        color: (routeTitle != null && routeTitle.isNotEmpty)
-                            ? AppTheme.textColor
-                            : Colors.grey.shade500,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _sectionCard(
-                    title: 'مسير الخط (المناطق بالترتيب)',
-                    icon: Icons.alt_route_rounded,
-                    child: Text(
-                      (routeDetail != null && routeDetail.isNotEmpty)
-                          ? routeDetail
-                          : 'أضف السائق تفاصيل المناطق التي يمر بها الخط من ملفه الشخصي.',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        height: 1.55,
-                        color: (routeDetail != null && routeDetail.isNotEmpty)
-                            ? const Color(0xFF334155)
-                            : Colors.grey.shade500,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _miniStat(
-                          icon: Icons.event_seat_rounded,
-                          label: 'السعة',
-                          value: driver.capacity != null
-                              ? '${driver.capacity} راكب'
-                              : '—',
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _miniStat(
-                          icon: Icons.phone_rounded,
-                          label: 'الهاتف',
-                          value: phone ?? '—',
-                          onLongPress: phone == null
-                              ? null
-                              : () async {
-                                  final p = phone;
-                                  await Clipboard.setData(
-                                    ClipboardData(text: p),
-                                  );
-                                  if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('تم نسخ رقم الهاتف'),
-                                      duration: Duration(seconds: 2),
-                                    ),
-                                  );
-                                },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
                   _infoBanner(
                     icon: driver.isStaleWarning
                         ? Icons.schedule_rounded
@@ -354,15 +378,13 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                     bg: driver.isStaleWarning
                         ? const Color(0xFFFFF7ED)
                         : const Color(0xFFF0FDF4),
-                    border: driver.isStaleWarning
-                        ? const Color(0xFFFDBA74)
-                        : const Color(0xFFBBF7D0),
                     text: driver.isStaleWarning
-                        ? 'آخر تحديث: ${driver.updatedAgoLabel} — قد يكون الموقع غير دقيق'
-                        : 'آخر تحديث للموقع: ${driver.updatedAgoLabel}',
+                        ? 'آخر تحديث: ${driver.updatedAgoLabel} — قد يكون غير دقيق'
+                        : 'آخر تحديث: ${driver.updatedAgoLabel}',
                   ),
+
                   if (hasPhone) ...[
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     SizedBox(
                       height: 50,
                       child: OutlinedButton.icon(
@@ -370,8 +392,8 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFF0F766E),
                           side: const BorderSide(
-                            color: Color(0xFF0F766E),
-                            width: 1.4,
+                            color: Color(0xFF99F6E4),
+                            width: 1.5,
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
@@ -388,67 +410,18 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                       ),
                     ),
                   ],
-                  if (widget.onRequestBoard != null) ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 52,
-                      child: ElevatedButton.icon(
-                        onPressed: _requesting
-                            ? null
-                            : () async {
-                                setState(() => _requesting = true);
-                                try {
-                                  await widget.onRequestBoard!(driver);
-                                  if (!mounted) return;
-                                  Navigator.pop(context);
-                                } catch (_) {
-                                  if (mounted) {
-                                    setState(() => _requesting = false);
-                                  }
-                                }
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0F766E),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        icon: _requesting
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.hail_rounded),
-                        label: Text(
-                          _requesting
-                              ? 'جاري إرسال الطلب...'
-                              : 'طلب صعود من موقعي',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+
                   const SizedBox(height: 10),
                   SizedBox(
                     height: 48,
-                    child: OutlinedButton(
+                    child: TextButton(
                       onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
                       child: const Text(
                         'إغلاق',
-                        style: TextStyle(fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF64748B),
+                        ),
                       ),
                     ),
                   ),
@@ -461,7 +434,32 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
     );
   }
 
-  Widget _sectionCard({
+  Widget _pill(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: const Color(0xFF64748B)),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF334155),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _section({
     required String title,
     required IconData icon,
     required Widget child,
@@ -471,22 +469,28 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 18, color: _accent),
-              const SizedBox(width: 8),
+              Icon(icon, size: 17, color: _accent),
+              const SizedBox(width: 7),
               Text(
                 title,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: Colors.grey.shade600,
+                  color: Color(0xFF94A3B8),
                 ),
               ),
             ],
@@ -498,65 +502,10 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
     );
   }
 
-  Widget _miniStat({
-    required IconData icon,
-    required String label,
-    required String value,
-    VoidCallback? onLongPress,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: _accent, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade500,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      value,
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _infoBanner({
     required IconData icon,
     required Color color,
     required Color bg,
-    required Color border,
     required String text,
   }) {
     return Container(
@@ -564,8 +513,7 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
@@ -575,7 +523,7 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
             child: Text(
               text,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 12.5,
                 fontWeight: FontWeight.w600,
                 color: color.withValues(alpha: 0.95),
               ),

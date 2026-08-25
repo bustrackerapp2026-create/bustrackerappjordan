@@ -9,7 +9,7 @@ import '../../models/trip_model.dart';
 import '../../models/trip_status.dart';
 import '../../services/live_tracking_service.dart';
 
-/// شريط رحلة الراكب النشطة/قيد الانتظار بأسلوب أوبر.
+/// بطاقة رحلة الراكب النشطة — تصميم فاخر بشريط بنفسجي جانبي.
 class ActiveTripBanner extends StatefulWidget {
   final TripModel trip;
   final VoidCallback? onCancel;
@@ -115,12 +115,12 @@ class _ActiveTripBannerState extends State<ActiveTripBanner> {
       distanceLabel = EtaUtils.formatDistance(meters);
     }
 
-    final statusColor = isPending
-        ? const Color(0xFFEA580C)
-        : (isActive ? const Color(0xFF16A34A) : Colors.grey);
+    final accent = isPending
+        ? const Color(0xFF7C3AED)
+        : (isActive ? const Color(0xFF0F766E) : const Color(0xFF64748B));
     final statusText = isPending
-        ? 'بانتظار قبول السائق'
-        : (isActive ? 'السائق في الطريق إليك' : trip.status.stringValue);
+        ? 'بانتظار السائق'
+        : (isActive ? 'السائق في الطريق' : trip.status.stringValue);
 
     final driverTitle = (_driver?.fullName.isNotEmpty == true)
         ? _driver!.fullName
@@ -132,174 +132,255 @@ class _ActiveTripBannerState extends State<ActiveTripBanner> {
         : (trip.busNumber?.trim().isNotEmpty == true
             ? trip.busNumber!.trim()
             : null);
-    final route = (_driver?.route?.trim().isNotEmpty == true)
-        ? _driver!.route!.trim()
-        : (trip.route?.trim().isNotEmpty == true ? trip.route!.trim() : null);
 
-    return Material(
-      elevation: 8,
-      borderRadius: BorderRadius.circular(20),
-      color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.18),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    Icons.directions_bus_filled_rounded,
-                    color: statusColor,
-                  ),
+            // شريط جانبي ملوّن
+            Container(
+              width: 6,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    accent,
+                    accent.withValues(alpha: 0.55),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        driverTitle,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        statusText,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (etaLabel != null)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0F766E),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // رأس: شارة الحالة + المؤقت
+                    Row(
                       children: [
-                        Text(
-                          etaLabel,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 11,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.directions_bus_rounded,
+                                size: 14,
+                                color: accent,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                statusText,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: accent,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        if (distanceLabel != null)
-                          Text(
-                            distanceLabel,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.9),
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
+                        const Spacer(),
+                        if (etaLabel != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: accent.withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.schedule_rounded,
+                                    size: 14, color: accent),
+                                const SizedBox(width: 4),
+                                Text(
+                                  etaLabel,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: accent,
+                                  ),
+                                ),
+                                if (distanceLabel != null) ...[
+                                  Text(
+                                    ' · $distanceLabel',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: accent.withValues(alpha: 0.8),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                       ],
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                if (bus != null) _chip(Icons.confirmation_number, 'باص $bus'),
-                if (route != null) _chip(Icons.route, route),
-                _chip(Icons.place, trip.pickupPoint),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                if (widget.onFocusDriver != null)
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: widget.onFocusDriver,
-                      icon: const Icon(Icons.my_location, size: 18),
-                      label: const Text('تتبع'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.primaryColor,
-                        side: BorderSide(
-                          color: AppTheme.primaryColor.withValues(alpha: 0.4),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    const SizedBox(height: 12),
+                    // اسم السائق + رقم الباص
+                    Text(
+                      driverTitle,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 17,
+                        color: Color(0xFF0F172A),
+                        height: 1.2,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (bus != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        'كوستر $bus',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF64748B),
                         ),
                       ),
-                    ),
-                  ),
-                if (widget.onFocusDriver != null && widget.onCancel != null)
-                  const SizedBox(width: 8),
-                if (widget.onCancel != null)
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: widget.onCancel,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFEE2E2),
-                        foregroundColor: const Color(0xFFB91C1C),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    ],
+                    const SizedBox(height: 10),
+                    // نقطة الالتقاط
+                    Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.place_rounded,
+                            size: 18,
+                            color: accent,
+                          ),
                         ),
-                      ),
-                      child: Text(isPending ? 'إلغاء الطلب' : 'إلغاء'),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                trip.pickupPoint,
+                                style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1E293B),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const Text(
+                                'نقطة الاستلام',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-              ],
+                    const SizedBox(height: 14),
+                    // أزرار الإجراءات
+                    Row(
+                      children: [
+                        if (widget.onCancel != null)
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: widget.onCancel,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFFDC2626),
+                                side: const BorderSide(
+                                  color: Color(0xFFFECACA),
+                                  width: 1.4,
+                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: Text(
+                                isPending ? 'إلغاء الطلب' : 'إلغاء',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (widget.onCancel != null &&
+                            widget.onFocusDriver != null)
+                          const SizedBox(width: 10),
+                        if (widget.onFocusDriver != null)
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: widget.onFocusDriver,
+                              icon: const Icon(Icons.near_me_rounded, size: 18),
+                              label: const Text(
+                                'تتبع السائق',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: accent,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _chip(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: const Color(0xFF64748B)),
-          const SizedBox(width: 4),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 140),
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF334155),
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
       ),
     );
   }

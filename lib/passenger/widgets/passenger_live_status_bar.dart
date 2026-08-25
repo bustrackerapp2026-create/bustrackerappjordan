@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../l10n/app_localizations.dart';
 
-/// شريط حالة التتبع الحي أسفل خريطة الراكب — مظهر أنظف.
+/// شريط حالة التتبع الحي — بطاقة زجاجية أنيقة أسفل خريطة الراكب.
 class PassengerLiveStatusBar extends StatelessWidget {
   final String routeName;
   final int liveCount;
@@ -30,21 +30,27 @@ class PassengerLiveStatusBar extends StatelessWidget {
     final hasDest =
         destinationName != null && destinationName!.trim().isNotEmpty;
 
+    final title = hasDest
+        ? 'نحو $destinationName'
+        : (nearbyMode ? 'خطوط قربك' : routeName);
+    final subtitle =
+        hasLive ? '$liveCount باص حي الآن' : 'لا يوجد باص حي حالياً';
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.96),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: hasLive
-              ? AppTheme.primaryColor.withValues(alpha: 0.22)
-              : Colors.black.withValues(alpha: 0.05),
-        ),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.10),
-            blurRadius: 18,
+            blurRadius: 20,
             offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
@@ -53,22 +59,15 @@ class PassengerLiveStatusBar extends StatelessWidget {
         children: [
           Row(
             children: [
+              // أيقونة الباص في دائرة ناعمة
               Container(
-                width: 42,
-                height: 42,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: hasLive
-                        ? [
-                            AppTheme.primaryColor.withValues(alpha: 0.18),
-                            AppTheme.primaryColor.withValues(alpha: 0.08),
-                          ]
-                        : [
-                            Colors.grey.shade100,
-                            Colors.grey.shade50,
-                          ],
-                  ),
+                  color: hasLive
+                      ? const Color(0xFFDBEAFE)
+                      : const Color(0xFFF1F5F9),
                 ),
                 child: Icon(
                   hasDest
@@ -76,49 +75,49 @@ class PassengerLiveStatusBar extends StatelessWidget {
                       : (nearbyMode
                           ? Icons.alt_route_rounded
                           : Icons.directions_bus_rounded),
-                  color: hasLive ? AppTheme.primaryColor : Colors.grey.shade600,
-                  size: 22,
+                  color: hasLive
+                      ? const Color(0xFF2563EB)
+                      : const Color(0xFF64748B),
+                  size: 24,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      hasDest
-                          ? 'نحو $destinationName'
-                          : (nearbyMode ? 'خطوط قربك' : routeName),
+                      title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
-                        fontSize: 14.5,
-                        color: AppTheme.textColor,
+                        fontSize: 15.5,
+                        color: Color(0xFF0F172A),
+                        height: 1.25,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
-                      hasLive
-                          ? '$liveCount باص حي الآن'
-                          : 'لا يوجد باص حي حالياً',
+                      subtitle,
                       style: TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: hasLive
-                            ? AppTheme.primaryColor
-                            : Colors.grey.shade600,
+                            ? const Color(0xFF2563EB)
+                            : const Color(0xFF94A3B8),
                       ),
                     ),
                   ],
                 ),
               ),
+              // شارة «مباشر»
               if (hasLive)
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
                   decoration: BoxDecoration(
-                    color: AppTheme.secondaryColor.withValues(alpha: 0.12),
+                    color: const Color(0xFFCCFBF1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -128,17 +127,17 @@ class PassengerLiveStatusBar extends StatelessWidget {
                         width: 8,
                         height: 8,
                         decoration: const BoxDecoration(
-                          color: AppTheme.secondaryColor,
+                          color: Color(0xFF14B8A6),
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 6),
-                      Text(
+                      const Text(
                         'مباشر',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
-                          color: AppTheme.secondaryColor.withValues(alpha: 0.95),
+                          color: Color(0xFF0F766E),
                         ),
                       ),
                     ],
@@ -146,30 +145,40 @@ class PassengerLiveStatusBar extends StatelessWidget {
                 ),
               if (hasDest && onClearDestination != null) ...[
                 const SizedBox(width: 4),
-                IconButton(
-                  tooltip: 'إلغاء الوجهة',
-                  onPressed: onClearDestination,
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(Icons.close_rounded, color: Colors.grey.shade600),
+                Material(
+                  color: const Color(0xFFF1F5F9),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: onClearDestination,
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ],
           ),
           if (nearbyHint != null && nearbyHint!.trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(12),
+                color: const Color(0xFFF0F9FF),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
                 nearbyHint!,
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.35,
-                  color: Colors.grey.shade800,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  height: 1.4,
+                  color: Color(0xFF334155),
                   fontWeight: FontWeight.w600,
                 ),
               ),
