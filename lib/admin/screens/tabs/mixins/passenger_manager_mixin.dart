@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../../core/constants/user_roles.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
 
@@ -21,7 +22,7 @@ mixin PassengerManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     // قد لا يكون جاهزاً لكل الوثائق القديمة. لاحقاً يُفضّل حقل isSharingLocation.
     _passengersSubscription = FirebaseFirestore.instance
         .collection('users')
-        .where('userType', isEqualTo: 'passenger')
+        .where('userType', isEqualTo: UserRoles.passenger)
         .snapshots()
         .listen(
       (snapshot) {

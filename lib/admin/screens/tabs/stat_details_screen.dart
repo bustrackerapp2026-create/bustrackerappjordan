@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/constants/bus_capacity.dart';
+import '../../../core/constants/user_roles.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/user_model.dart';
 import '../../../services/analytics_service.dart';
@@ -29,7 +30,7 @@ class _StatDetailsScreenState extends State<StatDetailsScreen> {
       widget.queryType == 'pending' ||
       widget.queryType == 'verified' ||
       widget.queryType == 'rejected' ||
-      widget.queryType == 'driver';
+      widget.queryType == UserRoles.driver;
 
   Stream<List<UserModel>> _watchUsers() {
     return FirebaseFirestore.instance.collection('users').snapshots().map((snap) {
@@ -44,19 +45,18 @@ class _StatDetailsScreenState extends State<StatDetailsScreen> {
   }
 
   bool _matchesFilter(UserModel user) {
-    final type = user.userType.toLowerCase();
-    final needsApproval =
-        type == 'driver' || type == 'service' || type == 'bus_company';
+    final type = user.userType;
+    final needsApproval = UserRoles.needsVerification(type);
 
     switch (widget.queryType) {
-      case 'passenger':
-        return type == 'passenger';
-      case 'driver':
-        return type == 'driver';
-      case 'service':
-        return type == 'service';
-      case 'bus_company':
-        return type == 'bus_company';
+      case UserRoles.passenger:
+        return UserRoles.isPassenger(type);
+      case UserRoles.driver:
+        return UserRoles.isDriver(type);
+      case UserRoles.service:
+        return type == UserRoles.service;
+      case UserRoles.busCompany:
+        return type == UserRoles.busCompany;
       case 'pending':
         return needsApproval && !user.isVerified && !user.isRejected;
       case 'verified':
@@ -64,11 +64,11 @@ class _StatDetailsScreenState extends State<StatDetailsScreen> {
       case 'rejected':
         return needsApproval && user.isRejected;
       case 'active_buses':
-        return type == 'driver';
+        return UserRoles.isDriver(type);
       case 'active_passengers':
-        return type == 'passenger';
+        return UserRoles.isPassenger(type);
       case 'active_services':
-        return type == 'service';
+        return type == UserRoles.service;
       default:
         return true;
     }
@@ -268,9 +268,7 @@ class _UserCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final type = user.userType.toLowerCase();
-    final isDriverLike =
-        type == 'driver' || type == 'service' || type == 'bus_company';
+    final isDriverLike = UserRoles.isDriverLike(user.userType);
 
     return Card(
       key: ValueKey(user.uid),

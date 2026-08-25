@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants/user_roles.dart';
 import '../../../services/firestore_service.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../widgets/verify_drivers/verify_drivers_models.dart';
@@ -53,10 +54,10 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
     return {
       ...usersStats,
       'total': _toInt(usersStats['total']),
-      'passenger': _toInt(usersStats['passenger']),
-      'driver': _toInt(usersStats['driver']),
-      'service': _toInt(usersStats['service']),
-      'bus_company': _toInt(usersStats['bus_company']),
+      UserRoles.passenger: _toInt(usersStats[UserRoles.passenger]),
+      UserRoles.driver: _toInt(usersStats[UserRoles.driver]),
+      UserRoles.service: _toInt(usersStats[UserRoles.service]),
+      UserRoles.busCompany: _toInt(usersStats[UserRoles.busCompany]),
       'verified': _toInt(usersStats['verified']),
       'pending': _toInt(usersStats['pending']),
       'rejected': _toInt(usersStats['rejected']),
@@ -115,7 +116,9 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
                     slivers: [
                       SliverPadding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         sliver: SliverList(
                           delegate: SliverChildListDelegate([
                             VerifyDriversHeroSummaryCard(
@@ -140,31 +143,31 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
                                 ),
                                 VerifyDriversStatItem(
                                   l10n.passenger,
-                                  _toInt(stats['passenger']),
+                                  _toInt(stats[UserRoles.passenger]),
                                   const Color(0xFF059669),
                                   Icons.person,
-                                  'passenger',
+                                  UserRoles.passenger,
                                 ),
                                 VerifyDriversStatItem(
                                   l10n.labelBus,
-                                  _toInt(stats['driver']),
+                                  _toInt(stats[UserRoles.driver]),
                                   Colors.amber.shade900,
                                   Icons.directions_bus,
-                                  'driver',
+                                  UserRoles.driver,
                                 ),
                                 VerifyDriversStatItem(
                                   l10n.labelService,
-                                  _toInt(stats['service']),
+                                  _toInt(stats[UserRoles.service]),
                                   Colors.purple.shade700,
                                   Icons.alt_route,
-                                  'service',
+                                  UserRoles.service,
                                 ),
                                 VerifyDriversStatItem(
                                   l10n.labelBusCompany,
-                                  _toInt(stats['bus_company']),
+                                  _toInt(stats[UserRoles.busCompany]),
                                   Colors.teal.shade700,
                                   Icons.business,
-                                  'bus_company',
+                                  UserRoles.busCompany,
                                 ),
                               ],
                             ),
