@@ -12,6 +12,9 @@ class PassengerLiveStatusBar extends StatelessWidget {
   final String? destinationName;
   final VoidCallback? onClearDestination;
 
+  /// اختياري: عند عدم وجود باص حي يقترح تجربة «باصات من هنا».
+  final VoidCallback? onTryNearby;
+
   const PassengerLiveStatusBar({
     super.key,
     required this.routeName,
@@ -21,6 +24,7 @@ class PassengerLiveStatusBar extends StatelessWidget {
     this.nearbyHint,
     this.destinationName,
     this.onClearDestination,
+    this.onTryNearby,
   });
 
   @override
@@ -34,6 +38,11 @@ class PassengerLiveStatusBar extends StatelessWidget {
         : (nearbyMode ? 'خطوط قربك' : routeName);
     final subtitle =
         hasLive ? '$liveCount باص حي الآن' : 'لا يوجد باص حي حالياً';
+
+    final emptyGuidance = _emptyGuidanceText(
+      hasDest: hasDest,
+      nearbyMode: nearbyMode,
+    );
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
@@ -181,8 +190,81 @@ class PassengerLiveStatusBar extends StatelessWidget {
               ),
             ),
           ],
+          if (!hasLive && emptyGuidance != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.lightbulb_outline_rounded,
+                        size: 18,
+                        color: Color(0xFFB45309),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          emptyGuidance,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            height: 1.45,
+                            color: Color(0xFF78350F),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (onTryNearby != null && !nearbyMode && !hasDest) ...[
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: TextButton.icon(
+                        onPressed: onTryNearby,
+                        icon: const Icon(Icons.near_me_rounded, size: 18),
+                        label: const Text(
+                          'جرّب باصات من هنا',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFFB45309),
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// نص إرشاد عند عدم وجود باصات حية — حسب السياق.
+  static String? _emptyGuidanceText({
+    required bool hasDest,
+    required bool nearbyMode,
+  }) {
+    if (hasDest) {
+      return 'لا باص حي على الخطوط نحو وجهتك الآن. جرّب لاحقاً، أو غيّر الوجهة، أو اختر خطاً من شريط البحث أعلاه.';
+    }
+    if (nearbyMode) {
+      return 'الخطوط القريبة محددة، لكن لا سائق متصل حالياً. افتح التطبيق بعد قليل أو اختر خطاً آخر من الأعلى.';
+    }
+    return 'لا سائق متصل على هذا الخط الآن. يمكنك تغيير الخط من الأعلى، أو الضغط على «باصات من هنا» لعرض الخطوط القريبة من موقعك.';
   }
 }
