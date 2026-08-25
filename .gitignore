@@ -27,7 +27,9 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
 /build/
@@ -39,10 +41,25 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
-# Android Studio will place build artifacts here
+# Android Studio / Gradle build artifacts
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/build/
+/android/.gradle/
+/android/local.properties
+**/android/**/gradle-wrapper.jar
+
+# iOS / macOS build artifacts
+/ios/Pods/
+/ios/.symlinks/
+/ios/Flutter/Flutter.framework
+/ios/Flutter/Flutter.podspec
+/ios/Flutter/Generated.xcconfig
+/ios/Flutter/ephemeral/
+/ios/ServiceDefinitions.json
+/macos/Flutter/ephemeral/
+/macos/Pods/
 
 # Environment variables & secrets
 .env
@@ -53,3 +70,7 @@ app.*.map.json
 .firebase/
 *.jks
 key.properties
+
+# Agent / local skill lock (optional local tooling)
+# Keep skills-lock.json if the team relies on it; uncomment to ignore:
+# skills-lock.json

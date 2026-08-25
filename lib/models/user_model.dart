@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/constants/bus_capacity.dart';
+import '../core/constants/user_roles.dart';
 
 class UserModel {
   final String uid;
@@ -45,7 +46,7 @@ class UserModel {
       uid: docId,
       email: _safeEmail(map['email']),
       fullName: map['fullName']?.toString() ?? '',
-      userType: map['userType']?.toString() ?? 'passenger',
+      userType: map['userType']?.toString() ?? UserRoles.passenger,
       phoneNumber: _safePhoneNumber(map['phoneNumber']),
       busNumber: map['busNumber'] as String?,
       route: map['route'] as String?,
@@ -103,7 +104,7 @@ class UserModel {
       uid: json['uid'] ?? '',
       email: json['email'] ?? '',
       fullName: json['fullName'] ?? '',
-      userType: json['userType'] ?? 'passenger',
+      userType: json['userType'] ?? UserRoles.passenger,
       phoneNumber: json['phoneNumber'] as String?,
       busNumber: json['busNumber'] as String?,
       route: json['route'] as String?,
@@ -156,22 +157,13 @@ class UserModel {
 
   String get displayCapacity => BusCapacity.label(capacity);
 
-  String get displayUserType {
-    switch (userType) {
-      case 'admin':
-        return 'مشرف';
-      case 'driver':
-        return 'سائق';
-      case 'passenger':
-        return 'راكب';
-      case 'service':
-        return 'سرفيس';
-      case 'bus_company':
-        return 'باص شركه';
-      default:
-        return userType;
-    }
-  }
+  String get displayUserType => UserRoles.displayLabelAr(userType);
+
+  bool get isAdminRole => UserRoles.isAdmin(userType);
+  bool get isPassengerRole => UserRoles.isPassenger(userType);
+  bool get isDriverRole => UserRoles.isDriver(userType);
+  bool get isDriverLikeRole => UserRoles.isDriverLike(userType);
+  bool get needsVerification => UserRoles.needsVerification(userType);
 
   static String _safeEmail(dynamic email) {
     final str = email?.toString().trim() ?? '';
