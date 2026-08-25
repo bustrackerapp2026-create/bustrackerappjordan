@@ -28,64 +28,18 @@ class MapPoiInfo {
 class MapLayerController {
   MapLayerController._();
 
-  /// كاش معرّفات الطبقات لكل styleUri لتفادي إعادة المسح الكامل
   static final Map<String, _LayerIdCache> _layerCache = {};
 
-  /// خطوط Mapbox التي تدعم العربية جيداً (مع بدائل آمنة)
-  static const List<String> arabicTextFonts = [
-    'Arial Unicode MS Regular',
-    'DIN Offc Pro Regular',
-    'Open Sans Regular',
-    'Roboto Regular',
+  /// مجموعات خطوط Mapbox الشائعة التي تدعم العربية
+  /// (الترتيب: جرب الأولى ثم التالية عند الفشل)
+  static const List<List<String>> arabicFontStacks = [
+    ['Arial Unicode MS Regular', 'DIN Offc Pro Regular'],
+    ['DIN Offc Pro Regular', 'Arial Unicode MS Regular'],
+    ['Open Sans Regular', 'Arial Unicode MS Regular'],
+    ['Roboto Regular', 'Arial Unicode MS Regular'],
+    ['Klokantech Noto Sans Regular', 'Arial Unicode MS Regular'],
   ];
 
-  /// تعبير Mapbox يفضّل الاسم العربي ثم البدائل
-  static final List<dynamic> arabicTextFieldExpression = [
-    'coalesce',
-    [
-      'case',
-      [
-        'all',
-        ['has', 'name_ar'],
-        ['!=', ['get', 'name_ar'], ''],
-      ],
-      ['get', 'name_ar'],
-      '',
-    ],
-    [
-      'case',
-      [
-        'all',
-        ['has', 'name:ar'],
-        ['!=', ['get', 'name:ar'], ''],
-      ],
-      ['get', 'name:ar'],
-      '',
-    ],
-    [
-      'case',
-      [
-        'all',
-        ['has', 'name'],
-        ['!=', ['get', 'name'], ''],
-      ],
-      ['get', 'name'],
-      '',
-    ],
-    [
-      'case',
-      [
-        'all',
-        ['has', 'name_en'],
-        ['!=', ['get', 'name_en'], ''],
-      ],
-      ['get', 'name_en'],
-      '',
-    ],
-    ['to-string', ['get', 'ref']],
-  ];
-
-  /// تعبير أبسط وأكثر توافقاً مع أنماط Mapbox المختلفة
   static final List<dynamic> arabicTextFieldSimple = [
     'coalesce',
     ['get', 'name_ar'],
@@ -218,8 +172,8 @@ class MapLayerController {
 
           if (_isBaseGeometryLayer(lower)) continue;
 
-          final isLabelLike = _matchesAny(lower, _labelKeywords) ||
-              lower.contains('label');
+          final isLabelLike =
+              _matchesAny(lower, _labelKeywords) || lower.contains('label');
 
           if (isLabelLike) {
             allLabelIds.add(rawId);
@@ -274,7 +228,7 @@ class MapLayerController {
     }
   }
 
-  /// يفرض الاسم العربي + خط يدعم العربية على طبقات التسميات.
+  /// يفرض الاسم العربي + خط يدعم العربية على كل طبقات التسميات.
   static Future<int> applyArabicLabels({
     required MapboxMap mapboxMap,
     Set<String>? layerIds,
@@ -288,7 +242,6 @@ class MapLayerController {
       }
 
       final exprJson = jsonEncode(arabicTextFieldSimple);
-      final fontJson = jsonEncode(arabicTextFonts);
       var ok = 0;
       final list = ids.toList();
       const batchSize = 8;
@@ -302,45 +255,28 @@ class MapLayerController {
             final exists = await style.styleLayerExists(id);
             if (!exists) return 0;
 
-            await style.setStyleLayerProperty(id, 'text-field', exprJson);
-
-            // خط عربي مقروء (نفس روح واجهة التطبيق)
+            // 1) حقل النص العربي
             try {
-              await style.setStyleLayerProperty(id, 'text-font', fontJson);
+              await style.setStyleLayerProperty(id, 'text-field', exprJson);
             } catch (_) {
-              try {
-                await style.setStyleLayerProperty(
-                  id,
-                  'text-font',
-                  arabicTextFonts,
-                );
-              } catch (_) {}
-            }
-
-            // تحسين قراءة العربية
-            try {
-              await style.setStyleLayerProperty(id, 'text-letter-spacing', 0.02);
-            } catch (_) {}
-
-            return 1;
-          } catch (_) {
-            try {
               await style.setStyleLayerProperty(
                 id,
                 'text-field',
                 arabicTextFieldSimple,
               );
-              try {
-                await style.setStyleLayerProperty(
-                  id,
-                  'text-font',
-                  arabicTextFonts,
-                );
-              } catch (_) {}
-              return 1;
-            } catch (_) {
-              return 0;
             }
+
+            // 2) خط عربي — جرّب عدة مكدسات حتى ينجح واحد
+            await _applyBestArabicFont(style, id);
+
+            // 3) تباعد خفيف للقراءة
+            try {
+              await style.setStyleLayerProperty(id, 'text-letter-spacing', 0.01);
+            } catch (_) {}
+
+            return 1;
+          } catch (_) {
+            return 0;
           }
         }));
         for (final r in results) {
@@ -356,7 +292,32 @@ class MapLayerController {
     }
   }
 
-  static Future<Set<String>> _discoverAllLabelLayerIds(StyleManager style) async {
+  static Future<void> _applyBestArabicFont(
+    StyleManager style,
+    String layerId,
+  ) async {
+    for (final stack in arabicFontStacks) {
+      try {
+        await style.setStyleLayerProperty(
+          layerId,
+          'text-font',
+          jsonEncode(stack),
+        );
+        return;
+      } catch (_) {
+        try {
+          await style.setStyleLayerProperty(layerId, 'text-font', stack);
+          return;
+        } catch (_) {
+          // جرّب المكدس التالي
+        }
+      }
+    }
+  }
+
+  static Future<Set<String>> _discoverAllLabelLayerIds(
+    StyleManager style,
+  ) async {
     final ids = <String>{};
     try {
       final layers = await style.getStyleLayers();
