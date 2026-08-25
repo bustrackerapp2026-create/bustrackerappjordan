@@ -114,21 +114,164 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
                   return CustomScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     slivers: [
-                      SliiverPaddingFix(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
-                        child: null,
-                      ),
                       SliverPadding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 10),
-                        sliver: SliiverListFix(
-                          stats: stats,
-                          totalUsers: totalUsers,
-                          activeTotal: activeTotal,
-                          colorScheme: colorScheme,
-                          l10n: l10n,
-                          toInt: _toInt,
+                        sliver: SliverList(
+                          delegate: SliiverChildListDelegateFix([
+                            VerifyDriversHeroSummaryCard(
+                              totalUsers: totalUsers,
+                              activeTotal: activeTotal,
+                              l10n: l10n,
+                            ),
+                            const SizedBox(height: 12),
+                            VerifyDriversCompactSectionCard(
+                              sectionId: 'registered',
+                              title: l10n.registeredStats,
+                              icon: Icons.people_alt_outlined,
+                              iconColor: colorScheme.primary,
+                              liveLabel: l10n.live,
+                              items: [
+                                VerifyDriversStatItem(
+                                  l10n.total,
+                                  _toInt(stats['total']),
+                                  colorScheme.primary,
+                                  Icons.group,
+                                  'total',
+                                ),
+                                VerifyDriversStatItem(
+                                  l10n.passenger,
+                                  _toInt(stats[UserRoles.passenger]),
+                                  const Color(0xFF059669),
+                                  Icons.person,
+                                  UserRoles.passenger,
+                                ),
+                                VerifyDriversStatItem(
+                                  l10n.labelBus,
+                                  _toInt(stats[UserRoles.driver]),
+                                  Colors.amber.shade900,
+                                  Icons.directions_bus,
+                                  UserRoles.driver,
+                                ),
+                                VerifyDriversStatItem(
+                                  l10n.labelService,
+                                  _toInt(stats[UserRoles.service]),
+                                  Colors.purple.shade700,
+                                  Icons.alt_route,
+                                  UserRoles.service,
+                                ),
+                                VerifyDriversStatItem(
+                                  l10n.labelBusCompany,
+                                  _toInt(stats[UserRoles.busCompany]),
+                                  Colors.teal.shade700,
+                                  Icons.business,
+                                  UserRoles.busCompany,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            VerifyDriversCompactSectionCard(
+                              sectionId: 'active',
+                              title: l10n.activeUsersNow,
+                              icon: Icons.bolt_rounded,
+                              iconColor: Colors.amber.shade800,
+                              isLive: true,
+                              liveLabel: l10n.live,
+                              items: [
+                                VerifyDriversStatItem(
+                                  l10n.labelBuses,
+                                  _toInt(stats['active_buses']),
+                                  colorScheme.primary,
+                                  Icons.directions_bus,
+                                  'active_buses',
+                                ),
+                                VerifyDriversStatItem(
+                                  l10n.labelPassengers,
+                                  _toInt(stats['active_passengers']),
+                                  const Color(0xFF059669),
+                                  Icons.directions_walk,
+                                  'active_passengers',
+                                ),
+                                VerifyDriversStatItem(
+                                  l10n.labelServices,
+                                  _toInt(stats['active_services']),
+                                  Colors.purple.shade700,
+                                  Icons.local_taxi,
+                                  'active_services',
+                                ),
+                                VerifyDriversStatItem(
+                                  l10n.labelOthers,
+                                  _toInt(stats['active_others']),
+                                  Colors.blueGrey,
+                                  Icons.more_horiz,
+                                  'active_others',
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            VerifyDriversCompactSectionCard(
+                              sectionId: 'drivers',
+                              title: l10n.driverRequestsStatus,
+                              icon: Icons.verified_user_outlined,
+                              iconColor: Colors.indigo.shade700,
+                              liveLabel: l10n.live,
+                              items: [
+                                VerifyDriversStatItem(
+                                  l10n.labelPending,
+                                  _toInt(stats['pending']),
+                                  Colors.amber.shade900,
+                                  Icons.hourglass_top,
+                                  'pending',
+                                ),
+                                VerifyDriversStatItem(
+                                  l10n.labelVerified,
+                                  _toInt(stats['verified']),
+                                  const Color(0xFF059669),
+                                  Icons.verified_user,
+                                  'verified',
+                                ),
+                                VerifyDriversStatItem(
+                                  l10n.labelRejected,
+                                  _toInt(stats['rejected']),
+                                  colorScheme.error,
+                                  Icons.gpp_bad,
+                                  'rejected',
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            VerifyDriversCompactSectionCard(
+                              sectionId: 'points',
+                              title: l10n.pickupPointsSection,
+                              icon: Icons.place_outlined,
+                              iconColor: colorScheme.error,
+                              liveLabel: l10n.live,
+                              items: [
+                                VerifyDriversStatItem(
+                                  l10n.total,
+                                  _toInt(stats['points_total']),
+                                  colorScheme.primary,
+                                  Icons.map,
+                                  'points_total',
+                                ),
+                                VerifyDriversStatItem(
+                                  l10n.labelApproved,
+                                  _toInt(stats['points_approved']),
+                                  const Color(0xFF059669),
+                                  Icons.check_circle,
+                                  'points_approved',
+                                ),
+                                VerifyDriversStatItem(
+                                  l10n.underReview,
+                                  _toInt(stats['points_pending']),
+                                  Colors.amber.shade900,
+                                  Icons.pending,
+                                  'points_pending',
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                          ]),
                         ),
                       ),
                     ],
@@ -143,221 +286,5 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
   }
 }
 
-/// مساعد داخلي لبناء قائمة الإحصاءات بدون تكرار ضخم في build.
-class SliiverListFix extends StatelessWidget {
-  final Map stats;
-  final int totalUsers;
-  final int activeTotal;
-  final ColorScheme colorScheme;
-  final AppLocalizations l10n;
-  final int Function(dynamic) toInt;
-
-  const SliiverListFix({
-    super.key,
-    required this.stats,
-    required this.totalUsers,
-    required this.activeTotal,
-    required this.colorScheme,
-    required this.l10n,
-    required this.toInt,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SliiverListBody(
-      stats: stats,
-      totalUsers: totalUsers,
-      activeTotal: activeTotal,
-      colorScheme: colorScheme,
-      l10n: l10n,
-      toInt: toInt,
-    );
-  }
-}
-
-class SliiverPaddingFix extends StatelessWidget {
-  final EdgeInsetsGeometry padding;
-  final Widget? child;
-  const SliiverPaddingFix({super.key, required this.padding, this.child});
-  @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
-}
-
-class SliiverListBody extends StatelessWidget {
-  final Map stats;
-  final int totalUsers;
-  final int activeTotal;
-  final ColorScheme colorScheme;
-  final AppLocalizations l10n;
-  final int Function(dynamic) toInt;
-
-  const SliiverListBody({
-    super.key,
-    required this.stats,
-    required this.totalUsers,
-    required this.activeTotal,
-    required this.colorScheme,
-    required this.l10n,
-    required this.toInt,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SliverList(
-      delegate: SliverChildListDelegate([
-        VerifyDriversHeroSummaryCard(
-          totalUsers: totalUsers,
-          activeTotal: activeTotal,
-          l10n: l10n,
-        ),
-        const SizedBox(height: 12),
-        VerifyDriversCompactSectionCard(
-          sectionId: 'registered',
-          title: l10n.registeredStats,
-          icon: Icons.people_alt_outlined,
-          iconColor: colorScheme.primary,
-          liveLabel: l10n.live,
-          items: [
-            VerifyDriversStatItem(
-              l10n.total,
-              toInt(stats['total']),
-              colorScheme.primary,
-              Icons.group,
-              'total',
-            ),
-            VerifyDriversStatItem(
-              l10n.passenger,
-              toInt(stats[UserRoles.passenger]),
-              const Color(0xFF059669),
-              Icons.person,
-              UserRoles.passenger,
-            ),
-            VerifyDriversStatItem(
-              l10n.labelBus,
-              toInt(stats[UserRoles.driver]),
-              Colors.amber.shade900,
-              Icons.directions_bus,
-              UserRoles.driver,
-            ),
-            VerifyDriversStatItem(
-              l10n.labelService,
-              toInt(stats[UserRoles.service]),
-              Colors.purple.shade700,
-              Icons.alt_route,
-              UserRoles.service,
-            ),
-            VerifyDriversStatItem(
-              l10n.labelBusCompany,
-              toInt(stats[UserRoles.busCompany]),
-              Colors.teal.shade700,
-              Icons.business,
-              UserRoles.busCompany,
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        VerifyDriversCompactSectionCard(
-          sectionId: 'active',
-          title: l10n.activeUsersNow,
-          icon: Icons.bolt_rounded,
-          iconColor: Colors.amber.shade800,
-          isLive: true,
-          liveLabel: l10n.live,
-          items: [
-            VerifyDriversStatItem(
-              l10n.labelBuses,
-              toInt(stats['active_buses']),
-              colorScheme.primary,
-              Icons.directions_bus,
-              'active_buses',
-            ),
-            VerifyDriversStatItem(
-              l10n.labelPassengers,
-              toInt(stats['active_passengers']),
-              const Color(0xFF059669),
-              Icons.directions_walk,
-              'active_passengers',
-            ),
-            VerifyDriversStatItem(
-              l10n.labelServices,
-              toInt(stats['active_services']),
-              Colors.purple.shade700,
-              Icons.local_taxi,
-              'active_services',
-            ),
-            VerifyDriversStatItem(
-              l10n.labelOthers,
-              toInt(stats['active_others']),
-              Colors.blueGrey,
-              Icons.more_horiz,
-              'active_others',
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        VerifyDriversCompactSectionCard(
-          sectionId: 'drivers',
-          title: l10n.driverRequestsStatus,
-          icon: Icons.verified_user_outlined,
-          iconColor: Colors.indigo.shade700,
-          liveLabel: l10n.live,
-          items: [
-            VerifyDriversStatItem(
-              l10n.labelPending,
-              toInt(stats['pending']),
-              Colors.amber.shade900,
-              Icons.hourglass_top,
-              'pending',
-            ),
-            VerifyDriversStatItem(
-              l10n.labelVerified,
-              toInt(stats['verified']),
-              const Color(0xFF059669),
-              Icons.verified_user,
-              'verified',
-            ),
-            VerifyDriversStatItem(
-              l10n.labelRejected,
-              toInt(stats['rejected']),
-              colorScheme.error,
-              Icons.gpp_bad,
-              'rejected',
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        VerifyDriversCompactSectionCard(
-          sectionId: 'points',
-          title: l10n.pickupPointsSection,
-          icon: Icons.place_outlined,
-          iconColor: colorScheme.error,
-          liveLabel: l10n.live,
-          items: [
-            VerifyDriversStatItem(
-              l10n.total,
-              toInt(stats['points_total']),
-              colorScheme.primary,
-              Icons.map,
-              'points_total',
-            ),
-            VerifyDriversStatItem(
-              l10n.labelApproved,
-              toInt(stats['points_approved']),
-              const Color(0xFF059669),
-              Icons.check_circle,
-              'points_approved',
-            ),
-            VerifyDriversStatItem(
-              l10n.underReview,
-              toInt(stats['points_pending']),
-              Colors.amber.shade900,
-              Icons.pending,
-              'points_pending',
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-      ]),
-    );
-  }
-}
+/// اختصار لتفادي خطأ إملائي — نفس SliverChildListDelegate
+typedef SliiverChildListDelegateFix = SliverChildListDelegate;
