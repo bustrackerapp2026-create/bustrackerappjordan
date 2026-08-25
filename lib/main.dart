@@ -270,27 +270,27 @@ class _AuthWrapperState extends State<AuthWrapper> {
       return const _AuthLoadingScreen();
     }
 
-    if (type == UserRoles.admin) {
-      _trackRole('admin');
+    if (UserRoles.isAdmin(type)) {
+      _trackRole(UserRoles.admin);
       return const AdminDashboard();
     }
 
-    if (type == UserRoles.driver) {
-      // أثناء تحميل userData لأول مرة قد يكون verified null مؤقتاً
+    // سائق / سرفيس / باص شركة — نفس مسار التحقق ولوحة التشغيل
+    if (UserRoles.isDriverLike(type)) {
       if (snapshot.verified == null && snapshot.type == null) {
         return const _AuthLoadingScreen();
       }
       if (!verified) {
-        _trackRole('driver_pending');
+        _trackRole('${type}_pending');
         return const PendingApprovalScreen();
       }
-      _trackRole('driver');
+      _trackRole(type);
       return DriverDashboard(
         key: ValueKey('driver_dash_${snapshot.uid ?? _cachedUid}'),
       );
     }
 
-    _trackRole('passenger');
+    _trackRole(UserRoles.passenger);
     return const PassengerDashboard();
   }
 }
