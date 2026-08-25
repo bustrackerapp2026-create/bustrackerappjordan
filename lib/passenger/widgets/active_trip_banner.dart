@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_theme.dart';
 import '../../core/trip/eta_utils.dart';
 import '../../models/live_driver_location.dart';
 import '../../models/trip_model.dart';
@@ -155,7 +154,6 @@ class _ActiveTripBannerState extends State<ActiveTripBanner> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // شريط جانبي ملوّن
             Container(
               width: 6,
               decoration: BoxDecoration(
@@ -176,7 +174,6 @@ class _ActiveTripBannerState extends State<ActiveTripBanner> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // رأس: شارة الحالة + المؤقت
                     Row(
                       children: [
                         Container(
@@ -249,7 +246,6 @@ class _ActiveTripBannerState extends State<ActiveTripBanner> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    // اسم السائق + رقم الباص
                     Text(
                       driverTitle,
                       style: const TextStyle(
@@ -273,7 +269,6 @@ class _ActiveTripBannerState extends State<ActiveTripBanner> {
                       ),
                     ],
                     const SizedBox(height: 10),
-                    // نقطة الالتقاط
                     Row(
                       children: [
                         Container(
@@ -318,7 +313,6 @@ class _ActiveTripBannerState extends State<ActiveTripBanner> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    // أزرار الإجراءات
                     Row(
                       children: [
                         if (widget.onCancel != null)
