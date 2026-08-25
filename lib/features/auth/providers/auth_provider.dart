@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
+import 'package:jordan_bus_tracker_new/core/constants/user_roles.dart';
 import 'package:jordan_bus_tracker_new/models/user_model.dart';
 import 'package:jordan_bus_tracker_new/services/firestore_service.dart';
 import 'package:jordan_bus_tracker_new/services/live_tracking_service.dart';
@@ -113,7 +114,7 @@ class AuthProvider extends ChangeNotifier {
           phoneNumber: phoneNumber ?? '',
           busNumber: busNumber ?? '',
           route: route ?? '',
-          capacity: userType == 'driver' ? capacity : null,
+          capacity: UserRoles.isDriverLike(userType) ? capacity : null,
           isVerified: false,
         );
 
@@ -211,13 +212,12 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// إطفاء التوصيل على السيرفر (users + driverPublic) إن كان سائقاً.
+  /// إطفاء التوصيل على السيرفر (users + driverPublic) إن كان دور سائق/مشغّل.
   Future<void> _goOfflineIfDriver() async {
     final uid = _user?.uid ?? _userData?.uid;
     if (uid == null || uid.isEmpty) return;
 
-    final type = _userData?.userType;
-    if (type != 'driver') return;
+    if (!UserRoles.isDriverLike(_userData?.userType)) return;
 
     try {
       await _liveTracking.setDriverOnlineStatus(

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import '../core/constants/user_roles.dart';
 import '../models/user_model.dart';
 
 class FirestoreService {
@@ -111,7 +112,7 @@ class FirestoreService {
   Stream<int> watchPendingDriverApprovals() {
     return _firestore
         .collection('users')
-        .where('userType', whereIn: ['driver', 'service', 'bus_company'])
+        .where('userType', whereIn: UserRoles.requiresVerification)
         .where('isVerified', isEqualTo: false)
         .snapshots()
         .map((snap) {
@@ -131,11 +132,11 @@ class FirestoreService {
   Map<String, int> _emptyUsersStats() {
     return {
       'total': 0,
-      'admin': 0,
-      'passenger': 0,
-      'driver': 0,
-      'service': 0,
-      'bus_company': 0,
+      UserRoles.admin: 0,
+      UserRoles.passenger: 0,
+      UserRoles.driver: 0,
+      UserRoles.service: 0,
+      UserRoles.busCompany: 0,
       'verified': 0,
       'pending': 0,
       'rejected': 0,
@@ -160,12 +161,12 @@ class FirestoreService {
     try {
       final users = _firestore.collection('users');
       final results = await Future.wait([
-        _count(users.where('userType', isEqualTo: 'driver')),
+        _count(users.where('userType', isEqualTo: UserRoles.driver)),
         _count(users
-            .where('userType', isEqualTo: 'driver')
+            .where('userType', isEqualTo: UserRoles.driver)
             .where('isVerified', isEqualTo: true)),
         _count(users
-            .where('userType', isEqualTo: 'driver')
+            .where('userType', isEqualTo: UserRoles.driver)
             .where('isRejected', isEqualTo: true)),
       ]);
 
@@ -196,23 +197,23 @@ class FirestoreService {
 
       final counts = await Future.wait([
         _count(users),
-        _count(users.where('userType', isEqualTo: 'admin')),
-        _count(users.where('userType', isEqualTo: 'passenger')),
-        _count(users.where('userType', isEqualTo: 'driver')),
-        _count(users.where('userType', isEqualTo: 'service')),
-        _count(users.where('userType', isEqualTo: 'bus_company')),
+        _count(users.where('userType', isEqualTo: UserRoles.admin)),
+        _count(users.where('userType', isEqualTo: UserRoles.passenger)),
+        _count(users.where('userType', isEqualTo: UserRoles.driver)),
+        _count(users.where('userType', isEqualTo: UserRoles.service)),
+        _count(users.where('userType', isEqualTo: UserRoles.busCompany)),
         _count(users
-            .where('userType', whereIn: ['driver', 'service', 'bus_company'])
+            .where('userType', whereIn: UserRoles.requiresVerification)
             .where('isVerified', isEqualTo: true)),
         _count(users
-            .where('userType', whereIn: ['driver', 'service', 'bus_company'])
+            .where('userType', whereIn: UserRoles.requiresVerification)
             .where('isRejected', isEqualTo: true)),
         _count(public.where('isOnline', isEqualTo: true)),
         _count(users
-            .where('userType', isEqualTo: 'passenger')
+            .where('userType', isEqualTo: UserRoles.passenger)
             .where('isOnline', isEqualTo: true)),
         _count(users
-            .where('userType', isEqualTo: 'service')
+            .where('userType', isEqualTo: UserRoles.service)
             .where('isOnline', isEqualTo: true)),
       ]);
 
@@ -234,11 +235,11 @@ class FirestoreService {
 
       return {
         'total': total,
-        'admin': admin,
-        'passenger': passenger,
-        'driver': driver,
-        'service': service,
-        'bus_company': busCompany,
+        UserRoles.admin: admin,
+        UserRoles.passenger: passenger,
+        UserRoles.driver: driver,
+        UserRoles.service: service,
+        UserRoles.busCompany: busCompany,
         'verified': verified,
         'pending': pending,
         'rejected': rejected,
