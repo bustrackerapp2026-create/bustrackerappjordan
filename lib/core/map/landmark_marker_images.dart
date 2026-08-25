@@ -5,14 +5,14 @@ import 'package:flutter/material.dart';
 
 import '../../models/map_landmark.dart';
 
-/// أيقونات معالم المشروع — أسلوب Google Maps POI.
-/// الأسماء تُرسم بخط النظام العربي (نفس خط واجهة التطبيق) مع RTL.
+/// أيقونات معالم المشروع.
+/// الأسماء بخط النظام العربي (RTL) بحجم مقروء واضح.
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
   static const double markerSize = 96;
 
-  static const int labelTextColor = 0xFF3C4043;
+  static const int labelTextColor = 0xFF202124;
   static const int labelHaloColor = 0xFFFFFFFF;
   static const double labelHaloWidth = 1.1;
   static const double labelLetterSpacing = 0.01;
@@ -109,33 +109,36 @@ class LandmarkMarkerImages {
   static bool showLabelAtZoom(MapLandmarkType type, double zoom) =>
       zoom >= labelMinZoomFor(type);
 
+  /// حجم الأيقونة فقط (بدون نص) — كما كان تقريباً
   static double iconSizeForZoom(double zoom) {
-    if (zoom <= 11.5) return 0.40;
-    if (zoom <= 12.5) return 0.44;
-    if (zoom <= 13.5) return 0.48;
-    if (zoom <= 14.5) return 0.52;
-    if (zoom <= 15.5) return 0.56;
-    if (zoom <= 16.5) return 0.60;
-    return 0.64;
+    if (zoom <= 11.5) return 0.42;
+    if (zoom <= 12.5) return 0.48;
+    if (zoom <= 13.5) return 0.54;
+    if (zoom <= 14.5) return 0.60;
+    if (zoom <= 15.5) return 0.66;
+    if (zoom <= 16.5) return 0.72;
+    return 0.78;
   }
 
-  /// حجم أيقونة مركّبة (أيقونة + اسم مرسوم)
+  /// حجم الصورة المركّبة (أيقونة + اسم) — كبير بما يكفي للقراءة
   static double labeledIconSizeForZoom(double zoom) {
-    if (zoom <= 13.5) return 0.55;
-    if (zoom <= 15.0) return 0.62;
-    if (zoom <= 16.5) return 0.70;
-    return 0.78;
+    if (zoom <= 13.5) return 1.05;
+    if (zoom <= 15.0) return 1.18;
+    if (zoom <= 16.5) return 1.30;
+    return 1.42;
   }
 
   static const double labelMinZoom = 13.5;
 
   static bool showLabelForZoom(double zoom) => zoom >= labelMinZoom;
 
+  /// حجم خط الاسم داخل الصورة (قبل التصغير على الخريطة)
+  /// قيم عالية لأن الصورة تُصغَّر بـ iconSize
   static double textSizeForZoom(double zoom) {
     if (zoom < 13.2) return 0;
-    if (zoom < 14.5) return 12.0;
-    if (zoom < 15.8) return 13.0;
-    return 13.5;
+    if (zoom < 14.5) return 26.0;
+    if (zoom < 15.8) return 28.0;
+    return 30.0;
   }
 
   static List<double> textOffsetForZoom(double zoom) {
@@ -413,11 +416,10 @@ class LandmarkMarkerImages {
     return bytes;
   }
 
-  /// أيقونة + اسم عربي بخط النظام (نفس خط التطبيق) مع تشكيل RTL صحيح.
   static Future<Uint8List> bytesWithLabel({
     required MapLandmarkType type,
     required String name,
-    double fontSize = 13,
+    double fontSize = 28,
   }) async {
     final safe = name.trim();
     if (safe.isEmpty) return bytesFor(type);
@@ -487,37 +489,40 @@ class LandmarkMarkerImages {
     return bd!.buffer.asUint8List();
   }
 
-  /// رسم أيقونة + تسمية عربية بخط النظام (تشكيل طبيعي للعربية).
   static Future<Uint8List> _renderIconWithLabel(
     MapLandmarkType type,
     String name,
     double fontSize,
   ) async {
-    const iconBox = 96.0;
-    final maxLabelWidth = 160.0;
+    // دقة عالية حتى يبقى النص واضحاً بعد iconSize على الخريطة
+    const iconBox = 120.0;
+    final maxLabelWidth = 280.0;
 
-    final display = name.length > 18 ? '${name.substring(0, 17)}…' : name;
+    final display = name.length > 22 ? '${name.substring(0, 21)}…' : name;
 
-    // خط النظام — نفس خط واجهة Flutter العربية
     final namePainter = TextPainter(
       text: TextSpan(
         text: display,
         style: TextStyle(
           color: const Color(labelTextColor),
           fontSize: fontSize,
-          fontWeight: FontWeight.w700,
-          height: 1.15,
-          // بدون fontFamily = خط النظام (مثل باقي التطبيق)
+          fontWeight: FontWeight.w800,
+          height: 1.2,
           shadows: const [
             Shadow(
               color: Color(0xFFFFFFFF),
-              blurRadius: 2.5,
+              blurRadius: 4,
               offset: Offset(0, 0),
             ),
             Shadow(
               color: Color(0xFFFFFFFF),
-              blurRadius: 1.2,
-              offset: Offset(0.5, 0.5),
+              blurRadius: 2,
+              offset: Offset(1, 1),
+            ),
+            Shadow(
+              color: Color(0xCCFFFFFF),
+              blurRadius: 1,
+              offset: Offset(-1, 0),
             ),
           ],
         ),
@@ -529,22 +534,21 @@ class LandmarkMarkerImages {
     )..layout(maxWidth: maxLabelWidth);
 
     final totalWidth =
-        (namePainter.width + 16).clamp(iconBox, maxLabelWidth + 8);
-    final totalHeight = iconBox + namePainter.height + 10;
+        (namePainter.width + 24).clamp(iconBox, maxLabelWidth + 16);
+    final totalHeight = iconBox + namePainter.height + 16;
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
-    // أيقونة في الأعلى
     final color = colorFor(type);
     final center = Offset(totalWidth / 2, iconBox / 2);
-    const radius = 36.0;
-    const inner = 30.5;
+    const radius = 44.0;
+    const inner = 37.0;
 
     final shadow = Paint()
-      ..color = const Color(0x33000000)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.4);
-    canvas.drawCircle(center.translate(0, 1.0), radius, shadow);
+      ..color = const Color(0x40000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawCircle(center.translate(0, 1.2), radius, shadow);
     canvas.drawCircle(center, radius, Paint()..color = Colors.white);
     canvas.drawCircle(center, inner, Paint()..color = color);
 
@@ -553,7 +557,7 @@ class LandmarkMarkerImages {
       text: TextSpan(
         text: String.fromCharCode(icon.codePoint),
         style: TextStyle(
-          fontSize: 30,
+          fontSize: 38,
           fontFamily: icon.fontFamily,
           package: icon.fontPackage,
           color: Colors.white,
@@ -570,12 +574,11 @@ class LandmarkMarkerImages {
       ),
     );
 
-    // الاسم أسفل الأيقونة — خط عربي طبيعي
     namePainter.paint(
       canvas,
       Offset(
         (totalWidth - namePainter.width) / 2,
-        iconBox - 4,
+        iconBox - 2,
       ),
     );
 

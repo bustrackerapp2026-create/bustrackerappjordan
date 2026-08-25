@@ -3,13 +3,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-/// رسّام علامات نقاط التجمع الموحد لكل الخرائط (أدمن / سائق / راكب).
+/// رسّام علامات نقاط التجمع — نص عربي واضح بخط النظام.
 class PickupMarkerHelper {
   PickupMarkerHelper._();
 
   static final Map<String, Uint8List> _cache = {};
 
-  /// باص: أزرق مواصلات | راكب: نيلي
   static Color primaryColorFor(String pointType) {
     return pointType == 'passenger'
         ? const Color(0xFF3949AB)
@@ -28,7 +27,6 @@ class PickupMarkerHelper {
         : Icons.directions_bus_rounded;
   }
 
-  /// إنشاء صورة PNG للعلامة.
   static Future<Uint8List?> createMarkerBytes({
     required String name,
     required String pointType,
@@ -38,7 +36,7 @@ class PickupMarkerHelper {
     final safeName = name.trim().isEmpty ? 'نقطة' : name.trim();
     final scale = textScale.clamp(0.85, 2.2);
     final scaleKey = (scale * 100).round();
-    final cacheKey = 'pickup_v2_${pointType}_${safeName.hashCode}_s$scaleKey';
+    final cacheKey = 'pickup_v3_${pointType}_${safeName.hashCode}_s$scaleKey';
 
     final cached = _cache[cacheKey];
     if (cached != null) return cached;
@@ -47,48 +45,45 @@ class PickupMarkerHelper {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
 
-      final double width = 140.0 + (scale - 1.0) * 48;
-      final double fontSize = 12.0 * scale;
-      final double bubbleHeight = (26.0 * scale).clamp(26.0, 44.0);
-      final double height = 118.0 + (bubbleHeight - 26.0) + (scale - 1.0) * 8;
-      final Offset pinCenter = Offset(width / 2, 40);
+      // خط أوضح: أساس 15 بدل 12
+      final double width = 168.0 + (scale - 1.0) * 56;
+      final double fontSize = 15.0 * scale;
+      final double bubbleHeight = (32.0 * scale).clamp(32.0, 52.0);
+      final double height = 128.0 + (bubbleHeight - 32.0) + (scale - 1.0) * 10;
+      final Offset pinCenter = Offset(width / 2, 42);
 
       canvas.drawColor(Colors.transparent, BlendMode.clear);
 
       final Color primary = primaryColorFor(pointType);
       final Color glow = glowColorFor(pointType);
 
-      // هالة خفيفة
       final glowPaint = Paint()
         ..color = glow.withValues(alpha: 0.22)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
-      canvas.drawCircle(pinCenter, 32, glowPaint);
+      canvas.drawCircle(pinCenter, 34, glowPaint);
 
-      // حلقة بيضاء خارجية
       canvas.drawCircle(
         pinCenter,
-        24,
+        26,
         Paint()
           ..color = Colors.white
           ..style = PaintingStyle.fill,
       );
 
-      // الدائرة الرئيسية
       canvas.drawCircle(
         pinCenter,
-        18.5,
+        20,
         Paint()
           ..color = primary
           ..style = PaintingStyle.fill,
       );
 
-      // أيقونة
       final iconData = iconFor(pointType);
       final iconPainter = TextPainter(textDirection: TextDirection.ltr);
       iconPainter.text = TextSpan(
         text: String.fromCharCode(iconData.codePoint),
         style: TextStyle(
-          fontSize: 18,
+          fontSize: 20,
           fontFamily: iconData.fontFamily,
           package: iconData.fontPackage,
           color: Colors.white,
@@ -103,11 +98,10 @@ class PickupMarkerHelper {
         ),
       );
 
-      // رأس الدبوس
       final tipPath = Path()
-        ..moveTo(pinCenter.dx - 9, pinCenter.dy + 14)
-        ..lineTo(pinCenter.dx, pinCenter.dy + 30)
-        ..lineTo(pinCenter.dx + 9, pinCenter.dy + 14)
+        ..moveTo(pinCenter.dx - 10, pinCenter.dy + 16)
+        ..lineTo(pinCenter.dx, pinCenter.dy + 34)
+        ..lineTo(pinCenter.dx + 10, pinCenter.dy + 16)
         ..close();
       canvas.drawPath(tipPath, Paint()..color = primary);
       canvas.drawPath(
@@ -118,7 +112,7 @@ class PickupMarkerHelper {
           ..strokeWidth = 1.2,
       );
 
-      final maxChars = scale >= 1.5 ? 20 : (scale >= 1.25 ? 18 : 16);
+      final maxChars = scale >= 1.5 ? 22 : (scale >= 1.25 ? 20 : 18);
       final displayName = safeName.length > maxChars
           ? '${safeName.substring(0, maxChars - 1)}…'
           : safeName;
@@ -127,9 +121,9 @@ class PickupMarkerHelper {
         text: TextSpan(
           text: displayName,
           style: TextStyle(
-            color: const Color(0xFF1F2937),
+            color: const Color(0xFF111827),
             fontSize: fontSize,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
           ),
         ),
         textDirection: TextDirection.rtl,
@@ -140,18 +134,18 @@ class PickupMarkerHelper {
       namePainter.layout(maxWidth: width - 16);
 
       final bubbleWidth =
-          (namePainter.width + 20 * scale).clamp(48.0, width - 8);
+          (namePainter.width + 24 * scale).clamp(56.0, width - 8);
       final bubbleLeft = (width - bubbleWidth) / 2;
       final bubbleTop = height - bubbleHeight - 4;
 
       final bubbleRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(bubbleLeft, bubbleTop, bubbleWidth, bubbleHeight),
-        Radius.circular(12 * scale.clamp(1.0, 1.35)),
+        Radius.circular(14 * scale.clamp(1.0, 1.35)),
       );
 
       canvas.drawRRect(
         bubbleRect.shift(const Offset(0, 1.5)),
-        Paint()..color = Colors.black.withValues(alpha: 0.10),
+        Paint()..color = Colors.black.withValues(alpha: 0.12),
       );
 
       canvas.drawRRect(
@@ -163,9 +157,9 @@ class PickupMarkerHelper {
       canvas.drawRRect(
         bubbleRect,
         Paint()
-          ..color = primary.withValues(alpha: 0.28)
+          ..color = primary.withValues(alpha: 0.30)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.1,
+          ..strokeWidth = 1.2,
       );
 
       namePainter.paint(
