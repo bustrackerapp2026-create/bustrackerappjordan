@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../../core/constants/user_roles.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
 
@@ -65,16 +66,17 @@ mixin DriverManagerMixin<T extends StatefulWidget>
 
   void listenToActiveDrivers() {
     _driversSubscription?.cancel();
+    // كل الأدوار المشغّلة (سائق / سرفيس / باص شركة) — متوافق مع UserRoles.driverLike
     _driversSubscription = FirebaseFirestore.instance
         .collection('users')
-        .where('userType', isEqualTo: 'driver')
+        .where('userType', whereIn: UserRoles.driverLike)
         .where('isVerified', isEqualTo: true)
         .where('isOnline', isEqualTo: true)
         .snapshots()
         .listen(
       (snapshot) {
         if (!mounted) return;
-        _log('📦 تم استلام ${snapshot.docs.length} سائق نشط');
+        _log('📦 تم استلام ${snapshot.docs.length} مشغّل نشط');
         _updateDriverMarkers(snapshot);
       },
       onError: (error) => _log('❌ خطأ في جلب السائقين: $error'),
