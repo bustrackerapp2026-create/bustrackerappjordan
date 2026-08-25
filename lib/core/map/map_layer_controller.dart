@@ -31,6 +31,14 @@ class MapLayerController {
   /// كاش معرّفات الطبقات لكل styleUri لتفادي إعادة المسح الكامل
   static final Map<String, _LayerIdCache> _layerCache = {};
 
+  /// خطوط Mapbox التي تدعم العربية جيداً (مع بدائل آمنة)
+  static const List<String> arabicTextFonts = [
+    'Arial Unicode MS Regular',
+    'DIN Offc Pro Regular',
+    'Open Sans Regular',
+    'Roboto Regular',
+  ];
+
   /// تعبير Mapbox يفضّل الاسم العربي ثم البدائل
   static final List<dynamic> arabicTextFieldExpression = [
     'coalesce',
@@ -150,7 +158,6 @@ class MapLayerController {
     'tunnel-label',
   ];
 
-  /// كلمات تدل على طبقة تسميات (symbol) يجب تعريبها
   static const List<String> _labelKeywords = [
     'label',
     'poi',
@@ -231,7 +238,6 @@ class MapLayerController {
         if (poiIds.isEmpty) poiIds.addAll(_fallbackPoi);
         if (roadIds.isEmpty) roadIds.addAll(_fallbackRoad);
 
-        // ادمج الاحتياطي ضمن قائمة التسميات للتعريب
         allLabelIds.addAll(placeIds);
         allLabelIds.addAll(poiIds);
         allLabelIds.addAll(roadIds);
@@ -245,7 +251,6 @@ class MapLayerController {
         _layerCache[styleKey] = cache;
       }
 
-      // فرض العربية قبل ضبط الإظهار
       await applyArabicLabels(
         mapboxMap: mapboxMap,
         layerIds: cache.labelIds,
@@ -269,7 +274,7 @@ class MapLayerController {
     }
   }
 
-  /// يفرض عرض الاسم العربي على طبقات التسميات الرمزية.
+  /// يفرض الاسم العربي + خط يدعم العربية على طبقات التسميات.
   static Future<int> applyArabicLabels({
     required MapboxMap mapboxMap,
     Set<String>? layerIds,
@@ -283,9 +288,10 @@ class MapLayerController {
       }
 
       final exprJson = jsonEncode(arabicTextFieldSimple);
+      final fontJson = jsonEncode(arabicTextFonts);
       var ok = 0;
       final list = ids.toList();
-      const batchSize = 10;
+      const batchSize = 8;
 
       for (var i = 0; i < list.length; i += batchSize) {
         final end =
@@ -296,17 +302,41 @@ class MapLayerController {
             final exists = await style.styleLayerExists(id);
             if (!exists) return 0;
 
-            // بعض الطبقات ليست symbol — تجاهل الفشل بهدوء
             await style.setStyleLayerProperty(id, 'text-field', exprJson);
+
+            // خط عربي مقروء (نفس روح واجهة التطبيق)
+            try {
+              await style.setStyleLayerProperty(id, 'text-font', fontJson);
+            } catch (_) {
+              try {
+                await style.setStyleLayerProperty(
+                  id,
+                  'text-font',
+                  arabicTextFonts,
+                );
+              } catch (_) {}
+            }
+
+            // تحسين قراءة العربية
+            try {
+              await style.setStyleLayerProperty(id, 'text-letter-spacing', 0.02);
+            } catch (_) {}
+
             return 1;
           } catch (_) {
-            // جرّب تمرير التعبير كقائمة إن فشل JSON string
             try {
               await style.setStyleLayerProperty(
                 id,
                 'text-field',
                 arabicTextFieldSimple,
               );
+              try {
+                await style.setStyleLayerProperty(
+                  id,
+                  'text-font',
+                  arabicTextFonts,
+                );
+              } catch (_) {}
               return 1;
             } catch (_) {
               return 0;
@@ -318,7 +348,7 @@ class MapLayerController {
         }
       }
 
-      _log('تعريب التسميات: $ok / ${ids.length} طبقة');
+      _log('تعريب التسميات + الخط: $ok / ${ids.length} طبقة');
       return ok;
     } catch (e) {
       _log('فشل تعريب التسميات: $e');
@@ -525,7 +555,6 @@ class MapLayerController {
     return {};
   }
 
-  /// يفضّل العربي عند قراءة خصائص المعلم
   static String? _extractName(Map<String, dynamic> props) {
     const keys = [
       'name_ar',
@@ -547,7 +576,6 @@ class MapLayerController {
     Map<String, dynamic> props,
     String primary,
   ) {
-    // إن كان الأساسي عربياً، اعرض الإنجليزي ثانوياً والعكس
     const keys = ['name_en', 'name:en', 'name_ar', 'name:ar', 'name'];
     for (final k in keys) {
       final v = props[k]?.toString().trim();
