@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/bus_capacity.dart';
@@ -66,7 +65,7 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
   String get _initial {
     final name = driver.fullName.trim();
     if (name.isEmpty) return 'س';
-    return name.characters.first;
+    return String.fromCharCode(name.runes.first);
   }
 
   @override
@@ -132,7 +131,6 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ── بطاقة السائق الرئيسية ──
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -148,7 +146,6 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                     ),
                     child: Column(
                       children: [
-                        // أفاتار + اسم
                         Row(
                           children: [
                             Container(
@@ -228,7 +225,6 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        // شرائح المعلومات
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
@@ -247,7 +243,6 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                               ),
                           ],
                         ),
-                        // ETA بارز
                         if (etaMins != null) ...[
                           const SizedBox(height: 20),
                           const Text(
@@ -288,7 +283,6 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                             ),
                           ],
                         ],
-                        // زر طلب الصعود
                         if (widget.onRequestBoard != null) ...[
                           const SizedBox(height: 20),
                           SizedBox(
@@ -348,8 +342,6 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                       ],
                     ),
                   ),
-
-                  // ── تفاصيل إضافية ──
                   if (routeDetail != null && routeDetail.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     _section(
@@ -366,7 +358,6 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                       ),
                     ),
                   ],
-
                   const SizedBox(height: 12),
                   _infoBanner(
                     icon: driver.isStaleWarning
@@ -382,7 +373,6 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                         ? 'آخر تحديث: ${driver.updatedAgoLabel} — قد يكون غير دقيق'
                         : 'آخر تحديث: ${driver.updatedAgoLabel}',
                   ),
-
                   if (hasPhone) ...[
                     const SizedBox(height: 12),
                     SizedBox(
@@ -410,7 +400,6 @@ class _DriverDetailsSheetState extends State<DriverDetailsSheet> {
                       ),
                     ),
                   ],
-
                   const SizedBox(height: 10),
                   SizedBox(
                     height: 48,
