@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_theme.dart';
 import '../../l10n/app_localizations.dart';
 
 /// شريط حالة التتبع الحي — بطاقة زجاجية أنيقة أسفل خريطة الراكب.
@@ -59,7 +58,6 @@ class PassengerLiveStatusBar extends StatelessWidget {
         children: [
           Row(
             children: [
-              // أيقونة الباص في دائرة ناعمة
               Container(
                 width: 48,
                 height: 48,
@@ -111,7 +109,6 @@ class PassengerLiveStatusBar extends StatelessWidget {
                   ],
                 ),
               ),
-              // شارة «مباشر»
               if (hasLive)
                 Container(
                   padding:
