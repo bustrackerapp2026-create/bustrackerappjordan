@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -17,6 +18,9 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   StreamSubscription<geo.Position>? _passengerLocationSubscription;
   final LocationService _passengerLocationService = LocationService();
 
+  CircleAnnotationManager? _accuracyCircleManager;
+  CircleAnnotation? _accuracyCircle;
+
   bool isLoadingPassengerLocation = false;
   double currentPassengerBearing = 0.0;
   bool isPassengerTrackingActive = false;
@@ -24,6 +28,9 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   /// آخر موقع معروف للراكب (لأقرب باص)
   double? lastPassengerLat;
   double? lastPassengerLng;
+
+  /// آخر دقة أفقية بالمتر (إن وُجدت)
+  double? lastPassengerAccuracyMeters;
 
   DateTime? _lastMarkerAt;
   double? _lastMarkerLat;
@@ -35,6 +42,9 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   /// بعد العودة من إعدادات GPS: إعادة محاولة واحدة بهدوء إن لم نحصل على موقع.
   bool _retryLocateOnResume = false;
+
+  LocationFixStage? _lastAnnouncedStage;
+  DateTime? _lastStageSnackAt;
 
   static const Duration _minMarkerInterval = Duration(milliseconds: 220);
   static const double _minMoveDeg = 0.00003;
@@ -48,11 +58,79 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _cachedPassengerMarkerBytes = await MapHelpers.createUserMarkerBytes();
   }
 
+  Future<void> _ensureAccuracyCircleManager() async {
+    if (_accuracyCircleManager != null || mapboxMap == null) return;
+    try {
+      _accuracyCircleManager =
+          await mapboxMap!.annotations.createCircleAnnotationManager();
+    } catch (e) {
+      MapUtils.log('accuracy circle manager: $e', tag: 'PassengerLocation');
+    }
+  }
+
+  /// نصف قطر الدائرة بالبكسل تقريباً من دقة بالمتر عند مستوى الزوم الحالي.
+  Future<double> _metersToCircleRadiusPx(double meters, double latitude) async {
+    var zoom = 15.5;
+    try {
+      final state = await mapboxMap?.getCameraState();
+      if (state != null) zoom = state.zoom;
+    } catch (_) {}
+    final metersPerPixel = 156543.03392 *
+        math.cos(latitude * math.pi / 180.0) /
+        math.pow(2.0, zoom);
+    if (metersPerPixel <= 0) return 18;
+    final px = meters / metersPerPixel;
+    // حدود بصرية معقولة على الخريطة
+    return px.clamp(12.0, 120.0);
+  }
+
+  Future<void> _updateAccuracyCircle({
+    required double lat,
+    required double lng,
+    required double accuracyMeters,
+  }) async {
+    if (mapboxMap == null) return;
+    await _ensureAccuracyCircleManager();
+    final manager = _accuracyCircleManager;
+    if (manager == null) return;
+
+    final radiusPx = await _metersToCircleRadiusPx(accuracyMeters, lat);
+    final point = Point(coordinates: Position(lng, lat));
+    // أزرق شفاف يشبه مؤشر Google Maps
+    const fill = 0x402563EB; // ARGB
+    const stroke = 0x992563EB;
+
+    try {
+      if (_accuracyCircle != null) {
+        _accuracyCircle!.geometry = point;
+        _accuracyCircle!.circleRadius = radiusPx;
+        _accuracyCircle!.circleColor = fill;
+        _accuracyCircle!.circleStrokeColor = stroke;
+        _accuracyCircle!.circleStrokeWidth = 1.2;
+        await manager.update(_accuracyCircle!);
+      } else {
+        _accuracyCircle = await manager.create(
+          CircleAnnotationOptions(
+            geometry: point,
+            circleRadius: radiusPx,
+            circleColor: fill,
+            circleStrokeColor: stroke,
+            circleStrokeWidth: 1.2,
+            circleOpacity: 1.0,
+          ),
+        );
+      }
+    } catch (e) {
+      MapUtils.log('update accuracy circle: $e', tag: 'PassengerLocation');
+    }
+  }
+
   Future<void> updatePassengerMarker(
     double lat,
     double lng,
     double bearing, {
     bool force = false,
+    double? accuracyMeters,
   }) async {
     if (pointAnnotationManager == null) return;
 
@@ -63,7 +141,16 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (!force && _lastMarkerLat != null && _lastMarkerLng != null) {
       final dLat = (lat - _lastMarkerLat!).abs();
       final dLng = (lng - _lastMarkerLng!).abs();
-      if (dLat < _minMoveDeg && dLng < _minMoveDeg) return;
+      if (dLat < _minMoveDeg && dLng < _minMoveDeg) {
+        if (accuracyMeters != null && accuracyMeters.isFinite) {
+          unawaited(_updateAccuracyCircle(
+            lat: lat,
+            lng: lng,
+            accuracyMeters: accuracyMeters,
+          ));
+        }
+        return;
+      }
     }
     if (_markerBusy) return;
     _markerBusy = true;
@@ -96,6 +183,15 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _lastMarkerLng = lng;
       lastPassengerLat = lat;
       lastPassengerLng = lng;
+
+      if (accuracyMeters != null && accuracyMeters.isFinite) {
+        lastPassengerAccuracyMeters = accuracyMeters;
+        await _updateAccuracyCircle(
+          lat: lat,
+          lng: lng,
+          accuracyMeters: accuracyMeters,
+        );
+      }
     } catch (_) {
     } finally {
       _markerBusy = false;
@@ -105,6 +201,40 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   void _safeSnack(String message, {bool isError = false}) {
     if (!mounted) return;
     MapUtils.showSnackBar(context, message, isError: isError);
+  }
+
+  void _announceStage(LocationFixStage stage, geo.Position pos) {
+    if (!mounted) return;
+    final now = DateTime.now();
+    // لا نكرر نفس المرحلة خلال ثانيتين
+    if (_lastAnnouncedStage == stage &&
+        _lastStageSnackAt != null &&
+        now.difference(_lastStageSnackAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastAnnouncedStage = stage;
+    _lastStageSnackAt = now;
+
+    final acc = pos.accuracy.isFinite ? pos.accuracy.round() : null;
+    final String msg;
+    switch (stage) {
+      case LocationFixStage.cached:
+        msg = acc != null
+            ? '📍 موقع تقريبي (آخر معروف · ±$acc م)'
+            : '📍 موقع تقريبي من الذاكرة…';
+        break;
+      case LocationFixStage.quick:
+        msg = acc != null
+            ? '📡 جارٍ تحسين الدقة… (±$acc م)'
+            : '📡 جارٍ تحسين الدقة…';
+        break;
+      case LocationFixStage.precise:
+        msg = acc != null
+            ? '✅ دقة محسّنة · ±$acc م'
+            : '✅ تم تحسين دقة الموقع';
+        break;
+    }
+    _safeSnack(msg);
   }
 
   Future<void> goToMyLocation() async {
@@ -120,6 +250,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
 
     _locateInFlight = true;
+    _lastAnnouncedStage = null;
     setState(() => isLoadingPassengerLocation = true);
 
     try {
@@ -137,7 +268,6 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           await LocationPermissionSheet.ensureLocationService(context);
       if (!mounted) return;
       if (!serviceOn) {
-        // عند العودة من الإعدادات قد تُفعَّل الخدمة — نعيد المحاولة مرة واحدة
         _retryLocateOnResume = true;
         _safeSnack(
           'فعّل خدمة الموقع ثم ارجع للتطبيق، أو اضغط «موقعي» مجدداً.',
@@ -157,7 +287,10 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         onProgress: (pos, stage) {
           if (!mounted) return;
           gotAnyFix = true;
-          unawaited(_applyPosition(pos, moveCamera: true, force: true));
+          _announceStage(stage, pos);
+          unawaited(
+            _applyPosition(pos, moveCamera: true, force: true),
+          );
         },
       );
 
@@ -173,6 +306,10 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       if (position != null) {
         await _applyPosition(position, moveCamera: true, force: true);
+        final acc = position.accuracy.isFinite
+            ? ' (±${position.accuracy.round()} م)'
+            : '';
+        _safeSnack('📍 تم تحديد موقعك بنجاح$acc');
       }
 
       if (!mounted) return;
@@ -187,8 +324,6 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }, onError: (error) {
         MapUtils.log('خطأ في تحديث الموقع: $error', tag: 'PassengerLocation');
       });
-
-      _safeSnack('📍 تم تحديد موقعك بنجاح.');
     } catch (e) {
       _safeSnack('❌ تعذر تحديد موقعك. حاول مرة أخرى.', isError: true);
       MapUtils.log('خطأ تحديد الموقع: $e', tag: 'PassengerLocation');
@@ -205,6 +340,9 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }) async {
     lastPassengerLat = position.latitude;
     lastPassengerLng = position.longitude;
+    if (position.accuracy.isFinite) {
+      lastPassengerAccuracyMeters = position.accuracy;
+    }
 
     double bearing = position.heading;
     if (bearing == 0.0 && position.speed > 0) {
@@ -238,6 +376,8 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       position.longitude,
       bearing,
       force: force,
+      accuracyMeters:
+          position.accuracy.isFinite ? position.accuracy : null,
     );
   }
 
@@ -260,7 +400,6 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   void onPassengerLocationLifecycle(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // لا تعِد تشغيل طلب جارٍ — يمنع التداخل بعد العودة من إعدادات GPS
       if (_locateInFlight || isLoadingPassengerLocation) {
         MapUtils.log(
           'resumed أثناء طلب موقع — بدون إعادة تشغيل',
@@ -269,7 +408,6 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         return;
       }
 
-      // إعادة محاولة واحدة فقط إن خرج المستخدم لإعدادات الموقع دون نجاح
       if (_retryLocateOnResume && !hasPassengerLocation) {
         _retryLocateOnResume = false;
         unawaited(goToMyLocation());
@@ -288,5 +426,8 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _locateInFlight = false;
     _retryLocateOnResume = false;
     _passengerUserAnnotation = null;
+    _accuracyCircle = null;
+    _accuracyCircleManager = null;
+    lastPassengerAccuracyMeters = null;
   }
 }
