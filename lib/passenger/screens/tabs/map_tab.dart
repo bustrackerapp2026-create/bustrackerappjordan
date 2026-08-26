@@ -248,6 +248,161 @@ class _MapTabState extends State<MapTab>
     );
   }
 
+  /// حوار تأكيد قبل إرسال طلب الصعود — يوضح نقطة الاستلام وماذا سيحدث.
+  Future<bool> _confirmBoardRequest({
+    required LiveDriverLocation driver,
+    required String pickupName,
+    required String pickupDetail,
+    required String dropoff,
+  }) async {
+    final driverLabel = driver.fullName.trim().isNotEmpty
+        ? driver.fullName.trim()
+        : 'السائق';
+    final staleWarning = driver.isStaleWarning;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'تأكيد طلب الصعود',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'سيتم إرسال طلب إلى «$driverLabel». ينتظر موافقة السائق ثم يمكنك تتبعه من البطاقة أسفل الخريطة.',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.45,
+                    color: Color(0xFF334155),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _confirmRow(
+                  icon: Icons.place_rounded,
+                  label: 'نقطة الاستلام',
+                  value: pickupName,
+                  detail: pickupDetail,
+                ),
+                const SizedBox(height: 10),
+                _confirmRow(
+                  icon: Icons.flag_rounded,
+                  label: 'الوجهة',
+                  value: dropoff,
+                ),
+                if (driver.route != null &&
+                    driver.route!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _confirmRow(
+                    icon: Icons.route_rounded,
+                    label: 'الخط',
+                    value: driver.route!.trim(),
+                  ),
+                ],
+                if (staleWarning) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFDBA74)),
+                    ),
+                    child: Text(
+                      'تنبيه: آخر تحديث لموقع السائق ${driver.updatedAgoLabel} — قد يكون غير دقيق.',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        height: 1.4,
+                        color: Color(0xFF9A3412),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F766E),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'إرسال الطلب',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    return result == true;
+  }
+
+  Widget _confirmRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    String? detail,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: const Color(0xFF0F766E)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF94A3B8),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              if (detail != null && detail.isNotEmpty)
+                Text(
+                  detail,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _requestBoard(LiveDriverLocation driver) async {
     final auth = context.read<AuthProvider>();
     final uid = auth.userId;
@@ -283,11 +438,14 @@ class _MapTabState extends State<MapTab>
     final String pickupName;
     final double pickupLat;
     final double pickupLng;
+    final String pickupDetail;
 
     if (nearest != null) {
       pickupName = nearest.stop.name;
       pickupLat = nearest.stop.latitude;
       pickupLng = nearest.stop.longitude;
+      pickupDetail =
+          'أقرب محطة معتمدة · ${EtaUtils.formatDistance(nearest.meters)}';
       unawaited(flyToFlat(
         latitude: pickupLat,
         longitude: pickupLng,
@@ -297,11 +455,23 @@ class _MapTabState extends State<MapTab>
       pickupName = 'موقعي الحالي';
       pickupLat = lat;
       pickupLng = lng;
+      pickupDetail = 'لا توجد محطة معتمدة قريبة — يُستخدم موقعك';
     }
 
     final dropoff = _destination?.name.trim().isNotEmpty == true
         ? _destination!.name.trim()
         : 'على طول الخط';
+
+    final confirmed = await _confirmBoardRequest(
+      driver: driver,
+      pickupName: pickupName,
+      pickupDetail: pickupDetail,
+      dropoff: dropoff,
+    );
+    if (!mounted) return;
+    if (!confirmed) {
+      throw StateError('cancelled');
+    }
 
     try {
       await _tripService.createBoardRequest(
