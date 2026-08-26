@@ -303,8 +303,9 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       var gotAnyFix = false;
 
       _fixTracer.mark('progressive_begin');
+      // مهلة quick أطول تقلل Timeout على أجهزة أبطأ؛ الكاش الجيد يُعاد فوراً من الخدمة
       final position = await _passengerLocationService.locateProgressive(
-        quickTimeout: const Duration(seconds: 2),
+        quickTimeout: const Duration(seconds: 4),
         preciseTimeout: const Duration(seconds: 6),
         onProgress: (pos, stage) {
           if (!mounted) return;
