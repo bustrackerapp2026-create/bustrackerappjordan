@@ -13,6 +13,10 @@ class LocationPermissionSheet {
   static const MethodChannel _locationChannel =
       MethodChannel('com.example.jordan_bus_tracker/location_service');
 
+  /// بعد فتح إعدادات الموقع: انتظر حتى تُفعَّل الخدمة بدل مهلة ثابتة قصيرة.
+  static const int _servicePollAttempts = 10;
+  static const Duration _servicePollInterval = Duration(milliseconds: 400);
+
   static Future<bool> ensurePermission(
     BuildContext context, {
     bool forcePrompt = false,
@@ -79,14 +83,26 @@ class LocationPermissionSheet {
       );
       if (open) {
         await Geolocator.openLocationSettings();
-        // بعد العودة من الإعدادات
-        await Future<void>.delayed(const Duration(milliseconds: 600));
+        // انتظر/أعد الفحص حتى يستقر مزود الموقع بعد التفعيل
+        final enabled = await _waitForLocationServiceEnabled();
+        if (enabled) return true;
       }
       return await Geolocator.isLocationServiceEnabled();
     } catch (e) {
       debugPrint('LocationPermissionSheet.ensureLocationService: $e');
       return false;
     }
+  }
+
+  /// يستطلع تفعيل خدمة الموقع حتى ~4 ثوانٍ بدل انتظار ثابت 600ms.
+  static Future<bool> _waitForLocationServiceEnabled() async {
+    for (var i = 0; i < _servicePollAttempts; i++) {
+      if (await Geolocator.isLocationServiceEnabled()) {
+        return true;
+      }
+      await Future<void>.delayed(_servicePollInterval);
+    }
+    return Geolocator.isLocationServiceEnabled();
   }
 
   static Future<bool> _confirmAction(

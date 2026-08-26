@@ -84,7 +84,7 @@ class PassengerMapIconColumn extends StatelessWidget {
   final bool findingNearest;
   final bool isLoadingLocation;
   final VoidCallback? onNearestBus;
-  final VoidCallback onMyLocation;
+  final VoidCallback? onMyLocation;
   final VoidCallback? onMapLayers;
 
   const PassengerMapIconColumn({
@@ -111,7 +111,7 @@ class PassengerMapIconColumn extends StatelessWidget {
             _RoundAction(
               heroTag: 'passenger_nearest_bus',
               tooltip: 'أقرب باص',
-              onPressed: onNearestBus,
+              onPressed: findingNearest ? null : onNearestBus,
               color: const Color(0xFF0F766E),
               loading: findingNearest,
               icon: Icons.near_me_rounded,
@@ -120,7 +120,8 @@ class PassengerMapIconColumn extends StatelessWidget {
             _RoundAction(
               heroTag: 'passenger_my_location',
               tooltip: 'موقعي',
-              onPressed: onMyLocation,
+              // أثناء التحميل: تعطيل الضغط لمنع طلبات متزامنة
+              onPressed: isLoadingLocation ? null : onMyLocation,
               color: AppTheme.primaryColor,
               loading: isLoadingLocation,
               icon: Icons.my_location_rounded,
