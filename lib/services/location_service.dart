@@ -183,6 +183,10 @@ class LocationService {
   static const double _goodEnoughMeters = 12;
   static const double _acceptableQuickMeters = 25;
 
+  void _logStage(String msg) {
+    if (kDebugMode) debugPrint('⏱ [LocationService] $msg');
+  }
+
   Future<bool> checkAndRequestPermission() async {
     try {
       final now = DateTime.now();
@@ -192,7 +196,6 @@ class LocationService {
         return true;
       }
 
-      // الصلاحية فقط — تفعيل GPS من LocationPermissionSheet
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -353,8 +356,12 @@ class LocationService {
     Duration quickTimeout = const Duration(seconds: 5),
     Duration preciseTimeout = const Duration(seconds: 15),
   }) async {
+    final sw = Stopwatch()..start();
     final hasPermission = await checkAndRequestPermission();
-    if (!hasPermission) return _lastKnownPosition;
+    if (!hasPermission) {
+      _logStage('+${sw.elapsedMilliseconds}ms no_permission');
+      return _lastKnownPosition;
+    }
 
     Position? best;
 
@@ -362,7 +369,13 @@ class LocationService {
     if (cached != null && _isFresh(cached)) {
       best = cached;
       _lastKnownPosition = cached;
+      _logStage(
+        '+${sw.elapsedMilliseconds}ms cached '
+        'acc=${cached.accuracy.isFinite ? cached.accuracy.toStringAsFixed(1) : '?'}',
+      );
       onProgress?.call(cached, LocationFixStage.cached);
+    } else {
+      _logStage('+${sw.elapsedMilliseconds}ms no_fresh_cache');
     }
 
     try {
@@ -374,13 +387,17 @@ class LocationService {
       );
       best = _preferBetter(best, quick);
       _lastKnownPosition = best;
-      // أبلغ بأفضل نقطة متاحة وليس العينة الخام فقط — يقلل قفزات الكاميرا
+      _logStage(
+        '+${sw.elapsedMilliseconds}ms quick '
+        'acc=${quick.accuracy.isFinite ? quick.accuracy.toStringAsFixed(1) : '?'}',
+      );
       onProgress?.call(best!, LocationFixStage.quick);
 
       if (_isAccurateEnough(quick, _goodEnoughMeters)) {
         if (refineToPrecise) {
           unawaited(_refineInBackground(onProgress));
         }
+        _logStage('+${sw.elapsedMilliseconds}ms return_good_quick');
         return best;
       }
 
@@ -388,9 +405,11 @@ class LocationService {
         if (refineToPrecise) {
           unawaited(_refineInBackground(onProgress));
         }
+        _logStage('+${sw.elapsedMilliseconds}ms return_acceptable_quick');
         return best;
       }
     } catch (e) {
+      _logStage('+${sw.elapsedMilliseconds}ms quick_error $e');
       debugPrint('⚠️ [Location] quick fix: $e');
     }
 
@@ -398,6 +417,7 @@ class LocationService {
       final precise = await _collectBestPrecise(
         timeBudget: preciseTimeout,
         onProgress: onProgress,
+        parentSw: sw,
       );
       if (precise != null) {
         best = _preferBetter(best, precise);
@@ -405,12 +425,17 @@ class LocationService {
       }
     }
 
+    _logStage(
+      '+${sw.elapsedMilliseconds}ms progressive_done '
+      'best_acc=${best != null && best.accuracy.isFinite ? best.accuracy.toStringAsFixed(1) : 'null'}',
+    );
     return best ?? _lastKnownPosition;
   }
 
   Future<Position?> _collectBestPrecise({
     required Duration timeBudget,
     void Function(Position position, LocationFixStage stage)? onProgress,
+    Stopwatch? parentSw,
   }) async {
     Position? best;
     final deadline = DateTime.now().add(timeBudget);
@@ -431,10 +456,16 @@ class LocationService {
           ),
         );
         best = _preferBetter(best, pos);
+        final ms = parentSw?.elapsedMilliseconds;
+        _logStage(
+          '${ms != null ? '+${ms}ms ' : ''}precise#$attempts '
+          'acc=${pos.accuracy.isFinite ? pos.accuracy.toStringAsFixed(1) : '?'}',
+        );
         onProgress?.call(best!, LocationFixStage.precise);
 
         if (_isAccurateEnough(pos, _goodEnoughMeters)) break;
       } catch (e) {
+        _logStage('precise#$attempts error $e');
         debugPrint('⚠️ [Location] precise sample $attempts: $e');
         await Future<void>.delayed(const Duration(milliseconds: 300));
       }
@@ -482,7 +513,6 @@ class LocationService {
     );
   }
 
-  /// بحث مكان: OpenStreetMap أولاً (عربي / الأردن)، ثم Mapbox كاحتياطي.
   Future<PlaceSearchResult?> searchPlace(String query) async {
     if (query.trim().isEmpty) return null;
 

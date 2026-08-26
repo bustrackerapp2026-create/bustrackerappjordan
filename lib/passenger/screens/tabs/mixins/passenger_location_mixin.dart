@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 
+import '../../../../core/location/location_fix_tracer.dart';
 import '../../../../core/location/location_permission_sheet.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
@@ -17,6 +18,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Uint8List? _cachedPassengerMarkerBytes;
   StreamSubscription<geo.Position>? _passengerLocationSubscription;
   final LocationService _passengerLocationService = LocationService();
+  final LocationFixTracer _fixTracer = LocationFixTracer(role: 'passenger');
 
   CircleAnnotationManager? _accuracyCircleManager;
   CircleAnnotation? _accuracyCircle;
@@ -80,7 +82,6 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         math.pow(2.0, zoom);
     if (metersPerPixel <= 0) return 18;
     final px = meters / metersPerPixel;
-    // حدود بصرية معقولة على الخريطة
     return px.clamp(12.0, 120.0);
   }
 
@@ -96,8 +97,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     final radiusPx = await _metersToCircleRadiusPx(accuracyMeters, lat);
     final point = Point(coordinates: Position(lng, lat));
-    // أزرق شفاف يشبه مؤشر Google Maps
-    const fill = 0x402563EB; // ARGB
+    const fill = 0x402563EB;
     const stroke = 0x992563EB;
 
     try {
@@ -206,7 +206,6 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   void _announceStage(LocationFixStage stage, geo.Position pos) {
     if (!mounted) return;
     final now = DateTime.now();
-    // لا نكرر نفس المرحلة خلال ثانيتين
     if (_lastAnnouncedStage == stage &&
         _lastStageSnackAt != null &&
         now.difference(_lastStageSnackAt!) < const Duration(seconds: 2)) {
@@ -240,53 +239,77 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Future<void> goToMyLocation() async {
     if (mapboxMap == null || !mounted) return;
 
-    // single-flight: لا تبدأ طلباً ثانياً أثناء جريان الأول
     if (_locateInFlight || isLoadingPassengerLocation) {
       MapUtils.log(
         'تخطي goToMyLocation — طلب موقع جارٍ',
         tag: 'PassengerLocation',
       );
+      _fixTracer.mark('blocked_duplicate_tap');
       return;
     }
 
     _locateInFlight = true;
     _lastAnnouncedStage = null;
     setState(() => isLoadingPassengerLocation = true);
+    _fixTracer.start(reason: 'goToMyLocation');
+    await _fixTracer.markEnvironment();
 
     try {
-      // 1) نافذة النظام أولاً (حتى لو GPS مغلق)
-      final hasPermission =
-          await LocationPermissionSheet.ensurePermission(context);
-      if (!mounted) return;
-      if (!hasPermission) {
-        _retryLocateOnResume = false;
+      if (!mounted) {
+        _fixTracer.finishFailure('unmounted_before_permission');
         return;
       }
 
-      // 2) بعد الموافقة: تأكد أن خدمة الموقع مفعّلة
+      _fixTracer.mark('permission_begin');
+      final hasPermission =
+          await LocationPermissionSheet.ensurePermission(context);
+      if (!mounted) {
+        _fixTracer.finishFailure('unmounted_after_permission');
+        return;
+      }
+      if (!hasPermission) {
+        _retryLocateOnResume = false;
+        _fixTracer.finishFailure('permission_denied');
+        return;
+      }
+      _fixTracer.mark('permission_ok');
+
+      if (!mounted) {
+        _fixTracer.finishFailure('unmounted_before_service');
+        return;
+      }
+
+      _fixTracer.mark('service_begin');
       final serviceOn =
           await LocationPermissionSheet.ensureLocationService(context);
-      if (!mounted) return;
+      if (!mounted) {
+        _fixTracer.finishFailure('unmounted_after_service');
+        return;
+      }
       if (!serviceOn) {
         _retryLocateOnResume = true;
+        _fixTracer.finishFailure('location_service_off');
         _safeSnack(
           'فعّل خدمة الموقع ثم ارجع للتطبيق، أو اضغط «موقعي» مجدداً.',
           isError: true,
         );
         return;
       }
+      _fixTracer.mark('service_ok');
 
       _retryLocateOnResume = false;
       _passengerLocationSubscription?.cancel();
 
       var gotAnyFix = false;
 
+      _fixTracer.mark('progressive_begin');
       final position = await _passengerLocationService.locateProgressive(
         quickTimeout: const Duration(seconds: 2),
         preciseTimeout: const Duration(seconds: 6),
         onProgress: (pos, stage) {
           if (!mounted) return;
           gotAnyFix = true;
+          _fixTracer.markStage(stage, pos);
           _announceStage(stage, pos);
           unawaited(
             _applyPosition(pos, moveCamera: true, force: true),
@@ -294,9 +317,13 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         },
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        _fixTracer.finishFailure('unmounted_after_progressive');
+        return;
+      }
 
       if (position == null && !gotAnyFix) {
+        _fixTracer.finishFailure('no_fix');
         _safeSnack(
           '❌ تعذر تحديد موقعك حالياً. حاول مرة أخرى.',
           isError: true,
@@ -306,13 +333,20 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       if (position != null) {
         await _applyPosition(position, moveCamera: true, force: true);
+        if (!mounted) {
+          _fixTracer.finishFailure('unmounted_after_apply');
+          return;
+        }
         final acc = position.accuracy.isFinite
             ? ' (±${position.accuracy.round()} م)'
             : '';
         _safeSnack('📍 تم تحديد موقعك بنجاح$acc');
       }
 
-      if (!mounted) return;
+      if (!mounted) {
+        _fixTracer.finishFailure('unmounted_before_stream');
+        return;
+      }
 
       isPassengerTrackingActive = true;
       _passengerLocationSubscription = _passengerLocationService
@@ -323,9 +357,15 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         }
       }, onError: (error) {
         MapUtils.log('خطأ في تحديث الموقع: $error', tag: 'PassengerLocation');
+        _fixTracer.mark('stream_error', data: {'error': error.toString()});
       });
+
+      _fixTracer.finishSuccess(position);
     } catch (e) {
-      _safeSnack('❌ تعذر تحديد موقعك. حاول مرة أخرى.', isError: true);
+      _fixTracer.finishFailure('exception', error: e);
+      if (mounted) {
+        _safeSnack('❌ تعذر تحديد موقعك. حاول مرة أخرى.', isError: true);
+      }
       MapUtils.log('خطأ تحديد الموقع: $e', tag: 'PassengerLocation');
     } finally {
       _locateInFlight = false;
@@ -399,17 +439,23 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   void onPassengerLocationLifecycle(AppLifecycleState state) {
+    _fixTracer.markLifecycle(
+      AppLifecycleStateLikeX.fromFlutter(state),
+    );
+
     if (state == AppLifecycleState.resumed) {
       if (_locateInFlight || isLoadingPassengerLocation) {
         MapUtils.log(
           'resumed أثناء طلب موقع — بدون إعادة تشغيل',
           tag: 'PassengerLocation',
         );
+        _fixTracer.mark('resume_skip_in_flight');
         return;
       }
 
       if (_retryLocateOnResume && !hasPassengerLocation) {
         _retryLocateOnResume = false;
+        _fixTracer.mark('resume_retry_after_settings');
         unawaited(goToMyLocation());
       }
       return;
