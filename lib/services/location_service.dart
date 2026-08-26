@@ -374,7 +374,8 @@ class LocationService {
       );
       best = _preferBetter(best, quick);
       _lastKnownPosition = best;
-      onProgress?.call(quick, LocationFixStage.quick);
+      // أبلغ بأفضل نقطة متاحة وليس العينة الخام فقط — يقلل قفزات الكاميرا
+      onProgress?.call(best!, LocationFixStage.quick);
 
       if (_isAccurateEnough(quick, _goodEnoughMeters)) {
         if (refineToPrecise) {
@@ -430,7 +431,7 @@ class LocationService {
           ),
         );
         best = _preferBetter(best, pos);
-        onProgress?.call(pos, LocationFixStage.precise);
+        onProgress?.call(best!, LocationFixStage.precise);
 
         if (_isAccurateEnough(pos, _goodEnoughMeters)) break;
       } catch (e) {

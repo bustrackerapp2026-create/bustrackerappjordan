@@ -30,6 +30,12 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   double? _lastMarkerLng;
   bool _markerBusy = false;
 
+  /// يمنع طلب موقع ثانٍ أثناء جريان الأول (single-flight).
+  bool _locateInFlight = false;
+
+  /// بعد العودة من إعدادات GPS: إعادة محاولة واحدة بهدوء إن لم نحصل على موقع.
+  bool _retryLocateOnResume = false;
+
   static const Duration _minMarkerInterval = Duration(milliseconds: 220);
   static const double _minMoveDeg = 0.00003;
 
@@ -104,6 +110,16 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Future<void> goToMyLocation() async {
     if (mapboxMap == null || !mounted) return;
 
+    // single-flight: لا تبدأ طلباً ثانياً أثناء جريان الأول
+    if (_locateInFlight || isLoadingPassengerLocation) {
+      MapUtils.log(
+        'تخطي goToMyLocation — طلب موقع جارٍ',
+        tag: 'PassengerLocation',
+      );
+      return;
+    }
+
+    _locateInFlight = true;
     setState(() => isLoadingPassengerLocation = true);
 
     try {
@@ -111,14 +127,26 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final hasPermission =
           await LocationPermissionSheet.ensurePermission(context);
       if (!mounted) return;
-      if (!hasPermission) return;
+      if (!hasPermission) {
+        _retryLocateOnResume = false;
+        return;
+      }
 
       // 2) بعد الموافقة: تأكد أن خدمة الموقع مفعّلة
       final serviceOn =
           await LocationPermissionSheet.ensureLocationService(context);
       if (!mounted) return;
-      if (!serviceOn) return;
+      if (!serviceOn) {
+        // عند العودة من الإعدادات قد تُفعَّل الخدمة — نعيد المحاولة مرة واحدة
+        _retryLocateOnResume = true;
+        _safeSnack(
+          'فعّل خدمة الموقع ثم ارجع للتطبيق، أو اضغط «موقعي» مجدداً.',
+          isError: true,
+        );
+        return;
+      }
 
+      _retryLocateOnResume = false;
       _passengerLocationSubscription?.cancel();
 
       var gotAnyFix = false;
@@ -165,6 +193,7 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _safeSnack('❌ تعذر تحديد موقعك. حاول مرة أخرى.', isError: true);
       MapUtils.log('خطأ تحديد الموقع: $e', tag: 'PassengerLocation');
     } finally {
+      _locateInFlight = false;
       if (mounted) setState(() => isLoadingPassengerLocation = false);
     }
   }
@@ -230,9 +259,24 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   void onPassengerLocationLifecycle(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && isLoadingPassengerLocation) {
-      goToMyLocation();
+    if (state == AppLifecycleState.resumed) {
+      // لا تعِد تشغيل طلب جارٍ — يمنع التداخل بعد العودة من إعدادات GPS
+      if (_locateInFlight || isLoadingPassengerLocation) {
+        MapUtils.log(
+          'resumed أثناء طلب موقع — بدون إعادة تشغيل',
+          tag: 'PassengerLocation',
+        );
+        return;
+      }
+
+      // إعادة محاولة واحدة فقط إن خرج المستخدم لإعدادات الموقع دون نجاح
+      if (_retryLocateOnResume && !hasPassengerLocation) {
+        _retryLocateOnResume = false;
+        unawaited(goToMyLocation());
+      }
+      return;
     }
+
     if (state == AppLifecycleState.detached ||
         state == AppLifecycleState.paused) {
       stopPassengerTracking();
@@ -241,6 +285,8 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   void disposePassengerLocation() {
     stopPassengerTracking();
+    _locateInFlight = false;
+    _retryLocateOnResume = false;
     _passengerUserAnnotation = null;
   }
 }
