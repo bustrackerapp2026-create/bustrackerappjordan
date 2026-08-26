@@ -21,13 +21,11 @@ class LocationFixTracer {
   int _sessionId = 0;
 
   bool _active = false;
-  String? _outcome;
 
   void start({String reason = 'goToMyLocation'}) {
     if (!kDebugMode) return;
     _sessionId++;
     _events.clear();
-    _outcome = null;
     _active = true;
     _sw
       ..reset()
@@ -78,16 +76,15 @@ class LocationFixTracer {
     if (!kDebugMode) return;
     // lifecycle قد يحدث خارج جلسة نشطة
     final ms = _active ? _sw.elapsedMilliseconds : -1;
+    final sessionPart =
+        ms >= 0 ? ' +${ms}ms session=$_sessionId' : '';
     _print(
-      'lifecycle state=${state.name}'
-      '${ms >= 0 ? ' +${ms}ms session=$_sessionId' : ''}'
-      ' inFlight=${_active}',
+      'lifecycle state=${state.name}$sessionPart inFlight=$_active',
     );
   }
 
   void finishSuccess(Position? best) {
     if (!kDebugMode || !_active) return;
-    _outcome = 'success';
     mark(
       'DONE outcome=success',
       data: {
@@ -104,7 +101,6 @@ class LocationFixTracer {
 
   void finishFailure(String reason, {Object? error}) {
     if (!kDebugMode || !_active) return;
-    _outcome = 'fail';
     mark(
       'DONE outcome=fail',
       data: {
@@ -134,7 +130,8 @@ class LocationFixTracer {
 
   String? _ageSeconds(Position pos) {
     try {
-      final age = DateTime.now().difference(pos.timestamp).inMilliseconds / 1000.0;
+      final age =
+          DateTime.now().difference(pos.timestamp).inMilliseconds / 1000.0;
       return age.toStringAsFixed(1);
     } catch (_) {
       return null;

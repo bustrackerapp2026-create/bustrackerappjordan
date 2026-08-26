@@ -255,6 +255,11 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     await _fixTracer.markEnvironment();
 
     try {
+      if (!mounted) {
+        _fixTracer.finishFailure('unmounted_before_permission');
+        return;
+      }
+
       _fixTracer.mark('permission_begin');
       final hasPermission =
           await LocationPermissionSheet.ensurePermission(context);
@@ -268,6 +273,11 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         return;
       }
       _fixTracer.mark('permission_ok');
+
+      if (!mounted) {
+        _fixTracer.finishFailure('unmounted_before_service');
+        return;
+      }
 
       _fixTracer.mark('service_begin');
       final serviceOn =
@@ -323,6 +333,10 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       if (position != null) {
         await _applyPosition(position, moveCamera: true, force: true);
+        if (!mounted) {
+          _fixTracer.finishFailure('unmounted_after_apply');
+          return;
+        }
         final acc = position.accuracy.isFinite
             ? ' (±${position.accuracy.round()} م)'
             : '';
@@ -349,7 +363,9 @@ mixin PassengerLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _fixTracer.finishSuccess(position);
     } catch (e) {
       _fixTracer.finishFailure('exception', error: e);
-      _safeSnack('❌ تعذر تحديد موقعك. حاول مرة أخرى.', isError: true);
+      if (mounted) {
+        _safeSnack('❌ تعذر تحديد موقعك. حاول مرة أخرى.', isError: true);
+      }
       MapUtils.log('خطأ تحديد الموقع: $e', tag: 'PassengerLocation');
     } finally {
       _locateInFlight = false;
