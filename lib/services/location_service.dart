@@ -374,6 +374,18 @@ class LocationService {
         'acc=${cached.accuracy.isFinite ? cached.accuracy.toStringAsFixed(1) : '?'}',
       );
       onProgress?.call(cached, LocationFixStage.cached);
+
+      // مسار سريع: كاش حديث ودقيق بما يكفي → أعرضه فوراً وحسّن في الخلفية
+      if (_isAccurateEnough(cached, _acceptableQuickMeters)) {
+        if (refineToPrecise) {
+          unawaited(_refineInBackground(onProgress));
+        }
+        _logStage(
+          '+${sw.elapsedMilliseconds}ms return_good_cache '
+          'acc=${cached.accuracy.toStringAsFixed(1)}',
+        );
+        return best;
+      }
     } else {
       _logStage('+${sw.elapsedMilliseconds}ms no_fresh_cache');
     }
@@ -411,6 +423,16 @@ class LocationService {
     } catch (e) {
       _logStage('+${sw.elapsedMilliseconds}ms quick_error $e');
       debugPrint('⚠️ [Location] quick fix: $e');
+      // بعد Timeout: إن كان لدينا كاش/أفضل نقطة مقبولة لا نحجب المستخدم على precise فقط
+      if (best != null && _isAccurateEnough(best, _acceptableQuickMeters)) {
+        if (refineToPrecise) {
+          unawaited(_refineInBackground(onProgress));
+        }
+        _logStage(
+          '+${sw.elapsedMilliseconds}ms return_after_quick_timeout_with_cache',
+        );
+        return best;
+      }
     }
 
     if (refineToPrecise) {
@@ -494,7 +516,7 @@ class LocationService {
   }) async {
     return locateProgressive(
       refineToPrecise: preferHighAccuracy,
-      quickTimeout: const Duration(seconds: 3),
+      quickTimeout: const Duration(seconds: 4),
       preciseTimeout: timeout,
     );
   }
@@ -508,8 +530,8 @@ class LocationService {
     }
     return locateProgressive(
       refineToPrecise: true,
-      quickTimeout: const Duration(seconds: 2),
-      preciseTimeout: const Duration(seconds: 5),
+      quickTimeout: const Duration(seconds: 4),
+      preciseTimeout: const Duration(seconds: 6),
     );
   }
 
