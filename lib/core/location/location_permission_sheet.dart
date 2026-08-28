@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
 /// 1) صلاحية التطبيق (نافذة النظام)
-/// 2) تفعيل GPS (نافذة Google مرة واحدة — بدون حوار تطبيق مكرر بعدها)
+/// 2) تفعيل GPS — حوار واحد فقط (نظام Google إن أمكن، بدون تكرار)
 /// 3) للسائق: صلاحية «دائماً» للعمل في الخلفية أثناء القيادة
 class LocationPermissionSheet {
   LocationPermissionSheet._();
@@ -15,10 +15,15 @@ class LocationPermissionSheet {
   static const MethodChannel _locationChannel =
       MethodChannel('com.example.jordan_bus_tracker/location_service');
 
-  static const int _servicePollAttempts = 10;
+  static const int _servicePollAttempts = 12;
   static const Duration _servicePollInterval = Duration(milliseconds: 400);
 
+  /// يمنع استدعاءين متزامنين.
   static Future<bool>? _servicePromptInFlight;
+
+  /// يمنع إعادة فتح حوار GPS خلال فترة قصيرة بعد محاولة.
+  static DateTime? _lastServicePromptAt;
+  static const Duration _servicePromptCooldown = Duration(seconds: 12);
 
   static Future<bool> ensurePermission(
     BuildContext context, {
@@ -140,23 +145,48 @@ class LocationPermissionSheet {
         return true;
       }
 
+      // منع تكرار الحوار خلال ثوانٍ بعد محاولة سابقة
+      final last = _lastServicePromptAt;
+      if (last != null &&
+          DateTime.now().difference(last) < _servicePromptCooldown) {
+        debugPrint(
+          'LocationPermissionSheet: skip GPS dialog (cooldown)',
+        );
+        return Geolocator.isLocationServiceEnabled();
+      }
+
+      _lastServicePromptAt = DateTime.now();
+
+      // أندرويد: حوار النظام مرة واحدة فقط عبر القناة الأصلية
       if (!kIsWeb && Platform.isAndroid) {
         try {
           final enabled = await _locationChannel
               .invokeMethod<bool>('enableLocationService');
-          if (enabled == true) return true;
+          if (enabled == true) {
+            // انتظر استقرار الخدمة بعد موافقة المستخدم
+            if (await _waitForLocationServiceEnabled()) return true;
+            return await Geolocator.isLocationServiceEnabled();
+          }
           if (await Geolocator.isLocationServiceEnabled()) return true;
 
+          // رُفض الحوار أو أُغلق — لا نعرض حوار تطبيق ثانياً
           debugPrint(
-            'LocationPermissionSheet: system GPS dialog dismissed; '
-            'skipping secondary app dialog',
+            'LocationPermissionSheet: system GPS dialog done; no secondary dialog',
           );
+          return false;
+        } on PlatformException catch (e) {
+          // BUSY أو فشل القناة: لا حوار ثانٍ — فقط انتظار قصير
+          debugPrint('enableLocationService PlatformException: $e');
+          if (await _waitForLocationServiceEnabled()) return true;
           return false;
         } catch (e) {
           debugPrint('enableLocationService channel: $e');
+          if (await _waitForLocationServiceEnabled()) return true;
+          // احتياطي وحيد إذا القناة غير موجودة أصلاً
         }
       }
 
+      // iOS أو عدم توفر القناة: حوار واحد ثم الإعدادات
       if (!context.mounted) return false;
       final open = await _confirmAction(
         context,
