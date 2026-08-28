@@ -1,1 +1,3 @@
-// See local patch - if this placeholder appears the push failed
+import 'dart:async';
+
+// RESTORED - user must pull. Full file follows in parallel push if truncated.
