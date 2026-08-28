@@ -6,20 +6,21 @@ import 'package:flutter/material.dart';
 import '../../models/map_landmark.dart';
 import 'maki_icons_data.dart';
 
-/// معالم بأيقونات **Mapbox Maki الرسمية** (CC0) + حجم ديناميكي حسب الزوم.
-/// الحجم مضبوط ليطابق تقريباً أيقونات Mapbox Streets الأصلية.
+/// معالم بأيقونات **Mapbox Maki الرسمية** (CC0).
+///
+/// أسلوب العرض مطابق تقريباً لأيقونات Mapbox Streets:
+/// دائرة ملوّنة صلبة + رمز Maki أبيض حاد في الوسط.
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
-  /// حجم صورة الماركر النهائية (بكسل).
-  /// أصغر من السابق ليطابق مقياس Maki الأصلي على الخريطة.
-  static const double markerSize = 32;
+  /// دقة عالية للوضوح على شاشات Retina (يُصغَّر عبر iconSize).
+  static const double markerSize = 64;
 
-  /// حجم رسم الأيقونة داخل الصورة (بدون الهالة).
-  static const double iconDrawSize = 18;
+  /// نصف قطر الدائرة الملوّنة داخل الصورة.
+  static const double circleRadius = 18;
 
-  /// نصف قطر الهالة البيضاء حول الأيقونة.
-  static const double haloRadius = 9;
+  /// حجم رسم رمز Maki داخل الدائرة.
+  static const double iconDrawSize = 22;
 
   static const int labelTextColor = 0xFF333333;
   static const int labelHaloColor = 0xFFFFFFFF;
@@ -101,12 +102,13 @@ class LandmarkMarkerImages {
   static bool showLabelAtZoom(MapLandmarkType type, double zoom) =>
       zoom >= labelMinZoomFor(type);
 
-  /// مقياس iconSize لـ PointAnnotation — قريب من 1.0 مثل أيقونات Mapbox الأصلية.
+  /// مقياس PointAnnotation — الحجم النهائي على الشاشة ≈ أيقونات Mapbox الأصلية.
   static double iconSizeForZoom(double zoom) {
     final z = zoom.clamp(10.0, 20.0);
-    if (z <= 11) return 0.85;
-    if (z >= 17) return 1.15;
-    return 0.85 + ((z - 11.0) / 6.0) * 0.30;
+    // 64px * 0.55 ≈ 35px منطقي ≈ حجم POI في Streets على معظم الأجهزة
+    if (z <= 12) return 0.48;
+    if (z >= 17) return 0.72;
+    return 0.48 + ((z - 12.0) / 5.0) * 0.24;
   }
 
   static double labeledIconSizeForZoom(double zoom) => iconSizeForZoom(zoom);
@@ -347,7 +349,7 @@ class LandmarkMarkerImages {
   static Future<Uint8List> bytesFor(MapLandmarkType type) async {
     final hit = _iconCache[type];
     if (hit != null) return hit;
-    final bytes = await _renderMakiColored(type);
+    final bytes = await _renderMakiBadge(type);
     _iconCache[type] = bytes;
     return bytes;
   }
@@ -367,7 +369,8 @@ class LandmarkMarkerImages {
 
   static void clearCache() => _iconCache.clear();
 
-  static Future<Uint8List> _renderMakiColored(MapLandmarkType type) async {
+  /// دائرة ملوّنة + رمز Maki أبيض حاد (بدون blur).
+  static Future<Uint8List> _renderMakiBadge(MapLandmarkType type) async {
     final name = makiNameFor(type);
     final raw = MakiIcons.bytes(name) ?? MakiIcons.bytes('marker');
     final color = colorFor(type);
@@ -385,49 +388,71 @@ class LandmarkMarkerImages {
       final bd = await src.toByteData(format: ui.ImageByteFormat.rawRgba);
       if (bd == null) return _fallbackDot(color);
 
+      // تحويل الرمز إلى أبيض مع الحفاظ على الشفافية (مثل أيقونات Mapbox داخل الدائرة)
       final pixels = bd.buffer.asUint8List();
-      final r = (color.r * 255.0).round().clamp(0, 255);
-      final g = (color.g * 255.0).round().clamp(0, 255);
-      final b = (color.b * 255.0).round().clamp(0, 255);
-
-      // تلوين بكسلات الرمز (الأسود/الرمادي) بلون الفئة + الحفاظ على الشفافية
       for (var i = 0; i < pixels.length; i += 4) {
         final a = pixels[i + 3];
-        if (a < 8) continue;
-        final lum = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3.0;
-        if (lum > 240 && a < 200) {
-          // خلفية شبه بيضاء نتركها
+        if (a < 8) {
+          pixels[i] = 0;
+          pixels[i + 1] = 0;
+          pixels[i + 2] = 0;
+          pixels[i + 3] = 0;
           continue;
         }
-        final t = (1.0 - (lum / 255.0)).clamp(0.35, 1.0);
-        pixels[i] = (r * t).round().clamp(0, 255);
-        pixels[i + 1] = (g * t).round().clamp(0, 255);
-        pixels[i + 2] = (b * t).round().clamp(0, 255);
+        final lum = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3.0;
+        // البكسلات الداكنة في Maki = شكل الرمز → أبيض
+        // البكسلات الفاتحة شبه الشفافة → تُزال
+        if (lum > 220 && a < 180) {
+          pixels[i + 3] = 0;
+          continue;
+        }
+        final strength = (1.0 - (lum / 255.0)).clamp(0.0, 1.0);
+        final outA = (a * (0.55 + 0.45 * strength)).round().clamp(0, 255);
+        pixels[i] = 255;
+        pixels[i + 1] = 255;
+        pixels[i + 2] = 255;
+        pixels[i + 3] = outA;
       }
 
-      final colored = await ui.ImageDescriptor.raw(
+      final whiteCodec = await ui.ImageDescriptor.raw(
         await ui.ImmutableBuffer.fromUint8List(pixels),
         width: w,
         height: h,
         pixelFormat: ui.PixelFormat.rgba8888,
       ).instantiateCodec();
-      final coloredFrame = await colored.getNextFrame();
-      final coloredImg = coloredFrame.image;
+      final whiteFrame = await whiteCodec.getNextFrame();
+      final whiteIcon = whiteFrame.image;
 
       const size = markerSize;
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
       final center = Offset(size / 2, size / 2);
 
-      // هالة بيضاء خفيفة للقراءة على الخريطة (أصغر لتتناسب مع الحجم الجديد)
+      // ظل خفيف جداً (بدون blur قوي)
       canvas.drawCircle(
-        center,
-        haloRadius,
-        Paint()
-          ..color = const Color(0xF2FFFFFF)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2),
+        center.translate(0, 1.2),
+        circleRadius,
+        Paint()..color = const Color(0x33000000),
       );
 
+      // الدائرة الملوّنة الصلبة
+      canvas.drawCircle(
+        center,
+        circleRadius,
+        Paint()..color = color,
+      );
+
+      // حد أبيض رفيع مثل Mapbox
+      canvas.drawCircle(
+        center,
+        circleRadius,
+        Paint()
+          ..color = const Color(0xE6FFFFFF)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5,
+      );
+
+      // رمز Maki أبيض في الوسط
       final dest = Rect.fromCenter(
         center: center,
         width: iconDrawSize,
@@ -436,7 +461,7 @@ class LandmarkMarkerImages {
       paintImage(
         canvas: canvas,
         rect: dest,
-        image: coloredImg,
+        image: whiteIcon,
         filterQuality: FilterQuality.high,
       );
 
@@ -454,7 +479,16 @@ class LandmarkMarkerImages {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final c = Offset(size / 2, size / 2);
-    canvas.drawCircle(c, 6, Paint()..color = color);
+    canvas.drawCircle(c.translate(0, 1), circleRadius, Paint()..color = const Color(0x33000000));
+    canvas.drawCircle(c, circleRadius, Paint()..color = color);
+    canvas.drawCircle(
+      c,
+      circleRadius,
+      Paint()
+        ..color = const Color(0xE6FFFFFF)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
     final bd = await image.toByteData(format: ui.ImageByteFormat.png);
