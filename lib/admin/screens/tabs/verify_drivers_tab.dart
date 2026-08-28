@@ -210,18 +210,25 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
                                   Icons.alt_route,
                                   'active_services',
                                 ),
+                                VerifyDriversStatItem(
+                                  l10n.labelOthers,
+                                  _toInt(stats['active_others']),
+                                  Colors.blueGrey.shade700,
+                                  Icons.people_outline,
+                                  'active_others',
+                                ),
                               ],
                             ),
                             const SizedBox(height: 12),
                             VerifyDriversCompactSectionCard(
                               sectionId: 'drivers',
-                              title: l10n.driverVerification,
+                              title: l10n.driverRequestsStatus,
                               icon: Icons.verified_user_outlined,
                               iconColor: const Color(0xFF059669),
                               liveLabel: l10n.live,
                               items: [
                                 VerifyDriversStatItem(
-                                  l10n.underReview,
+                                  l10n.labelPending,
                                   _toInt(stats['pending']),
                                   Colors.amber.shade900,
                                   Icons.pending_actions,
