@@ -74,7 +74,6 @@ class _AdminMapTabState extends State<AdminMapTab>
   @override
   bool get wantKeepAlive => true;
 
-  /// حفظ/استعادة آخر موضع كاميرا للأدمن (SharedPreferences).
   @override
   String get mapCameraPrefsRole => MapCameraPrefsService.roleAdmin;
 
@@ -574,10 +573,10 @@ class _AdminMapTabState extends State<AdminMapTab>
       await MapLandmarkService().createLandmark(
         name: result.name,
         type: result.type,
+        notes: result.notes,
         latitude: lat,
         longitude: lng,
         createdBy: userId,
-        notes: result.notes,
       );
       if (!mounted) return;
       _safeSnack('✅ تم إضافة المعلم');
@@ -670,6 +669,15 @@ class _AdminMapTabState extends State<AdminMapTab>
         return;
       }
 
+      // حوار تفعيل GPS (مرة واحدة) — كان ناقصاً في خريطة الأدمن
+      final serviceOn =
+          await LocationPermissionSheet.ensureLocationService(context);
+      if (!mounted) return;
+      if (!serviceOn) {
+        // المستخدم أغلق الحوار أو لم يفعّل — بدون رسالة حمراء مزعجة إن اختار «لاحقاً»
+        return;
+      }
+
       var shown = false;
 
       final position = await _locationService.locateProgressive(
@@ -689,8 +697,10 @@ class _AdminMapTabState extends State<AdminMapTab>
       if (!mounted) return;
 
       if (position == null && !shown) {
-        _safeSnack('⚠️ تعذر الحصول على الموقع. تأكد من تفعيل GPS',
-            isError: true);
+        _safeSnack(
+          '⚠️ تعذر الحصول على الموقع. حاول مرة أخرى.',
+          isError: true,
+        );
         return;
       }
 
