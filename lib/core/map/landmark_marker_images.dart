@@ -8,19 +8,19 @@ import 'maki_icons_data.dart';
 
 /// معالم بأيقونات **Mapbox Maki الرسمية** (CC0).
 ///
-/// أسلوب العرض مطابق تقريباً لأيقونات Mapbox Streets:
-/// دائرة ملوّنة صلبة + رمز Maki أبيض حاد في الوسط.
+/// أسلوب العرض: دائرة ملوّنة صلبة + رمز Maki أبيض حاد في الوسط،
+/// بحجم أوضح وأقرب لأيقونات Mapbox Streets على الشاشة.
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
-  /// دقة عالية للوضوح على شاشات Retina (يُصغَّر عبر iconSize).
-  static const double markerSize = 64;
+  /// دقة عالية (96px) للوضوح على شاشات Retina ثم يُصغَّر عبر iconSize.
+  static const double markerSize = 96;
 
   /// نصف قطر الدائرة الملوّنة داخل الصورة.
-  static const double circleRadius = 18;
+  static const double circleRadius = 28;
 
-  /// حجم رسم رمز Maki داخل الدائرة.
-  static const double iconDrawSize = 22;
+  /// حجم رسم رمز Maki داخل الدائرة (أكبر = أوضح).
+  static const double iconDrawSize = 36;
 
   static const int labelTextColor = 0xFF333333;
   static const int labelHaloColor = 0xFFFFFFFF;
@@ -102,13 +102,13 @@ class LandmarkMarkerImages {
   static bool showLabelAtZoom(MapLandmarkType type, double zoom) =>
       zoom >= labelMinZoomFor(type);
 
-  /// مقياس PointAnnotation — الحجم النهائي على الشاشة ≈ أيقونات Mapbox الأصلية.
+  /// مقياس PointAnnotation — الحجم النهائي على الشاشة أوضح وأقرب لـ Mapbox.
+  /// 96px × 0.55 ≈ 53px قطر الدائرة على الشاشة (أكثر وضوحاً من السابق).
   static double iconSizeForZoom(double zoom) {
     final z = zoom.clamp(10.0, 20.0);
-    // 64px * 0.55 ≈ 35px منطقي ≈ حجم POI في Streets على معظم الأجهزة
-    if (z <= 12) return 0.48;
-    if (z >= 17) return 0.72;
-    return 0.48 + ((z - 12.0) / 5.0) * 0.24;
+    if (z <= 12) return 0.55;
+    if (z >= 17) return 0.85;
+    return 0.55 + ((z - 12.0) / 5.0) * 0.30;
   }
 
   static double labeledIconSizeForZoom(double zoom) => iconSizeForZoom(zoom);
@@ -118,11 +118,11 @@ class LandmarkMarkerImages {
   static double textSizeForZoom(double zoom) {
     if (zoom < 13.0) return 0;
     final z = zoom.clamp(13.0, 18.0);
-    return 10.0 + ((z - 13.0) / 5.0) * 3.0;
+    return 11.0 + ((z - 13.0) / 5.0) * 3.5;
   }
 
   static List<double> textOffsetForZoom(double zoom) {
-    final y = 0.85 + ((zoom.clamp(13.0, 18.0) - 13.0) / 5.0) * 0.25;
+    final y = 1.05 + ((zoom.clamp(13.0, 18.0) - 13.0) / 5.0) * 0.30;
     return [0.0, y];
   }
 
@@ -388,11 +388,11 @@ class LandmarkMarkerImages {
       final bd = await src.toByteData(format: ui.ImageByteFormat.rawRgba);
       if (bd == null) return _fallbackDot(color);
 
-      // تحويل الرمز إلى أبيض مع الحفاظ على الشفافية (مثل أيقونات Mapbox داخل الدائرة)
+      // تحويل الرمز إلى أبيض صلب حاد (silhouette) مع الحفاظ على الشفافية
       final pixels = bd.buffer.asUint8List();
       for (var i = 0; i < pixels.length; i += 4) {
         final a = pixels[i + 3];
-        if (a < 8) {
+        if (a < 12) {
           pixels[i] = 0;
           pixels[i + 1] = 0;
           pixels[i + 2] = 0;
@@ -400,14 +400,15 @@ class LandmarkMarkerImages {
           continue;
         }
         final lum = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3.0;
-        // البكسلات الداكنة في Maki = شكل الرمز → أبيض
-        // البكسلات الفاتحة شبه الشفافة → تُزال
-        if (lum > 220 && a < 180) {
+        // البكسلات الداكنة = شكل الرمز → أبيض صلب
+        // البكسلات الفاتحة/شبه الشفافة → تُزال
+        if (lum > 200) {
           pixels[i + 3] = 0;
           continue;
         }
-        final strength = (1.0 - (lum / 255.0)).clamp(0.0, 1.0);
-        final outA = (a * (0.55 + 0.45 * strength)).round().clamp(0, 255);
+        // حافة أكثر صلابة (أقل تدرجاً) لوضوح أفضل عند التصغير
+        final strength = (1.0 - (lum / 200.0)).clamp(0.0, 1.0);
+        final outA = (a * (0.75 + 0.25 * strength)).round().clamp(0, 255);
         pixels[i] = 255;
         pixels[i + 1] = 255;
         pixels[i + 2] = 255;
@@ -428,11 +429,11 @@ class LandmarkMarkerImages {
       final canvas = Canvas(recorder);
       final center = Offset(size / 2, size / 2);
 
-      // ظل خفيف جداً (بدون blur قوي)
+      // ظل خفيف
       canvas.drawCircle(
-        center.translate(0, 1.2),
+        center.translate(0, 1.8),
         circleRadius,
-        Paint()..color = const Color(0x33000000),
+        Paint()..color = const Color(0x40000000),
       );
 
       // الدائرة الملوّنة الصلبة
@@ -442,14 +443,14 @@ class LandmarkMarkerImages {
         Paint()..color = color,
       );
 
-      // حد أبيض رفيع مثل Mapbox
+      // حد أبيض أوضح (متناسب مع الحجم الأكبر)
       canvas.drawCircle(
         center,
         circleRadius,
         Paint()
-          ..color = const Color(0xE6FFFFFF)
+          ..color = const Color(0xF0FFFFFF)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.5,
+          ..strokeWidth = 3.5,
       );
 
       // رمز Maki أبيض في الوسط
@@ -462,7 +463,7 @@ class LandmarkMarkerImages {
         canvas: canvas,
         rect: dest,
         image: whiteIcon,
-        filterQuality: FilterQuality.high,
+        filterQuality: FilterQuality.medium,
       );
 
       final picture = recorder.endRecording();
@@ -479,15 +480,15 @@ class LandmarkMarkerImages {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final c = Offset(size / 2, size / 2);
-    canvas.drawCircle(c.translate(0, 1), circleRadius, Paint()..color = const Color(0x33000000));
+    canvas.drawCircle(c.translate(0, 1.5), circleRadius, Paint()..color = const Color(0x40000000));
     canvas.drawCircle(c, circleRadius, Paint()..color = color);
     canvas.drawCircle(
       c,
       circleRadius,
       Paint()
-        ..color = const Color(0xE6FFFFFF)
+        ..color = const Color(0xF0FFFFFF)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5,
+        ..strokeWidth = 3.5,
     );
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
