@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
-/// 1) صلاحية التطبيق (نافذة النظام)
-/// 2) تفعيل GPS — حوار واحد فقط (نظام Google إن أمكن، بدون تكرار)
-/// 3) للسائق: صلاحية «دائماً» للعمل في الخلفية أثناء القيادة
+/// 1) صلاحية التطبيق
+/// 2) تفعيل GPS — حوار واحد:
+///    - نظام Google إن نجح
+///    - وإلا حوار التطبيق مرة واحدة (فتح الإعدادات)
+/// 3) للسائق: صلاحية «دائماً» للخلفية
 class LocationPermissionSheet {
   LocationPermissionSheet._();
 
@@ -18,10 +20,8 @@ class LocationPermissionSheet {
   static const int _servicePollAttempts = 12;
   static const Duration _servicePollInterval = Duration(milliseconds: 400);
 
-  /// يمنع استدعاءين متزامنين.
   static Future<bool>? _servicePromptInFlight;
 
-  /// يمنع إعادة فتح حوار GPS خلال فترة قصيرة بعد محاولة.
   static DateTime? _lastServicePromptAt;
   static const Duration _servicePromptCooldown = Duration(seconds: 12);
 
@@ -61,7 +61,6 @@ class LocationPermissionSheet {
     }
   }
 
-  /// للسائق: موقع أثناء الاستخدام ثم «السماح طوال الوقت» إن أمكن.
   static Future<bool> ensureDriverBackgroundAccess(BuildContext context) async {
     try {
       if (!await ensurePermission(context)) return false;
@@ -145,61 +144,61 @@ class LocationPermissionSheet {
         return true;
       }
 
-      // منع تكرار الحوار خلال ثوانٍ بعد محاولة سابقة
       final last = _lastServicePromptAt;
       if (last != null &&
           DateTime.now().difference(last) < _servicePromptCooldown) {
-        debugPrint(
-          'LocationPermissionSheet: skip GPS dialog (cooldown)',
-        );
+        debugPrint('LocationPermissionSheet: skip GPS prompt (cooldown)');
         return Geolocator.isLocationServiceEnabled();
       }
 
       _lastServicePromptAt = DateTime.now();
 
-      // أندرويد: حوار النظام مرة واحدة فقط عبر القناة الأصلية
+      // أندرويد: حاول حوار Google أولاً
       if (!kIsWeb && Platform.isAndroid) {
         try {
           final enabled = await _locationChannel
               .invokeMethod<bool>('enableLocationService');
+
           if (enabled == true) {
-            // انتظر استقرار الخدمة بعد موافقة المستخدم
             if (await _waitForLocationServiceEnabled()) return true;
             return await Geolocator.isLocationServiceEnabled();
           }
+
           if (await Geolocator.isLocationServiceEnabled()) return true;
 
-          // رُفض الحوار أو أُغلق — لا نعرض حوار تطبيق ثانياً
+          // false = المستخدم أغلق حوار النظام → لا حوار Flutter ثانٍ
           debugPrint(
-            'LocationPermissionSheet: system GPS dialog done; no secondary dialog',
+            'LocationPermissionSheet: system GPS dialog dismissed',
           );
           return false;
         } on PlatformException catch (e) {
-          // BUSY أو فشل القناة: لا حوار ثانٍ — فقط انتظار قصير
-          debugPrint('enableLocationService PlatformException: $e');
-          if (await _waitForLocationServiceEnabled()) return true;
-          return false;
+          // BUSY: طلب جارٍ — انتظر بدون حوار جديد
+          if (e.code == 'BUSY') {
+            debugPrint('enableLocationService BUSY');
+            if (await _waitForLocationServiceEnabled()) return true;
+            return false;
+          }
+          // UNRESOLVABLE أو غيره: لم يظهر حوار النظام → نعرض حوار التطبيق
+          debugPrint('enableLocationService: ${e.code} ${e.message}');
         } catch (e) {
           debugPrint('enableLocationService channel: $e');
-          if (await _waitForLocationServiceEnabled()) return true;
-          // احتياطي وحيد إذا القناة غير موجودة أصلاً
         }
       }
 
-      // iOS أو عدم توفر القناة: حوار واحد ثم الإعدادات
+      // حوار التطبيق مرة واحدة (يفتح إعدادات الموقع)
       if (!context.mounted) return false;
       final open = await _confirmAction(
         context,
         title: 'فعّل خدمة الموقع',
         message:
-            'الموقع مغلق على الجهاز.\nاضغط «تفعيل» لفتح إعدادات الموقع وتشغيله، ثم ارجع للتطبيق.',
+            'الموقع (GPS) مغلق على الجهاز.\n'
+            'اضغط «تفعيل» لفتح الإعدادات وتشغيله، ثم ارجع للتطبيق.',
         confirmLabel: 'تفعيل',
         cancelLabel: 'لاحقاً',
       );
       if (open) {
         await Geolocator.openLocationSettings();
-        final enabled = await _waitForLocationServiceEnabled();
-        if (enabled) return true;
+        if (await _waitForLocationServiceEnabled()) return true;
       }
       return await Geolocator.isLocationServiceEnabled();
     } catch (e) {
