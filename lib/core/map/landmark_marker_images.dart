@@ -30,18 +30,18 @@ class LandmarkMarkerImages {
 
   static final Map<MapLandmarkType, Uint8List> _iconCache = {};
 
-  /// أدنى زوم لظهور الأيقونة — مطابق تقريباً لكثافة POI في Mapbox Streets.
-  /// عند التصغير تحت هذا المستوى تُحذف الأيقونة من الخريطة.
+  /// أدنى زوم لظهور الأيقونة — مضبوط ليطابق اختفاء POI في Mapbox Streets.
+  /// عند التصغير تحت هذا المستوى تُحذف الأيقونة (مثل الأيقونات الأصلية).
   static double minZoomFor(MapLandmarkType type) {
     switch (type) {
-      // معالم كبرى: تظهر مبكراً نسبياً (مثل مطار/مستشفى في Streets)
+      // معالم كبرى جداً (مطار/مستشفى)
       case MapLandmarkType.airport:
       case MapLandmarkType.university:
       case MapLandmarkType.hospital:
       case MapLandmarkType.stadium:
       case MapLandmarkType.trainStation:
-        return 12.0;
-      // معالم متوسطة الأهمية
+        return 13.5;
+      // ديني / حكومي / تعليم / فندق / حديقة — مثل Streets ~15
       case MapLandmarkType.mosque:
       case MapLandmarkType.church:
       case MapLandmarkType.government:
@@ -58,8 +58,8 @@ class LandmarkMarkerImages {
       case MapLandmarkType.zoo:
       case MapLandmarkType.embassy:
       case MapLandmarkType.beach:
-        return 13.5;
-      // تجاري وخدمات شائعة
+        return 15.0;
+      // مطعم / بنك / صيدلية
       case MapLandmarkType.restaurant:
       case MapLandmarkType.supermarket:
       case MapLandmarkType.market:
@@ -72,8 +72,8 @@ class LandmarkMarkerImages {
       case MapLandmarkType.gym:
       case MapLandmarkType.vehicleBridge:
       case MapLandmarkType.tunnel:
-        return 14.5;
-      // نقاط صغيرة — تختفي مبكراً عند التصغير
+        return 15.5;
+      // مقهى / متجر / موقف
       case MapLandmarkType.cafe:
       case MapLandmarkType.fastFood:
       case MapLandmarkType.bakery:
@@ -93,14 +93,14 @@ class LandmarkMarkerImages {
       case MapLandmarkType.house:
       case MapLandmarkType.taxi:
       case MapLandmarkType.bar:
-        return 15.5;
+        return 16.0;
       default:
         return 16.5;
     }
   }
 
   static double labelMinZoomFor(MapLandmarkType type) =>
-      (minZoomFor(type) + 1.0).clamp(14.0, 17.5);
+      (minZoomFor(type) + 0.8).clamp(14.5, 18.0);
 
   static bool isVisibleAtZoom(MapLandmarkType type, double zoom) =>
       zoom >= minZoomFor(type);
