@@ -7,10 +7,19 @@ import '../../models/map_landmark.dart';
 import 'maki_icons_data.dart';
 
 /// معالم بأيقونات **Mapbox Maki الرسمية** (CC0) + حجم ديناميكي حسب الزوم.
+/// الحجم مضبوط ليطابق تقريباً أيقونات Mapbox Streets الأصلية.
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
-  static const double markerSize = 48;
+  /// حجم صورة الماركر النهائية (بكسل).
+  /// أصغر من السابق ليطابق مقياس Maki الأصلي على الخريطة.
+  static const double markerSize = 32;
+
+  /// حجم رسم الأيقونة داخل الصورة (بدون الهالة).
+  static const double iconDrawSize = 18;
+
+  /// نصف قطر الهالة البيضاء حول الأيقونة.
+  static const double haloRadius = 9;
 
   static const int labelTextColor = 0xFF333333;
   static const int labelHaloColor = 0xFFFFFFFF;
@@ -92,11 +101,12 @@ class LandmarkMarkerImages {
   static bool showLabelAtZoom(MapLandmarkType type, double zoom) =>
       zoom >= labelMinZoomFor(type);
 
+  /// مقياس iconSize لـ PointAnnotation — قريب من 1.0 مثل أيقونات Mapbox الأصلية.
   static double iconSizeForZoom(double zoom) {
     final z = zoom.clamp(10.0, 20.0);
-    if (z <= 10) return 0.36;
-    if (z >= 18) return 0.72;
-    return 0.36 + ((z - 10.0) / 8.0) * 0.36;
+    if (z <= 11) return 0.85;
+    if (z >= 17) return 1.15;
+    return 0.85 + ((z - 11.0) / 6.0) * 0.30;
   }
 
   static double labeledIconSizeForZoom(double zoom) => iconSizeForZoom(zoom);
@@ -409,16 +419,20 @@ class LandmarkMarkerImages {
       final canvas = Canvas(recorder);
       final center = Offset(size / 2, size / 2);
 
-      // هالة بيضاء خفيفة للقراءة على الخريطة
+      // هالة بيضاء خفيفة للقراءة على الخريطة (أصغر لتتناسب مع الحجم الجديد)
       canvas.drawCircle(
         center,
-        14,
+        haloRadius,
         Paint()
           ..color = const Color(0xF2FFFFFF)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.6),
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2),
       );
 
-      final dest = Rect.fromCenter(center: center, width: 28, height: 28);
+      final dest = Rect.fromCenter(
+        center: center,
+        width: iconDrawSize,
+        height: iconDrawSize,
+      );
       paintImage(
         canvas: canvas,
         rect: dest,
@@ -440,7 +454,7 @@ class LandmarkMarkerImages {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final c = Offset(size / 2, size / 2);
-    canvas.drawCircle(c, 10, Paint()..color = color);
+    canvas.drawCircle(c, 6, Paint()..color = color);
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
     final bd = await image.toByteData(format: ui.ImageByteFormat.png);
