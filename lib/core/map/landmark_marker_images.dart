@@ -5,20 +5,19 @@ import 'package:flutter/material.dart';
 
 import '../../models/map_landmark.dart';
 
-/// أيقونات معالم بأسلوب قريب من Mapbox Streets / Maki POI:
-/// رمز صغير ملوّن بدون «شارة» دائرية كبيرة تميّزها عن معالم الخريطة الأصلية.
+/// أيقونات معالم — حجم وخط ومنحنى زوم قريب من Mapbox Streets POI.
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
-  /// لوحة الرسم — صغيرة مثل رموز Mapbox
-  static const double markerSize = 56;
+  /// صورة المصدر ~حجم سبرايت Mapbox (Maki تقريباً 15–22px عند العرض)
+  static const double markerSize = 48;
 
-  /// ألوان النص كـ Mapbox label (رمادي غامق + هالة بيضاء)
+  /// نص POI Mapbox: رمادي غامق + هالة بيضاء
   static const int labelTextColor = 0xFF333333;
   static const int labelHaloColor = 0xFFFFFFFF;
-  static const double labelHaloWidth = 1.25;
+  static const double labelHaloWidth = 1.15;
   static const double labelLetterSpacing = 0.0;
-  static const double labelMaxWidth = 8;
+  static const double labelMaxWidth = 7.5;
 
   static final Map<MapLandmarkType, Uint8List> _iconCache = {};
   static final Map<String, Uint8List> _labeledCache = {};
@@ -48,7 +47,7 @@ class LandmarkMarkerImages {
       case MapLandmarkType.zoo:
       case MapLandmarkType.embassy:
       case MapLandmarkType.beach:
-        return 12.2;
+        return 12.5;
 
       case MapLandmarkType.restaurant:
       case MapLandmarkType.supermarket:
@@ -62,7 +61,7 @@ class LandmarkMarkerImages {
       case MapLandmarkType.gym:
       case MapLandmarkType.vehicleBridge:
       case MapLandmarkType.tunnel:
-        return 13.4;
+        return 13.5;
 
       case MapLandmarkType.cafe:
       case MapLandmarkType.fastFood:
@@ -83,7 +82,7 @@ class LandmarkMarkerImages {
       case MapLandmarkType.house:
       case MapLandmarkType.taxi:
       case MapLandmarkType.bar:
-        return 14.4;
+        return 14.5;
 
       case MapLandmarkType.laundry:
       case MapLandmarkType.hairdresser:
@@ -96,13 +95,13 @@ class LandmarkMarkerImages {
       case MapLandmarkType.crosswalk:
       case MapLandmarkType.warningTriangle:
       case MapLandmarkType.other:
-        return 15.4;
+        return 15.5;
     }
   }
 
+  /// التسمية تظهر بعد الأيقونة بقليل (كـ Mapbox)
   static double labelMinZoomFor(MapLandmarkType type) {
-    final iconMin = minZoomFor(type);
-    return (iconMin + 0.9).clamp(13.2, 16.2);
+    return (minZoomFor(type) + 1.0).clamp(13.5, 16.5);
   }
 
   static bool isVisibleAtZoom(MapLandmarkType type, double zoom) =>
@@ -111,15 +110,17 @@ class LandmarkMarkerImages {
   static bool showLabelAtZoom(MapLandmarkType type, double zoom) =>
       zoom >= labelMinZoomFor(type);
 
-  /// حجم أقرب لرموز Mapbox الافتراضية (أصغر من الشارة السابقة)
+  ///
+  /// حجم الأيقونة مقابل الزوم — منحنى قريب من Mapbox:
+  /// `interpolate linear zoom: [10→0.36] … [18→0.72]`
+  /// مع صورة 48px → عرض تقريبي 17–35 بكسل على الشاشة.
+  ///
   static double iconSizeForZoom(double zoom) {
-    if (zoom <= 11.5) return 0.55;
-    if (zoom <= 12.5) return 0.62;
-    if (zoom <= 13.5) return 0.70;
-    if (zoom <= 14.5) return 0.78;
-    if (zoom <= 15.5) return 0.86;
-    if (zoom <= 16.5) return 0.94;
-    return 1.02;
+    final z = zoom.clamp(10.0, 20.0);
+    if (z <= 10) return 0.36;
+    if (z >= 18) return 0.72;
+    // خطي سلس بين 10 و 18
+    return 0.36 + ((z - 10.0) / 8.0) * 0.36;
   }
 
   static double labeledIconSizeForZoom(double zoom) => iconSizeForZoom(zoom);
@@ -128,20 +129,22 @@ class LandmarkMarkerImages {
 
   static bool showLabelForZoom(double zoom) => zoom >= labelMinZoom;
 
-  /// حجم نص Mapbox تقريباً
+  ///
+  /// حجم خط الاسم — Mapbox POI غالباً ~10–13:
+  /// `interpolate linear zoom: [13→10] [18→13]`
+  ///
   static double textSizeForZoom(double zoom) {
-    if (zoom < 13.2) return 0;
-    if (zoom < 14.5) return 11.0;
-    if (zoom < 15.8) return 12.0;
-    return 13.0;
+    if (zoom < 13.0) return 0;
+    final z = zoom.clamp(13.0, 18.0);
+    return 10.0 + ((z - 13.0) / 5.0) * 3.0;
   }
 
   static List<double> textOffsetForZoom(double zoom) {
-    final y = zoom >= 16 ? 1.05 : (zoom >= 14.5 ? 1.0 : 0.95);
+    // إزاحة تحت الرمز بمقدار قريب من Mapbox text-offset
+    final y = 0.85 + ((zoom.clamp(13.0, 18.0) - 13.0) / 5.0) * 0.25;
     return [0.0, y];
   }
 
-  /// ألوان فئات قريبة من Mapbox Streets POI
   static Color colorFor(MapLandmarkType type) {
     switch (type) {
       case MapLandmarkType.restaurant:
@@ -387,7 +390,6 @@ class LandmarkMarkerImages {
     final cacheKey = '${type.name}_${safe.hashCode}_f$sizeKey';
     final hit = _labeledCache[cacheKey];
     if (hit != null) return hit;
-    // نفضّل أيقونة فقط + textField على الخريطة (أسلوب Mapbox)
     final bytes = await bytesFor(type);
     if (_labeledCache.length > 200) _labeledCache.clear();
     _labeledCache[cacheKey] = bytes;
@@ -405,8 +407,6 @@ class LandmarkMarkerImages {
     _labeledCache.clear();
   }
 
-  /// رمز POI بأسلوب Mapbox: أيقونة ملوّنة صغيرة + هالة بيضاء خفيفة للقراءة،
-  /// بدون دائرة ملونة كبيرة تبدو «مضافة من التطبيق».
   static Future<Uint8List> _renderMapboxStyleIcon(MapLandmarkType type) async {
     const size = markerSize;
     final recorder = ui.PictureRecorder();
@@ -414,33 +414,38 @@ class LandmarkMarkerImages {
     final color = colorFor(type);
     final center = Offset(size / 2, size / 2);
 
-    // هالة بيضاء خفيفة خلف الرمز (مثل تباين Mapbox على الخريطة الفاتحة)
+    // هالة خفيفة فقط (بدون دائرة ملونة)
     final halo = Paint()
-      ..color = const Color(0xF2FFFFFF)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.8);
-    canvas.drawCircle(center, 15.5, halo);
+      ..color = const Color(0xEEFFFFFF)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.4);
+    canvas.drawCircle(center, 12.5, halo);
 
-    // ظل ناعم جداً
     final softShadow = Paint()
-      ..color = const Color(0x22000000)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2);
-    canvas.drawCircle(center.translate(0, 0.6), 13.5, softShadow);
+      ..color = const Color(0x18000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.0);
+    canvas.drawCircle(center.translate(0, 0.5), 11.0, softShadow);
 
     final icon = iconDataFor(type);
     final tp = TextPainter(
       text: TextSpan(
         text: String.fromCharCode(icon.codePoint),
         style: TextStyle(
-          fontSize: 22,
+          fontSize: 18,
           fontFamily: icon.fontFamily,
           package: icon.fontPackage,
           color: color,
           fontWeight: FontWeight.w500,
-          // حد أبيض خفيف حول الرمز
           shadows: const [
-            Shadow(color: Color(0xFFFFFFFF), blurRadius: 1.2, offset: Offset(0, 0)),
-            Shadow(color: Color(0xCCFFFFFF), blurRadius: 0.6, offset: Offset(0.5, 0.5)),
-            Shadow(color: Color(0xCCFFFFFF), blurRadius: 0.6, offset: Offset(-0.5, 0)),
+            Shadow(
+              color: Color(0xFFFFFFFF),
+              blurRadius: 1.0,
+              offset: Offset(0, 0),
+            ),
+            Shadow(
+              color: Color(0xCCFFFFFF),
+              blurRadius: 0.5,
+              offset: Offset(0.4, 0.4),
+            ),
           ],
         ),
       ),
