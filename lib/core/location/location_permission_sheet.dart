@@ -57,9 +57,6 @@ class LocationPermissionSheet {
   }
 
   /// للسائق: موقع أثناء الاستخدام ثم «السماح طوال الوقت» إن أمكن.
-  ///
-  /// يعيد true إذا وُجدت أي صلاحية موقع كافية للبدء.
-  /// يفضّل always للخلفية؛ إن رُفضت يُسمح بالمتابعة مع whileInUse (أضعف).
   static Future<bool> ensureDriverBackgroundAccess(BuildContext context) async {
     try {
       if (!await ensurePermission(context)) return false;
@@ -69,10 +66,14 @@ class LocationPermissionSheet {
       if (!context.mounted) return false;
 
       var permission = await Geolocator.checkPermission();
+      if (!context.mounted) {
+        return permission == LocationPermission.whileInUse ||
+            permission == LocationPermission.always;
+      }
       if (permission == LocationPermission.always) return true;
 
-      // شرح قبل طلب «دائماً» (مطلوب على أندرويد 10+)
       if (permission == LocationPermission.whileInUse) {
+        if (!context.mounted) return true;
         final accept = await _confirmAction(
           context,
           title: 'الموقع أثناء القيادة',
@@ -83,13 +84,17 @@ class LocationPermissionSheet {
           confirmLabel: 'متابعة',
           cancelLabel: 'لاحقاً',
         );
-        if (!context.mounted) return permission == LocationPermission.whileInUse;
+        if (!context.mounted) return true;
 
         if (accept) {
           permission = await Geolocator.requestPermission();
-          // بعض الأجهزة تفتح الإعدادات بدل نافذة ثانية
+          if (!context.mounted) {
+            return permission == LocationPermission.whileInUse ||
+                permission == LocationPermission.always;
+          }
           if (permission != LocationPermission.always &&
               permission == LocationPermission.whileInUse) {
+            if (!context.mounted) return true;
             final openSettings = await _confirmAction(
               context,
               title: 'تفعيل الموقع في الخلفية',
