@@ -3,47 +3,32 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// نوع المعلم على خريطة المشروع (طبقة خاصة بالتطبيق فوق Mapbox).
 /// مجموعة شاملة مستوحاة من أيقونات Mapbox Maki / POI + معالم طرق محلية.
 enum MapLandmarkType {
-  // طعام ومشروبات
   restaurant,
   cafe,
   fastFood,
   bakery,
   bar,
-
-  // إقامة وسكن
   hotel,
   house,
-
-  // تسوق
   shop,
   supermarket,
   clothing,
   convenience,
   market,
-
-  // صحة
   hospital,
   medicalCenter,
   pharmacy,
   clinic,
   dentist,
-
-  // تعليم
   school,
   university,
   college,
   kindergarten,
   library,
-
-  // عبادة
   mosque,
   church,
-
-  // مالية
   bank,
   atm,
-
-  // مواصلات وبنية تحتية للطرق
   fuel,
   chargingStation,
   parking,
@@ -58,15 +43,11 @@ enum MapLandmarkType {
   crosswalk,
   tunnel,
   warningTriangle,
-
-  // خدمات عامة
   government,
   police,
   fireStation,
   postOffice,
   embassy,
-
-  // ترفيه وثقافة
   park,
   playground,
   museum,
@@ -77,8 +58,6 @@ enum MapLandmarkType {
   zoo,
   aquarium,
   attraction,
-
-  // خدمات أخرى
   carRepair,
   carRental,
   laundry,
@@ -86,7 +65,6 @@ enum MapLandmarkType {
   barber,
   beautySalon,
   toilet,
-
   other,
 }
 
@@ -353,6 +331,138 @@ extension MapLandmarkTypeX on MapLandmarkType {
     }
   }
 
+  /// تسمية فرعية بأسلوب فئات Mapbox (للعرض في اختيار النوع والبحث).
+  String get labelMapboxAr {
+    switch (this) {
+      case MapLandmarkType.restaurant:
+        return 'مطعم · طعام';
+      case MapLandmarkType.cafe:
+        return 'مقهى · مشروبات';
+      case MapLandmarkType.fastFood:
+        return 'وجبات سريعة · طعام';
+      case MapLandmarkType.bakery:
+        return 'مخبز · طعام';
+      case MapLandmarkType.bar:
+        return 'بار · مشروبات';
+      case MapLandmarkType.hotel:
+        return 'فندق · إقامة';
+      case MapLandmarkType.house:
+        return 'منزل · سكن';
+      case MapLandmarkType.shop:
+        return 'متجر · تسوق';
+      case MapLandmarkType.supermarket:
+        return 'سوبرماركت · تسوق';
+      case MapLandmarkType.clothing:
+        return 'ملابس · تسوق';
+      case MapLandmarkType.convenience:
+        return 'بقالة · تسوق';
+      case MapLandmarkType.market:
+        return 'سوق · تسوق';
+      case MapLandmarkType.hospital:
+        return 'مستشفى · صحة';
+      case MapLandmarkType.medicalCenter:
+        return 'مركز طبي · صحة';
+      case MapLandmarkType.pharmacy:
+        return 'صيدلية · صحة';
+      case MapLandmarkType.clinic:
+        return 'عيادة · صحة';
+      case MapLandmarkType.dentist:
+        return 'أسنان · صحة';
+      case MapLandmarkType.school:
+        return 'مدرسة · تعليم';
+      case MapLandmarkType.university:
+        return 'جامعة · تعليم';
+      case MapLandmarkType.college:
+        return 'كلية · تعليم';
+      case MapLandmarkType.kindergarten:
+        return 'روضة · تعليم';
+      case MapLandmarkType.library:
+        return 'مكتبة · تعليم';
+      case MapLandmarkType.mosque:
+        return 'مسجد · مكان عبادة';
+      case MapLandmarkType.church:
+        return 'كنيسة · مكان عبادة';
+      case MapLandmarkType.bank:
+        return 'بنك · مالية';
+      case MapLandmarkType.atm:
+        return 'صراف آلي · مالية';
+      case MapLandmarkType.fuel:
+        return 'محطة بنزين · مواصلات';
+      case MapLandmarkType.chargingStation:
+        return 'شحن كهربائي · مواصلات';
+      case MapLandmarkType.parking:
+        return 'موقف · مواصلات';
+      case MapLandmarkType.busStation:
+        return 'موقف حافلات · مواصلات';
+      case MapLandmarkType.trainStation:
+        return 'محطة قطار · مواصلات';
+      case MapLandmarkType.airport:
+        return 'مطار · مواصلات';
+      case MapLandmarkType.taxi:
+        return 'تاكسي · مواصلات';
+      case MapLandmarkType.roundabout:
+        return 'دوار · طريق';
+      case MapLandmarkType.trafficLight:
+        return 'إشارة مرور · طريق';
+      case MapLandmarkType.pedestrianBridge:
+        return 'جسر مشاة · طريق';
+      case MapLandmarkType.vehicleBridge:
+        return 'جسر · طريق';
+      case MapLandmarkType.crosswalk:
+        return 'ممر مشاة · طريق';
+      case MapLandmarkType.tunnel:
+        return 'نفق · طريق';
+      case MapLandmarkType.warningTriangle:
+        return 'تحذير · طريق';
+      case MapLandmarkType.government:
+        return 'حكومي · خدمات عامة';
+      case MapLandmarkType.police:
+        return 'شرطة · خدمات طوارئ';
+      case MapLandmarkType.fireStation:
+        return 'إطفاء · خدمات طوارئ';
+      case MapLandmarkType.postOffice:
+        return 'بريد · خدمات عامة';
+      case MapLandmarkType.embassy:
+        return 'سفارة · خدمات عامة';
+      case MapLandmarkType.park:
+        return 'حديقة · ترفيه';
+      case MapLandmarkType.playground:
+        return 'ملعب أطفال · ترفيه';
+      case MapLandmarkType.museum:
+        return 'متحف · ثقافة';
+      case MapLandmarkType.cinema:
+        return 'سينما · ترفيه';
+      case MapLandmarkType.gym:
+        return 'نادي رياضي · ترفيه';
+      case MapLandmarkType.stadium:
+        return 'استاد · رياضة';
+      case MapLandmarkType.beach:
+        return 'شاطئ · ترفيه';
+      case MapLandmarkType.zoo:
+        return 'حديقة حيوان · ترفيه';
+      case MapLandmarkType.aquarium:
+        return 'حوض أسماك · ترفيه';
+      case MapLandmarkType.attraction:
+        return 'معلم سياحي · جذب';
+      case MapLandmarkType.carRepair:
+        return 'ورشة · سيارات';
+      case MapLandmarkType.carRental:
+        return 'تأجير · سيارات';
+      case MapLandmarkType.laundry:
+        return 'مغسلة · خدمات';
+      case MapLandmarkType.hairdresser:
+        return 'حلاقة · خدمات';
+      case MapLandmarkType.barber:
+        return 'صالون رجال · خدمات';
+      case MapLandmarkType.beautySalon:
+        return 'صالون · خدمات';
+      case MapLandmarkType.toilet:
+        return 'دورة مياه · خدمات';
+      case MapLandmarkType.other:
+        return 'معلم · عام';
+    }
+  }
+
   static MapLandmarkType fromString(String? v) {
     switch (v) {
       case 'restaurant':
@@ -531,7 +641,6 @@ extension MapLandmarkTypeX on MapLandmarkType {
   }
 }
 
-/// حالة اعتماد المعلم.
 enum MapLandmarkStatus {
   pending,
   approved,
@@ -573,7 +682,6 @@ extension MapLandmarkStatusX on MapLandmarkStatus {
   }
 }
 
-/// معلم خاص بمشروع التطبيق — يُعرض كطبقة خاصة فوق Mapbox ولا يُنشر عالمياً.
 class MapLandmark {
   final String id;
   final String name;
