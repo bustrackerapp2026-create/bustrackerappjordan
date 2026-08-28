@@ -83,7 +83,6 @@ class MapLandmarkService {
       longitude: longitude,
       status: status,
       createdBy: createdBy,
-      source: source == 'user' ? 'user' : 'admin',
       notes: notes?.trim(),
       searchKeys: keys,
     );
@@ -155,7 +154,6 @@ class MapLandmarkService {
       final total = results[0];
       final taggedAdmin = results[1];
       final fromUsers = results[2];
-      // السجلات بدون source (قديمة) تُحسب ضمن الأدمن
       final fromAdmin = total - fromUsers;
 
       return {
