@@ -10,7 +10,7 @@ import '../../../../core/map/map_utils.dart';
 import '../../../../models/map_landmark.dart';
 import '../../../../services/map_landmark_service.dart';
 
-/// معالم الأدمن — نفس أسلوب Google Maps POI (حجم/خط/LOD).
+/// معالم الأدمن — حجم/خط/LOD بأسلوب Mapbox POI.
 mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final MapLandmarkService _landmarkService = MapLandmarkService();
   StreamSubscription<List<MapLandmark>>? _landmarksSub;
@@ -50,7 +50,8 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   void onCameraChangedForLandmarks() {
     _landmarkZoomDebounce?.cancel();
-    _landmarkZoomDebounce = Timer(const Duration(milliseconds: 160), () {
+    // تحديث أسرع أثناء التكبير/التصغير ليطابق نعومة Mapbox
+    _landmarkZoomDebounce = Timer(const Duration(milliseconds: 80), () {
       unawaited(_applyLandmarkScaleFromCamera());
     });
   }
@@ -63,7 +64,8 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
     try {
       final zoom = (await mapboxMap!.getCameraState()).zoom;
-      if (_lastLandmarkZoom >= 0 && (zoom - _lastLandmarkZoom).abs() < 0.12) {
+      // عتبة أدق لتغيير الحجم بشكل مستمر مع الزوم
+      if (_lastLandmarkZoom >= 0 && (zoom - _lastLandmarkZoom).abs() < 0.05) {
         return;
       }
       final prev = _lastLandmarkZoom;
@@ -83,6 +85,10 @@ mixin AdminLandmarksMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     for (final t in MapLandmarkType.values) {
       if (LandmarkMarkerImages.isVisibleAtZoom(t, a) !=
           LandmarkMarkerImages.isVisibleAtZoom(t, b)) {
+        return true;
+      }
+      if (LandmarkMarkerImages.showLabelAtZoom(t, a) !=
+          LandmarkMarkerImages.showLabelAtZoom(t, b)) {
         return true;
       }
     }
