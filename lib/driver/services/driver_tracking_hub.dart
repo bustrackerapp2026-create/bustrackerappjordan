@@ -31,7 +31,6 @@ class DriverTrackingHub {
 
   bool _wantOnline = false;
   bool _wantTrip = false;
-  String? _uid;
 
   DriverTrackingState get state => _lifecycle.state;
   bool get isRunning => _lifecycle.isRunning;
@@ -61,7 +60,6 @@ class DriverTrackingHub {
     required bool isOnline,
     required bool isTripActive,
   }) async {
-    _uid = uid;
     _wantOnline = isOnline;
     _wantTrip = isTripActive;
     if (!isOnline && !isTripActive) {
