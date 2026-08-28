@@ -8,17 +8,16 @@ import 'package:geolocator/geolocator.dart';
 
 /// 1) صلاحية التطبيق (نافذة النظام)
 /// 2) تفعيل GPS (نافذة Google مرة واحدة — بدون حوار تطبيق مكرر بعدها)
+/// 3) للسائق: صلاحية «دائماً» للعمل في الخلفية أثناء القيادة
 class LocationPermissionSheet {
   LocationPermissionSheet._();
 
   static const MethodChannel _locationChannel =
       MethodChannel('com.example.jordan_bus_tracker/location_service');
 
-  /// بعد فتح إعدادات الموقع: انتظر حتى تُفعَّل الخدمة بدل مهلة ثابتة قصيرة.
   static const int _servicePollAttempts = 10;
   static const Duration _servicePollInterval = Duration(milliseconds: 400);
 
-  /// يمنع استدعاءين متزامنين لـ ensureLocationService (حوار مزدوج).
   static Future<bool>? _servicePromptInFlight;
 
   static Future<bool> ensurePermission(
@@ -57,8 +56,63 @@ class LocationPermissionSheet {
     }
   }
 
+  /// للسائق: موقع أثناء الاستخدام ثم «السماح طوال الوقت» إن أمكن.
+  ///
+  /// يعيد true إذا وُجدت أي صلاحية موقع كافية للبدء.
+  /// يفضّل always للخلفية؛ إن رُفضت يُسمح بالمتابعة مع whileInUse (أضعف).
+  static Future<bool> ensureDriverBackgroundAccess(BuildContext context) async {
+    try {
+      if (!await ensurePermission(context)) return false;
+      if (!context.mounted) return false;
+
+      if (!await ensureLocationService(context)) return false;
+      if (!context.mounted) return false;
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.always) return true;
+
+      // شرح قبل طلب «دائماً» (مطلوب على أندرويد 10+)
+      if (permission == LocationPermission.whileInUse) {
+        final accept = await _confirmAction(
+          context,
+          title: 'الموقع أثناء القيادة',
+          message:
+              'ليستمر ظهورك للركاب وأنت تقود والتطبيق في الخلفية، '
+              'اختر «السماح طوال الوقت» أو «Allow all the time» في الشاشة التالية.\n\n'
+              'يمكنك الرفض والمتابعة، لكن التتبع قد يتوقف عند إغلاق الشاشة.',
+          confirmLabel: 'متابعة',
+          cancelLabel: 'لاحقاً',
+        );
+        if (!context.mounted) return permission == LocationPermission.whileInUse;
+
+        if (accept) {
+          permission = await Geolocator.requestPermission();
+          // بعض الأجهزة تفتح الإعدادات بدل نافذة ثانية
+          if (permission != LocationPermission.always &&
+              permission == LocationPermission.whileInUse) {
+            final openSettings = await _confirmAction(
+              context,
+              title: 'تفعيل الموقع في الخلفية',
+              message:
+                  'من إعدادات التطبيق → الأذونات → الموقع → «السماح طوال الوقت».',
+              confirmLabel: 'فتح الإعدادات',
+              cancelLabel: 'لاحقاً',
+            );
+            if (openSettings) await Geolocator.openAppSettings();
+          }
+        }
+      }
+
+      permission = await Geolocator.checkPermission();
+      return permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always;
+    } catch (e) {
+      debugPrint('ensureDriverBackgroundAccess: $e');
+      return false;
+    }
+  }
+
   static Future<bool> ensureLocationService(BuildContext context) async {
-    // إن كان هناك طلب جارٍ: انتظر نتيجته بدل فتح حوار ثانٍ
     final existing = _servicePromptInFlight;
     if (existing != null) {
       return existing;
@@ -82,27 +136,22 @@ class LocationPermissionSheet {
       }
 
       if (!kIsWeb && Platform.isAndroid) {
-        // نافذة النظام مرة واحدة (Google Location Settings)
         try {
           final enabled = await _locationChannel
               .invokeMethod<bool>('enableLocationService');
           if (enabled == true) return true;
           if (await Geolocator.isLocationServiceEnabled()) return true;
 
-          // تم عرض حوار النظام ورُفض أو أُغلق — لا نعرض حوار التطبيق فوراً
-          // (هذا كان سبب ظهور نافذتين ورا بعض)
           debugPrint(
             'LocationPermissionSheet: system GPS dialog dismissed; '
             'skipping secondary app dialog',
           );
           return false;
         } catch (e) {
-          // القناة غير متوفرة → نستخدم حوار التطبيق كاحتياطي وحيد
           debugPrint('enableLocationService channel: $e');
         }
       }
 
-      // iOS أو فشل القناة على Android: حوار واحد فقط ثم الإعدادات
       if (!context.mounted) return false;
       final open = await _confirmAction(
         context,
@@ -124,7 +173,6 @@ class LocationPermissionSheet {
     }
   }
 
-  /// يستطلع تفعيل خدمة الموقع حتى ~4 ثوانٍ بدل انتظار ثابت 600ms.
   static Future<bool> _waitForLocationServiceEnabled() async {
     for (var i = 0; i < _servicePollAttempts; i++) {
       if (await Geolocator.isLocationServiceEnabled()) {
