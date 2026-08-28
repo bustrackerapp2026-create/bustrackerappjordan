@@ -13,6 +13,7 @@ import '../../../../core/location/location_predictor.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../driver/providers/driver_provider.dart';
+import '../../../../driver/services/driver_tracking_hub.dart';
 import '../../../../driver/services/driver_tracking_lifecycle.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../map/utils/map_helpers.dart';
@@ -24,11 +25,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Uint8List? _cachedDriverMarkerBytes;
   final LocationService _driverLocationService = LocationService();
   final LocationPredictor _predictor = LocationPredictor();
-
-  late final DriverTrackingLifecycle _trackingLifecycle =
-      DriverTrackingLifecycle(locationService: _driverLocationService)
-        ..onPosition = _onLifecyclePosition
-        ..onStateChanged = _onTrackingStateChanged;
+  final DriverTrackingHub _hub = DriverTrackingHub.instance;
 
   Timer? _predictionTimer;
 
@@ -97,11 +94,19 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return LocationTrackingProfile.driverIdle;
   }
 
-  void _onTrackingStateChanged(DriverTrackingState state) {
-    trackingServiceState = state;
+  void attachDriverTrackingUi() {
+    _hub.mapUiHandler = _onHubPosition;
+    trackingServiceState = _hub.state;
   }
 
-  void _onLifecyclePosition(geo.Position pos) {
+  void detachDriverTrackingUi() {
+    if (_hub.mapUiHandler == _onHubPosition) {
+      _hub.mapUiHandler = null;
+    }
+    _stopPredictionLoop();
+  }
+
+  void _onHubPosition(geo.Position pos) {
     unawaited(
       _applyPosition(
         pos,
@@ -180,7 +185,8 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     setState(() => isLoadingDriverLocation = true);
 
     try {
-      final granted = await LocationPermissionSheet.ensurePermission(context);
+      final granted =
+          await LocationPermissionSheet.ensureDriverBackgroundAccess(context);
       if (!mounted) return;
       if (!granted) {
         MapUtils.showSnackBar(
@@ -261,16 +267,22 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _cachedOnline = driver.isOnline;
     _cachedTripActive = driver.isTripActive;
 
-    await _trackingLifecycle.requestStart(
+    attachDriverTrackingUi();
+
+    await _hub.requestStart(
       uid: uid,
       profile: _activeProfile,
+      isOnline: driver.isOnline,
+      isTripActive: driver.isTripActive,
     );
+    trackingServiceState = _hub.state;
     if (isMapTabActive) _startPredictionLoop();
   }
 
   Future<void> stopDriverTracking() async {
     _stopPredictionLoop();
-    await _trackingLifecycle.requestStop();
+    await _hub.requestStop();
+    trackingServiceState = _hub.state;
   }
 
   void _startPredictionLoop() {
@@ -398,14 +410,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _cachedTripActive = driver.isTripActive;
       driver.updatePosition(pos, userId: uid);
       unawaited(_maybeUploadDriverLocation(pos, force: doForce));
-    } else if (_cachedOnline || _cachedTripActive) {
-      unawaited(
-        _trackingLifecycle.uploadLocation(
-          position: pos,
-          isOnline: _cachedOnline,
-          isTripActive: _cachedTripActive,
-        ),
-      );
     }
 
     if (_pendingPosition != null && mounted) {
@@ -550,19 +554,25 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
+        // متصل أو في رحلة: نبقي التتبع — لا نوقفه عند الخلفي
         if (!_shouldTrackContinuously) {
           unawaited(stopDriverTracking());
+        } else {
+          // افصل واجهة الخريطة فقط؛ الـ hub يرفع الموقع وحده
+          detachDriverTrackingUi();
         }
         break;
       case AppLifecycleState.detached:
-        unawaited(stopDriverTracking());
+        // لا نوقف هنا إن كان متصلاً — الإيقاف عند «غير متصل» أو تسجيل الخروج
+        detachDriverTrackingUi();
         break;
     }
   }
 
+  /// عند إغلاق تبويب الخريطة فقط — لا يوقف تتبع الخلفية.
   void disposeDriverLocation() {
+    detachDriverTrackingUi();
     _stopPredictionLoop();
-    unawaited(_trackingLifecycle.dispose());
     _predictor.reset();
     _driverUserAnnotation = null;
     _pendingPosition = null;
