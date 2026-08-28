@@ -11,7 +11,6 @@ import '../../../../models/live_driver_location.dart';
 import '../../../../passenger/widgets/driver_details_sheet.dart';
 import '../../../../services/driver_public_service.dart';
 
-/// تتبع السائقين الأحياء على خريطة الراكب.
 mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final DriverPublicService _driverPublic = DriverPublicService();
 
@@ -66,11 +65,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final pending = _pendingDrivers;
       if (pending != null) unawaited(_applyDriverMarkers(pending));
     });
-  }
-
-  Future<Uint8List> _markerFor(LiveDriverLocation d) async {
-    // تفويض لـ MapUtils إن وُجدت صورة مخصصة؛ وإلا نقطة بسيطة عبر نص
-    return Uint8List(0);
   }
 
   Future<void> _applyDriverMarkers(List<LiveDriverLocation> drivers) async {
@@ -138,7 +132,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       final toRemove =
           _driverAnnotations.keys.where((id) => !seen.contains(id)).toList();
-      for (final id toRemove) {
+      for (final id in toRemove) {
         final ann = _driverAnnotations.remove(id);
         _lastDrawnPos.remove(id);
         _lastCapacity.remove(id);
