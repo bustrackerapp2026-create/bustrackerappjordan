@@ -38,118 +38,169 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return BusMarkerImages.forCapacity(d.capacity, stale: d.isStaleWarning);
   }
 
-  LiveDriverLocation? getLiveDriverData(String driverId) =>
-      _driverDataById[driverId];
+  void _safeSetDriversCount(int count) {
+    if (_liveTrackingDisposed) return;
+    try {
+      if (liveDriversCount.value != count) {
+        liveDriversCount.value = count;
+      }
+    } catch (e) {
+      debugPrint('liveDriversCount set skipped: $e');
+    }
+  }
 
   String? findDriverIdByAnnotation(PointAnnotation annotation) {
     return _annotationToDriverId[annotation.id];
   }
 
+  LiveDriverLocation? getLiveDriverData(String driverId) {
+    return _driverDataById[driverId];
+  }
+
+  List<LiveDriverLocation> get liveDriversSnapshot =>
+      List<LiveDriverLocation>.unmodifiable(_driverDataById.values);
+
   ({LiveDriverLocation driver, double meters})? findNearestDriver(
     double lat,
-    double lng, {
-    double maxMeters = 2500,
-  }) {
-    ({LiveDriverLocation driver, double meters})? best;
+    double lng,
+  ) {
+    LiveDriverLocation? best;
+    var bestMeters = double.infinity;
+
     for (final d in _driverDataById.values) {
       if (!d.hasValidCoords) continue;
-      final m = _haversine(lat, lng, d.latitude, d.longitude);
-      if (m > maxMeters) continue;
-      if (best == null || m < best.meters) {
-        best = (driver: d, meters: m);
+      if (!d.isFresh) continue;
+      final m = _distanceMeters(lat, lng, d.latitude, d.longitude);
+      final score = d.isStaleWarning ? m + 80 : m;
+      if (score < bestMeters) {
+        bestMeters = score;
+        best = d;
       }
     }
-    return best;
+
+    if (best == null) return null;
+    final real = _distanceMeters(lat, lng, best.latitude, best.longitude);
+    return (driver: best, meters: real);
   }
 
-  double _haversine(double lat1, double lng1, double lat2, double lng2) {
-    const r = 6371000.0;
-    final dLat = (lat2 - lat1) * math.pi / 180;
-    final dLng = (lng2 - lng1) * math.pi / 180;
+  double _distanceMeters(double lat1, double lng1, double lat2, double lng2) {
+    const earth = 6371000.0;
+    final dLat = _rad(lat2 - lat1);
+    final dLng = _rad(lng2 - lng1);
     final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(lat1 * math.pi / 180) *
-            math.cos(lat2 * math.pi / 180) *
+        math.cos(_rad(lat1)) *
+            math.cos(_rad(lat2)) *
             math.sin(dLng / 2) *
             math.sin(dLng / 2);
-    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earth * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
   }
 
-  void startLiveDriverTracking({String? routeFilter}) {
+  double _rad(double d) => d * math.pi / 180;
+
+  void startLiveDriverTracking({
+    String? routeFilter,
+    Set<String>? routeNames,
+  }) {
+    if (_liveTrackingDisposed || !mounted) return;
     _routeFilterForTracking = routeFilter;
+    _routeNamesForTracking = routeNames;
     _liveDriversSub?.cancel();
-    _liveDriversSub = _tracking.watchOnlineDrivers().listen(
-      (drivers) {
-        if (_liveTrackingDisposed || !mounted) return;
-        _pendingDrivers = drivers;
-        _scheduleApply();
-      },
-      onError: (e) => debugPrint('live drivers watch: $e'),
-    );
+    _liveDriversSub = _tracking
+        .watchOnlineDrivers(
+          routeFilter: routeFilter,
+          routeNames: routeNames,
+        )
+        .listen(_onDriversUpdated, onError: (e) {
+      MapUtils.log('خطأ تتبع السائقين: $e', tag: 'LiveTracking');
+    });
   }
 
   void updateLiveTrackingRouteFilter(String? route) {
-    _routeFilterForTracking = route;
-    final pending = _pendingDrivers;
-    if (pending != null) unawaited(_applyDriverMarkers(pending));
+    if (_liveTrackingDisposed) return;
+    _routeNamesForTracking = null;
+    if (_routeFilterForTracking == route && _routeNamesForTracking == null) {
+      // قد نكون في وضع متعدد الخطوط — أعد الاشتراك دائماً عند طلب خط واحد
+    }
+    startLiveDriverTracking(routeFilter: route);
   }
 
-  void updateLiveTrackingRouteNames(Set<String> names) {
-    _routeNamesForTracking = names;
+  /// عرض باصات عدة خطوط معاً (وضع «باصات من هنا»).
+  void updateLiveTrackingRouteNames(Set<String> routeNames) {
+    if (_liveTrackingDisposed) return;
+    final cleaned =
+        routeNames.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet();
+    startLiveDriverTracking(routeNames: cleaned);
   }
 
-  void _scheduleApply() {
-    _updateThrottle?.cancel();
-    _updateThrottle = Timer(const Duration(milliseconds: 280), () {
+  void _onDriversUpdated(List<LiveDriverLocation> drivers) {
+    if (_liveTrackingDisposed || !mounted) return;
+
+    for (final d in drivers) {
+      _driverDataById[d.driverId] = d;
+    }
+
+    _pendingDrivers = drivers;
+    _safeSetDriversCount(drivers.length);
+
+    if (_updateThrottle?.isActive ?? false) return;
+    _updateThrottle = Timer(const Duration(milliseconds: 500), () {
       if (_liveTrackingDisposed || !mounted) return;
       final pending = _pendingDrivers;
-      if (pending != null) unawaited(_applyDriverMarkers(pending));
+      if (pending != null) {
+        unawaited(_applyDriverMarkers(pending));
+      }
     });
   }
 
   Future<void> _applyDriverMarkers(List<LiveDriverLocation> drivers) async {
-    if (_updatingMarkers || _liveTrackingDisposed || !mounted) return;
+    if (_liveTrackingDisposed || !mounted || pointAnnotationManager == null) {
+      return;
+    }
+    if (_updatingMarkers) {
+      _pendingDrivers = drivers;
+      return;
+    }
     _updatingMarkers = true;
+
     try {
-      var list = drivers;
-      final filter = _routeFilterForTracking?.trim();
-      if (filter != null && filter.isNotEmpty) {
-        list = drivers
-            .where((d) {
-              final r = d.route?.trim() ?? '';
-              return r.isEmpty || r == filter;
-            })
-            .toList();
-      }
-      liveDriversCount.value = list.length;
+      if (_liveTrackingDisposed || !mounted) return;
+
       final seen = <String>{};
-
-      final toCreate = <LiveDriverLocation>[];
       final toUpdate = <LiveDriverLocation>[];
+      final toCreate = <LiveDriverLocation>[];
 
-      for (final d in list) {
-        if (_liveTrackingDisposed) return;
-        if (!d.hasValidCoords) continue;
+      for (final d in drivers) {
         seen.add(d.driverId);
         _driverDataById[d.driverId] = d;
-
         final existing = _driverAnnotations[d.driverId];
         final last = _lastDrawnPos[d.driverId];
-        final moved = last == null ||
-            (last.$1 - d.latitude).abs() > _minMoveThreshold ||
-            (last.$2 - d.longitude).abs() > _minMoveThreshold;
         final capacityChanged = _lastCapacity[d.driverId] != d.capacity;
-        final staleChanged = _lastStale[d.driverId] != d.isStaleWarning;
+        final staleChanged =
+            (_lastStale[d.driverId] ?? false) != d.isStaleWarning;
 
         if (existing != null && (capacityChanged || staleChanged)) {
           try {
             await pointAnnotationManager?.delete(existing);
           } catch (_) {}
-          _driverAnnotations.remove(d.driverId);
           _annotationToDriverId.remove(existing.id);
+          _driverAnnotations.remove(d.driverId);
+          _lastDrawnPos.remove(d.driverId);
+          _lastCapacity.remove(d.driverId);
+          _lastStale.remove(d.driverId);
           toCreate.add(d);
+          continue;
+        }
+
+        if (existing != null && last != null) {
+          final dLat = (d.latitude - last.$1).abs();
+          final dLng = (d.longitude - last.$2).abs();
+          if (dLat < _minMoveThreshold && dLng < _minMoveThreshold) {
+            continue;
+          }
+          toUpdate.add(d);
         } else if (existing == null) {
           toCreate.add(d);
-        } else if (moved) {
+        } else {
           toUpdate.add(d);
         }
       }
@@ -161,8 +212,9 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         await Future.wait(slice.map((d) async {
           final existing = _driverAnnotations[d.driverId];
           if (existing == null) return;
-          existing.geometry =
-              Point(coordinates: Position(d.longitude, d.latitude));
+          existing.geometry = Point(
+            coordinates: Position(d.longitude, d.latitude),
+          );
           if (d.heading != null) existing.iconRotate = d.heading;
           existing.iconSize = d.isStaleWarning ? 0.78 : 0.95;
           try {
@@ -179,8 +231,9 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           if (_liveTrackingDisposed || !mounted) return;
           final ann = await pointAnnotationManager?.create(
             PointAnnotationOptions(
-              geometry:
-                  Point(coordinates: Position(d.longitude, d.latitude)),
+              geometry: Point(
+                coordinates: Position(d.longitude, d.latitude),
+              ),
               image: image,
               iconSize: d.isStaleWarning ? 0.78 : 0.95,
               iconAnchor: IconAnchor.CENTER,
@@ -220,8 +273,13 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final pending = _pendingDrivers;
       if (!_liveTrackingDisposed &&
           mounted &&
-          pending != null) {
-        // no-op recheck reserved
+          pending != null &&
+          pending.length != drivers.length) {
+        _updateThrottle?.cancel();
+        _updateThrottle = Timer(const Duration(milliseconds: 250), () {
+          if (_liveTrackingDisposed || !mounted) return;
+          unawaited(_applyDriverMarkers(pending));
+        });
       }
     }
   }
@@ -231,7 +289,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     double? passengerLat,
     double? passengerLng,
     Future<void> Function(LiveDriverLocation driver)? onRequestBoard,
-    void Function(LiveDriverLocation driver)? onFollowBus,
   }) async {
     if (!mounted || _liveTrackingDisposed) return;
     final driver = _driverDataById[driverId];
@@ -241,13 +298,12 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black26,
+      barrierColor: Colors.black54,
       builder: (ctx) => DriverDetailsSheet(
         driver: driver,
         passengerLat: passengerLat,
         passengerLng: passengerLng,
         onRequestBoard: onRequestBoard,
-        onFollowBus: onFollowBus,
       ),
     );
   }
@@ -264,19 +320,31 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final annotations = List<PointAnnotation>.from(_driverAnnotations.values);
     _driverAnnotations.clear();
     _annotationToDriverId.clear();
+    _lastDrawnPos.clear();
+    _lastCapacity.clear();
+    _lastStale.clear();
+
     for (final ann in annotations) {
       try {
         await pointAnnotationManager?.delete(ann);
       } catch (_) {}
     }
+
+    _safeSetDriversCount(0);
   }
 
   void disposeLiveTracking() {
+    if (_liveTrackingDisposed) return;
     _liveTrackingDisposed = true;
+
     stopLiveDriverTracking();
+
     final annotations = List<PointAnnotation>.from(_driverAnnotations.values);
     _driverAnnotations.clear();
     _annotationToDriverId.clear();
+    _lastDrawnPos.clear();
+    _lastCapacity.clear();
+    _lastStale.clear();
     _driverDataById.clear();
     for (final ann in annotations) {
       unawaited(() async {
@@ -285,6 +353,7 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         } catch (_) {}
       }());
     }
+
     try {
       liveDriversCount.dispose();
     } catch (_) {}
