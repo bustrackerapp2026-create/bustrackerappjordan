@@ -28,6 +28,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final DriverTrackingHub _hub = DriverTrackingHub.instance;
 
   Timer? _predictionTimer;
+  bool _didPromptBackground = false;
 
   bool isLoadingDriverLocation = false;
   double currentDriverBearing = 0.0;
@@ -196,6 +197,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         );
         return;
       }
+      _didPromptBackground = true;
 
       var gotAnyFix = false;
 
@@ -261,6 +263,22 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (uid == null || uid.isEmpty) {
       await stopDriverTracking();
       return;
+    }
+
+    // طلب صلاحية الخلفية مرة عند بدء التتبع المستمر
+    if (!_didPromptBackground) {
+      final granted =
+          await LocationPermissionSheet.ensureDriverBackgroundAccess(context);
+      if (!mounted) return;
+      if (!granted) {
+        MapUtils.showSnackBar(
+          context,
+          '⚠️ يلزم صلاحية الموقع لمشاركة موقعك مع الركاب.',
+          isError: true,
+        );
+        return;
+      }
+      _didPromptBackground = true;
     }
 
     final driver = context.read<DriverProvider>();
@@ -554,22 +572,18 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
-        // متصل أو في رحلة: نبقي التتبع — لا نوقفه عند الخلفي
         if (!_shouldTrackContinuously) {
           unawaited(stopDriverTracking());
         } else {
-          // افصل واجهة الخريطة فقط؛ الـ hub يرفع الموقع وحده
           detachDriverTrackingUi();
         }
         break;
       case AppLifecycleState.detached:
-        // لا نوقف هنا إن كان متصلاً — الإيقاف عند «غير متصل» أو تسجيل الخروج
         detachDriverTrackingUi();
         break;
     }
   }
 
-  /// عند إغلاق تبويب الخريطة فقط — لا يوقف تتبع الخلفية.
   void disposeDriverLocation() {
     detachDriverTrackingUi();
     _stopPredictionLoop();
