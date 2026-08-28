@@ -122,7 +122,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
       liveDriversCount.value = list.length;
       final seen = <String>{};
-
       final toCreate = <LiveDriverLocation>[];
       final toUpdate = <LiveDriverLocation>[];
 
@@ -217,12 +216,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
     } finally {
       _updatingMarkers = false;
-      final pending = _pendingDrivers;
-      if (!_liveTrackingDisposed &&
-          mounted &&
-          pending != null) {
-        // no-op recheck reserved
-      }
     }
   }
 
@@ -231,7 +224,6 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     double? passengerLat,
     double? passengerLng,
     Future<void> Function(LiveDriverLocation driver)? onRequestBoard,
-    void Function(LiveDriverLocation driver)? onFollowBus,
   }) async {
     if (!mounted || _liveTrackingDisposed) return;
     final driver = _driverDataById[driverId];
@@ -241,13 +233,12 @@ mixin PassengerLiveTrackingMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black26,
+      barrierColor: Colors.black54,
       builder: (ctx) => DriverDetailsSheet(
         driver: driver,
         passengerLat: passengerLat,
         passengerLng: passengerLng,
         onRequestBoard: onRequestBoard,
-        onFollowBus: onFollowBus,
       ),
     );
   }
