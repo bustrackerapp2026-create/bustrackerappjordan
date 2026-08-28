@@ -376,7 +376,9 @@ class LandmarkMarkerImages {
       if (bd == null) return _fallbackDot(color);
 
       final pixels = bd.buffer.asUint8List();
-      final r = color.red, g = color.green, b = color.blue;
+      final r = (color.r * 255.0).round().clamp(0, 255);
+      final g = (color.g * 255.0).round().clamp(0, 255);
+      final b = (color.b * 255.0).round().clamp(0, 255);
 
       // تلوين بكسلات الرمز (الأسود/الرمادي) بلون الفئة + الحفاظ على الشفافية
       for (var i = 0; i < pixels.length; i += 4) {
