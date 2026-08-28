@@ -5,18 +5,20 @@ import 'package:flutter/material.dart';
 
 import '../../models/map_landmark.dart';
 
-/// أيقونات معالم المشروع.
-/// الأسماء بخط النظام العربي (RTL) بحجم مقروء واضح.
+/// أيقونات معالم بأسلوب قريب من Mapbox Streets / Maki POI:
+/// رمز صغير ملوّن بدون «شارة» دائرية كبيرة تميّزها عن معالم الخريطة الأصلية.
 class LandmarkMarkerImages {
   LandmarkMarkerImages._();
 
-  static const double markerSize = 96;
+  /// لوحة الرسم — صغيرة مثل رموز Mapbox
+  static const double markerSize = 56;
 
-  static const int labelTextColor = 0xFF202124;
+  /// ألوان النص كـ Mapbox label (رمادي غامق + هالة بيضاء)
+  static const int labelTextColor = 0xFF333333;
   static const int labelHaloColor = 0xFFFFFFFF;
-  static const double labelHaloWidth = 1.1;
-  static const double labelLetterSpacing = 0.01;
-  static const double labelMaxWidth = 9;
+  static const double labelHaloWidth = 1.25;
+  static const double labelLetterSpacing = 0.0;
+  static const double labelMaxWidth = 8;
 
   static final Map<MapLandmarkType, Uint8List> _iconCache = {};
   static final Map<String, Uint8List> _labeledCache = {};
@@ -100,7 +102,7 @@ class LandmarkMarkerImages {
 
   static double labelMinZoomFor(MapLandmarkType type) {
     final iconMin = minZoomFor(type);
-    return (iconMin + 0.85).clamp(13.0, 16.0);
+    return (iconMin + 0.9).clamp(13.2, 16.2);
   }
 
   static bool isVisibleAtZoom(MapLandmarkType type, double zoom) =>
@@ -109,171 +111,129 @@ class LandmarkMarkerImages {
   static bool showLabelAtZoom(MapLandmarkType type, double zoom) =>
       zoom >= labelMinZoomFor(type);
 
-  /// حجم الأيقونة فقط (بدون نص) — كما كان تقريباً
+  /// حجم أقرب لرموز Mapbox الافتراضية (أصغر من الشارة السابقة)
   static double iconSizeForZoom(double zoom) {
-    if (zoom <= 11.5) return 0.42;
-    if (zoom <= 12.5) return 0.48;
-    if (zoom <= 13.5) return 0.54;
-    if (zoom <= 14.5) return 0.60;
-    if (zoom <= 15.5) return 0.66;
-    if (zoom <= 16.5) return 0.72;
-    return 0.78;
+    if (zoom <= 11.5) return 0.55;
+    if (zoom <= 12.5) return 0.62;
+    if (zoom <= 13.5) return 0.70;
+    if (zoom <= 14.5) return 0.78;
+    if (zoom <= 15.5) return 0.86;
+    if (zoom <= 16.5) return 0.94;
+    return 1.02;
   }
 
-  /// حجم الصورة المركّبة (أيقونة + اسم) — كبير بما يكفي للقراءة
-  static double labeledIconSizeForZoom(double zoom) {
-    if (zoom <= 13.5) return 1.05;
-    if (zoom <= 15.0) return 1.18;
-    if (zoom <= 16.5) return 1.30;
-    return 1.42;
-  }
+  static double labeledIconSizeForZoom(double zoom) => iconSizeForZoom(zoom);
 
   static const double labelMinZoom = 13.5;
 
   static bool showLabelForZoom(double zoom) => zoom >= labelMinZoom;
 
-  /// حجم خط الاسم داخل الصورة (قبل التصغير على الخريطة)
-  /// قيم عالية لأن الصورة تُصغَّر بـ iconSize
+  /// حجم نص Mapbox تقريباً
   static double textSizeForZoom(double zoom) {
     if (zoom < 13.2) return 0;
-    if (zoom < 14.5) return 26.0;
-    if (zoom < 15.8) return 28.0;
-    return 30.0;
+    if (zoom < 14.5) return 11.0;
+    if (zoom < 15.8) return 12.0;
+    return 13.0;
   }
 
   static List<double> textOffsetForZoom(double zoom) {
-    final y = zoom >= 16 ? 1.15 : (zoom >= 14.5 ? 1.08 : 1.00);
+    final y = zoom >= 16 ? 1.05 : (zoom >= 14.5 ? 1.0 : 0.95);
     return [0.0, y];
   }
 
+  /// ألوان فئات قريبة من Mapbox Streets POI
   static Color colorFor(MapLandmarkType type) {
     switch (type) {
       case MapLandmarkType.restaurant:
-        return const Color(0xFFEA4335);
-      case MapLandmarkType.cafe:
-        return const Color(0xFFEA8600);
-      case MapLandmarkType.fastFood:
-        return const Color(0xFFEA8600);
-      case MapLandmarkType.bakery:
-        return const Color(0xFFEA8600);
       case MapLandmarkType.bar:
-        return const Color(0xFFEA4335);
+        return const Color(0xFFE55E5E);
+      case MapLandmarkType.cafe:
+      case MapLandmarkType.fastFood:
+      case MapLandmarkType.bakery:
+        return const Color(0xFFF0A000);
       case MapLandmarkType.hotel:
-        return const Color(0xFF7B1FA2);
+        return const Color(0xFF8B6BB5);
       case MapLandmarkType.house:
-        return const Color(0xFF5F6368);
+        return const Color(0xFF7A7A7A);
       case MapLandmarkType.shop:
-        return const Color(0xFF9C27B0);
       case MapLandmarkType.supermarket:
-        return const Color(0xFF9C27B0);
       case MapLandmarkType.clothing:
-        return const Color(0xFF9C27B0);
       case MapLandmarkType.convenience:
-        return const Color(0xFF9C27B0);
       case MapLandmarkType.market:
-        return const Color(0xFF9C27B0);
+        return const Color(0xFFAC39AC);
       case MapLandmarkType.hospital:
-        return const Color(0xFFEA4335);
       case MapLandmarkType.medicalCenter:
-        return const Color(0xFFEA4335);
       case MapLandmarkType.pharmacy:
-        return const Color(0xFFEA4335);
       case MapLandmarkType.clinic:
-        return const Color(0xFFEA4335);
       case MapLandmarkType.dentist:
-        return const Color(0xFFEA4335);
+        return const Color(0xFFE55E5E);
       case MapLandmarkType.school:
-        return const Color(0xFF1A73E8);
       case MapLandmarkType.university:
-        return const Color(0xFF1A73E8);
       case MapLandmarkType.college:
-        return const Color(0xFF1A73E8);
       case MapLandmarkType.kindergarten:
-        return const Color(0xFF1A73E8);
       case MapLandmarkType.library:
-        return const Color(0xFF1A73E8);
+        return const Color(0xFF3BB2D0);
       case MapLandmarkType.mosque:
-        return const Color(0xFF188038);
+        return const Color(0xFF56B881);
       case MapLandmarkType.church:
-        return const Color(0xFF5F6368);
+        return const Color(0xFF7A7A7A);
       case MapLandmarkType.bank:
-        return const Color(0xFF1A73E8);
       case MapLandmarkType.atm:
-        return const Color(0xFF1A73E8);
+        return const Color(0xFF4264FB);
       case MapLandmarkType.fuel:
-        return const Color(0xFFEA8600);
+        return const Color(0xFFF0A000);
       case MapLandmarkType.chargingStation:
-        return const Color(0xFF188038);
+        return const Color(0xFF56B881);
       case MapLandmarkType.parking:
-        return const Color(0xFF1A73E8);
       case MapLandmarkType.busStation:
-        return const Color(0xFF1A73E8);
       case MapLandmarkType.trainStation:
-        return const Color(0xFF1A73E8);
+        return const Color(0xFF4264FB);
       case MapLandmarkType.airport:
-        return const Color(0xFF5F6368);
+        return const Color(0xFF7A7A7A);
       case MapLandmarkType.taxi:
-        return const Color(0xFFF9AB00);
+        return const Color(0xFFF0A000);
       case MapLandmarkType.roundabout:
-        return const Color(0xFF5F6368);
-      case MapLandmarkType.trafficLight:
-        return const Color(0xFFEA4335);
-      case MapLandmarkType.pedestrianBridge:
-        return const Color(0xFF188038);
       case MapLandmarkType.vehicleBridge:
-        return const Color(0xFF5F6368);
-      case MapLandmarkType.crosswalk:
-        return const Color(0xFF188038);
       case MapLandmarkType.tunnel:
-        return const Color(0xFF5F6368);
+        return const Color(0xFF7A7A7A);
+      case MapLandmarkType.trafficLight:
+        return const Color(0xFFE55E5E);
+      case MapLandmarkType.pedestrianBridge:
+      case MapLandmarkType.crosswalk:
+        return const Color(0xFF56B881);
       case MapLandmarkType.warningTriangle:
-        return const Color(0xFFF9AB00);
+        return const Color(0xFFF0A000);
       case MapLandmarkType.government:
-        return const Color(0xFF5F6368);
-      case MapLandmarkType.police:
-        return const Color(0xFF1A73E8);
-      case MapLandmarkType.fireStation:
-        return const Color(0xFFEA4335);
       case MapLandmarkType.postOffice:
-        return const Color(0xFF5F6368);
       case MapLandmarkType.embassy:
-        return const Color(0xFF5F6368);
+        return const Color(0xFF7A7A7A);
+      case MapLandmarkType.police:
+        return const Color(0xFF4264FB);
+      case MapLandmarkType.fireStation:
+        return const Color(0xFFE55E5E);
       case MapLandmarkType.park:
-        return const Color(0xFF188038);
       case MapLandmarkType.playground:
-        return const Color(0xFF188038);
-      case MapLandmarkType.museum:
-        return const Color(0xFF7B1FA2);
-      case MapLandmarkType.cinema:
-        return const Color(0xFF7B1FA2);
       case MapLandmarkType.gym:
-        return const Color(0xFF188038);
-      case MapLandmarkType.stadium:
-        return const Color(0xFF1A73E8);
-      case MapLandmarkType.beach:
-        return const Color(0xFF1A73E8);
       case MapLandmarkType.zoo:
-        return const Color(0xFF188038);
-      case MapLandmarkType.aquarium:
-        return const Color(0xFF1A73E8);
+        return const Color(0xFF56B881);
+      case MapLandmarkType.museum:
+      case MapLandmarkType.cinema:
       case MapLandmarkType.attraction:
-        return const Color(0xFF7B1FA2);
+        return const Color(0xFF8B6BB5);
+      case MapLandmarkType.stadium:
+      case MapLandmarkType.beach:
+      case MapLandmarkType.aquarium:
+        return const Color(0xFF3BB2D0);
       case MapLandmarkType.carRepair:
-        return const Color(0xFF5F6368);
       case MapLandmarkType.carRental:
-        return const Color(0xFF5F6368);
       case MapLandmarkType.laundry:
-        return const Color(0xFF5F6368);
-      case MapLandmarkType.hairdresser:
-        return const Color(0xFFEA4335);
       case MapLandmarkType.barber:
-        return const Color(0xFF5F6368);
-      case MapLandmarkType.beautySalon:
-        return const Color(0xFFEA4335);
       case MapLandmarkType.toilet:
-        return const Color(0xFF5F6368);
       case MapLandmarkType.other:
-        return const Color(0xFF5F6368);
+        return const Color(0xFF7A7A7A);
+      case MapLandmarkType.hairdresser:
+      case MapLandmarkType.beautySalon:
+        return const Color(0xFFE55E5E);
     }
   }
 
@@ -411,7 +371,7 @@ class LandmarkMarkerImages {
   static Future<Uint8List> bytesFor(MapLandmarkType type) async {
     final hit = _iconCache[type];
     if (hit != null) return hit;
-    final bytes = await _renderIconOnly(type);
+    final bytes = await _renderMapboxStyleIcon(type);
     _iconCache[type] = bytes;
     return bytes;
   }
@@ -423,13 +383,12 @@ class LandmarkMarkerImages {
   }) async {
     final safe = name.trim();
     if (safe.isEmpty) return bytesFor(type);
-
     final sizeKey = fontSize.round();
     final cacheKey = '${type.name}_${safe.hashCode}_f$sizeKey';
     final hit = _labeledCache[cacheKey];
     if (hit != null) return hit;
-
-    final bytes = await _renderIconWithLabel(type, safe, fontSize);
+    // نفضّل أيقونة فقط + textField على الخريطة (أسلوب Mapbox)
+    final bytes = await bytesFor(type);
     if (_labeledCache.length > 200) _labeledCache.clear();
     _labeledCache[cacheKey] = bytes;
     return bytes;
@@ -446,147 +405,55 @@ class LandmarkMarkerImages {
     _labeledCache.clear();
   }
 
-  static Future<Uint8List> _renderIconOnly(MapLandmarkType type) async {
+  /// رمز POI بأسلوب Mapbox: أيقونة ملوّنة صغيرة + هالة بيضاء خفيفة للقراءة،
+  /// بدون دائرة ملونة كبيرة تبدو «مضافة من التطبيق».
+  static Future<Uint8List> _renderMapboxStyleIcon(MapLandmarkType type) async {
     const size = markerSize;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final color = colorFor(type);
-
-    const radius = 36.0;
-    const inner = 30.5;
     final center = Offset(size / 2, size / 2);
 
-    final shadow = Paint()
-      ..color = const Color(0x33000000)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.4);
-    canvas.drawCircle(center.translate(0, 1.0), radius, shadow);
+    // هالة بيضاء خفيفة خلف الرمز (مثل تباين Mapbox على الخريطة الفاتحة)
+    final halo = Paint()
+      ..color = const Color(0xF2FFFFFF)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.8);
+    canvas.drawCircle(center, 15.5, halo);
 
-    canvas.drawCircle(center, radius, Paint()..color = Colors.white);
-    canvas.drawCircle(center, inner, Paint()..color = color);
+    // ظل ناعم جداً
+    final softShadow = Paint()
+      ..color = const Color(0x22000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2);
+    canvas.drawCircle(center.translate(0, 0.6), 13.5, softShadow);
 
     final icon = iconDataFor(type);
     final tp = TextPainter(
       text: TextSpan(
         text: String.fromCharCode(icon.codePoint),
         style: TextStyle(
-          fontSize: 30,
+          fontSize: 22,
           fontFamily: icon.fontFamily,
           package: icon.fontPackage,
-          color: Colors.white,
-          fontWeight: FontWeight.w600,
+          color: color,
+          fontWeight: FontWeight.w500,
+          // حد أبيض خفيف حول الرمز
+          shadows: const [
+            Shadow(color: Color(0xFFFFFFFF), blurRadius: 1.2, offset: Offset(0, 0)),
+            Shadow(color: Color(0xCCFFFFFF), blurRadius: 0.6, offset: Offset(0.5, 0.5)),
+            Shadow(color: Color(0xCCFFFFFF), blurRadius: 0.6, offset: Offset(-0.5, 0)),
+          ],
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
+
     tp.paint(
       canvas,
-      Offset((size - tp.width) / 2, (size - tp.height) / 2 - 0.5),
+      Offset((size - tp.width) / 2, (size - tp.height) / 2),
     );
 
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
-    final bd = await image.toByteData(format: ui.ImageByteFormat.png);
-    return bd!.buffer.asUint8List();
-  }
-
-  static Future<Uint8List> _renderIconWithLabel(
-    MapLandmarkType type,
-    String name,
-    double fontSize,
-  ) async {
-    // دقة عالية حتى يبقى النص واضحاً بعد iconSize على الخريطة
-    const iconBox = 120.0;
-    final maxLabelWidth = 280.0;
-
-    final display = name.length > 22 ? '${name.substring(0, 21)}…' : name;
-
-    final namePainter = TextPainter(
-      text: TextSpan(
-        text: display,
-        style: TextStyle(
-          color: const Color(labelTextColor),
-          fontSize: fontSize,
-          fontWeight: FontWeight.w800,
-          height: 1.2,
-          shadows: const [
-            Shadow(
-              color: Color(0xFFFFFFFF),
-              blurRadius: 4,
-              offset: Offset(0, 0),
-            ),
-            Shadow(
-              color: Color(0xFFFFFFFF),
-              blurRadius: 2,
-              offset: Offset(1, 1),
-            ),
-            Shadow(
-              color: Color(0xCCFFFFFF),
-              blurRadius: 1,
-              offset: Offset(-1, 0),
-            ),
-          ],
-        ),
-      ),
-      textDirection: TextDirection.rtl,
-      textAlign: TextAlign.center,
-      maxLines: 2,
-      ellipsis: '…',
-    )..layout(maxWidth: maxLabelWidth);
-
-    final totalWidth =
-        (namePainter.width + 24).clamp(iconBox, maxLabelWidth + 16);
-    final totalHeight = iconBox + namePainter.height + 16;
-
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-
-    final color = colorFor(type);
-    final center = Offset(totalWidth / 2, iconBox / 2);
-    const radius = 44.0;
-    const inner = 37.0;
-
-    final shadow = Paint()
-      ..color = const Color(0x40000000)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
-    canvas.drawCircle(center.translate(0, 1.2), radius, shadow);
-    canvas.drawCircle(center, radius, Paint()..color = Colors.white);
-    canvas.drawCircle(center, inner, Paint()..color = color);
-
-    final icon = iconDataFor(type);
-    final iconTp = TextPainter(
-      text: TextSpan(
-        text: String.fromCharCode(icon.codePoint),
-        style: TextStyle(
-          fontSize: 38,
-          fontFamily: icon.fontFamily,
-          package: icon.fontPackage,
-          color: Colors.white,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    iconTp.paint(
-      canvas,
-      Offset(
-        center.dx - iconTp.width / 2,
-        center.dy - iconTp.height / 2 - 0.5,
-      ),
-    );
-
-    namePainter.paint(
-      canvas,
-      Offset(
-        (totalWidth - namePainter.width) / 2,
-        iconBox - 2,
-      ),
-    );
-
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(
-      totalWidth.ceil(),
-      totalHeight.ceil(),
-    );
     final bd = await image.toByteData(format: ui.ImageByteFormat.png);
     return bd!.buffer.asUint8List();
   }
