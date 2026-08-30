@@ -30,6 +30,11 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Timer? _predictionTimer;
   bool _didPromptBackground = false;
 
+  /// يُستدعى بعد نجاح بوابة الصلاحية من زر «اتصال» حتى لا تُعاد سلسلة الحوارات.
+  void markDriverLocationGatePassed() {
+    _didPromptBackground = true;
+  }
+
   bool isLoadingDriverLocation = false;
   double currentDriverBearing = 0.0;
   bool followDriverCamera = false;
@@ -265,7 +270,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       return;
     }
 
-    // طلب صلاحية الخلفية مرة عند بدء التتبع المستمر
     if (!_didPromptBackground) {
       final granted =
           await LocationPermissionSheet.ensureDriverBackgroundAccess(context);
