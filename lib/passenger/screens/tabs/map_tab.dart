@@ -1,1 +1,961 @@
-PLEASE_USE_FILE_FROM_ARTIFACTS
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
+import 'package:provider/provider.dart';
+
+import '../../../core/constants/app_constants.dart';
+import '../../../core/map/map_constants.dart';
+import '../../../core/map/map_core.dart';
+import '../../../core/map/map_landmarks_display_mixin.dart';
+import '../../../core/map/map_utils.dart';
+import '../../../core/pickup/nearest_stop_finder.dart';
+import '../../../core/pickup/pickup_point_mixin.dart';
+import '../../../core/trip/eta_utils.dart';
+import '../../../core/utils/arabic_search.dart';
+import '../../../features/auth/providers/auth_provider.dart';
+import '../../../map/widgets/search_bar_widget.dart';
+import '../../../l10n/app_localizations.dart';
+import '../../../models/live_driver_location.dart';
+import '../../../models/planned_route.dart';
+import '../../../models/trip_model.dart';
+import '../../../passenger/widgets/active_trip_banner.dart';
+import '../../../passenger/widgets/destination_search_sheet.dart';
+import '../../../passenger/widgets/passenger_live_status_bar.dart';
+import '../../../passenger/widgets/passenger_map_fabs.dart';
+import '../../../services/analytics_service.dart';
+import '../../../services/location_service.dart';
+import '../../../services/map_camera_prefs_service.dart';
+import '../../../services/nearby_routes_service.dart';
+import '../../../services/route_prefs_service.dart';
+import '../../../services/route_plan_service.dart';
+import '../../../services/trip_service.dart';
+import 'mixins/passenger_location_mixin.dart';
+import 'mixins/passenger_live_tracking_mixin.dart';
+import 'mixins/passenger_planned_routes_mixin.dart';
+
+class MapTab extends StatefulWidget {
+  const MapTab({super.key});
+
+  @override
+  State<MapTab> createState() => _MapTabState();
+}
+
+class _MapTabState extends State<MapTab>
+    with
+        WidgetsBindingObserver,
+        AutomaticKeepAliveClientMixin,
+        MapCoreMixin<MapTab>,
+        PickupPointMixin<MapTab>,
+        PassengerLocationMixin<MapTab>,
+        PassengerLiveTrackingMixin<MapTab>,
+        PassengerPlannedRoutesMixin<MapTab>,
+        MapLandmarksDisplayMixin<MapTab> {
+  String _selectedRoute = AppConstants.jordanRoutes.first;
+  bool _mapInitialized = false;
+  bool _loggedMapOpened = false;
+  bool _loggedEmptyState = false;
+  int? _lastLiveCount;
+  bool _findingNearest = false;
+  bool _findingNearby = false;
+  bool _nearbyMode = false;
+  List<String> _nearbyLineNames = const [];
+
+  PlaceSearchResult? _destination;
+
+  final TripService _tripService = TripService();
+  final NearbyRoutesService _nearbyRoutes = NearbyRoutesService();
+  StreamSubscription<List<TripModel>>? _openTripsSub;
+  TripModel? _openTrip;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  String get mapCameraPrefsRole => MapCameraPrefsService.rolePassenger;
+
+  @override
+  bool get suppressPoiTap => isAddingPickupPoint;
+
+  String get _statusRouteLabel {
+    if ((_nearbyMode || _destination != null) && _nearbyLineNames.isNotEmpty) {
+      if (_nearbyLineNames.length == 1) return _nearbyLineNames.first;
+      return '${_nearbyLineNames.length} خطوط';
+    }
+    return _selectedRoute;
+  }
+
+  String? get _nearbyHint {
+    if (_destination != null) return null;
+    if (!_nearbyMode || _nearbyLineNames.isEmpty) return null;
+    return 'الخطوط القريبة: ${_nearbyLineNames.join(' · ')}';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    preloadPassengerMarker();
+    liveDriversCount.addListener(_onLiveCountChanged);
+    _loadPreferredRoute();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _watchOpenTrips());
+  }
+
+  void _watchOpenTrips() {
+    _openTripsSub?.cancel();
+    final uid = context.read<AuthProvider>().userId;
+    if (uid == null || uid.isEmpty) return;
+    _openTripsSub = _tripService.watchPassengerOpenTrips(uid).listen((list) {
+      if (!mounted) return;
+      setState(() => _openTrip = list.isEmpty ? null : list.first);
+    }, onError: (e) {
+      debugPrint('open trips watch: $e');
+    });
+  }
+
+  Future<void> _loadPreferredRoute() async {
+    final route = await RoutePrefsService().loadPreferredRoute();
+    if (!mounted) return;
+    if (route != _selectedRoute) {
+      setState(() => _selectedRoute = route);
+      if (!_nearbyMode && _destination == null) {
+        updateLiveTrackingRouteFilter(route);
+        updatePlannedRoutesLineFilter(route);
+      }
+    }
+  }
+
+  void _onLiveCountChanged() {
+    if (_liveTrackingDisposedLike) return;
+    final count = liveDriversCount.value;
+    if (_lastLiveCount == count) return;
+    _lastLiveCount = count;
+
+    if (count == 0) {
+      if (!_loggedEmptyState) {
+        _loggedEmptyState = true;
+        AnalyticsService().noLiveBusesViewed(route: _selectedRoute);
+      }
+    } else {
+      _loggedEmptyState = false;
+      AnalyticsService().liveBusesViewed(count, route: _selectedRoute);
+    }
+  }
+
+  bool get _liveTrackingDisposedLike {
+    try {
+      liveDriversCount.value;
+      return false;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  void _onCameraChanged(CameraChangedEventData data) {
+    onCameraChangedForDebug(data);
+    onCameraChangedForDisplayLandmarks();
+  }
+
+  void _applyLineFilter(
+    List<String> names, {
+    List<PlannedRoute>? routesSnapshot,
+  }) {
+    if (names.isEmpty) return;
+    final set = names.toSet();
+    updateLiveTrackingRouteNames(set);
+    updatePlannedRoutesLineNames(set);
+    if (routesSnapshot != null && routesSnapshot.isNotEmpty) {
+      unawaited(showPlannedRoutesSnapshot(routesSnapshot));
+    }
+  }
+
+  void _clearDestination() {
+    setState(() {
+      _destination = null;
+    });
+    if (_nearbyMode && hasPassengerLocation) {
+      unawaited(_showBusesNearMe(silent: true));
+    } else {
+      setState(() {
+        _nearbyMode = false;
+        _nearbyLineNames = const [];
+      });
+      updateLiveTrackingRouteFilter(_selectedRoute);
+      updatePlannedRoutesLineFilter(_selectedRoute);
+    }
+  }
+
+  @override
+  void dispose() {
+    _openTripsSub?.cancel();
+    try {
+      liveDriversCount.removeListener(_onLiveCountChanged);
+    } catch (_) {}
+    disposeDisplayLandmarks();
+    disposePlannedRoutes();
+    disposeLiveTracking();
+    disposeMapDebug();
+    WidgetsBinding.instance.removeObserver(this);
+    disposePassengerLocation();
+    disposePickupPoints();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    onPassengerLocationLifecycle(state);
+    if (state == AppLifecycleState.resumed) {
+      if (mounted) {
+        if ((_nearbyMode || _destination != null) &&
+            _nearbyLineNames.isNotEmpty) {
+          updateLiveTrackingRouteNames(_nearbyLineNames.toSet());
+          updatePlannedRoutesLineNames(_nearbyLineNames.toSet());
+        } else {
+          startLiveDriverTracking(routeFilter: _selectedRoute);
+          startWatchingPlannedRoutes(_selectedRoute);
+        }
+        listenToDisplayLandmarks();
+        _watchOpenTrips();
+      }
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      unawaited(persistCurrentCamera());
+      stopLiveDriverTracking();
+    }
+  }
+
+  @override
+  void onStyleChanged() {
+    listenToPickupPoints();
+    if ((_nearbyMode || _destination != null) &&
+        _nearbyLineNames.isNotEmpty) {
+      updateLiveTrackingRouteNames(_nearbyLineNames.toSet());
+      updatePlannedRoutesLineNames(_nearbyLineNames.toSet());
+    } else {
+      startLiveDriverTracking(routeFilter: _selectedRoute);
+    }
+    unawaited(redrawPlannedRoutes());
+    unawaited(redrawDisplayLandmarks());
+  }
+
+  Future<void> _openDriverSheet(String driverId) async {
+    await showDriverInfoSheet(
+      driverId,
+      passengerLat: lastPassengerLat,
+      passengerLng: lastPassengerLng,
+      onRequestBoard: _requestBoard,
+    );
+  }
+
+  /// حوار تأكيد قبل إرسال طلب الصعود — يوضح نقطة الاستلام وماذا سيحدث.
+  Future<bool> _confirmBoardRequest({
+    required LiveDriverLocation driver,
+    required String pickupName,
+    required String pickupDetail,
+    required String dropoff,
+  }) async {
+    final driverLabel = driver.fullName.trim().isNotEmpty
+        ? driver.fullName.trim()
+        : 'السائق';
+    final staleWarning = driver.isStaleWarning;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'تأكيد طلب الصعود',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'سيتم إرسال طلب إلى «$driverLabel». ينتظر موافقة السائق ثم يمكنك تتبعه من البطاقة أسفل الخريطة.',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.45,
+                    color: Color(0xFF334155),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _confirmRow(
+                  icon: Icons.place_rounded,
+                  label: 'نقطة الاستلام',
+                  value: pickupName,
+                  detail: pickupDetail,
+                ),
+                const SizedBox(height: 10),
+                _confirmRow(
+                  icon: Icons.flag_rounded,
+                  label: 'الوجهة',
+                  value: dropoff,
+                ),
+                if (driver.route != null &&
+                    driver.route!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _confirmRow(
+                    icon: Icons.route_rounded,
+                    label: 'الخط',
+                    value: driver.route!.trim(),
+                  ),
+                ],
+                if (staleWarning) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFDBA74)),
+                    ),
+                    child: Text(
+                      'تنبيه: آخر تحديث لموقع السائق ${driver.updatedAgoLabel} — قد يكون غير دقيق.',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        height: 1.4,
+                        color: Color(0xFF9A3412),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F766E),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'إرسال الطلب',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    return result == true;
+  }
+
+  Widget _confirmRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    String? detail,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: const Color(0xFF0F766E)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF94A3B8),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              if (detail != null && detail.isNotEmpty)
+                Text(
+                  detail,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _requestBoard(LiveDriverLocation driver) async {
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userId;
+    if (uid == null || uid.isEmpty) {
+      if (!mounted) return;
+      MapUtils.showSnackBar(context, 'سجّل الدخول أولاً لطلب الصعود',
+          isError: true);
+      throw StateError('not logged in');
+    }
+
+    if (!hasPassengerLocation) {
+      await goToMyLocation();
+      if (!mounted) return;
+      if (!hasPassengerLocation) {
+        MapUtils.showSnackBar(
+          context,
+          'حدّد موقعك أولاً لطلب الصعود',
+          isError: true,
+        );
+        throw StateError('no location');
+      }
+    }
+
+    final lat = lastPassengerLat!;
+    final lng = lastPassengerLng!;
+
+    final nearest = await NearestStopFinder.findNearestApproved(
+      lat: lat,
+      lng: lng,
+    );
+    if (!mounted) return;
+
+    final String pickupName;
+    final double pickupLat;
+    final double pickupLng;
+    final String pickupDetail;
+
+    if (nearest != null) {
+      pickupName = nearest.stop.name;
+      pickupLat = nearest.stop.latitude;
+      pickupLng = nearest.stop.longitude;
+      pickupDetail =
+          'أقرب محطة معتمدة · ${EtaUtils.formatDistance(nearest.meters)}';
+      unawaited(flyToFlat(
+        latitude: pickupLat,
+        longitude: pickupLng,
+        zoom: 16,
+      ));
+    } else {
+      pickupName = 'موقعي الحالي';
+      pickupLat = lat;
+      pickupLng = lng;
+      pickupDetail = 'لا توجد محطة معتمدة قريبة — يُستخدم موقعك';
+    }
+
+    final dropoff = _destination?.name.trim().isNotEmpty == true
+        ? _destination!.name.trim()
+        : 'على طول الخط';
+
+    final confirmed = await _confirmBoardRequest(
+      driver: driver,
+      pickupName: pickupName,
+      pickupDetail: pickupDetail,
+      dropoff: dropoff,
+    );
+    if (!mounted) return;
+    if (!confirmed) {
+      throw StateError('cancelled');
+    }
+
+    try {
+      await _tripService.createBoardRequest(
+        passengerId: uid,
+        driverId: driver.driverId,
+        pickupPoint: pickupName,
+        pickupLat: pickupLat,
+        pickupLng: pickupLng,
+        route: driver.route ?? _selectedRoute,
+        passengerName: auth.userData?.fullName,
+        driverName: driver.fullName,
+        busNumber: driver.busNumber,
+        dropoffPoint: dropoff,
+      );
+
+      if (!mounted) return;
+      final where = nearest != null
+          ? 'محطة «$pickupName» (${EtaUtils.formatDistance(nearest.meters)})'
+          : 'موقعك الحالي';
+      MapUtils.showSnackBar(
+        context,
+        'تم إرسال طلب الصعود إلى ${driver.fullName} من $where',
+      );
+      _watchOpenTrips();
+    } catch (e) {
+      if (mounted) {
+        MapUtils.showSnackBar(
+          context,
+          'فشل إرسال الطلب. تحقق من الصلاحيات أو الاتصال.',
+          isError: true,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _cancelOpenTrip() async {
+    final trip = _openTrip;
+    final uid = context.read<AuthProvider>().userId;
+    if (trip == null || uid == null) return;
+
+    try {
+      await _tripService.cancelTripByPassenger(
+        tripId: trip.id,
+        passengerId: uid,
+      );
+      if (!mounted) return;
+      setState(() => _openTrip = null);
+      MapUtils.showSnackBar(context, 'تم إلغاء الطلب');
+    } catch (e, st) {
+      debugPrint('cancel trip failed: $e\n$st');
+      if (!mounted) return;
+      final msg = e.toString();
+      final friendly = msg.contains('permission-denied') ||
+              msg.contains('PERMISSION_DENIED')
+          ? 'صلاحيات الإلغاء غير مفعّلة. انشر firestore.rules ثم أعد المحاولة.'
+          : msg.contains('غير موجودة')
+              ? 'الطلب غير موجود أو أُلغي مسبقاً'
+              : 'تعذر إلغاء الطلب';
+      MapUtils.showSnackBar(context, friendly, isError: true);
+    }
+  }
+
+  Future<void> _focusOpenTripDriver() async {
+    final trip = _openTrip;
+    if (trip == null || trip.driverId.isEmpty) return;
+    final data = getLiveDriverData(trip.driverId);
+    if (data != null && data.hasValidCoords) {
+      await flyToFlat(
+        latitude: data.latitude,
+        longitude: data.longitude,
+        zoom: 15.5,
+      );
+      return;
+    }
+    if (!mounted) return;
+    MapUtils.showSnackBar(context, 'جاري تحديد موقع السائق...');
+  }
+
+  @override
+  void handleAnnotationTap(PointAnnotation annotation) {
+    if (!mounted) return;
+
+    final driverId = findDriverIdByAnnotation(annotation);
+    if (driverId != null) {
+      MapUtils.lightHaptic();
+      final data = getLiveDriverData(driverId);
+      AnalyticsService().driverMarkerTapped(
+        capacity: data?.capacity?.toString(),
+      );
+      unawaited(_openDriverSheet(driverId));
+      return;
+    }
+
+    final landmarkId = findDisplayLandmarkIdByAnnotation(annotation);
+    if (landmarkId != null) {
+      final m = getDisplayLandmarkById(landmarkId);
+      if (m != null) {
+        MapUtils.lightHaptic();
+        showDisplayLandmarkInfoSheet(context, m);
+      }
+      return;
+    }
+
+    final pickupId = findPickupIdByAnnotation(annotation);
+    if (pickupId != null) {
+      MapUtils.lightHaptic();
+      AnalyticsService().pickupMarkerTapped();
+      showPickupPointSheet(pickupId);
+    }
+  }
+
+  Future<void> _onMapCreated(MapboxMap map) async {
+    if (_mapInitialized) return;
+    _mapInitialized = true;
+
+    mapboxMap = map;
+    await Future.wait([
+      initAnnotationManager(),
+      initPolylineManager(),
+      applyStableGestures(),
+    ]);
+    if (!mounted) return;
+
+    await restoreInitialCamera(fallbackZoom: MapConstants.cityZoom);
+
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    if (!mounted) return;
+    await applyLabelLayersFilter();
+    if (!mounted) return;
+    listenToPickupPoints();
+    startLiveDriverTracking(routeFilter: _selectedRoute);
+    startWatchingPlannedRoutes(_selectedRoute);
+    listenToDisplayLandmarks();
+
+    if (!_loggedMapOpened) {
+      _loggedMapOpened = true;
+      AnalyticsService().passengerMapOpened();
+    }
+
+    if (mounted) setState(() => isMapReady = true);
+  }
+
+  Future<void> _onRouteChanged(String newRoute) async {
+    setState(() {
+      _selectedRoute = newRoute;
+      _nearbyMode = false;
+      _nearbyLineNames = const [];
+      _destination = null;
+    });
+    updateLiveTrackingRouteFilter(newRoute);
+    updatePlannedRoutesLineFilter(newRoute);
+    _loggedEmptyState = false;
+    MapUtils.lightHaptic();
+    AnalyticsService().routeFilterChanged(newRoute);
+    await RoutePrefsService().savePreferredRoute(newRoute);
+    if (!mounted) return;
+    MapUtils.showSnackBar(
+      context,
+      AppLocalizations.of(context).routeFiltered(newRoute),
+    );
+  }
+
+  Future<void> _onSearchSubmitted(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+
+    for (final name in AppConstants.jordanRoutes) {
+      if (ArabicSearch.matches(query: q, lineName: name)) {
+        await _onRouteChanged(name);
+        return;
+      }
+    }
+
+    try {
+      final found = await RoutePlanService().searchApprovedRoutes(q);
+      if (!mounted) return;
+      if (found.isNotEmpty) {
+        final line = found.first.lineName;
+        if (!AppConstants.jordanRoutes.contains(line)) {
+          setState(() {
+            _selectedRoute = line;
+            _nearbyMode = false;
+            _nearbyLineNames = const [];
+            _destination = null;
+          });
+          updateLiveTrackingRouteFilter(line);
+          updatePlannedRoutesLineFilter(line);
+          await RoutePrefsService().savePreferredRoute(line);
+        } else {
+          await _onRouteChanged(line);
+        }
+        if (!mounted) return;
+        final dirs = found.map((r) => r.direction.labelAr).toSet().join(' و');
+        MapUtils.showSnackBar(
+          context,
+          '🚌 $line ($dirs) — ${found.length} مسار معتمد',
+        );
+        return;
+      }
+    } catch (e) {
+      debugPrint('passenger route search: $e');
+    }
+
+    await searchPassengerPlace(q);
+  }
+
+  Future<void> _showBusesNearMe({bool silent = false}) async {
+    if (_findingNearby) return;
+    if (!silent) MapUtils.mediumHaptic();
+
+    if (!hasPassengerLocation) {
+      if (!silent) {
+        MapUtils.showSnackBar(context, 'جاري تحديد موقعك...');
+      }
+      await goToMyLocation();
+      if (!hasPassengerLocation) {
+        if (!mounted) return;
+        MapUtils.showSnackBar(
+          context,
+          'تعذر تحديد الموقع. فعّل GPS ثم أعد المحاولة',
+          isError: true,
+        );
+        return;
+      }
+    }
+
+    setState(() => _findingNearby = true);
+    try {
+      final List<NearbyLineMatch> matches;
+      if (_destination != null) {
+        matches = await _nearbyRoutes.findLinesServingTrip(
+          fromLat: lastPassengerLat!,
+          fromLng: lastPassengerLng!,
+          toLat: _destination!.latitude,
+          toLng: _destination!.longitude,
+        );
+      } else {
+        matches = await _nearbyRoutes.findNearbyLines(
+          latitude: lastPassengerLat!,
+          longitude: lastPassengerLng!,
+        );
+      }
+      if (!mounted) return;
+
+      if (matches.isEmpty) {
+        setState(() {
+          _nearbyMode = _destination == null;
+          _nearbyLineNames = const [];
+        });
+        MapUtils.showSnackBar(
+          context,
+          _destination != null
+              ? 'لا يوجد خط معتمد يمر من موقعك ويتجه نحو «${_destination!.name}».'
+              : 'لا يوجد مسار معتمد يمر قرب موقعك حالياً. سجّل مسارات من الأدمن أو السائق ثم أعد المحاولة.',
+          isError: true,
+        );
+        return;
+      }
+
+      final names = matches.map((m) => m.lineName).toList();
+      final routesSnap = matches.map((m) => m.route).toList();
+      setState(() {
+        _nearbyMode = true;
+        _nearbyLineNames = names;
+        _loggedEmptyState = false;
+      });
+
+      _applyLineFilter(names, routesSnapshot: routesSnap);
+
+      if (!silent) {
+        final linesLabel = names.take(3).join(' · ');
+        final more = names.length > 3 ? ' +${names.length - 3}' : '';
+        final msg = _destination != null
+            ? 'باصات نحو «${_destination!.name}»: $linesLabel$more'
+            : 'خطوط تمر من هنا: $linesLabel$more';
+        MapUtils.showSnackBar(context, msg);
+      }
+    } catch (e, st) {
+      debugPrint('nearby buses: $e\n$st');
+      if (!mounted) return;
+      MapUtils.showSnackBar(
+        context,
+        'تعذر جلب الخطوط. حاول لاحقاً.',
+        isError: true,
+      );
+    } finally {
+      if (mounted) setState(() => _findingNearby = false);
+    }
+  }
+
+  Future<void> _pickDestination() async {
+    MapUtils.mediumHaptic();
+    final result = await DestinationSearchSheet.show(
+      context,
+      initialQuery: _destination?.name,
+    );
+    if (!mounted || result == null) return;
+
+    setState(() => _destination = result);
+
+    unawaited(flyToFlat(
+      latitude: result.latitude,
+      longitude: result.longitude,
+      zoom: 13.5,
+    ));
+
+    await _showBusesNearMe();
+  }
+
+  Future<void> _findNearestBus() async {
+    if (_findingNearest) return;
+    MapUtils.mediumHaptic();
+
+    if (!hasPassengerLocation) {
+      MapUtils.showSnackBar(
+        context,
+        'حدّد موقعك أولاً بزر موقعي',
+        isError: true,
+      );
+      await goToMyLocation();
+      if (!hasPassengerLocation) return;
+    }
+
+    setState(() => _findingNearest = true);
+    try {
+      final result = findNearestDriver(
+        lastPassengerLat!,
+        lastPassengerLng!,
+      );
+      if (!mounted) return;
+
+      if (result == null) {
+        MapUtils.showSnackBar(
+          context,
+          _nearbyMode || _destination != null
+              ? 'لا يوجد باص حي على الخطوط الحالية'
+              : 'لا يوجد باص حي على هذا الخط حالياً',
+          isError: true,
+        );
+        return;
+      }
+
+      final meters = result.meters;
+      final distanceLabel = meters < 1000
+          ? '${meters.toStringAsFixed(0)} م'
+          : '${(meters / 1000.0).toStringAsFixed(1)} كم';
+
+      await flyToFlat(
+        latitude: result.driver.latitude,
+        longitude: result.driver.longitude,
+        zoom: 15.5,
+      );
+
+      if (!mounted) return;
+      MapUtils.showSnackBar(
+        context,
+        'أقرب باص: ${result.driver.fullName} · $distanceLabel',
+      );
+      await _openDriverSheet(result.driver.driverId);
+    } finally {
+      if (mounted) setState(() => _findingNearest = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final l10n = AppLocalizations.of(context);
+    final hasOpenTrip = _openTrip != null;
+    final bottomPad = hasOpenTrip ? 80.0 : 0.0;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        RepaintBoundary(
+          child: MapWidget(
+            key: const ValueKey('passenger_map'),
+            textureView: true,
+            onMapCreated: _onMapCreated,
+            onCameraChangeListener: _onCameraChanged,
+            styleUri: currentMapStyle,
+            // ignore: deprecated_member_use
+            onTapListener: (event) {
+              if (isAddingPickupPoint) {
+                handleAddPickupPoint(event.point);
+              } else {
+                handleMapBackgroundTap(event);
+              }
+            },
+          ),
+        ),
+        Positioned(
+          top: 16,
+          left: 16,
+          right: 16,
+          child: RepaintBoundary(
+            child: SearchBarWidget(
+              selectedRoute: _selectedRoute,
+              routes: AppConstants.jordanRoutes,
+              onRouteChanged: _onRouteChanged,
+              onSearchSubmitted: _onSearchSubmitted,
+            ),
+          ),
+        ),
+
+        // ── 1) باصات من هنا ──
+        Positioned(
+          right: PassengerMapControlPositions.nearbyRight,
+          bottom: PassengerMapControlPositions.nearbyBottom + bottomPad,
+          child: PassengerNearbyChip(
+            loading: _findingNearby,
+            active: _nearbyMode,
+            onPressed: _findingNearby ? null : () => _showBusesNearMe(),
+          ),
+        ),
+
+        // ── 2) إلى أين؟ ──
+        Positioned(
+          right: PassengerMapControlPositions.destinationRight,
+          bottom: PassengerMapControlPositions.destinationBottom + bottomPad,
+          child: PassengerDestinationChip(
+            hasDestination: _destination != null,
+            onPressed: _pickDestination,
+          ),
+        ),
+
+        // ── 3) عمود: أقرب باص · موقعي · طبقات ──
+        Positioned(
+          right: PassengerMapControlPositions.iconsRight,
+          bottom: PassengerMapControlPositions.iconsBottom + bottomPad,
+          child: PassengerMapIconColumn(
+            findingNearest: _findingNearest,
+            isLoadingLocation: isLoadingPassengerLocation,
+            onNearestBus: _findingNearest ? null : _findNearestBus,
+            onMyLocation: () {
+              MapUtils.lightHaptic();
+              goToMyLocation();
+            },
+            onMapLayers: () {
+              MapUtils.lightHaptic();
+              showMapSettingsSheet(context);
+            },
+          ),
+        ),
+
+        if (hasOpenTrip)
+          Positioned(
+            bottom: 88,
+            left: 16,
+            right: 16,
+            child: ActiveTripBanner(
+              trip: _openTrip!,
+              onCancel: _cancelOpenTrip,
+              onFocusDriver: _focusOpenTripDriver,
+            ),
+          )
+        else
+          Positioned(
+            bottom: 88,
+            left: 16,
+            right: 16,
+            child: RepaintBoundary(
+              child: ValueListenableBuilder<int>(
+                valueListenable: liveDriversCount,
+                builder: (context, count, _) {
+                  return PassengerLiveStatusBar(
+                    routeName: _statusRouteLabel,
+                    liveCount: count,
+                    l10n: l10n,
+                    nearbyMode: _nearbyMode,
+                    nearbyHint: _nearbyHint,
+                    destinationName: _destination?.name,
+                    onClearDestination:
+                        _destination != null ? _clearDestination : null,
+                    onTryNearby: (!_nearbyMode && _destination == null)
+                        ? () => _showBusesNearMe()
+                        : null,
+                  );
+                },
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
