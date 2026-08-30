@@ -1,3 +1,11 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
+
 /// صلاحيات الموقع + تفعيل GPS.
 /// مسار السائق عند «اتصال»: فحص مرة واحدة، Dialog واحد عند الحاجة، بدون ترقية whileInUse→always عبر requestPermission.
 class LocationPermissionSheet {
@@ -51,10 +59,10 @@ class LocationPermissionSheet {
   }
 
   /// بوابة اتصال السائق (مسار واحد):
-  /// - always / whileInUse → نجاح بدون Dialog (خيار whileInUse المسموح)
+  /// - always / whileInUse → نجاح بدون Dialog
   /// - denied → Dialog واحد ثم requestPermission مرة واحدة فقط
   /// - deniedForever → Dialog واحد → الإعدادات
-  /// - لا يُستدعى requestPermission لترقية whileInUse → always
+  /// - لا ترقية whileInUse → always عبر requestPermission
   static Future<bool> ensureDriverBackgroundAccess(BuildContext context) async {
     try {
       if (!await ensureLocationService(context)) return false;
@@ -82,7 +90,6 @@ class LocationPermissionSheet {
         return false;
       }
 
-      // denied (أو غير معروف): حوار واحد ثم طلب النظام مرة واحدة فقط
       if (!context.mounted) return false;
       final accept = await _confirmAction(
         context,
