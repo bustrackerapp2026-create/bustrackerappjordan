@@ -36,14 +36,15 @@ extension VehicleTripStatusX on VehicleTripStatus {
   bool get isActive => this == VehicleTripStatus.active;
 
   static VehicleTripStatus fromString(String? value) {
-    switch (value) {
+    switch (value?.trim().toLowerCase()) {
+      case 'active':
+        return VehicleTripStatus.active;
       case 'completed':
         return VehicleTripStatus.completed;
       case 'cancelled':
         return VehicleTripStatus.cancelled;
-      case 'active':
       default:
-        return VehicleTripStatus.active;
+        throw FormatException('Unknown VehicleTripStatus: $value');
     }
   }
 }
@@ -109,7 +110,7 @@ class VehicleTrip {
       driverId: map['driverId']?.toString() ?? '',
       busNumber: map['busNumber']?.toString() ?? '',
       routeId: map['routeId']?.toString() ?? '',
-      direction: _normalizeDirection(map['direction']?.toString()),
+      direction: parseDirection(map['direction']?.toString()),
       status: VehicleTripStatusX.fromString(map['status']?.toString()),
       currentLocation: _parseGeoPoint(map['currentLocation']),
       speed: (map['speed'] as num?)?.toDouble(),
@@ -140,9 +141,7 @@ class VehicleTrip {
       if (speed != null) 'speed': speed,
       if (heading != null) 'heading': heading,
       'routeProgress': null,
-      if (lastLocationAt != null)
-        'lastLocationAt': Timestamp.fromDate(lastLocationAt!)
-      else if (currentLocation != null)
+      if (currentLocation != null)
         'lastLocationAt': FieldValue.serverTimestamp(),
       'startedAt': FieldValue.serverTimestamp(),
       'endedAt': null,
@@ -207,10 +206,15 @@ class VehicleTrip {
     );
   }
 
-  static String _normalizeDirection(String? value) {
-    final v = (value ?? '').trim().toLowerCase();
-    if (v == 'return' || v == 'returntrip' || v == 'إياب') return 'return';
-    return 'outbound';
+  static String parseDirection(String? value) {
+    switch (value?.trim().toLowerCase()) {
+      case 'outbound':
+        return 'outbound';
+      case 'return':
+        return 'return';
+      default:
+        throw FormatException('Unknown VehicleTrip direction: $value');
+    }
   }
 
   static GeoPoint? _parseGeoPoint(dynamic value) {

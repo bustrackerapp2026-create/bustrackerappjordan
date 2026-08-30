@@ -29,6 +29,9 @@ class VehicleTripService {
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection('vehicleTrips');
 
+  CollectionReference<Map<String, dynamic>> get _driverLocks =>
+      _db.collection('vehicleTripDriverLocks');
+
   static const Duration _defaultTimeout = Duration(seconds: 12);
   static const int _maxRetries = 3;
 
@@ -44,7 +47,7 @@ class VehicleTripService {
       try {
         return await operation().timeout(timeout);
       } catch (e) {
-        if (e is VehicleTripServiceException) rethrow;
+        if (e is VehicleTripServiceException || e is FormatException) rethrow;
         if (e is FirebaseException &&
             (e.code == 'permission-denied' || e.code == 'not-found')) {
           throw _mapFirebaseError(e);
@@ -124,19 +127,9 @@ class VehicleTripService {
       throw const VehicleTripServiceException('معرف المسار مطلوب.');
     }
 
-    final normalizedDirection = direction.trim().toLowerCase() == 'return'
-        ? 'return'
-        : 'outbound';
-
-    final existing = await findActiveTripForDriver(driverId);
-    if (existing != null) {
-      throw VehicleTripServiceException(
-        'لديك رحلة تشغيلية نشطة بالفعل (${existing.id}). أنهِها قبل بدء رحلة جديدة.',
-        code: 'already-active',
-      );
-    }
-
+    final normalizedDirection = _parseDirectionForStart(direction);
     final docRef = _col.doc();
+    final lockRef = _driverLocks.doc(driverId);
     final trip = VehicleTrip(
       id: docRef.id,
       driverId: driverId,
@@ -147,14 +140,47 @@ class VehicleTripService {
       currentLocation: currentLocation,
       speed: speed,
       heading: heading,
-      lastLocationAt: currentLocation != null ? DateTime.now() : null,
     );
 
     await _withRetryAndTimeout(() async {
-      await docRef.set(trip.toCreateMap());
+      await _db.runTransaction((transaction) async {
+        final lockSnap = await transaction.get(lockRef);
+        if (lockSnap.exists) {
+          final existingId = lockSnap.data()?['tripId']?.toString();
+          throw VehicleTripServiceException(
+            existingId == null || existingId.isEmpty
+                ? 'لديك رحلة تشغيلية نشطة بالفعل. أنهِها قبل بدء رحلة جديدة.'
+                : 'لديك رحلة تشغيلية نشطة بالفعل ($existingId). أنهِها قبل بدء رحلة جديدة.',
+            code: 'already-active',
+          );
+        }
+
+        transaction.set(lockRef, {
+          'driverId': driverId,
+          'tripId': docRef.id,
+          'status': VehicleTripStatus.active.firestoreValue,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        transaction.set(docRef, trip.toCreateMap());
+      });
     });
 
     return trip;
+  }
+
+  VehicleTripServiceException _invalidDirection(String value) =>
+      VehicleTripServiceException(
+        'اتجاه الرحلة غير صالح: $value. استخدم outbound أو return.',
+        code: 'invalid-direction',
+      );
+
+  String _parseDirectionForStart(String value) {
+    try {
+      return VehicleTrip.parseDirection(value);
+    } on FormatException {
+      throw _invalidDirection(value);
+    }
   }
 
   /// إنهاء رحلة تشغيلية (ACTIVE → COMPLETED).
@@ -194,40 +220,46 @@ class VehicleTripService {
     }
 
     await _withRetryAndTimeout(() async {
-      final docRef = _col.doc(tripId);
-      final snap = await docRef.get();
-      if (!snap.exists || snap.data() == null) {
-        throw const VehicleTripServiceException(
-          'الرحلة التشغيلية غير موجودة.',
-          code: 'not-found',
-        );
-      }
+      await _db.runTransaction((transaction) async {
+        final docRef = _col.doc(tripId);
+        final lockRef = _driverLocks.doc(driverId);
+        final snap = await transaction.get(docRef);
+        final lockSnap = await transaction.get(lockRef);
+        if (!snap.exists || snap.data() == null) {
+          throw const VehicleTripServiceException(
+            'الرحلة التشغيلية غير موجودة.',
+            code: 'not-found',
+          );
+        }
 
-      final data = snap.data()!;
-      final tripDriverId = data['driverId']?.toString() ?? '';
-      if (tripDriverId != driverId) {
-        throw const VehicleTripServiceException(
-          'غير مصرح لك بتعديل هذه الرحلة التشغيلية.',
-          code: 'permission-denied',
-        );
-      }
+        final data = snap.data()!;
+        final tripDriverId = data['driverId']?.toString() ?? '';
+        if (tripDriverId != driverId) {
+          throw const VehicleTripServiceException(
+            'غير مصرح لك بتعديل هذه الرحلة التشغيلية.',
+            code: 'permission-denied',
+          );
+        }
 
-      final current =
-          VehicleTripStatusX.fromString(data['status']?.toString());
-      if (current.isTerminal) {
-        // رحلة منتهية بالفعل — لا نرمي خطأ (idempotent).
-        return;
-      }
-      if (current != VehicleTripStatus.active) {
-        throw VehicleTripServiceException(
-          'لا يمكن تحويل الرحلة من ${current.firestoreValue} إلى ${target.firestoreValue}.',
-        );
-      }
+        final current =
+            VehicleTripStatusX.fromString(data['status']?.toString());
+        final lockTripId = lockSnap.data()?['tripId']?.toString();
+        if (current.isTerminal) {
+          if (lockTripId == tripId) transaction.delete(lockRef);
+          return;
+        }
+        if (current != VehicleTripStatus.active) {
+          throw VehicleTripServiceException(
+            'لا يمكن تحويل الرحلة من ${current.firestoreValue} إلى ${target.firestoreValue}.',
+          );
+        }
 
-      await docRef.update({
-        'status': target.firestoreValue,
-        'endedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
+        transaction.update(docRef, {
+          'status': target.firestoreValue,
+          'endedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        if (lockTripId == tripId) transaction.delete(lockRef);
       });
     });
   }
