@@ -33,7 +33,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final List<List<RoutePoint>> _roadSegments = [];
 
   PolylineAnnotation? _drawLine;
-  final List<PointAnnotation> _drawPointMarkers = [];
+
+  /// نقاط الرسم كدوائر (بدون PointAnnotation/icon الافتراضي).
+  CircleAnnotationManager? _drawCircleManager;
+  final List<CircleAnnotation> _drawPointMarkers = [];
 
   /// يمنع تداخل معالجة نقرات متعددة في القسم الحرج فقط
   /// (إضافة نقطة + مقطع مؤقت)، دون انتظار Directions.
@@ -76,6 +79,16 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
 
     return out;
+  }
+
+  Future<void> _ensureDrawCircleManager() async {
+    if (_drawCircleManager != null || mapboxMap == null) return;
+    try {
+      _drawCircleManager =
+          await mapboxMap!.annotations.createCircleAnnotationManager();
+    } catch (e) {
+      MapUtils.log('draw circle manager: $e', tag: 'AdminDraw');
+    }
   }
 
   void startDrawingRoute() {
@@ -128,7 +141,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     for (final marker in _drawPointMarkers) {
       try {
-        await pointAnnotationManager?.delete(marker);
+        await _drawCircleManager?.delete(marker);
       } catch (_) {}
     }
 
@@ -170,21 +183,27 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       _drawPoints.add(snapped);
 
-      if (pointAnnotationManager != null) {
-        try {
-          final marker = await pointAnnotationManager!.create(
-            PointAnnotationOptions(
+      try {
+        await _ensureDrawCircleManager();
+        final manager = _drawCircleManager;
+        if (manager != null) {
+          final marker = await manager.create(
+            CircleAnnotationOptions(
               geometry: Point(
                 coordinates: Position(snapped.longitude, snapped.latitude),
               ),
-              iconSize: 0.6,
+              circleRadius: 7.0,
+              circleColor: 0xFF7C3AED,
+              circleStrokeColor: 0xFFFFFFFF,
+              circleStrokeWidth: 1.5,
+              circleOpacity: 1.0,
             ),
           );
           if (session != _drawSession) return;
           _drawPointMarkers.add(marker);
-        } catch (e) {
-          MapUtils.log('draw point marker: $e', tag: 'AdminDraw');
         }
+      } catch (e) {
+        MapUtils.log('draw point marker: $e', tag: 'AdminDraw');
       }
 
       if (_drawPoints.length < 2) {
@@ -335,9 +354,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final lastMarker = _drawPointMarkers.removeLast();
 
       try {
-        await pointAnnotationManager?.delete(
-          lastMarker,
-        );
+        await _drawCircleManager?.delete(lastMarker);
       } catch (_) {}
     }
 
@@ -500,6 +517,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _roadSegments.clear();
     _drawLine = null;
     _drawPointMarkers.clear();
+    _drawCircleManager = null;
 
     isDrawingRoute = false;
     isSnappingSegment = false;
