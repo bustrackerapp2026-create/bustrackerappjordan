@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/user_roles.dart';
 import '../../../services/firestore_service.dart';
+import '../../../services/map_landmark_service.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../widgets/verify_drivers/verify_drivers_models.dart';
 import '../../widgets/verify_drivers/verify_drivers_widgets.dart';
@@ -46,10 +47,12 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
     final results = await Future.wait([
       _firestoreService.getAllUsersStats(),
       _firestoreService.getPickupPointsStats(),
+      MapLandmarkService().getStats(useFallback: true),
     ]);
 
-    final usersStats = results[0];
-    final pointsStats = results[1];
+    final usersStats = results[0] as Map;
+    final pointsStats = results[1] as Map;
+    final landmarksStats = results[2] as Map;
 
     return {
       ...usersStats,
@@ -69,6 +72,12 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
       'active_passengers': _toInt(usersStats['active_passengers']),
       'active_services': _toInt(usersStats['active_services']),
       'active_others': _toInt(usersStats['active_others']),
+      'landmarks_total': _toInt(landmarksStats['total']),
+      'landmarks_from_admin': _toInt(landmarksStats['fromAdmin']),
+      'landmarks_from_users': _toInt(landmarksStats['fromUsers']),
+      'landmarks_approved': _toInt(landmarksStats['approved']),
+      'landmarks_pending': _toInt(landmarksStats['pending']),
+      'landmarks_text_labels': _toInt(landmarksStats['textLabels']),
     };
   }
 
@@ -198,14 +207,14 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
                                   l10n.labelServices,
                                   _toInt(stats['active_services']),
                                   Colors.purple.shade700,
-                                  Icons.local_taxi,
+                                  Icons.alt_route,
                                   'active_services',
                                 ),
                                 VerifyDriversStatItem(
                                   l10n.labelOthers,
                                   _toInt(stats['active_others']),
-                                  Colors.blueGrey,
-                                  Icons.more_horiz,
+                                  Colors.blueGrey.shade700,
+                                  Icons.people_outline,
                                   'active_others',
                                 ),
                               ],
@@ -215,14 +224,14 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
                               sectionId: 'drivers',
                               title: l10n.driverRequestsStatus,
                               icon: Icons.verified_user_outlined,
-                              iconColor: Colors.indigo.shade700,
+                              iconColor: const Color(0xFF059669),
                               liveLabel: l10n.live,
                               items: [
                                 VerifyDriversStatItem(
                                   l10n.labelPending,
                                   _toInt(stats['pending']),
                                   Colors.amber.shade900,
-                                  Icons.hourglass_top,
+                                  Icons.pending_actions,
                                   'pending',
                                 ),
                                 VerifyDriversStatItem(
@@ -238,6 +247,58 @@ class _VerifyDriversTabState extends State<VerifyDriversTab> {
                                   colorScheme.error,
                                   Icons.gpp_bad,
                                   'rejected',
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            VerifyDriversCompactSectionCard(
+                              sectionId: 'landmarks',
+                              title: 'إحصائيات المعالم',
+                              icon: Icons.location_city_outlined,
+                              iconColor: Colors.deepPurple,
+                              liveLabel: l10n.live,
+                              items: [
+                                VerifyDriversStatItem(
+                                  'إجمالي المعالم',
+                                  _toInt(stats['landmarks_total']),
+                                  Colors.deepPurple,
+                                  Icons.place,
+                                  'landmarks_total',
+                                ),
+                                VerifyDriversStatItem(
+                                  'من الأدمن',
+                                  _toInt(stats['landmarks_from_admin']),
+                                  Colors.indigo,
+                                  Icons.admin_panel_settings_outlined,
+                                  'landmarks_from_admin',
+                                ),
+                                VerifyDriversStatItem(
+                                  'من المستخدمين',
+                                  _toInt(stats['landmarks_from_users']),
+                                  Colors.cyan.shade700,
+                                  Icons.person_pin_circle_outlined,
+                                  'landmarks_from_users',
+                                ),
+                                VerifyDriversStatItem(
+                                  'معتمدة',
+                                  _toInt(stats['landmarks_approved']),
+                                  const Color(0xFF059669),
+                                  Icons.check_circle_outline,
+                                  'landmarks_approved',
+                                ),
+                                VerifyDriversStatItem(
+                                  'قيد المراجعة',
+                                  _toInt(stats['landmarks_pending']),
+                                  Colors.amber.shade900,
+                                  Icons.hourglass_top_rounded,
+                                  'landmarks_pending',
+                                ),
+                                VerifyDriversStatItem(
+                                  'أسماء شوارع / تسميات',
+                                  _toInt(stats['landmarks_text_labels']),
+                                  Colors.brown,
+                                  Icons.label_outline,
+                                  'landmarks_text_labels',
                                 ),
                               ],
                             ),

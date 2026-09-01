@@ -13,6 +13,7 @@ import '../../../../core/location/location_predictor.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../driver/providers/driver_provider.dart';
+import '../../../../driver/services/driver_tracking_hub.dart';
 import '../../../../driver/services/driver_tracking_lifecycle.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../map/utils/map_helpers.dart';
@@ -24,13 +25,10 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Uint8List? _cachedDriverMarkerBytes;
   final LocationService _driverLocationService = LocationService();
   final LocationPredictor _predictor = LocationPredictor();
-
-  late final DriverTrackingLifecycle _trackingLifecycle =
-      DriverTrackingLifecycle(locationService: _driverLocationService)
-        ..onPosition = _onLifecyclePosition
-        ..onStateChanged = _onTrackingStateChanged;
+  final DriverTrackingHub _hub = DriverTrackingHub.instance;
 
   Timer? _predictionTimer;
+  bool _didPromptBackground = false;
 
   bool isLoadingDriverLocation = false;
   double currentDriverBearing = 0.0;
@@ -97,11 +95,19 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return LocationTrackingProfile.driverIdle;
   }
 
-  void _onTrackingStateChanged(DriverTrackingState state) {
-    trackingServiceState = state;
+  void attachDriverTrackingUi() {
+    _hub.mapUiHandler = _onHubPosition;
+    trackingServiceState = _hub.state;
   }
 
-  void _onLifecyclePosition(geo.Position pos) {
+  void detachDriverTrackingUi() {
+    if (_hub.mapUiHandler == _onHubPosition) {
+      _hub.mapUiHandler = null;
+    }
+    _stopPredictionLoop();
+  }
+
+  void _onHubPosition(geo.Position pos) {
     unawaited(
       _applyPosition(
         pos,
@@ -180,7 +186,8 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     setState(() => isLoadingDriverLocation = true);
 
     try {
-      final granted = await LocationPermissionSheet.ensurePermission(context);
+      final granted =
+          await LocationPermissionSheet.ensureDriverBackgroundAccess(context);
       if (!mounted) return;
       if (!granted) {
         MapUtils.showSnackBar(
@@ -190,6 +197,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         );
         return;
       }
+      _didPromptBackground = true;
 
       var gotAnyFix = false;
 
@@ -257,20 +265,42 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       return;
     }
 
+    // طلب صلاحية الخلفية مرة عند بدء التتبع المستمر
+    if (!_didPromptBackground) {
+      final granted =
+          await LocationPermissionSheet.ensureDriverBackgroundAccess(context);
+      if (!mounted) return;
+      if (!granted) {
+        MapUtils.showSnackBar(
+          context,
+          '⚠️ يلزم صلاحية الموقع لمشاركة موقعك مع الركاب.',
+          isError: true,
+        );
+        return;
+      }
+      _didPromptBackground = true;
+    }
+
     final driver = context.read<DriverProvider>();
     _cachedOnline = driver.isOnline;
     _cachedTripActive = driver.isTripActive;
 
-    await _trackingLifecycle.requestStart(
+    attachDriverTrackingUi();
+
+    await _hub.requestStart(
       uid: uid,
       profile: _activeProfile,
+      isOnline: driver.isOnline,
+      isTripActive: driver.isTripActive,
     );
+    trackingServiceState = _hub.state;
     if (isMapTabActive) _startPredictionLoop();
   }
 
   Future<void> stopDriverTracking() async {
     _stopPredictionLoop();
-    await _trackingLifecycle.requestStop();
+    await _hub.requestStop();
+    trackingServiceState = _hub.state;
   }
 
   void _startPredictionLoop() {
@@ -398,14 +428,6 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _cachedTripActive = driver.isTripActive;
       driver.updatePosition(pos, userId: uid);
       unawaited(_maybeUploadDriverLocation(pos, force: doForce));
-    } else if (_cachedOnline || _cachedTripActive) {
-      unawaited(
-        _trackingLifecycle.uploadLocation(
-          position: pos,
-          isOnline: _cachedOnline,
-          isTripActive: _cachedTripActive,
-        ),
-      );
     }
 
     if (_pendingPosition != null && mounted) {
@@ -552,17 +574,19 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       case AppLifecycleState.paused:
         if (!_shouldTrackContinuously) {
           unawaited(stopDriverTracking());
+        } else {
+          detachDriverTrackingUi();
         }
         break;
       case AppLifecycleState.detached:
-        unawaited(stopDriverTracking());
+        detachDriverTrackingUi();
         break;
     }
   }
 
   void disposeDriverLocation() {
+    detachDriverTrackingUi();
     _stopPredictionLoop();
-    unawaited(_trackingLifecycle.dispose());
     _predictor.reset();
     _driverUserAnnotation = null;
     _pendingPosition = null;
