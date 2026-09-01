@@ -233,19 +233,24 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final b = to;
 
     try {
-      final road = await _drawRouteService.getDrivingPath(from: a, to: b);
+      // الرسم الحي: هندسة الطريق فقط — بدون stitch إلى نقاط النقر
+      final road = await _drawRouteService.getDrivingPath(
+        from: a,
+        to: b,
+        attachControlEndpoints: false,
+      );
       if (!mounted || session != _drawSession) return;
       if (idx >= _roadSegments.length) return;
 
       final List<RoutePoint> pinned;
       if (road.length >= 2) {
         pinned = List<RoutePoint>.from(road);
+        // ربط أول نقطة بنهاية المقطع السابق فقط — لا تفرض b
         if (idx > 0 &&
             idx - 1 < _roadSegments.length &&
             _roadSegments[idx - 1].isNotEmpty) {
           pinned[0] = _roadSegments[idx - 1].last;
         }
-        pinned[pinned.length - 1] = b;
       } else {
         pinned = [a, b];
       }
