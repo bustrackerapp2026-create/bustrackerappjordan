@@ -35,6 +35,16 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PolylineAnnotation? _drawLine;
   final List<PointAnnotation> _drawPointMarkers = [];
 
+  /// يمنع تداخل معالجة نقرات متعددة في القسم الحرج فقط
+  /// (إضافة نقطة + مقطع مؤقت)، دون انتظار Directions.
+  bool _tapLocked = false;
+
+  /// جيل جلسة الرسم — يزيد عند start/cancel/clear.
+  int _drawSession = 0;
+
+  /// تسلسل إعادة رسم الخط — يمنع نتيجة redraw قديمة من الكتابة فوق أحدث.
+  int _lineRedrawSeq = 0;
+
   /// المسار المعروض فعلياً على الخريطة.
   ///
   /// إذا لم توجد مقاطع طرق محسوبة بعد، نعرض نقاط التحكم نفسها.
@@ -63,6 +73,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   void startDrawingRoute() {
     if (!mounted) return;
 
+    _drawSession++;
+    _lineRedrawSeq++;
+    _tapLocked = false;
+
     setState(() {
       isDrawingRoute = true;
       isSnappingSegment = false;
@@ -80,6 +94,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   Future<void> cancelDrawingRoute() async {
     if (!mounted) return;
+
+    _drawSession++;
+    _lineRedrawSeq++;
+    _tapLocked = false;
 
     setState(() {
       isDrawingRoute = false;
@@ -120,181 +138,123 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   /// - إذا نجحت: نستبدل المقطع المؤقت بالمسار الحقيقي.
   /// - إذا فشلت: نبقي المقطع المباشر.
   Future<void> onDrawRouteMapTap(Point point) async {
-    if (!isDrawingRoute || !mounted || isSnappingSegment) return;
+    if (!isDrawingRoute || !mounted || _tapLocked) return;
 
     final lat = point.coordinates.lat.toDouble();
     final lng = point.coordinates.lng.toDouble();
+    final raw = RoutePoint(latitude: lat, longitude: lng);
 
-    final raw = RoutePoint(
-      latitude: lat,
-      longitude: lng,
-    );
+    _tapLocked = true;
+    setState(() => isSnappingSegment = true);
 
-    setState(() {
-      isSnappingSegment = true;
-    });
+    final session = _drawSession;
+    int? segmentIndex;
+    RoutePoint? from;
+    RoutePoint? to;
 
     try {
-      // لا نعتمد على Map Matching لنقطة منفردة.
-      // snapPointToRoad في RoutePlanMapbox أصبحت تعيد النقطة
-      // الأصلية عندما لا توجد نافذة متعددة النقاط.
+      // لا Map Matching لنقطة منفردة — يعيد النقطة كما هي.
       final snapped = await _drawRouteService.snapPointToRoad(raw);
+      if (!mounted || session != _drawSession) return;
 
-      if (!mounted) return;
-
-      // منع النقاط المتقاربة جداً.
       if (_drawPoints.isNotEmpty) {
         final last = _drawPoints.last;
-
         final distance = _haversineMeters(
           last.latitude,
           last.longitude,
           snapped.latitude,
           snapped.longitude,
         );
-
         if (distance < 15) {
-          MapUtils.showSnackBar(
-            context,
-            'النقطة قريبة جداً من السابقة',
-          );
+          MapUtils.showSnackBar(context, 'النقطة قريبة جداً من السابقة');
           return;
         }
       }
 
-      // حفظ النقطة الجديدة أولاً.
       _drawPoints.add(snapped);
 
-      // إنشاء Marker للنقطة.
       if (pointAnnotationManager != null) {
         try {
           final marker = await pointAnnotationManager!.create(
             PointAnnotationOptions(
               geometry: Point(
-                coordinates: Position(
-                  snapped.longitude,
-                  snapped.latitude,
-                ),
+                coordinates: Position(snapped.longitude, snapped.latitude),
               ),
               iconSize: 0.6,
             ),
           );
-
+          if (session != _drawSession) return;
           _drawPointMarkers.add(marker);
         } catch (e) {
-          MapUtils.log(
-            'draw point marker: $e',
-            tag: 'AdminDraw',
-          );
+          MapUtils.log('draw point marker: $e', tag: 'AdminDraw');
         }
       }
 
-      // لا يوجد مقطع مع النقطة الأولى.
+      // النقطة الأولى فقط — لا مقطع بعد.
       if (_drawPoints.length < 2) {
         await _redrawDrawLine();
-        if (mounted) {
-          setState(() {});
-        }
+        if (mounted) setState(() {});
         return;
       }
 
-      final from = _drawPoints[_drawPoints.length - 2];
-      final to = _drawPoints.last;
+      from = _drawPoints[_drawPoints.length - 2];
+      to = _drawPoints.last;
 
-      // ============================================================
-      // المرحلة 1: رسم فوري
-      // ============================================================
-      //
-      // لا ننتظر Mapbox.
-      //
-      // نضع المقطع المباشر مؤقتاً حتى يظهر للمستخدم فوراً.
-      // سيتم استبداله بمسار الطرق بعد عودة Directions.
-      final segmentIndex = _roadSegments.length;
-
-      _roadSegments.add([
-        from,
-        to,
-      ]);
-
+      // مرحلة 1: مقطع مؤقت فوري (لا ينتظر الشبكة).
+      segmentIndex = _roadSegments.length;
+      _roadSegments.add([from, to]);
       await _redrawDrawLine();
-
-      if (mounted) {
-        setState(() {});
-      }
-
-      // ============================================================
-      // المرحلة 2: تحسين المقطع بواسطة Directions
-      // ============================================================
-      final road = await _drawRouteService.getDrivingPath(
-        from: from,
-        to: to,
-      );
-
-      if (!mounted) return;
-
-      // تأكد أن المقطع الذي سنستبدله ما زال هو آخر مقطع.
-      //
-      // حالياً isSnappingSegment يمنع إضافة نقطة جديدة أثناء
-      // معالجة الطلب، لذلك هذا هو الوضع المتوقع دائماً.
-      if (segmentIndex < _roadSegments.length) {
-        if (road.length >= 2) {
-          _roadSegments[segmentIndex] = road;
-        } else {
-          // فشل Directions:
-          // نحتفظ بالمقطع المباشر بدلاً من إخفائه.
-          _roadSegments[segmentIndex] = [
-            from,
-            to,
-          ];
-        }
-      }
-
-      // تحديث الخط بعد وصول نتيجة الطريق.
-      await _redrawDrawLine();
-
-      if (mounted) {
-        setState(() {});
-      }
+      if (mounted) setState(() {});
     } catch (e) {
-      MapUtils.log(
-        'draw tap: $e',
-        tag: 'AdminDraw',
-      );
-
-      // إذا حدث خطأ بعد إضافة النقطة، لا نحذف النقطة.
-      // وإذا كان هناك مقطع أخير، نضمن بقاء خط مباشر بين الطرفين.
+      MapUtils.log('draw tap: $e', tag: 'AdminDraw');
       if (mounted && _drawPoints.length >= 2) {
-        final from = _drawPoints[_drawPoints.length - 2];
-        final to = _drawPoints.last;
-
+        final a = _drawPoints[_drawPoints.length - 2];
+        final b = _drawPoints.last;
         if (_roadSegments.length < _drawPoints.length - 1) {
-          _roadSegments.add([
-            from,
-            to,
-          ]);
+          _roadSegments.add([a, b]);
         }
-
         await _redrawDrawLine();
-
         MapUtils.showSnackBar(
           context,
           'تمت إضافة النقطة، لكن تعذر تحسين المقطع بالطريق',
           isError: true,
         );
-
         setState(() {});
       } else if (mounted) {
-        MapUtils.showSnackBar(
-          context,
-          'تعذر إضافة النقطة',
-          isError: true,
-        );
+        MapUtils.showSnackBar(context, 'تعذر إضافة النقطة', isError: true);
       }
     } finally {
+      // حرر القفل فوراً بعد الرسم المؤقت حتى لا تُحجب النقطة التالية
+      // أثناء انتظار Directions (سبب تأخر ظهور 1→2 ثم ظهور المسار من 3).
+      _tapLocked = false;
       if (mounted) {
-        setState(() {
-          isSnappingSegment = false;
-        });
+        setState(() => isSnappingSegment = false);
+      }
+    }
+
+    // مرحلة 2: Directions في الخلفية مع حماية الجيل/الفهرس.
+    if (segmentIndex == null || from == null || to == null) return;
+    if (session != _drawSession) return;
+
+    final idx = segmentIndex;
+    final a = from;
+    final b = to;
+
+    try {
+      final road = await _drawRouteService.getDrivingPath(from: a, to: b);
+      if (!mounted || session != _drawSession) return;
+      if (idx >= _roadSegments.length) return;
+
+      _roadSegments[idx] = road.length >= 2 ? road : [a, b];
+      await _redrawDrawLine();
+      if (mounted) setState(() {});
+    } catch (e) {
+      MapUtils.log('draw segment directions: $e', tag: 'AdminDraw');
+      if (!mounted || session != _drawSession) return;
+      if (idx < _roadSegments.length) {
+        _roadSegments[idx] = [a, b];
+        await _redrawDrawLine();
+        if (mounted) setState(() {});
       }
     }
   }
@@ -303,53 +263,58 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Future<void> _redrawDrawLine() async {
     if (!mounted) return;
 
+    final seq = ++_lineRedrawSeq;
     final path = _flattenedRoadPath;
+    final manager = polylineAnnotationManager;
 
-    if (path.length < 2 || polylineAnnotationManager == null) {
-      if (_drawLine != null) {
+    if (path.length < 2 || manager == null) {
+      final old = _drawLine;
+      _drawLine = null;
+      if (old != null) {
         try {
-          await polylineAnnotationManager?.delete(_drawLine!);
+          await manager?.delete(old);
         } catch (_) {}
-
-        _drawLine = null;
       }
-
       return;
     }
 
     final coords = <Position>[
-      for (final point in path)
-        Position(
-          point.longitude,
-          point.latitude,
-        ),
+      for (final point in path) Position(point.longitude, point.latitude),
     ];
+    final geometry = LineString(coordinates: coords);
 
-    final geometry = LineString(
-      coordinates: coords,
-    );
+    // حذف ثم إنشاء من جديد بدل update فقط:
+    // update على أول مقطع غالباً لا يظهر الخط في mapbox_maps_flutter
+    // حتى تُنشأ annotation لاحقة — وهذا يفسر اختفاء 1→2 وظهور المسار من 3.
+    final previous = _drawLine;
+    _drawLine = null;
+    if (previous != null) {
+      try {
+        await manager.delete(previous);
+      } catch (_) {}
+    }
+
+    // طلب أحدث؟ تجاهل هذه النتيجة.
+    if (seq != _lineRedrawSeq || !mounted) return;
 
     try {
-      if (_drawLine != null) {
-        _drawLine!.geometry = geometry;
-
-        await polylineAnnotationManager!.update(
-          _drawLine!,
-        );
-      } else {
-        _drawLine = await polylineAnnotationManager!.create(
-          PolylineAnnotationOptions(
-            geometry: geometry,
-            lineColor: 0xFF7C3AED,
-            lineWidth: 5.0,
-          ),
-        );
-      }
-    } catch (e) {
-      MapUtils.log(
-        'draw line: $e',
-        tag: 'AdminDraw',
+      final created = await manager.create(
+        PolylineAnnotationOptions(
+          geometry: geometry,
+          lineColor: 0xFF7C3AED,
+          lineWidth: 5.0,
+        ),
       );
+      if (seq != _lineRedrawSeq) {
+        // رسم أحدث حلّ محلنا — احذف ما أنشأناه لتجنب خطوط يتيمة.
+        try {
+          await manager.delete(created);
+        } catch (_) {}
+        return;
+      }
+      _drawLine = created;
+    } catch (e) {
+      MapUtils.log('draw line: $e', tag: 'AdminDraw');
     }
   }
 
@@ -525,6 +490,9 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   int get drawPointCount => _drawPoints.length;
 
   void disposeAdminDrawRoute() {
+    _drawSession++;
+    _lineRedrawSeq++;
+    _tapLocked = false;
     _drawPoints.clear();
     _roadSegments.clear();
     _drawLine = null;
