@@ -80,45 +80,216 @@ class RoutePlanService {
   }
 
   Stream<List<PlannedRoute>> watchDriverRoutes(String driverId) {
+    return _col.where('createdBy', isEqualTo: driverId).snapshots().map((snap) {
+      return snap.docs
+          .map((d) => PlannedRoute.fromDoc(d.id, d.data()))
+          .toList();
+    });
+  }
+
+  Stream<List<PlannedRoute>> watchApprovedRoutesForLine(String lineName) {
     return _col
-        .where('createdByDriverId', isEqualTo: driverId)
-        .snapshots()
-        .map((snap) {
-      final list =
-          snap.docs.map((d) => PlannedRoute.fromDoc(d.id, d.data())).toList();
-      list.sort((a, b) => a.direction.index.compareTo(b.direction.index));
-      return list;
-    });
-  }
-
-  Stream<List<PlannedRoute>> watchAllApprovedRoutes() {
-    return _col.where('status', isEqualTo: 'approved').snapshots().map((snap) {
-      final list =
-          snap.docs.map((d) => PlannedRoute.fromDoc(d.id, d.data())).toList();
-      list.sort((a, b) {
-        final byName = a.lineName.compareTo(b.lineName);
-        if (byName != 0) return byName;
-        return a.direction.index.compareTo(b.direction.index);
-      });
-      return list;
-    });
-  }
-
-  Future<PlannedRoute?> getById(String id) async {
-    final doc = await _col.doc(id).get();
-    if (!doc.exists || doc.data() == null) return null;
-    return PlannedRoute.fromDoc(doc.id, doc.data()!);
-  }
-
-  /// Approved routes for a line name (exact match).
-  Future<List<PlannedRoute>> getApprovedRoutesForLine(String lineName) async {
-    final snap = await _col
-        .where('lineName', isEqualTo: lineName.trim())
+        .where('lineName', isEqualTo: lineName)
         .where('status', isEqualTo: 'approved')
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => PlannedRoute.fromDoc(d.id, d.data()))
+            .where((r) => r.points.length >= 2)
+            .toList());
+  }
+
+  Future<List<PlannedRoute>> listApprovedRoutes({int limit = 80}) async {
+    final snap = await _col
+        .where('status', isEqualTo: 'approved')
+        .orderBy('lineName')
+        .limit(limit.clamp(1, 200))
         .get();
     return snap.docs
         .map((d) => PlannedRoute.fromDoc(d.id, d.data()))
+        .where((r) => r.points.length >= 2)
         .toList();
+  }
+
+  Future<List<PlannedRoute>> searchApprovedRoutes(
+    String query, {
+    int limit = 40,
+  }) async {
+    final q = query.trim();
+    if (q.isEmpty) return listApprovedRoutes(limit: limit);
+
+    final tokens = ArabicSearch.tokens(q).take(10).toList();
+    final cap = limit.clamp(1, 100);
+
+    QuerySnapshot<Map<String, dynamic>> snap;
+    try {
+      if (tokens.isNotEmpty) {
+        snap = await _col
+            .where('status', isEqualTo: 'approved')
+            .where('searchKeys', arrayContainsAny: tokens)
+            .limit(cap)
+            .get();
+      } else {
+        snap = await _col
+            .where('status', isEqualTo: 'approved')
+            .orderBy('lineName')
+            .limit(cap)
+            .get();
+      }
+    } catch (_) {
+      snap = await _col
+          .where('status', isEqualTo: 'approved')
+          .limit(cap)
+          .get();
+    }
+
+    final results = <PlannedRoute>[];
+    for (final d in snap.docs) {
+      final r = PlannedRoute.fromDoc(d.id, d.data());
+      if (r.points.length < 2) continue;
+      if (ArabicSearch.matches(
+        query: q,
+        lineName: r.lineName,
+        searchKeys: r.searchKeys,
+        aliases: r.aliases,
+      )) {
+        results.add(r);
+      }
+    }
+    results.sort((a, b) => a.lineName.compareTo(b.lineName));
+    return results;
+  }
+
+  Future<List<String>> listApprovedLineNames() async {
+    final snap = await _col.where('status', isEqualTo: 'approved').get();
+    final names = <String>{};
+    for (final d in snap.docs) {
+      final n = d.data()['lineName']?.toString().trim() ?? '';
+      if (n.isNotEmpty) names.add(n);
+    }
+    return names.toList()..sort();
+  }
+
+  Future<PlannedRoute?> getLineDirection({
+    required String lineName,
+    required RouteDirection direction,
+  }) async {
+    final q = await _col
+        .where('lineName', isEqualTo: lineName.trim())
+        .where('direction', isEqualTo: direction.firestoreValue)
+        .limit(5)
+        .get();
+    if (q.docs.isEmpty) return null;
+    PlannedRoute? approved;
+    PlannedRoute? any;
+    for (final d in q.docs) {
+      final r = PlannedRoute.fromDoc(d.id, d.data());
+      any ??= r;
+      if (r.status == PlannedRouteStatus.approved && r.points.length >= 2) {
+        approved = r;
+        break;
+      }
+    }
+    return approved ?? any;
+  }
+
+  @Deprecated('استخدم getLineDirection')
+  Future<PlannedRoute?> getDriverDirection({
+    required String driverId,
+    required String lineName,
+    required RouteDirection direction,
+  }) =>
+      getLineDirection(lineName: lineName, direction: direction);
+
+  Map<String, dynamic> _searchPayload(String lineName, List<String> aliases) {
+    final keys = ArabicSearch.buildSearchKeys(lineName, aliases: aliases);
+    return {
+      'lineNameNormalized': ArabicSearch.normalize(lineName),
+      'searchKeys': keys,
+      'aliases': aliases
+          .map((a) => a.trim())
+          .where((a) => a.isNotEmpty)
+          .toList(),
+    };
+  }
+
+  Future<PlannedRoute> saveRecordedRoute({
+    required String driverId,
+    required String lineName,
+    required RouteDirection direction,
+    required List<RoutePoint> rawPoints,
+    bool snap = true,
+    List<String> aliases = const [],
+  }) async {
+    if (driverId.isEmpty) throw ArgumentError('driverId مطلوب');
+    if (lineName.trim().isEmpty) throw ArgumentError('اسم الخط مطلوب');
+
+    final existing = await getLineDirection(
+      lineName: lineName.trim(),
+      direction: direction,
+    );
+
+    if (existing != null && existing.isLocked) {
+      throw StateError(
+        'مسار ${direction.labelAr} لخط «${lineName.trim()}» مخزّن مسبقاً.',
+      );
+    }
+
+    final points = snap
+        ? await buildRoadAlignedRoute(rawPoints)
+        : simplifyPoints(rawPoints);
+    if (points.length < minPointsToSave) {
+      throw StateError('المسار قصير جداً (${points.length} نقطة).');
+    }
+
+    final distance = totalDistanceMeters(points);
+    final search = _searchPayload(lineName.trim(), aliases);
+    final payload = <String, dynamic>{
+      'createdBy': driverId,
+      'driverId': driverId,
+      'lineName': lineName.trim(),
+      'direction': direction.firestoreValue,
+      'points': points.map((p) => p.toMap()).toList(),
+      'status': PlannedRouteStatus.approved.firestoreValue,
+      'editRequestPending': false,
+      'editRequestReason': FieldValue.delete(),
+      'editRequestedBy': FieldValue.delete(),
+      'reRecordAllowed': false,
+      'distanceMeters': distance,
+      'source': RouteSource.driver.firestoreValue,
+      'updatedAt': FieldValue.serverTimestamp(),
+      ...search,
+    };
+
+    if (existing == null) {
+      payload['createdAt'] = FieldValue.serverTimestamp();
+      final ref = await _col.add(payload);
+      return PlannedRoute(
+        id: ref.id,
+        createdBy: driverId,
+        lineName: lineName.trim(),
+        direction: direction,
+        points: points,
+        status: PlannedRouteStatus.approved,
+        distanceMeters: distance,
+        source: RouteSource.driver,
+        searchKeys: List<String>.from(search['searchKeys'] as List),
+        aliases: List<String>.from(search['aliases'] as List),
+      );
+    }
+
+    await _col.doc(existing.id).update(payload);
+    return PlannedRoute(
+      id: existing.id,
+      createdBy: driverId,
+      lineName: lineName.trim(),
+      direction: direction,
+      points: points,
+      status: PlannedRouteStatus.approved,
+      distanceMeters: distance,
+      source: RouteSource.driver,
+      searchKeys: List<String>.from(search['searchKeys'] as List),
+      aliases: List<String>.from(search['aliases'] as List),
+    );
   }
 
   Future<PlannedRoute> saveAdminDrawnRoute({
@@ -126,15 +297,24 @@ class RoutePlanService {
     required String lineName,
     required RouteDirection direction,
     required List<RoutePoint> points,
+    bool replaceExisting = true,
     List<String> aliases = const [],
     String? notes,
-    String lineStart = '',
+    String? lineStart,
     String? lineMiddle,
-    String lineEnd = '',
+    String? lineEnd,
     bool alreadySnapped = false,
   }) async {
-    if (points.length < 2) {
-      throw StateError('نقطتان على الأقل مطلوبة');
+    if (adminId.isEmpty) throw ArgumentError('adminId مطلوب');
+    if (lineName.trim().isEmpty) throw ArgumentError('اسم الخط مطلوب');
+
+    final existing = await getLineDirection(
+      lineName: lineName.trim(),
+      direction: direction,
+    );
+
+    if (existing != null && !replaceExisting) {
+      throw StateError('المسار موجود مسبقاً لهذا الخط والاتجاه');
     }
 
     final List<RoutePoint> finalPoints;
@@ -147,49 +327,172 @@ class RoutePlanService {
       finalPoints = await buildRoadAlignedRoute(points);
     }
 
-    if (finalPoints.length < minPointsToSave) {
-      throw StateError(
-        'المسار قصير جداً بعد المحاذاة (${finalPoints.length} نقطة). أضف نقاط تحكم أكثر.',
-      );
+    if (finalPoints.length < 2) {
+      throw StateError('أضف نقطتين على الأقل على الخريطة');
     }
 
     final distance = totalDistanceMeters(finalPoints);
-    final now = FieldValue.serverTimestamp();
+    final search = _searchPayload(lineName.trim(), aliases);
 
-    final data = <String, dynamic>{
+    final payload = <String, dynamic>{
+      'createdBy': adminId,
+      'driverId': adminId,
       'lineName': lineName.trim(),
-      'direction': direction.name,
-      'status': 'approved',
+      'direction': direction.firestoreValue,
       'points': finalPoints.map((p) => p.toMap()).toList(),
-      'aliases': aliases,
-      'notes': notes,
-      'lineStart': lineStart,
-      'lineMiddle': lineMiddle,
-      'lineEnd': lineEnd,
+      'status': PlannedRouteStatus.approved.firestoreValue,
+      'editRequestPending': false,
+      'reRecordAllowed': false,
       'distanceMeters': distance,
-      'createdByAdminId': adminId,
-      'approvedByAdminId': adminId,
-      'createdAt': now,
-      'updatedAt': now,
-      'approvedAt': now,
+      'source': RouteSource.admin.firestoreValue,
+      'updatedAt': FieldValue.serverTimestamp(),
+      ...search,
     };
+    if (notes != null && notes.trim().isNotEmpty) {
+      payload['notes'] = notes.trim();
+    }
+    if (lineStart != null && lineStart.trim().isNotEmpty) {
+      payload['lineStart'] = lineStart.trim();
+    }
+    if (lineMiddle != null && lineMiddle.trim().isNotEmpty) {
+      payload['lineMiddle'] = lineMiddle.trim();
+    }
+    if (lineEnd != null && lineEnd.trim().isNotEmpty) {
+      payload['lineEnd'] = lineEnd.trim();
+    }
 
-    // Arabic search fields if available
-    try {
-      final search = ArabicSearch.routeSearchFields(
-        lineName: lineName,
-        aliases: aliases,
-        lineStart: lineStart,
-        lineMiddle: lineMiddle,
-        lineEnd: lineEnd,
-        notes: notes,
+    if (existing == null) {
+      payload['createdAt'] = FieldValue.serverTimestamp();
+      final ref = await _col.add(payload);
+      return PlannedRoute(
+        id: ref.id,
+        createdBy: adminId,
+        lineName: lineName.trim(),
+        direction: direction,
+        points: finalPoints,
+        status: PlannedRouteStatus.approved,
+        distanceMeters: distance,
+        source: RouteSource.admin,
+        searchKeys: List<String>.from(search['searchKeys'] as List),
+        aliases: List<String>.from(search['aliases'] as List),
       );
-      data.addAll(search);
-    } catch (_) {}
+    }
 
-    final ref = await _col.add(data);
-    final saved = await ref.get();
-    return PlannedRoute.fromDoc(saved.id, saved.data()!);
+    await _col.doc(existing.id).update(payload);
+    return PlannedRoute(
+      id: existing.id,
+      createdBy: adminId,
+      lineName: lineName.trim(),
+      direction: direction,
+      points: finalPoints,
+      status: PlannedRouteStatus.approved,
+      distanceMeters: distance,
+      source: RouteSource.admin,
+      searchKeys: List<String>.from(search['searchKeys'] as List),
+      aliases: List<String>.from(search['aliases'] as List),
+    );
+  }
+
+  Future<void> requestEdit({
+    required String routeId,
+    required String reason,
+    required String requestedBy,
+  }) async {
+    final r = reason.trim();
+    if (r.isEmpty) throw ArgumentError('يجب كتابة سبب طلب التعديل');
+    await _col.doc(routeId).update({
+      'editRequestPending': true,
+      'editRequestReason': r,
+      'editRequestedBy': requestedBy,
+      'reRecordAllowed': false,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> approveRoute(String routeId) async {
+    await _col.doc(routeId).update({
+      'status': PlannedRouteStatus.approved.firestoreValue,
+      'editRequestPending': false,
+      'reRecordAllowed': false,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> rejectRoute(String routeId, {String? reason}) async {
+    await _col.doc(routeId).update({
+      'status': PlannedRouteStatus.rejected.firestoreValue,
+      'editRequestPending': false,
+      'reRecordAllowed': false,
+      if (reason != null) 'notes': reason,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> approveEditRequest(String routeId) async {
+    await _col.doc(routeId).update({
+      'editRequestPending': false,
+      'reRecordAllowed': true,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> denyEditRequest(String routeId) async {
+    await _col.doc(routeId).update({
+      'editRequestPending': false,
+      'reRecordAllowed': false,
+      'editRequestReason': FieldValue.delete(),
+      'editRequestedBy': FieldValue.delete(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Stream<List<PlannedRoute>> watchPendingRoutes() {
+    return _col
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => PlannedRoute.fromDoc(d.id, d.data()))
+            .toList());
+  }
+
+  Stream<List<PlannedRoute>> watchEditRequests() {
+    return _col
+        .where('editRequestPending', isEqualTo: true)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => PlannedRoute.fromDoc(d.id, d.data()))
+            .toList());
+  }
+
+  Stream<List<PlannedRoute>> watchAllApprovedRoutes() {
+    return _col
+        .where('status', isEqualTo: 'approved')
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => PlannedRoute.fromDoc(d.id, d.data()))
+            .where((r) => r.points.length >= 2)
+            .toList());
+  }
+
+  Future<void> updateRouteMetadata({
+    required String routeId,
+    required String lineName,
+    required RouteDirection direction,
+    List<String> aliases = const [],
+    String? notes,
+  }) async {
+    if (routeId.isEmpty) throw ArgumentError('routeId مطلوب');
+    if (lineName.trim().isEmpty) throw ArgumentError('اسم الخط مطلوب');
+    final search = _searchPayload(lineName.trim(), aliases);
+    await _col.doc(routeId).update({
+      'lineName': lineName.trim(),
+      'direction': direction.firestoreValue,
+      'notes': (notes == null || notes.trim().isEmpty)
+          ? FieldValue.delete()
+          : notes.trim(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      ...search,
+    });
   }
 
   Future<void> deleteRoute(String routeId) async {
