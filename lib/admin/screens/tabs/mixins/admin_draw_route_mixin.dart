@@ -196,8 +196,9 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
               circleColor: 0xFF7C3AED,
               circleStrokeColor: 0xFFFFFFFF,
               circleStrokeWidth: 1.5,
-              // مخفية بصرياً؛ المراجع تبقى لـ Undo
+              // مخفية بصرياً بالكامل؛ المراجع تبقى لـ Undo
               circleOpacity: 0.0,
+              circleStrokeOpacity: 0.0,
             ),
           );
           if (session != _drawSession) return;
