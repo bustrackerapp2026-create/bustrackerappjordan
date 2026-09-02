@@ -48,6 +48,18 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   /// تسلسل إعادة رسم الخط — يمنع نتيجة redraw قديمة من الكتابة فوق أحدث.
   int _lineRedrawSeq = 0;
 
+  /// يمنع تداخل عمليات create/delete الأصلية على الـ Polyline.
+  bool _lineRedrawBusy = false;
+
+  /// طلب redraw أحدث أثناء انشغال العملية الحالية.
+  bool _lineRedrawQueued = false;
+
+  /// يكتمل عند انتهاء دورة redraw الحالية (لـ clear/cancel).
+  Completer<void>? _lineRedrawDone;
+
+  /// جيل المسح البصري — يمنع clear قديماً من حذف خط جلسة أحدث.
+  int _visualClearGen = 0;
+
   /// المسار المعروض فعلياً على الخريطة.
   List<RoutePoint> get _flattenedRoadPath {
     if (_roadSegments.isEmpty) {
@@ -131,21 +143,36 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   Future<void> _clearDrawVisuals() async {
-    if (_drawLine != null && polylineAnnotationManager != null) {
+    final clearGen = ++_visualClearGen;
+    _lineRedrawQueued = false;
+
+    final pending = _lineRedrawDone;
+    if (pending != null) {
+      await pending.future;
+    }
+
+    // clear أحدث تولّى المسؤولية
+    if (clearGen != _visualClearGen) return;
+
+    // لقطة متزامنة — لا نحذف ما يُنشأ بعدها
+    final lineToDelete = _drawLine;
+    final markersToDelete =
+        List<CircleAnnotation>.from(_drawPointMarkers);
+    _drawLine = null;
+    _drawPointMarkers.clear();
+
+    final polyManager = polylineAnnotationManager;
+    if (lineToDelete != null && polyManager != null) {
       try {
-        await polylineAnnotationManager!.delete(_drawLine!);
+        await polyManager.delete(lineToDelete);
       } catch (_) {}
     }
 
-    _drawLine = null;
-
-    for (final marker in _drawPointMarkers) {
+    for (final marker in markersToDelete) {
       try {
         await _drawCircleManager?.delete(marker);
       } catch (_) {}
     }
-
-    _drawPointMarkers.clear();
   }
 
   Future<void> onDrawRouteMapTap(Point point) async {
@@ -293,53 +320,90 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Future<void> _redrawDrawLine() async {
     if (!mounted) return;
 
-    final seq = ++_lineRedrawSeq;
-    final path = _flattenedRoadPath;
-    final manager = polylineAnnotationManager;
-
-    if (path.length < 2 || manager == null) {
-      final old = _drawLine;
-      _drawLine = null;
-      if (old != null) {
-        try {
-          await manager?.delete(old);
-        } catch (_) {}
-      }
+    // طلبات إضافية أثناء الدورة الحالية → coalescing فقط
+    if (_lineRedrawBusy) {
+      _lineRedrawQueued = true;
       return;
     }
 
-    final coords = <Position>[
-      for (final point in path) Position(point.longitude, point.latitude),
-    ];
-    final geometry = LineString(coordinates: coords);
-
-    final previous = _drawLine;
-    _drawLine = null;
-    if (previous != null) {
-      try {
-        await manager.delete(previous);
-      } catch (_) {}
-    }
-
-    if (seq != _lineRedrawSeq || !mounted) return;
+    _lineRedrawBusy = true;
+    final done = Completer<void>();
+    _lineRedrawDone = done;
+    final visualGen = _visualClearGen;
 
     try {
-      final created = await manager.create(
-        PolylineAnnotationOptions(
-          geometry: geometry,
-          lineColor: 0xFF7C3AED,
-          lineWidth: 5.0,
-        ),
-      );
-      if (seq != _lineRedrawSeq) {
+      do {
+        _lineRedrawQueued = false;
+        if (!mounted) break;
+
+        final session = _drawSession;
+        final path = List<RoutePoint>.from(_flattenedRoadPath);
+        final manager = polylineAnnotationManager;
+
+        // session guard: لا تكمل إن تغيّرت الجلسة
+        if (session != _drawSession) break;
+
+        if (path.length < 2 || manager == null) {
+          final old = _drawLine;
+          _drawLine = null;
+          if (old != null) {
+            try {
+              await manager?.delete(old);
+            } catch (_) {}
+          }
+          continue;
+        }
+
+        final coords = <Position>[
+          for (final p in path) Position(p.longitude, p.latitude),
+        ];
+        final geometry = LineString(coordinates: coords);
+
+        // 1) أنشئ الخط الجديد أولاً — الخط الحالي يبقى ظاهراً
+        PolylineAnnotation? created;
         try {
-          await manager.delete(created);
-        } catch (_) {}
-        return;
+          created = await manager.create(
+            PolylineAnnotationOptions(
+              geometry: geometry,
+              lineColor: 0xFF7C3AED,
+              lineWidth: 5.0,
+            ),
+          );
+        } catch (e) {
+          MapUtils.log('draw line: $e', tag: 'AdminDraw');
+          continue;
+        }
+
+        // session guard بعد create
+        if (!mounted || session != _drawSession) {
+          try {
+            await manager.delete(created);
+          } catch (_) {}
+          break;
+        }
+
+        // 2) استبدل المرجع ثم 3) احذف الخط السابق
+        final previous = _drawLine;
+        _drawLine = created;
+        if (previous != null) {
+          try {
+            await manager.delete(previous);
+          } catch (_) {}
+        }
+      } while (_lineRedrawQueued && mounted);
+    } finally {
+      _lineRedrawBusy = false;
+      _lineRedrawDone = null;
+      if (!done.isCompleted) {
+        done.complete();
       }
-      _drawLine = created;
-    } catch (e) {
-      MapUtils.log('draw line: $e', tag: 'AdminDraw');
+      // لا تُعِد التشغيل إن بدأ clear أحدث أثناء هذه الدورة
+      if (_lineRedrawQueued &&
+          mounted &&
+          visualGen == _visualClearGen) {
+        _lineRedrawQueued = false;
+        unawaited(_redrawDrawLine());
+      }
     }
   }
 
@@ -514,6 +578,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   void disposeAdminDrawRoute() {
     _drawSession++;
     _lineRedrawSeq++;
+    _visualClearGen++;
+    _lineRedrawQueued = false;
     _tapLocked = false;
     _drawPoints.clear();
     _roadSegments.clear();
