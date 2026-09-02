@@ -45,6 +45,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   /// جيل جلسة الرسم — يزيد عند start/cancel/clear.
   int _drawSession = 0;
 
+  /// يزيد عند تغيّر بنية نقاط/مقاطع الرسم بما قد يبطل نتيجة Directions معلّقة.
+  /// يمنع نتيجة Directions قديمة من الكتابة فوق مقطع أحدث.
+  int _drawMutationSeq = 0;
+
   /// تسلسل إعادة رسم الخط — يمنع نتيجة redraw قديمة من الكتابة فوق أحدث.
   int _lineRedrawSeq = 0;
 
@@ -107,6 +111,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (!mounted) return;
 
     _drawSession++;
+    _drawMutationSeq++;
     _lineRedrawSeq++;
     _tapLocked = false;
 
@@ -129,6 +134,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (!mounted) return;
 
     _drawSession++;
+    _drawMutationSeq++;
     _lineRedrawSeq++;
     _tapLocked = false;
 
@@ -279,6 +285,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final idx = segmentIndex;
     final a = from;
     final b = to;
+    final mutation = _drawMutationSeq;
 
     try {
       // الرسم الحي: هندسة الطريق فقط — بدون stitch إلى نقاط النقر
@@ -287,7 +294,11 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         to: b,
         attachControlEndpoints: false,
       );
-      if (!mounted || session != _drawSession) return;
+      if (!mounted ||
+          session != _drawSession ||
+          mutation != _drawMutationSeq) {
+        return;
+      }
       if (idx >= _roadSegments.length) return;
 
       final List<RoutePoint> pinned;
@@ -308,7 +319,11 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw segment directions: $e', tag: 'AdminDraw');
-      if (!mounted || session != _drawSession) return;
+      if (!mounted ||
+          session != _drawSession ||
+          mutation != _drawMutationSeq) {
+        return;
+      }
       if (idx < _roadSegments.length) {
         _roadSegments[idx] = [a, b];
         await _redrawDrawLine();
@@ -409,6 +424,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   Future<void> undoLastDrawPoint() async {
     if (_drawPoints.isEmpty || isSnappingSegment) return;
+
+    _drawMutationSeq++;
 
     _drawPoints.removeLast();
 
@@ -577,6 +594,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   void disposeAdminDrawRoute() {
     _drawSession++;
+    _drawMutationSeq++;
     _lineRedrawSeq++;
     _visualClearGen++;
     _lineRedrawQueued = false;
