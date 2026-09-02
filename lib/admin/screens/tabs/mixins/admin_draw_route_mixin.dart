@@ -374,7 +374,18 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         ];
         final geometry = LineString(coordinates: coords);
 
-        // 1) أنشئ الخط الجديد أولاً — الخط الحالي يبقى ظاهراً
+        // تحديث الخط الحالي إن وُجد (نفس manager الذي أنشأه)
+        if (_drawLine != null) {
+          try {
+            _drawLine!.geometry = geometry;
+            await manager.update(_drawLine!);
+            continue;
+          } catch (e) {
+            MapUtils.log('draw line update fallback: $e', tag: 'AdminDraw');
+          }
+        }
+
+        // fallback: أنشئ الخط الجديد أولاً ثم احذف السابق
         PolylineAnnotation? created;
         try {
           created = await manager.create(
@@ -397,7 +408,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           break;
         }
 
-        // 2) استبدل المرجع ثم 3) احذف الخط السابق
         final previous = _drawLine;
         _drawLine = created;
         if (previous != null) {
