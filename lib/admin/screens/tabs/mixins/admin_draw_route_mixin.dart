@@ -192,7 +192,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
               geometry: Point(
                 coordinates: Position(snapped.longitude, snapped.latitude),
               ),
-              circleRadius: 7.0,
+              circleRadius: 3.0,
               circleColor: 0xFF7C3AED,
               circleStrokeColor: 0xFFFFFFFF,
               circleStrokeWidth: 1.5,
