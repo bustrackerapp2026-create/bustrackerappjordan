@@ -302,10 +302,13 @@ class RoutePlanMapbox {
         points,
       );
 
-      points = RoutePlanGeometry.dedupeNear(
-        points,
-        minMeters: 12,
-      );
+      // dedupe 12م مناسب لـ GPS؛ يحذف نقاط تحكم أدمن متقاربة عند الانعطاف.
+      if (!preserveWaypoints) {
+        points = RoutePlanGeometry.dedupeNear(
+          points,
+          minMeters: 12,
+        );
+      }
 
       if (points.length < 2) {
         return List<RoutePoint>.of(waypoints);
@@ -321,6 +324,19 @@ class RoutePlanMapbox {
       return await snapToRoads(
         waypoints,
         minSpacingMeters: 15,
+      );
+    }
+
+    // مسار أدمن: Directions يعطي هندسة الطريق؛ Map Matching + tidy=true
+    // مخصص لآثار GPS الصاخبة وقد يحرّف الخط عن نقاط التحكم.
+    if (preserveWaypoints) {
+      final cleaned = RoutePlanGeometry.removeSpikes(
+        driven,
+        maxJumpMeters: 160,
+      );
+      return RoutePlanGeometry.simplifyPoints(
+        cleaned,
+        minDistanceMeters: 5,
       );
     }
 
