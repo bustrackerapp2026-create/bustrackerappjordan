@@ -258,9 +258,13 @@ class RoutePlanMapbox {
   }
 
   /// بناء مسار كامل عبر مجموعة نقاط تحكم.
+  ///
+  /// [preserveWaypoints]: عند true لا يُطبَّق sampleByDistance (مناسب
+  /// لنقاط الأدمن اليدوية عند التقاطعات). الافتراضي false لمسارات GPS الكثيفة.
   Future<List<RoutePoint>> getDrivingPathThrough(
     List<RoutePoint> waypoints, {
     bool snapWaypoints = true,
+    bool preserveWaypoints = false,
   }) async {
     if (waypoints.length < 2) {
       return List<RoutePoint>.of(waypoints);
@@ -272,11 +276,17 @@ class RoutePlanMapbox {
       return List<RoutePoint>.of(waypoints);
     }
 
-    var points = RoutePlanGeometry.sampleByDistance(
-      waypoints,
-      stepMeters: 120,
-      maxPoints: 36,
-    );
+    List<RoutePoint> points;
+    if (preserveWaypoints) {
+      // نقاط تحكم الأدمن: أبقِ كل النقاط بعد إزالة التكرارات القريبة فقط.
+      points = List<RoutePoint>.of(waypoints);
+    } else {
+      points = RoutePlanGeometry.sampleByDistance(
+        waypoints,
+        stepMeters: 120,
+        maxPoints: 36,
+      );
+    }
 
     points = _removeNearDuplicates(
       points,
@@ -438,6 +448,8 @@ class RoutePlanMapbox {
     );
   }
 
+  /// محاذاة مسار من نقاط تحكم (رسم أدمن يدوي).
+  /// يحافظ على نقاط التحكم؛ لا يُسقِطها بـ sampleByDistance كل 120م.
   Future<List<RoutePoint>> buildRoadAlignedRoute(
     List<RoutePoint> controlPoints,
   ) async {
@@ -448,6 +460,7 @@ class RoutePlanMapbox {
     return getDrivingPathThrough(
       controlPoints,
       snapWaypoints: true,
+      preserveWaypoints: true,
     );
   }
 
