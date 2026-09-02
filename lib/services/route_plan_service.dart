@@ -41,12 +41,15 @@ class RoutePlanService {
   Future<List<RoutePoint>> getDrivingPathThrough(
     List<RoutePoint> waypoints, {
     bool snapWaypoints = true,
+    bool preserveWaypoints = false,
   }) =>
       _mapbox.getDrivingPathThrough(
         waypoints,
         snapWaypoints: snapWaypoints,
+        preserveWaypoints: preserveWaypoints,
       );
 
+  /// محاذاة نقاط تحكم الأدمن (يحافظ على النقاط؛ بدون sample 120م).
   Future<List<RoutePoint>> buildRoadAlignedRoute(
     List<RoutePoint> controlPoints,
   ) =>
@@ -234,8 +237,9 @@ class RoutePlanService {
       );
     }
 
+    // GPS كثيف: sampling الافتراضي (preserveWaypoints: false)
     final points = snap
-        ? await buildRoadAlignedRoute(rawPoints)
+        ? await getDrivingPathThrough(rawPoints, snapWaypoints: true)
         : simplifyPoints(rawPoints);
     if (points.length < minPointsToSave) {
       throw StateError('المسار قصير جداً (${points.length} نقطة).');
@@ -324,6 +328,7 @@ class RoutePlanService {
           ? simplifyPoints(polished, minDistanceMeters: 8)
           : simplifyPoints(points, minDistanceMeters: 8);
     } else {
+      // رسم يدوي: buildRoadAlignedRoute → preserveWaypoints: true
       finalPoints = await buildRoadAlignedRoute(points);
     }
 
