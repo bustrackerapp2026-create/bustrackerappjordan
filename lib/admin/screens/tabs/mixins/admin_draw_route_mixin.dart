@@ -32,8 +32,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final List<RoutePoint> _drawPoints = [];
   final List<List<RoutePoint>> _roadSegments = [];
 
-  /// خط مستقل لكل مقطع (بدل خط تراكمي واحد).
-  final List<PolylineAnnotation?> _segmentLines = [];
+  /// خط واحد للمسار الحي بالكامل.
+  PolylineAnnotation? _drawLine;
 
   /// نقاط الرسم كدوائر (بدون PointAnnotation/icon الافتراضي).
   CircleAnnotationManager? _drawCircleManager;
@@ -68,12 +68,9 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   /// يمنع تداخل استدعاءات Undo المتعددة السريعة.
   bool _undoBusy = false;
 
-  /// تسلسل عمليات المقاطع (upsert / remove / clear).
+  /// تسلسل عمليات الخط الواحد (redraw / clear).
   bool _segmentOpBusy = false;
   Completer<void>? _segmentOpDone;
-
-  /// عدد من ينتظرون القفل حاليًا (تشخيص فقط — لا يغيّر السلوك).
-  int _segOpWaiters = 0;
 
   /// المسار المعروض فعلياً على الخريطة.
   List<RoutePoint> get _flattenedRoadPath {
@@ -160,21 +157,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   Future<void> _beginSegmentOp() async {
-    final enteredBusy = _segmentOpBusy;
-    if (enteredBusy) _segOpWaiters++;
-    final waitStart = DateTime.now();
     while (_segmentOpBusy) {
       final pending = _segmentOpDone;
       if (pending != null) await pending.future;
     }
-    final waitMs = DateTime.now().difference(waitStart).inMilliseconds;
-    if (enteredBusy) {
-      _segOpWaiters = (_segOpWaiters - 1).clamp(0, 999999);
-    }
-    MapUtils.log(
-      'LOCK_ACQUIRED waitMs=$waitMs waitersLeft=$_segOpWaiters',
-      tag: 'SegOp',
-    );
     _segmentOpBusy = true;
     _segmentOpDone = Completer<void>();
   }
@@ -186,40 +172,27 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (done != null && !done.isCompleted) {
       done.complete();
     }
-    MapUtils.log('LOCK_RELEASED waiters=$_segOpWaiters', tag: 'SegOp');
   }
 
   Future<void> _clearDrawVisuals() async {
     final clearGen = ++_visualClearGen;
     _lineRedrawQueued = false;
 
-    final t0 = DateTime.now();
-    MapUtils.log(
-      'clear ENTER busy=$_segmentOpBusy waiters=$_segOpWaiters clearGen=$clearGen',
-      tag: 'SegOp',
-    );
-
-    // استحوذ على نفس قفل عمليات المقاطع
     await _beginSegmentOp();
     try {
-      // clear أحدث تولّى المسؤولية
       if (clearGen != _visualClearGen) return;
 
-      // لقطة متزامنة تحت القفل — لا يمكن لـ upsert/remove البدء هنا
-      final linesToDelete = List<PolylineAnnotation?>.from(_segmentLines);
+      final lineToDelete = _drawLine;
       final markersToDelete =
           List<CircleAnnotation>.from(_drawPointMarkers);
-      _segmentLines.clear();
+      _drawLine = null;
       _drawPointMarkers.clear();
 
       final polyManager = polylineAnnotationManager;
-      if (polyManager != null) {
-        for (final line in linesToDelete) {
-          if (line == null) continue;
-          try {
-            await polyManager.delete(line);
-          } catch (_) {}
-        }
+      if (lineToDelete != null && polyManager != null) {
+        try {
+          await polyManager.delete(lineToDelete);
+        } catch (_) {}
       }
 
       for (final marker in markersToDelete) {
@@ -229,10 +202,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
     } finally {
       _endSegmentOp();
-      MapUtils.log(
-        'clear DONE totalMs=${DateTime.now().difference(t0).inMilliseconds}',
-        tag: 'SegOp',
-      );
     }
   }
 
@@ -306,7 +275,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       segmentIndex = _roadSegments.length;
       _roadSegments.add([from, to]);
-      await _upsertSegmentLine(segmentIndex, [from, to], kind: 'temporary');
+      await _redrawDrawLine();
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw tap: $e', tag: 'AdminDraw');
@@ -315,11 +284,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         final b = _drawPoints.last;
         if (_roadSegments.length < _drawPoints.length - 1) {
           _roadSegments.add([a, b]);
-          await _upsertSegmentLine(
-            _roadSegments.length - 1,
-            [a, b],
-            kind: 'temporary_fallback',
-          );
+          await _redrawDrawLine();
         }
         MapUtils.showSnackBar(
           context,
@@ -373,7 +338,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       _roadSegments[idx] = pinned;
-      await _upsertSegmentLine(idx, pinned, kind: 'directions');
+      await _redrawDrawLine();
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw segment directions: $e', tag: 'AdminDraw');
@@ -384,30 +349,17 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
       if (idx < _roadSegments.length) {
         _roadSegments[idx] = [a, b];
-        await _upsertSegmentLine(idx, [a, b], kind: 'directions_fallback');
+        await _redrawDrawLine();
         if (mounted) setState(() {});
       }
     }
   }
 
-  /// إنشاء أو تحديث خط مقطع واحد فقط.
-  Future<void> _upsertSegmentLine(
-    int index,
-    List<RoutePoint> segment, {
-    String kind = 'unknown',
-  }) async {
-    if (!mounted || segment.length < 2) return;
-
-    final tEnter = DateTime.now();
-    final busyOnEnter = _segmentOpBusy;
-    MapUtils.log(
-      'upsert ENTER idx=$index kind=$kind busy=$busyOnEnter waiters=$_segOpWaiters pts=${segment.length}',
-      tag: 'SegOp',
-    );
+  /// إعادة رسم المسار الحي كخط واحد من _flattenedRoadPath.
+  Future<void> _redrawDrawLine() async {
+    if (!mounted) return;
 
     await _beginSegmentOp();
-    final tLock = DateTime.now();
-    final waitMs = tLock.difference(tEnter).inMilliseconds;
     try {
       final session = _drawSession;
       final clearGen = _visualClearGen;
@@ -415,37 +367,45 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (manager == null) return;
       if (session != _drawSession || clearGen != _visualClearGen) return;
 
+      final path = List<RoutePoint>.from(_flattenedRoadPath);
+
+      // أقل من نقطتين → احذف الخط الحالي فقط إن كان ما زال لنا
+      if (path.length < 2) {
+        final old = _drawLine;
+        if (old != null &&
+            session == _drawSession &&
+            clearGen == _visualClearGen) {
+          _drawLine = null;
+          try {
+            await manager.delete(old);
+          } catch (_) {}
+        }
+        return;
+      }
+
       final coords = <Position>[
-        for (final p in segment) Position(p.longitude, p.latitude),
+        for (final p in path) Position(p.longitude, p.latitude),
       ];
       final geometry = LineString(coordinates: coords);
 
-      // ضمان وصول القائمة إلى الفهرس تحت القفل
-      while (_segmentLines.length <= index) {
-        _segmentLines.add(null);
-      }
-
-      final existing = _segmentLines[index];
+      // المسار السعيد: update فقط
+      final existing = _drawLine;
       if (existing != null) {
         try {
           existing.geometry = geometry;
           await manager.update(existing);
-
-          // فحص بعد await
+          // بعد await: لا نلمس شيئًا إن تغيّرت الجلسة/المسح
           if (session != _drawSession || clearGen != _visualClearGen) return;
-
-          final nativeMs = DateTime.now().difference(tLock).inMilliseconds;
-          MapUtils.log(
-            'upsert NATIVE_DONE idx=$index kind=$kind waitMs=$waitMs nativeMs=$nativeMs',
-            tag: 'SegOp',
-          );
           return;
         } catch (e) {
-          MapUtils.log('segment line update fallback: $e', tag: 'AdminDraw');
+          MapUtils.log('draw line update fallback: $e', tag: 'AdminDraw');
+          // لا نُفرّغ _drawLine هنا — قد يبقى صالحًا؛ نحاول create ثم نستبدل بحذر
         }
       }
 
-      // create
+      // fallback: create أولًا
+      if (session != _drawSession || clearGen != _visualClearGen) return;
+
       PolylineAnnotation? created;
       try {
         created = await manager.create(
@@ -456,74 +416,32 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           ),
         );
       } catch (e) {
-        MapUtils.log('segment line create: $e', tag: 'AdminDraw');
+        MapUtils.log('draw line create: $e', tag: 'AdminDraw');
         return;
       }
 
-      // فحص بعد await: لا نربط خطًا بجلسة/قائمة قديمة
+      // بعد create: إن أصبحنا stale احذف المُنشأ فقط ولا تلمس _drawLine الحالي
       if (!mounted ||
           session != _drawSession ||
-          clearGen != _visualClearGen ||
-          index >= _segmentLines.length) {
+          clearGen != _visualClearGen) {
         try {
           await manager.delete(created);
         } catch (_) {}
         return;
       }
 
-      final previous = _segmentLines[index];
-      _segmentLines[index] = created;
-      if (previous != null) {
+      // ما زلنا أصحاب الجلسة: اعتمد المُنشأ ثم احذف السابق إن وُجد
+      final previous = _drawLine;
+      _drawLine = created;
+      if (previous != null && !identical(previous, created)) {
         try {
           await manager.delete(previous);
         } catch (_) {}
+        // بعد delete: إن تغيّرت الجلسة لا نُعدّل _drawLine أكثر —
+        // clear الأحدث إما مسح المرجع أو سيمسح عبر لقطته الخاصة
       }
-
-      final nativeMs = DateTime.now().difference(tLock).inMilliseconds;
-      MapUtils.log(
-        'upsert NATIVE_DONE idx=$index kind=$kind waitMs=$waitMs nativeMs=$nativeMs',
-        tag: 'SegOp',
-      );
     } finally {
       _endSegmentOp();
-      MapUtils.log(
-        'upsert END idx=$index kind=$kind totalMs=${DateTime.now().difference(tEnter).inMilliseconds}',
-        tag: 'SegOp',
-      );
-    }
-  }
-
-  /// حذف خط المقطع الأخير فقط (لـ Undo).
-  Future<void> _removeLastSegmentLine() async {
-    final t0 = DateTime.now();
-    MapUtils.log(
-      'undoLine ENTER busy=$_segmentOpBusy waiters=$_segOpWaiters',
-      tag: 'SegOp',
-    );
-    await _beginSegmentOp();
-    try {
-      if (_segmentLines.isEmpty) return;
-
-      final session = _drawSession;
-      final clearGen = _visualClearGen;
-
-      final last = _segmentLines.removeLast();
-      if (last == null) return;
-
-      // إذا بدأ clear أحدث، اتركه يتولى الحذف
-      if (session != _drawSession || clearGen != _visualClearGen) return;
-
-      final manager = polylineAnnotationManager;
-      if (manager == null) return;
-      try {
-        await manager.delete(last);
-      } catch (_) {}
-    } finally {
-      _endSegmentOp();
-      MapUtils.log(
-        'undoLine DONE totalMs=${DateTime.now().difference(t0).inMilliseconds}',
-        tag: 'SegOp',
-      );
     }
   }
 
@@ -548,7 +466,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         } catch (_) {}
       }
 
-      await _removeLastSegmentLine();
+      await _redrawDrawLine();
 
       if (mounted) {
         setState(() {});
@@ -711,10 +629,9 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _tapLocked = false;
     _drawPoints.clear();
     _roadSegments.clear();
-    _segmentLines.clear();
+    _drawLine = null;
     _segmentOpBusy = false;
     _segmentOpDone = null;
-    _segOpWaiters = 0;
     _drawPointMarkers.clear();
     _drawCircleManager = null;
 
