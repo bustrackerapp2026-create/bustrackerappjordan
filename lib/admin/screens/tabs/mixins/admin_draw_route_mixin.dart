@@ -72,6 +72,9 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool _segmentOpBusy = false;
   Completer<void>? _segmentOpDone;
 
+  /// عدد من ينتظرون القفل حاليًا (تشخيص فقط — لا يغيّر السلوك).
+  int _segOpWaiters = 0;
+
   /// المسار المعروض فعلياً على الخريطة.
   List<RoutePoint> get _flattenedRoadPath {
     if (_roadSegments.isEmpty) {
@@ -157,10 +160,21 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   Future<void> _beginSegmentOp() async {
+    final enteredBusy = _segmentOpBusy;
+    if (enteredBusy) _segOpWaiters++;
+    final waitStart = DateTime.now();
     while (_segmentOpBusy) {
       final pending = _segmentOpDone;
       if (pending != null) await pending.future;
     }
+    final waitMs = DateTime.now().difference(waitStart).inMilliseconds;
+    if (enteredBusy) {
+      _segOpWaiters = (_segOpWaiters - 1).clamp(0, 999999);
+    }
+    MapUtils.log(
+      'LOCK_ACQUIRED waitMs=$waitMs waitersLeft=$_segOpWaiters',
+      tag: 'SegOp',
+    );
     _segmentOpBusy = true;
     _segmentOpDone = Completer<void>();
   }
@@ -172,11 +186,18 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (done != null && !done.isCompleted) {
       done.complete();
     }
+    MapUtils.log('LOCK_RELEASED waiters=$_segOpWaiters', tag: 'SegOp');
   }
 
   Future<void> _clearDrawVisuals() async {
     final clearGen = ++_visualClearGen;
     _lineRedrawQueued = false;
+
+    final t0 = DateTime.now();
+    MapUtils.log(
+      'clear ENTER busy=$_segmentOpBusy waiters=$_segOpWaiters clearGen=$clearGen',
+      tag: 'SegOp',
+    );
 
     // استحوذ على نفس قفل عمليات المقاطع
     await _beginSegmentOp();
@@ -208,6 +229,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
     } finally {
       _endSegmentOp();
+      MapUtils.log(
+        'clear DONE totalMs=${DateTime.now().difference(t0).inMilliseconds}',
+        tag: 'SegOp',
+      );
     }
   }
 
@@ -281,7 +306,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       segmentIndex = _roadSegments.length;
       _roadSegments.add([from, to]);
-      await _upsertSegmentLine(segmentIndex, [from, to]);
+      await _upsertSegmentLine(segmentIndex, [from, to], kind: 'temporary');
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw tap: $e', tag: 'AdminDraw');
@@ -290,7 +315,11 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         final b = _drawPoints.last;
         if (_roadSegments.length < _drawPoints.length - 1) {
           _roadSegments.add([a, b]);
-          await _upsertSegmentLine(_roadSegments.length - 1, [a, b]);
+          await _upsertSegmentLine(
+            _roadSegments.length - 1,
+            [a, b],
+            kind: 'temporary_fallback',
+          );
         }
         MapUtils.showSnackBar(
           context,
@@ -344,7 +373,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       _roadSegments[idx] = pinned;
-      await _upsertSegmentLine(idx, pinned);
+      await _upsertSegmentLine(idx, pinned, kind: 'directions');
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw segment directions: $e', tag: 'AdminDraw');
@@ -355,7 +384,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
       if (idx < _roadSegments.length) {
         _roadSegments[idx] = [a, b];
-        await _upsertSegmentLine(idx, [a, b]);
+        await _upsertSegmentLine(idx, [a, b], kind: 'directions_fallback');
         if (mounted) setState(() {});
       }
     }
@@ -364,11 +393,21 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   /// إنشاء أو تحديث خط مقطع واحد فقط.
   Future<void> _upsertSegmentLine(
     int index,
-    List<RoutePoint> segment,
-  ) async {
+    List<RoutePoint> segment, {
+    String kind = 'unknown',
+  }) async {
     if (!mounted || segment.length < 2) return;
 
+    final tEnter = DateTime.now();
+    final busyOnEnter = _segmentOpBusy;
+    MapUtils.log(
+      'upsert ENTER idx=$index kind=$kind busy=$busyOnEnter waiters=$_segOpWaiters pts=${segment.length}',
+      tag: 'SegOp',
+    );
+
     await _beginSegmentOp();
+    final tLock = DateTime.now();
+    final waitMs = tLock.difference(tEnter).inMilliseconds;
     try {
       final session = _drawSession;
       final clearGen = _visualClearGen;
@@ -394,6 +433,12 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
           // فحص بعد await
           if (session != _drawSession || clearGen != _visualClearGen) return;
+
+          final nativeMs = DateTime.now().difference(tLock).inMilliseconds;
+          MapUtils.log(
+            'upsert NATIVE_DONE idx=$index kind=$kind waitMs=$waitMs nativeMs=$nativeMs',
+            tag: 'SegOp',
+          );
           return;
         } catch (e) {
           MapUtils.log('segment line update fallback: $e', tag: 'AdminDraw');
@@ -433,13 +478,28 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           await manager.delete(previous);
         } catch (_) {}
       }
+
+      final nativeMs = DateTime.now().difference(tLock).inMilliseconds;
+      MapUtils.log(
+        'upsert NATIVE_DONE idx=$index kind=$kind waitMs=$waitMs nativeMs=$nativeMs',
+        tag: 'SegOp',
+      );
     } finally {
       _endSegmentOp();
+      MapUtils.log(
+        'upsert END idx=$index kind=$kind totalMs=${DateTime.now().difference(tEnter).inMilliseconds}',
+        tag: 'SegOp',
+      );
     }
   }
 
   /// حذف خط المقطع الأخير فقط (لـ Undo).
   Future<void> _removeLastSegmentLine() async {
+    final t0 = DateTime.now();
+    MapUtils.log(
+      'undoLine ENTER busy=$_segmentOpBusy waiters=$_segOpWaiters',
+      tag: 'SegOp',
+    );
     await _beginSegmentOp();
     try {
       if (_segmentLines.isEmpty) return;
@@ -460,6 +520,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       } catch (_) {}
     } finally {
       _endSegmentOp();
+      MapUtils.log(
+        'undoLine DONE totalMs=${DateTime.now().difference(t0).inMilliseconds}',
+        tag: 'SegOp',
+      );
     }
   }
 
@@ -650,6 +714,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _segmentLines.clear();
     _segmentOpBusy = false;
     _segmentOpDone = null;
+    _segOpWaiters = 0;
     _drawPointMarkers.clear();
     _drawCircleManager = null;
 
