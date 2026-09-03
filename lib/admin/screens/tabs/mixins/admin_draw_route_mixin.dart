@@ -64,6 +64,9 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   /// جيل المسح البصري — يمنع clear قديماً من حذف خط جلسة أحدث.
   int _visualClearGen = 0;
 
+  /// يمنع تداخل استدعاءات Undo المتعددة السريعة.
+  bool _undoBusy = false;
+
   /// المسار المعروض فعلياً على الخريطة.
   List<RoutePoint> get _flattenedRoadPath {
     if (_roadSegments.isEmpty) {
@@ -433,28 +436,33 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   Future<void> undoLastDrawPoint() async {
-    if (_drawPoints.isEmpty || isSnappingSegment) return;
+    if (_drawPoints.isEmpty || isSnappingSegment || _undoBusy) return;
 
-    _drawMutationSeq++;
+    _undoBusy = true;
+    try {
+      _drawMutationSeq++;
 
-    _drawPoints.removeLast();
+      _drawPoints.removeLast();
 
-    if (_roadSegments.isNotEmpty) {
-      _roadSegments.removeLast();
-    }
+      if (_roadSegments.isNotEmpty) {
+        _roadSegments.removeLast();
+      }
 
-    if (_drawPointMarkers.isNotEmpty) {
-      final lastMarker = _drawPointMarkers.removeLast();
+      if (_drawPointMarkers.isNotEmpty) {
+        final lastMarker = _drawPointMarkers.removeLast();
 
-      try {
-        await _drawCircleManager?.delete(lastMarker);
-      } catch (_) {}
-    }
+        try {
+          await _drawCircleManager?.delete(lastMarker);
+        } catch (_) {}
+      }
 
-    await _redrawDrawLine();
+      await _redrawDrawLine();
 
-    if (mounted) {
-      setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
+    } finally {
+      _undoBusy = false;
     }
   }
 
