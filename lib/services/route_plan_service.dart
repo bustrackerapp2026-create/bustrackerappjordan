@@ -41,3 +41,56 @@ class RoutePlanService {
         perfTapId: perfTapId,
         perfSegmentIndex: perfSegmentIndex,
       );
+
+  Future<List<RoutePoint>> getDrivingPathThrough(
+    List<RoutePoint> waypoints, {
+    bool snapWaypoints = true,
+    bool preserveWaypoints = false,
+  }) =>
+      _mapbox.getDrivingPathThrough(
+        waypoints,
+        snapWaypoints: snapWaypoints,
+        preserveWaypoints: preserveWaypoints,
+      );
+
+  /// محاذاة نقاط تحكم الأدمن (يحافظ على النقاط؛ بدون sample 120م).
+  Future<List<RoutePoint>> buildRoadAlignedRoute(
+    List<RoutePoint> controlPoints,
+  ) =>
+      _mapbox.buildRoadAlignedRoute(controlPoints);
+
+  Future<List<RoutePoint>> snapToRoads(
+    List<RoutePoint> points, {
+    double minSpacingMeters = 20,
+  }) =>
+      _mapbox.snapToRoads(points, minSpacingMeters: minSpacingMeters);
+
+  List<RoutePoint> simplifyPoints(
+    List<RoutePoint> input, {
+    double minDistanceMeters = 25,
+  }) =>
+      RoutePlanGeometry.simplifyPoints(
+        input,
+        minDistanceMeters: minDistanceMeters,
+      );
+
+  double totalDistanceMeters(List<RoutePoint> points) =>
+      RoutePlanGeometry.totalDistanceMeters(points);
+
+  Stream<List<PlannedRoute>> watchLineRoutes(String lineName) {
+    return _col.where('lineName', isEqualTo: lineName).snapshots().map((snap) {
+      final list =
+          snap.docs.map((d) => PlannedRoute.fromDoc(d.id, d.data())).toList();
+      list.sort((a, b) => a.direction.index.compareTo(b.direction.index));
+      return list;
+    });
+  }
+
+  Stream<List<PlannedRoute>> watchDriverRoutes(String driver ind) {
+    return _col.where('createdBy', isEqualTo: driverId).snapshots().map((snap) {
+      return snap.docs
+          .map((d) => PlannedRoute.fromDoc(d.id, d.data()))
+          .toList();
+    });
+  }
+}
