@@ -261,54 +261,13 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       _drawPoints.add(snapped);
 
-      final swCircle = Stopwatch()..start();
-      try {
-        await _ensureDrawCircleManager();
-        final manager = _drawCircleManager;
-        if (manager != null) {
-          final marker = await manager.create(
-            CircleAnnotationOptions(
-              geometry: Point(
-                coordinates: Position(snapped.longitude, snapped.latitude),
-              ),
-              circleRadius: 3.0,
-              circleColor: 0xFF7C3AED,
-              circleStrokeColor: 0xFFFFFFFF,
-              circleStrokeWidth: 1.5,
-              // مخفية بصرياً بالكامل؛ المراجع تبقى لـ Undo
-              circleOpacity: 0.0,
-              circleStrokeOpacity: 0.0,
-            ),
-          );
-          if (session != _drawSession) {
-            swCircle.stop();
-            MapUtils.log(
-              'PERF|circleCreate tapId=$tapId ms=${swCircle.elapsedMilliseconds} stale=true',
-              tag: 'AdminDrawPerf',
-            );
-            return;
-          }
-          _drawPointMarkers.add(marker);
-          swCircle.stop();
-          MapUtils.log(
-            'PERF|circleCreate tapId=$tapId ms=${swCircle.elapsedMilliseconds}',
-            tag: 'AdminDrawPerf',
-          );
-        } else {
-          swCircle.stop();
-          MapUtils.log(
-            'PERF|circleCreate tapId=$tapId ms=${swCircle.elapsedMilliseconds} manager=null',
-            tag: 'AdminDrawPerf',
-          );
-        }
-      } catch (e) {
-        swCircle.stop();
-        MapUtils.log(
-          'PERF|circleCreate tapId=$tapId ms=${swCircle.elapsedMilliseconds} error=true',
-          tag: 'AdminDrawPerf',
-        );
-        MapUtils.log('draw point marker: $e', tag: 'AdminDraw');
-      }
+      // EXPERIMENT: skip CircleAnnotation create during live draw
+      // to isolate whether circle markers contribute to jank/GC.
+      // Keep _drawPointMarkers empty; undo already guards isNotEmpty.
+      MapUtils.log(
+        'PERF|circleCreate tapId=$tapId ms=0 skipped=true',
+        tag: 'AdminDrawPerf',
+      );
 
       if (_drawPoints.length < 2) {
         if (mounted) setState(() {});
