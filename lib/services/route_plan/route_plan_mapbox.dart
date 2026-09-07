@@ -118,8 +118,6 @@ class RoutePlanMapbox {
     /// عند false: تُعاد هندسة Directions على الطريق دون فرض
     /// نقاط التحكم كأطراف (مناسب للرسم الحي؛ Markers منفصلة).
     bool attachControlEndpoints = true,
-    int? perfTapId,
-    int? perfSegmentIndex,
   }) async {
     final token = _mapboxToken;
 
@@ -155,8 +153,6 @@ class RoutePlanMapbox {
     final path = await _directionsRequest(
       [a, b],
       token,
-      perfTapId: perfTapId,
-      perfSegmentIndex: perfSegmentIndex,
     );
 
     if (path.length < 2) {
@@ -178,10 +174,8 @@ class RoutePlanMapbox {
   /// طلب Mapbox Directions لمجموعة نقاط حقيقية.
   Future<List<RoutePoint>> _directionsRequest(
     List<RoutePoint> points,
-    String token, {
-    int? perfTapId,
-    int? perfSegmentIndex,
-  }) async {
+    String token,
+  ) async {
     if (points.length < 2) {
       return List<RoutePoint>.of(points);
     }
@@ -209,49 +203,26 @@ class RoutePlanMapbox {
       '&access_token=$token',
     );
 
-    // Single wall-clock stopwatch for real total Directions time
-    final swDirectionsTotal = Stopwatch()..start();
-    final swHttp = Stopwatch()..start();
     final body = await _httpGet(
       uri,
       timeout: Duration(
         seconds: 10 + validPoints.length,
       ),
     );
-    swHttp.stop();
 
     if (body == null) {
-      swDirectionsTotal.stop();
-      if (kDebugMode) {
-        debugPrint(
-          'PERF|directions tapId=$perfTapId seg=$perfSegmentIndex '
-          'httpMs=${swHttp.elapsedMilliseconds} '
-          'directionsTotalMs=${swDirectionsTotal.elapsedMilliseconds} '
-          'reason=body_null',
-        );
-      }
       return const [];
     }
 
     try {
-      final swDecode = Stopwatch()..start();
       final data = jsonDecode(body) as Map<String, dynamic>;
-      swDecode.stop();
 
       final code = data['code']?.toString();
 
       if (code != null && code != 'Ok') {
-        swDirectionsTotal.stop();
         if (kDebugMode) {
           debugPrint(
             'directions code=$code',
-          );
-          debugPrint(
-            'PERF|directions tapId=$perfTapId seg=$perfSegmentIndex '
-            'httpMs=${swHttp.elapsedMilliseconds} '
-            'decodeMs=${swDecode.elapsedMilliseconds} '
-            'directionsTotalMs=${swDirectionsTotal.elapsedMilliseconds} '
-            'reason=code_$code',
           );
         }
 
@@ -261,16 +232,6 @@ class RoutePlanMapbox {
       final routes = data['routes'] as List<dynamic>?;
 
       if (routes == null || routes.isEmpty) {
-        swDirectionsTotal.stop();
-        if (kDebugMode) {
-          debugPrint(
-            'PERF|directions tapId=$perfTapId seg=$perfSegmentIndex '
-            'httpMs=${swHttp.elapsedMilliseconds} '
-            'decodeMs=${swDecode.elapsedMilliseconds} '
-            'directionsTotalMs=${swDirectionsTotal.elapsedMilliseconds} '
-            'reason=routes_empty',
-          );
-        }
         return const [];
       }
 
@@ -279,50 +240,16 @@ class RoutePlanMapbox {
       final geometry = firstRoute['geometry'] as Map<String, dynamic>?;
 
       if (geometry == null) {
-        swDirectionsTotal.stop();
-        if (kDebugMode) {
-          debugPrint(
-            'PERF|directions tapId=$perfTapId seg=$perfSegmentIndex '
-            'httpMs=${swHttp.elapsedMilliseconds} '
-            'decodeMs=${swDecode.elapsedMilliseconds} '
-            'directionsTotalMs=${swDirectionsTotal.elapsedMilliseconds} '
-            'reason=geometry_null',
-          );
-        }
         return const [];
       }
 
-      final swParse = Stopwatch()..start();
       final path = RoutePlanGeometry.parseGeoJsonLine(geometry);
-      swParse.stop();
-
-      swDirectionsTotal.stop();
-
-      if (kDebugMode) {
-        debugPrint(
-          'PERF|directions tapId=$perfTapId seg=$perfSegmentIndex '
-          'httpMs=${swHttp.elapsedMilliseconds} '
-          'decodeMs=${swDecode.elapsedMilliseconds} '
-          'parseMs=${swParse.elapsedMilliseconds} '
-          'directionsTotalMs=${swDirectionsTotal.elapsedMilliseconds} '
-          'points=${path.length}',
-        );
-      }
 
       return path;
     } catch (e) {
-      // If jsonDecode itself threw, swDecode was never stopped — that is fine.
-      // We only care that swDirectionsTotal is always stopped.
-      swDirectionsTotal.stop();
       if (kDebugMode) {
         debugPrint(
           'directions parse: $e',
-        );
-        debugPrint(
-          'PERF|directions PARSE_ERROR tapId=$perfTapId seg=$perfSegmentIndex '
-          'httpMs=${swHttp.elapsedMilliseconds} '
-          'directionsTotalMs=${swDirectionsTotal.elapsedMilliseconds} '
-          'reason=exception',
         );
       }
 
