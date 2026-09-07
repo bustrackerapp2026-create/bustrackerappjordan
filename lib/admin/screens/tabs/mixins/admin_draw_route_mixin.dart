@@ -443,6 +443,16 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (phase == 'temp' || phase == 'temp-fallback') {
         return;
       }
+      // EXPERIMENT: skip final Polyline manager.update only.
+      // Isolates whether final update causes jank as pathN grows.
+      // undo / cancel unchanged. _endSegmentOp runs via finally.
+      if (phase == 'final' || phase == 'final-fallback') {
+        MapUtils.log(
+          'PERF|redraw phase=$phase SKIPPED_FOR_TEST tapId=$tapId seg=$segmentIndex',
+          tag: 'AdminDrawPerf',
+        );
+        return;
+      }
       final session = _drawSession;
       final clearGen = _visualClearGen;
       final manager = polylineAnnotationManager;
