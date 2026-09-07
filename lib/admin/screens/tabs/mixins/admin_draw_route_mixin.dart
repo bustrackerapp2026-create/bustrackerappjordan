@@ -478,6 +478,12 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     bool usedFallback = false;
 
     try {
+      // EXPERIMENT: skip temp Polyline update only.
+      // Tests hypothesis that temp manager.update causes jank.
+      // final / undo paths unchanged. _endSegmentOp runs via finally.
+      if (phase == 'temp' || phase == 'temp-fallback') {
+        return;
+      }
       final session = _drawSession;
       final clearGen = _visualClearGen;
       final manager = polylineAnnotationManager;
