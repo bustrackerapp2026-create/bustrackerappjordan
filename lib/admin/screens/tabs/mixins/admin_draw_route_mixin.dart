@@ -76,6 +76,12 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   int _perfTapId = 0;
   int _perfRedrawId = 0;
 
+  // --- EXPERIMENT: coalesce final Polyline updates (single body path) ---
+  bool _finalCoalesceRunning = false;
+  bool _finalCoalesceQueued = false;
+  int _finalCoalesceEpoch = 0;
+  int _finalCoalesceRunnerEpoch = 0;
+
   /// المسار المعروض فعلياً على الخريطة.
   List<RoutePoint> get _flattenedRoadPath {
     if (_roadSegments.isEmpty) {
@@ -109,6 +115,11 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return out;
   }
 
+  void _invalidateFinalCoalesce() {
+    _finalCoalesceEpoch++;
+    _finalCoalesceQueued = false;
+  }
+
   Future<void> _ensureDrawCircleManager() async {
     if (_drawCircleManager != null || mapboxMap == null) return;
     try {
@@ -126,6 +137,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _drawMutationSeq++;
     _lineRedrawSeq++;
     _tapLocked = false;
+    _invalidateFinalCoalesce();
 
     setState(() {
       isDrawingRoute = true;
@@ -149,6 +161,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _drawMutationSeq++;
     _lineRedrawSeq++;
     _tapLocked = false;
+    _invalidateFinalCoalesce();
 
     setState(() {
       isDrawingRoute = false;
@@ -180,6 +193,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   Future<void> _clearDrawVisuals() async {
     final clearGen = ++_visualClearGen;
+    _invalidateFinalCoalesce();
     _lineRedrawQueued = false;
 
     await _beginSegmentOp();
@@ -419,6 +433,37 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }) async {
     if (!mounted) return;
 
+    // External final only: queue + single runner. Body runs as '_final_coalesced'
+    // so concurrent finals never bypass this gate into beginSegmentOp.
+    if (phase == 'final' || phase == 'final-fallback') {
+      _finalCoalesceQueued = true;
+      if (_finalCoalesceRunning) {
+        MapUtils.log(
+          'PERF|redraw phase=$phase COALESCE_QUEUED tapId=$tapId seg=$segmentIndex',
+          tag: 'AdminDrawPerf',
+        );
+        return;
+      }
+      _finalCoalesceRunning = true;
+      final epoch = _finalCoalesceEpoch;
+      _finalCoalesceRunnerEpoch = epoch;
+      try {
+        while (_finalCoalesceQueued &&
+            mounted &&
+            epoch == _finalCoalesceEpoch) {
+          _finalCoalesceQueued = false;
+          await _redrawDrawLine(
+            tapId: tapId,
+            segmentIndex: segmentIndex,
+            phase: '_final_coalesced',
+          );
+        }
+      } finally {
+        _finalCoalesceRunning = false;
+      }
+      return;
+    }
+
     final redrawId = ++_perfRedrawId;
     final swTotal = Stopwatch()..start();
     final swWait = Stopwatch()..start();
@@ -441,16 +486,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       // Tests hypothesis that temp manager.update causes jank.
       // final / undo paths unchanged. _endSegmentOp runs via finally.
       if (phase == 'temp' || phase == 'temp-fallback') {
-        return;
-      }
-      // EXPERIMENT: skip final Polyline manager.update only.
-      // Isolates whether final update causes jank as pathN grows.
-      // undo / cancel unchanged. _endSegmentOp runs via finally.
-      if (phase == 'final' || phase == 'final-fallback') {
-        MapUtils.log(
-          'PERF|redraw phase=$phase SKIPPED_FOR_TEST tapId=$tapId seg=$segmentIndex',
-          tag: 'AdminDrawPerf',
-        );
         return;
       }
       final session = _drawSession;
@@ -491,6 +526,12 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final geometry = LineString(coordinates: coords);
       swGeom.stop();
       geomMs = swGeom.elapsedMilliseconds;
+
+      // Drop stale coalesced final before any native write.
+      if (phase == '_final_coalesced' &&
+          _finalCoalesceRunnerEpoch != _finalCoalesceEpoch) {
+        return;
+      }
 
       // المسار السعيد: update فقط
       final existing = _drawLine;
@@ -583,6 +624,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _undoBusy = true;
     try {
       _drawMutationSeq++;
+      _invalidateFinalCoalesce();
 
       _drawPoints.removeLast();
 
@@ -758,6 +800,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _lineRedrawSeq++;
     _visualClearGen++;
     _lineRedrawQueued = false;
+    _invalidateFinalCoalesce();
     _tapLocked = false;
     _drawPoints.clear();
     _roadSegments.clear();
