@@ -48,6 +48,7 @@ Future<void> _initDotEnv() async {
 }
 
 void main() async {
+  debugPrint('BUILD_COMMIT=021b789e87e508d88aada59c3b5d554cac36f73d');
   WidgetsFlutterBinding.ensureInitialized();
 
   ErrorWidget.builder = (FlutterErrorDetails details) {
@@ -242,8 +243,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
       return const LoginScreen();
     }
 
-    final snapshot = context.select<
-        AuthProvider, ({String? uid, String? type, bool? verified})>((a) {
+    final snapshot = context
+        .select<AuthProvider, ({String? uid, String? type, bool? verified})>(
+            (a) {
       final u = a.userData;
       return (
         uid: a.userId,
