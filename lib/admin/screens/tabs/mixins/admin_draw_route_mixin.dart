@@ -72,6 +72,12 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool _segmentOpBusy = false;
   Completer<void>? _segmentOpDone;
 
+  // Coalesce rapid final Polyline updates onto latest geometry.
+  bool _finalCoalesceRunning = false;
+  bool _finalCoalesceQueued = false;
+  int _finalCoalesceEpoch = 0;
+  int _finalCoalesceRunnerEpoch = 0;
+
   /// المسار المعروض فعلياً على الخريطة.
   List<RoutePoint> get _flattenedRoadPath {
     if (_roadSegments.isEmpty) {
@@ -105,6 +111,11 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return out;
   }
 
+  void _invalidateFinalCoalesce() {
+    _finalCoalesceEpoch++;
+    _finalCoalesceQueued = false;
+  }
+
   Future<void> _ensureDrawCircleManager() async {
     if (_drawCircleManager != null || mapboxMap == null) return;
     try {
@@ -122,6 +133,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _drawMutationSeq++;
     _lineRedrawSeq++;
     _tapLocked = false;
+    _invalidateFinalCoalesce();
 
     setState(() {
       isDrawingRoute = true;
@@ -145,6 +157,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _drawMutationSeq++;
     _lineRedrawSeq++;
     _tapLocked = false;
+    _invalidateFinalCoalesce();
 
     setState(() {
       isDrawingRoute = false;
@@ -176,6 +189,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   Future<void> _clearDrawVisuals() async {
     final clearGen = ++_visualClearGen;
+    _invalidateFinalCoalesce();
     _lineRedrawQueued = false;
 
     await _beginSegmentOp();
@@ -275,7 +289,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       segmentIndex = _roadSegments.length;
       _roadSegments.add([from, to]);
-      await _redrawDrawLine();
+      await _redrawDrawLine(phase: 'temp');
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw tap: $e', tag: 'AdminDraw');
@@ -284,7 +298,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         final b = _drawPoints.last;
         if (_roadSegments.length < _drawPoints.length - 1) {
           _roadSegments.add([a, b]);
-          await _redrawDrawLine();
+          await _redrawDrawLine(phase: 'temp-fallback');
         }
         MapUtils.showSnackBar(
           context,
@@ -338,7 +352,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       _roadSegments[idx] = pinned;
-      await _redrawDrawLine();
+      await _redrawDrawLine(phase: 'final');
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw segment directions: $e', tag: 'AdminDraw');
@@ -349,15 +363,46 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
       if (idx < _roadSegments.length) {
         _roadSegments[idx] = [a, b];
-        await _redrawDrawLine();
+        await _redrawDrawLine(phase: 'final-fallback');
         if (mounted) setState(() {});
       }
     }
   }
 
   /// إعادة رسم المسار الحي كخط واحد من _flattenedRoadPath.
-  Future<void> _redrawDrawLine() async {
+  Future<void> _redrawDrawLine({
+    int? tapId,
+    int? segmentIndex,
+    String phase = '',
+  }) async {
     if (!mounted) return;
+
+    // External final only: queue + single runner. Body runs as '_final_coalesced'
+    // so concurrent finals never bypass this gate into beginSegmentOp.
+    if (phase == 'final' || phase == 'final-fallback') {
+      _finalCoalesceQueued = true;
+      if (_finalCoalesceRunning) {
+        return;
+      }
+      _finalCoalesceRunning = true;
+      final epoch = _finalCoalesceEpoch;
+      _finalCoalesceRunnerEpoch = epoch;
+      try {
+        while (_finalCoalesceQueued &&
+            mounted &&
+            epoch == _finalCoalesceEpoch) {
+          _finalCoalesceQueued = false;
+          await _redrawDrawLine(
+            tapId: tapId,
+            segmentIndex: segmentIndex,
+            phase: '_final_coalesced',
+          );
+        }
+      } finally {
+        _finalCoalesceRunning = false;
+      }
+      return;
+    }
 
     await _beginSegmentOp();
     try {
@@ -386,7 +431,14 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final coords = <Position>[
         for (final p in path) Position(p.longitude, p.latitude),
       ];
+
       final geometry = LineString(coordinates: coords);
+
+      // Drop stale coalesced final before any native write.
+      if (phase == '_final_coalesced' &&
+          _finalCoalesceRunnerEpoch != _finalCoalesceEpoch) {
+        return;
+      }
 
       // المسار السعيد: update فقط
       final existing = _drawLine;
@@ -451,6 +503,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _undoBusy = true;
     try {
       _drawMutationSeq++;
+      _invalidateFinalCoalesce();
 
       _drawPoints.removeLast();
 
@@ -466,7 +519,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         } catch (_) {}
       }
 
-      await _redrawDrawLine();
+      await _redrawDrawLine(phase: 'undo');
 
       if (mounted) {
         setState(() {});
@@ -626,6 +679,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _lineRedrawSeq++;
     _visualClearGen++;
     _lineRedrawQueued = false;
+    _invalidateFinalCoalesce();
     _tapLocked = false;
     _drawPoints.clear();
     _roadSegments.clear();
