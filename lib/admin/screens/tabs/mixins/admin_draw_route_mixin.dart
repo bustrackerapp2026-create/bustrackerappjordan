@@ -197,8 +197,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (clearGen != _visualClearGen) return;
 
       final lineToDelete = _drawLine;
-      final markersToDelete =
-          List<CircleAnnotation>.from(_drawPointMarkers);
+      final markersToDelete = List<CircleAnnotation>.from(_drawPointMarkers);
       _drawLine = null;
       _drawPointMarkers.clear();
 
@@ -331,9 +330,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         to: b,
         attachControlEndpoints: false,
       );
-      if (!mounted ||
-          session != _drawSession ||
-          mutation != _drawMutationSeq) {
+      if (!mounted || session != _drawSession || mutation != _drawMutationSeq) {
         return;
       }
       if (idx >= _roadSegments.length) return;
@@ -356,9 +353,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw segment directions: $e', tag: 'AdminDraw');
-      if (!mounted ||
-          session != _drawSession ||
-          mutation != _drawMutationSeq) {
+      if (!mounted || session != _drawSession || mutation != _drawMutationSeq) {
         return;
       }
       if (idx < _roadSegments.length) {
@@ -388,9 +383,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final epoch = _finalCoalesceEpoch;
       _finalCoalesceRunnerEpoch = epoch;
       try {
-        while (_finalCoalesceQueued &&
-            mounted &&
-            epoch == _finalCoalesceEpoch) {
+        while (
+            _finalCoalesceQueued && mounted && epoch == _finalCoalesceEpoch) {
           _finalCoalesceQueued = false;
           await _redrawDrawLine(
             tapId: tapId,
@@ -473,9 +467,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       // بعد create: إن أصبحنا stale احذف المُنشأ فقط ولا تلمس _drawLine الحالي
-      if (!mounted ||
-          session != _drawSession ||
-          clearGen != _visualClearGen) {
+      if (!mounted || session != _drawSession || clearGen != _visualClearGen) {
         try {
           await manager.delete(created);
         } catch (_) {}
