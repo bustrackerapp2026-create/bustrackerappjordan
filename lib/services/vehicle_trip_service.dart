@@ -260,7 +260,7 @@ class VehicleTripService {
           'endedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
-        if (lockTripId == tripId) transaction.delete(lockRef);
+        if (lockTripId == tripId || !lockSnap.exists) transaction.delete(lockRef);
       });
     });
   }
