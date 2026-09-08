@@ -245,7 +245,7 @@ class VehicleTripService {
             VehicleTripStatusX.fromString(data['status']?.toString());
         final lockTripId = lockSnap.data()?['tripId']?.toString();
         if (current.isTerminal) {
-          if (lockTripId == tripId) transaction.delete(lockRef);
+          if (lockTripId == tripId || !lockSnap.exists) transaction.delete(lockRef);
           return;
         }
         if (current != VehicleTripStatus.active) {
