@@ -53,6 +53,15 @@ class RoutePlanGeometry {
         longitude: (c[0] as num).toDouble(),
       ));
     }
+    // DEBUG: Log first/last after parsing GeoJSON
+    if (path.isNotEmpty) {
+      debugPrintRoute(
+        '🔹 parseGeoJsonLine OUTPUT',
+        path.first,
+        path.last,
+        path.length,
+      );
+    }
     return path;
   }
 
@@ -83,6 +92,15 @@ class RoutePlanGeometry {
       out.add(end);
     } else if (out.isNotEmpty) {
       out[out.length - 1] = end;
+    }
+    // DEBUG: Log after stitching
+    if (out.isNotEmpty) {
+      debugPrintRoute(
+        '🔹 stitchEndpoints OUTPUT',
+        out.first,
+        out.last,
+        out.length,
+      );
     }
     return out;
   }
@@ -165,7 +183,17 @@ class RoutePlanGeometry {
       out.add(cur);
     }
     out.add(input.last);
-    return dedupeNear(out, minMeters: 3);
+    final result = dedupeNear(out, minMeters: 3);
+    // DEBUG: Log after spike removal
+    if (result.isNotEmpty) {
+      debugPrintRoute(
+        '🔹 removeSpikes OUTPUT',
+        result.first,
+        result.last,
+        result.length,
+      );
+    }
+    return result;
   }
 
   /// عيّنة نقاط تحكم بمسافة منتظمة تقريباً (أفضل من أخذ كل N فهرس)
@@ -206,6 +234,15 @@ class RoutePlanGeometry {
 
     if (out.length > maxPoints) {
       return sampleEvenly(out, maxPoints);
+    }
+    // DEBUG: Log after sampling
+    if (out.isNotEmpty) {
+      debugPrintRoute(
+        '🔹 sampleByDistance OUTPUT',
+        out.first,
+        out.last,
+        out.length,
+      );
     }
     return out;
   }
@@ -286,7 +323,17 @@ class RoutePlanGeometry {
     // أولاً مسافة دنيا ثم Douglas-Peucker أخف للحفاظ على انحناءات الشارع
     final spaced = dedupeNear(input, minMeters: minDistanceMeters * 0.55);
     if (spaced.length < 3) return spaced;
-    return douglasPeucker(spaced, epsilonMeters: minDistanceMeters * 0.45);
+    final result = douglasPeucker(spaced, epsilonMeters: minDistanceMeters * 0.45);
+    // DEBUG: Log after simplification
+    if (result.isNotEmpty) {
+      debugPrintRoute(
+        '🔹 simplifyPoints OUTPUT',
+        result.first,
+        result.last,
+        result.length,
+      );
+    }
+    return result;
   }
 
   static double totalDistanceMeters(List<RoutePoint> points) {
@@ -311,6 +358,11 @@ class RoutePlanGeometry {
   }) {
     if (a.isEmpty) return List.of(b);
     if (b.isEmpty) return List.of(a);
+    
+    // DEBUG: Log inputs to mergePaths
+    debugPrintRoute('🔹 mergePaths INPUT a', a.first, a.last, a.length);
+    debugPrintRoute('🔹 mergePaths INPUT b', b.first, b.last, b.length);
+    
     final out = List<RoutePoint>.of(a);
     var start = 0;
     if (distanceMeters(
@@ -323,6 +375,31 @@ class RoutePlanGeometry {
       start = 1;
     }
     out.addAll(b.skip(start));
-    return dedupeNear(out, minMeters: 3);
+    final result = dedupeNear(out, minMeters: 3);
+    
+    // DEBUG: Log output
+    if (result.isNotEmpty) {
+      debugPrintRoute(
+        '🔹 mergePaths OUTPUT',
+        result.first,
+        result.last,
+        result.length,
+      );
+    }
+    return result;
+  }
+
+  // DEBUG: Helper function
+  static void debugPrintRoute(
+    String label,
+    RoutePoint first,
+    RoutePoint last,
+    int count,
+  ) {
+    print(
+      '$label: $count points\n'
+      '  First: (${first.latitude.toStringAsFixed(6)}, ${first.longitude.toStringAsFixed(6)})\n'
+      '  Last:  (${last.latitude.toStringAsFixed(6)}, ${last.longitude.toStringAsFixed(6)})',
+    );
   }
 }
