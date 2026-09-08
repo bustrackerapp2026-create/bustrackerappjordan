@@ -72,11 +72,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool _segmentOpBusy = false;
   Completer<void>? _segmentOpDone;
 
-  // --- PERF instrumentation (temporary, diagnosis only) ---
-  int _perfTapId = 0;
-  int _perfRedrawId = 0;
-
-  // --- EXPERIMENT: coalesce final Polyline updates (single body path) ---
+  // Coalesce rapid final Polyline updates onto latest geometry.
   bool _finalCoalesceRunning = false;
   bool _finalCoalesceQueued = false;
   int _finalCoalesceEpoch = 0;
@@ -226,17 +222,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Future<void> onDrawRouteMapTap(Point point) async {
     if (!isDrawingRoute || !mounted || _tapLocked) return;
 
-    final tapId = ++_perfTapId;
-    final swTapTotal = Stopwatch()..start();
-    MapUtils.log(
-      'PERF|tapStart tapId=$tapId session=$_drawSession mutation=$_drawMutationSeq',
-      tag: 'AdminDrawPerf',
-    );
-
-    // Outer finally guarantees PERF|tapEnd on every exit path
-    // (first point, too-close, session stale, normal, error, etc.)
-    try {
-
     final lat = point.coordinates.lat.toDouble();
     final lng = point.coordinates.lng.toDouble();
     final raw = RoutePoint(latitude: lat, longitude: lng);
@@ -250,13 +235,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     RoutePoint? to;
 
     try {
-      final swSnap = Stopwatch()..start();
       final snapped = await _drawRouteService.snapPointToRoad(raw);
-      swSnap.stop();
-      MapUtils.log(
-        'PERF|snap tapId=$tapId ms=${swSnap.elapsedMilliseconds}',
-        tag: 'AdminDrawPerf',
-      );
       if (!mounted || session != _drawSession) return;
 
       if (_drawPoints.isNotEmpty) {
@@ -275,13 +254,30 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       _drawPoints.add(snapped);
 
-      // EXPERIMENT: skip CircleAnnotation create during live draw
-      // to isolate whether circle markers contribute to jank/GC.
-      // Keep _drawPointMarkers empty; undo already guards isNotEmpty.
-      MapUtils.log(
-        'PERF|circleCreate tapId=$tapId ms=0 skipped=true',
-        tag: 'AdminDrawPerf',
-      );
+      try {
+        await _ensureDrawCircleManager();
+        final manager = _drawCircleManager;
+        if (manager != null) {
+          final marker = await manager.create(
+            CircleAnnotationOptions(
+              geometry: Point(
+                coordinates: Position(snapped.longitude, snapped.latitude),
+              ),
+              circleRadius: 3.0,
+              circleColor: 0xFF7C3AED,
+              circleStrokeColor: 0xFFFFFFFF,
+              circleStrokeWidth: 1.5,
+              // مخفية بصرياً بالكامل؛ المراجع تبقى لـ Undo
+              circleOpacity: 0.0,
+              circleStrokeOpacity: 0.0,
+            ),
+          );
+          if (session != _drawSession) return;
+          _drawPointMarkers.add(marker);
+        }
+      } catch (e) {
+        MapUtils.log('draw point marker: $e', tag: 'AdminDraw');
+      }
 
       if (_drawPoints.length < 2) {
         if (mounted) setState(() {});
@@ -293,17 +289,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       segmentIndex = _roadSegments.length;
       _roadSegments.add([from, to]);
-      final swTempRedraw = Stopwatch()..start();
-      await _redrawDrawLine(
-        tapId: tapId,
-        segmentIndex: segmentIndex,
-        phase: 'temp',
-      );
-      swTempRedraw.stop();
-      MapUtils.log(
-        'PERF|tempRedrawDone tapId=$tapId seg=$segmentIndex ms=${swTempRedraw.elapsedMilliseconds}',
-        tag: 'AdminDrawPerf',
-      );
+      await _redrawDrawLine(phase: 'temp');
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw tap: $e', tag: 'AdminDraw');
@@ -312,11 +298,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         final b = _drawPoints.last;
         if (_roadSegments.length < _drawPoints.length - 1) {
           _roadSegments.add([a, b]);
-          await _redrawDrawLine(
-            tapId: tapId,
-            segmentIndex: _roadSegments.length - 1,
-            phase: 'temp-fallback',
-          );
+          await _redrawDrawLine(phase: 'temp-fallback');
         }
         MapUtils.showSnackBar(
           context,
@@ -332,10 +314,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (mounted) {
         setState(() => isSnappingSegment = false);
       }
-      MapUtils.log(
-        'PERF|tapUnlocked tapId=$tapId elapsedMs=${swTapTotal.elapsedMilliseconds}',
-        tag: 'AdminDrawPerf',
-      );
     }
 
     if (segmentIndex == null || from == null || to == null) return;
@@ -348,19 +326,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     try {
       // الرسم الحي: هندسة الطريق فقط — بدون stitch إلى نقاط النقر
-      final swDir = Stopwatch()..start();
       final road = await _drawRouteService.getDrivingPath(
         from: a,
         to: b,
         attachControlEndpoints: false,
-        perfTapId: tapId,
-        perfSegmentIndex: idx,
-      );
-      swDir.stop();
-      MapUtils.log(
-        'PERF|getDrivingPathDone tapId=$tapId seg=$idx '
-        'ms=${swDir.elapsedMilliseconds} points=${road.length}',
-        tag: 'AdminDrawPerf',
       );
       if (!mounted ||
           session != _drawSession ||
@@ -383,17 +352,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       _roadSegments[idx] = pinned;
-      final swFinalRedraw = Stopwatch()..start();
-      await _redrawDrawLine(
-        tapId: tapId,
-        segmentIndex: idx,
-        phase: 'final',
-      );
-      swFinalRedraw.stop();
-      MapUtils.log(
-        'PERF|finalRedrawDone tapId=$tapId seg=$idx ms=${swFinalRedraw.elapsedMilliseconds}',
-        tag: 'AdminDrawPerf',
-      );
+      await _redrawDrawLine(phase: 'final');
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw segment directions: $e', tag: 'AdminDraw');
@@ -404,24 +363,9 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
       if (idx < _roadSegments.length) {
         _roadSegments[idx] = [a, b];
-        await _redrawDrawLine(
-          tapId: tapId,
-          segmentIndex: idx,
-          phase: 'final-fallback',
-        );
+        await _redrawDrawLine(phase: 'final-fallback');
         if (mounted) setState(() {});
       }
-    }
-
-    } finally {
-      // Guarantees PERF|tapEnd for every path that passed the initial guard
-      // (first point, too-close, session stale, normal completion, errors, etc.)
-      swTapTotal.stop();
-      MapUtils.log(
-        'PERF|tapEnd tapId=$tapId totalMs=${swTapTotal.elapsedMilliseconds} '
-        'session=$_drawSession mutation=$_drawMutationSeq',
-        tag: 'AdminDrawPerf',
-      );
     }
   }
 
@@ -438,10 +382,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (phase == 'final' || phase == 'final-fallback') {
       _finalCoalesceQueued = true;
       if (_finalCoalesceRunning) {
-        MapUtils.log(
-          'PERF|redraw phase=$phase COALESCE_QUEUED tapId=$tapId seg=$segmentIndex',
-          tag: 'AdminDrawPerf',
-        );
         return;
       }
       _finalCoalesceRunning = true;
@@ -464,41 +404,15 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       return;
     }
 
-    final redrawId = ++_perfRedrawId;
-    final swTotal = Stopwatch()..start();
-    final swWait = Stopwatch()..start();
     await _beginSegmentOp();
-    swWait.stop();
-
-    int pathN = 0;
-    int posN = 0;
-    int flatMs = 0;
-    int posMs = 0;
-    int geomMs = 0;
-    int updateMs = 0;
-    int createMs = 0;
-    int deleteMs = 0;
-    bool updateOk = false;
-    bool usedFallback = false;
-
     try {
-      // EXPERIMENT: skip temp Polyline update only.
-      // Tests hypothesis that temp manager.update causes jank.
-      // final / undo paths unchanged. _endSegmentOp runs via finally.
-      if (phase == 'temp' || phase == 'temp-fallback') {
-        return;
-      }
       final session = _drawSession;
       final clearGen = _visualClearGen;
       final manager = polylineAnnotationManager;
       if (manager == null) return;
       if (session != _drawSession || clearGen != _visualClearGen) return;
 
-      final swFlat = Stopwatch()..start();
       final path = List<RoutePoint>.from(_flattenedRoadPath);
-      swFlat.stop();
-      flatMs = swFlat.elapsedMilliseconds;
-      pathN = path.length;
 
       // أقل من نقطتين → احذف الخط الحالي فقط إن كان ما زال لنا
       if (path.length < 2) {
@@ -514,18 +428,11 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         return;
       }
 
-      final swPos = Stopwatch()..start();
       final coords = <Position>[
         for (final p in path) Position(p.longitude, p.latitude),
       ];
-      swPos.stop();
-      posMs = swPos.elapsedMilliseconds;
-      posN = coords.length;
 
-      final swGeom = Stopwatch()..start();
       final geometry = LineString(coordinates: coords);
-      swGeom.stop();
-      geomMs = swGeom.elapsedMilliseconds;
 
       // Drop stale coalesced final before any native write.
       if (phase == '_final_coalesced' &&
@@ -538,17 +445,12 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (existing != null) {
         try {
           existing.geometry = geometry;
-          final swUpdate = Stopwatch()..start();
           await manager.update(existing);
-          swUpdate.stop();
-          updateMs = swUpdate.elapsedMilliseconds;
-          updateOk = true;
           // بعد await: لا نلمس شيئًا إن تغيّرت الجلسة/المسح
           if (session != _drawSession || clearGen != _visualClearGen) return;
           return;
         } catch (e) {
           MapUtils.log('draw line update fallback: $e', tag: 'AdminDraw');
-          usedFallback = true;
           // لا نُفرّغ _drawLine هنا — قد يبقى صالحًا؛ نحاول create ثم نستبدل بحذر
         }
       }
@@ -558,7 +460,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       PolylineAnnotation? created;
       try {
-        final swCreate = Stopwatch()..start();
         created = await manager.create(
           PolylineAnnotationOptions(
             geometry: geometry,
@@ -566,9 +467,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             lineWidth: 5.0,
           ),
         );
-        swCreate.stop();
-        createMs = swCreate.elapsedMilliseconds;
-        usedFallback = true;
       } catch (e) {
         MapUtils.log('draw line create: $e', tag: 'AdminDraw');
         return;
@@ -579,10 +477,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           session != _drawSession ||
           clearGen != _visualClearGen) {
         try {
-          final swDel = Stopwatch()..start();
           await manager.delete(created);
-          swDel.stop();
-          deleteMs = swDel.elapsedMilliseconds;
         } catch (_) {}
         return;
       }
@@ -592,29 +487,13 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _drawLine = created;
       if (previous != null && !identical(previous, created)) {
         try {
-          final swDel = Stopwatch()..start();
           await manager.delete(previous);
-          swDel.stop();
-          deleteMs = swDel.elapsedMilliseconds;
         } catch (_) {}
         // بعد delete: إن تغيّرت الجلسة لا نُعدّل _drawLine أكثر —
         // clear الأحدث إما مسح المرجع أو سيمسح عبر لقطته الخاصة
       }
     } finally {
       _endSegmentOp();
-      swTotal.stop();
-      MapUtils.log(
-        'PERF|redraw redrawId=$redrawId tapId=$tapId seg=$segmentIndex phase=$phase '
-        'waitMs=${swWait.elapsedMilliseconds} '
-        'flatMs=$flatMs pathN=$pathN '
-        'posMs=$posMs posN=$posN '
-        'geomMs=$geomMs '
-        'updateMs=$updateMs updateOk=$updateOk '
-        'fallback=$usedFallback createMs=$createMs deleteMs=$deleteMs '
-        'totalMs=${swTotal.elapsedMilliseconds} '
-        'session=$_drawSession mutation=$_drawMutationSeq',
-        tag: 'AdminDrawPerf',
-      );
     }
   }
 

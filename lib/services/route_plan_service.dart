@@ -30,16 +30,12 @@ class RoutePlanService {
     required RoutePoint to,
     bool snapEndpoints = true,
     bool attachControlEndpoints = true,
-    int? perfTapId,
-    int? perfSegmentIndex,
   }) =>
       _mapbox.getDrivingPath(
         from: from,
         to: to,
         snapEndpoints: snapEndpoints,
         attachControlEndpoints: attachControlEndpoints,
-        perfTapId: perfTapId,
-        perfSegmentIndex: perfSegmentIndex,
       );
 
   Future<List<RoutePoint>> getDrivingPathThrough(
