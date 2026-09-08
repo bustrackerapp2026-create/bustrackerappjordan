@@ -51,21 +51,33 @@ extension VehicleTripStatusX on VehicleTripStatus {
 
 /// رحلة تشغيلية لحافلة واحدة على مسار معتمد (Vehicle Operation).
 ///
-/// منفصلة عن [TripModel] (طلبات الركاب).
+/// لا علاقة لها بطلبات الركاب (Passenger Trip).
+/// المصدر التشغيلي للحقيقة: vehicleTrips/{id}
 class VehicleTrip {
   final String id;
   final String driverId;
+
+  /// لقطة رقم الحافلة وقت بدء الرحلة (لا يتغير لاحقًا).
   final String busNumber;
+
+  /// معرف PlannedRoute المعتمد.
   final String routeId;
 
   /// outbound | return — من PlannedRoute.direction
   final String direction;
+
   final VehicleTripStatus status;
+
   final GeoPoint? currentLocation;
   final double? speed;
   final double? heading;
+
+  /// نسبة التقدم على المسار 0.0 → 1.0 (محسوبة لاحقًا، ليست من العميل).
   final double? routeProgress;
+
+  /// آخر وقت استُقبل فيه GPS صالح.
   final DateTime? lastLocationAt;
+
   final DateTime? startedAt;
   final DateTime? endedAt;
   final DateTime? createdAt;
@@ -77,7 +89,7 @@ class VehicleTrip {
     required this.busNumber,
     required this.routeId,
     required this.direction,
-    required this.status,
+    this.status = VehicleTripStatus.active,
     this.currentLocation,
     this.speed,
     this.heading,
@@ -88,6 +100,9 @@ class VehicleTrip {
     this.createdAt,
     this.updatedAt,
   });
+
+  bool get isActive => status.isActive;
+  bool get isTerminal => status.isTerminal;
 
   factory VehicleTrip.fromMap(Map<String, dynamic> map, String docId) {
     return VehicleTrip(
@@ -101,11 +116,11 @@ class VehicleTrip {
       speed: (map['speed'] as num?)?.toDouble(),
       heading: (map['heading'] as num?)?.toDouble(),
       routeProgress: (map['routeProgress'] as num?)?.toDouble(),
-      lastLocationAt: _parseTimestamp(map['lastLocationAt']),
-      startedAt: _parseTimestamp(map['startedAt']),
-      endedAt: _parseTimestamp(map['endedAt']),
-      createdAt: _parseTimestamp(map['createdAt']),
-      updatedAt: _parseTimestamp(map['updatedAt']),
+      lastLocationAt: _parseOptionalDate(map['lastLocationAt']),
+      startedAt: _parseOptionalDate(map['startedAt']),
+      endedAt: _parseOptionalDate(map['endedAt']),
+      createdAt: _parseOptionalDate(map['createdAt']),
+      updatedAt: _parseOptionalDate(map['updatedAt']),
     );
   }
 
@@ -114,21 +129,22 @@ class VehicleTrip {
     return VehicleTrip.fromMap(data, doc.id);
   }
 
-  /// خريطة الإنشاء مع server timestamps.
+  /// خريطة الإنشاء — تستخدم server timestamps للحقول الزمنية الحساسة.
   Map<String, dynamic> toCreateMap() {
     return {
       'driverId': driverId,
       'busNumber': busNumber,
       'routeId': routeId,
       'direction': direction,
-      'status': status.firestoreValue,
+      'status': VehicleTripStatus.active.firestoreValue,
       if (currentLocation != null) 'currentLocation': currentLocation,
       if (speed != null) 'speed': speed,
       if (heading != null) 'heading': heading,
-      if (routeProgress != null) 'routeProgress': routeProgress,
+      'routeProgress': null,
       if (currentLocation != null)
         'lastLocationAt': FieldValue.serverTimestamp(),
       'startedAt': FieldValue.serverTimestamp(),
+      'endedAt': null,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -145,7 +161,8 @@ class VehicleTrip {
       if (speed != null) 'speed': speed,
       if (heading != null) 'heading': heading,
       if (routeProgress != null) 'routeProgress': routeProgress,
-      if (lastLocationAt != null) 'lastLocationAt': Timestamp.fromDate(lastLocationAt!),
+      if (lastLocationAt != null)
+        'lastLocationAt': Timestamp.fromDate(lastLocationAt!),
       if (startedAt != null) 'startedAt': Timestamp.fromDate(startedAt!),
       if (endedAt != null) 'endedAt': Timestamp.fromDate(endedAt!),
       if (createdAt != null) 'createdAt': Timestamp.fromDate(createdAt!),
@@ -190,16 +207,14 @@ class VehicleTrip {
   }
 
   static String parseDirection(String? value) {
-    final v = value?.trim().toLowerCase();
-    if (v == 'outbound' || v == 'return') return v!;
-    throw FormatException('Unknown VehicleTrip direction: $value');
-  }
-
-  static DateTime? _parseTimestamp(dynamic value) {
-    if (value == null) return null;
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    return null;
+    switch (value?.trim().toLowerCase()) {
+      case 'outbound':
+        return 'outbound';
+      case 'return':
+        return 'return';
+      default:
+        throw FormatException('Unknown VehicleTrip direction: $value');
+    }
   }
 
   static GeoPoint? _parseGeoPoint(dynamic value) {
@@ -210,6 +225,13 @@ class VehicleTrip {
       final lng = (value['longitude'] as num?)?.toDouble();
       if (lat != null && lng != null) return GeoPoint(lat, lng);
     }
+    return null;
+  }
+
+  static DateTime? _parseOptionalDate(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
     return null;
   }
 

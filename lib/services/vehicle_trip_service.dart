@@ -104,52 +104,69 @@ class VehicleTripService {
     return VehicleTrip.fromMap(snap.docs.first.data(), snap.docs.first.id);
   }
 
-  /// بدء رحلة تشغيلية مع قفل ذري لمنع رحلتين ACTIVE لنفس السائق.
+  /// يبدأ رحلة تشغيلية جديدة.
+  ///
+  /// القواعد:
+  /// - لا يُنشأ إن وُجدت رحلة ACTIVE لنفس السائق.
+  /// - [routeId] يجب أن يشير إلى PlannedRoute معتمد (التحقق يتم قبل الاستدعاء).
+  /// - [direction] قيمته outbound أو return.
+  /// - لا يُفعَّل DriverProvider قبل نجاح هذه العملية.
   Future<VehicleTrip> startTrip({
     required String driverId,
     required String busNumber,
     required String routeId,
     required String direction,
+    GeoPoint? currentLocation,
+    double? speed,
+    double? heading,
   }) async {
-    if (driverId.isEmpty || routeId.isEmpty) {
-      throw const VehicleTripServiceException('بيانات بدء الرحلة غير مكتملة.');
+    if (driverId.isEmpty) {
+      throw const VehicleTripServiceException('معرف السائق مطلوب.');
     }
-    final dir = _parseDirectionForStart(direction);
+    if (routeId.isEmpty) {
+      throw const VehicleTripServiceException('معرف المسار مطلوب.');
+    }
 
-    return _withRetryAndTimeout(() async {
-      final docRef = _col.doc();
-      final lockRef = _driverLocks.doc(driverId);
+    final normalizedDirection = _parseDirectionForStart(direction);
+    final docRef = _col.doc();
+    final lockRef = _driverLocks.doc(driverId);
+    final trip = VehicleTrip(
+      id: docRef.id,
+      driverId: driverId,
+      busNumber: busNumber.trim().isEmpty ? '—' : busNumber.trim(),
+      routeId: routeId,
+      direction: normalizedDirection,
+      status: VehicleTripStatus.active,
+      currentLocation: currentLocation,
+      speed: speed,
+      heading: heading,
+    );
 
-      final trip = VehicleTrip(
-        id: docRef.id,
-        driverId: driverId,
-        busNumber: busNumber.trim(),
-        routeId: routeId.trim(),
-        direction: dir,
-        status: VehicleTripStatus.active,
-      );
-
+    await _withRetryAndTimeout(() async {
       await _db.runTransaction((transaction) async {
         final lockSnap = await transaction.get(lockRef);
         if (lockSnap.exists) {
           final existingId = lockSnap.data()?['tripId']?.toString();
           throw VehicleTripServiceException(
-            'يوجد رحلة تشغيلية نشطة بالفعل'
-            '${existingId != null && existingId.isNotEmpty ? ' ($existingId)' : ''}.',
+            existingId == null || existingId.isEmpty
+                ? 'لديك رحلة تشغيلية نشطة بالفعل. أنهِها قبل بدء رحلة جديدة.'
+                : 'لديك رحلة تشغيلية نشطة بالفعل ($existingId). أنهِها قبل بدء رحلة جديدة.',
             code: 'active-trip-exists',
           );
         }
 
         transaction.set(lockRef, {
-          'tripId': docRef.id,
           'driverId': driverId,
+          'tripId': docRef.id,
+          'status': VehicleTripStatus.active.firestoreValue,
           'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
         transaction.set(docRef, trip.toCreateMap());
       });
-
-      return trip;
     });
+
+    return trip;
   }
 
   VehicleTripServiceException _invalidDirection(String value) =>
@@ -231,10 +248,9 @@ class VehicleTripService {
           if (lockTripId == tripId) transaction.delete(lockRef);
           return;
         }
-
         if (current != VehicleTripStatus.active) {
-          throw VehicleTripServiceException(
-            'لا يمكن الانتقال من ${current.firestoreValue} إلى ${target.firestoreValue}.',
+          throw const VehicleTripServiceException(
+            'حالة الرحلة الحالية غير صالحة للانتقال.',
             code: 'invalid-transition',
           );
         }
@@ -244,15 +260,20 @@ class VehicleTripService {
           'endedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
-
-        if (lockTripId == tripId || !lockSnap.exists) {
-          transaction.delete(lockRef);
-        }
+        if (lockTripId == tripId || !lockSnap.exists) transaction.delete(lockRef);
       });
     });
   }
 
-  /// مراقبة الرحلة التشغيلية النشطة للسائق (إن وُجدت).
+  /// يجلب رحلة تشغيلية بالمعرّف.
+  Future<VehicleTrip?> getById(String tripId) async {
+    if (tripId.isEmpty) return null;
+    final snap = await _col.doc(tripId).get();
+    if (!snap.exists || snap.data() == null) return null;
+    return VehicleTrip.fromMap(snap.data()!, snap.id);
+  }
+
+  /// يراقب الرحلة التشغيلية النشطة للسائق (إن وُجدت).
   Stream<VehicleTrip?> watchActiveTripForDriver(String driverId) {
     if (driverId.isEmpty) {
       return Stream.value(null);
@@ -264,15 +285,7 @@ class VehicleTripService {
         .snapshots()
         .map((snap) {
       if (snap.docs.isEmpty) return null;
-      final d = snap.docs.first;
-      return VehicleTrip.fromMap(d.data(), d.id);
+      return VehicleTrip.fromMap(snap.docs.first.data(), snap.docs.first.id);
     });
-  }
-
-  Future<VehicleTrip?> getById(String tripId) async {
-    if (tripId.isEmpty) return null;
-    final doc = await _col.doc(tripId).get();
-    if (!doc.exists || doc.data() == null) return null;
-    return VehicleTrip.fromMap(doc.data()!, doc.id);
   }
 }
