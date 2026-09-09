@@ -53,6 +53,19 @@ class RoutePlanGeometry {
         longitude: (c[0] as num).toDouble(),
       ));
     }
+
+    // Mapbox Directions/Matching may return hundreds or thousands of
+    // vertices. Keep the road shape but cap the geometry before it reaches
+    // Mapbox PolylineAnnotation, which otherwise has to upload the complete
+    // growing path again on every live redraw.
+    if (path.length > 60) {
+      return sampleByDistance(
+        path,
+        stepMeters: 25,
+        maxPoints: 60,
+      );
+    }
+
     return path;
   }
 
