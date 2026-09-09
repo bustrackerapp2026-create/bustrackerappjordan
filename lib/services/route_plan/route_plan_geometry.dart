@@ -63,7 +63,13 @@ class RoutePlanGeometry {
   ) {
     final out = <RoutePoint>[start];
     for (final p in path) {
-      if (distanceMeters(out.last.latitude, out.last.longitude, p.latitude, p.longitude) > 1.0) {
+      if (distanceMeters(
+            out.last.latitude,
+            out.last.longitude,
+            p.latitude,
+            p.longitude,
+          ) >=
+          2.5) {
         out.add(p);
       }
     }
@@ -102,48 +108,74 @@ class RoutePlanGeometry {
     return out;
   }
 
+  /// إزالة القفزات الحادة (اختصار فوق مباني / أنفاق خاطئة)
   static List<RoutePoint> removeSpikes(
     List<RoutePoint> input, {
-    double maxTurnDegrees = 150,
+    double maxJumpMeters = 180,
+    double maxTurnDegrees = 145,
   }) {
     if (input.length < 3) return List.of(input);
+
     final out = <RoutePoint>[input.first];
     for (var i = 1; i < input.length - 1; i++) {
       final prev = out.last;
       final cur = input[i];
       final next = input[i + 1];
 
-      final d1 = distanceMeters(prev.latitude, prev.longitude, cur.latitude, cur.longitude);
-      final d2 = distanceMeters(cur.latitude, cur.longitude, next.latitude, next.longitude);
+      final d1 = distanceMeters(
+        prev.latitude,
+        prev.longitude,
+        cur.latitude,
+        cur.longitude,
+      );
+      final d2 = distanceMeters(
+        cur.latitude,
+        cur.longitude,
+        next.latitude,
+        next.longitude,
+      );
 
-      if (d1 < 1 || d2 < 1) {
+      // قفزة مفاجئة طويلة جداً بين نقطتين متتاليتين
+      if (d1 > maxJumpMeters && d2 < maxJumpMeters * 0.5) {
         continue;
       }
 
-      final b1 = bearingDegrees(prev.latitude, prev.longitude, cur.latitude, cur.longitude);
-      final b2 = bearingDegrees(cur.latitude, cur.longitude, next.latitude, next.longitude);
-      var turn = (b2 - b1).abs();
-      if (turn > 180) turn = 360 - turn;
+      if (out.isNotEmpty && i + 1 < input.length) {
+        final b1 = bearingDegrees(
+          prev.latitude,
+          prev.longitude,
+          cur.latitude,
+          cur.longitude,
+        );
+        final b2 = bearingDegrees(
+          cur.latitude,
+          cur.longitude,
+          next.latitude,
+          next.longitude,
+        );
+        var turn = (b2 - b1).abs();
+        if (turn > 180) turn = 360 - turn;
 
-      // انعطاف حاد جداً مع مسافة قصيرة = غالباً ضوضاء مطابقة
-      if (turn > maxTurnDegrees && d1 < 35 && d2 < 35) {
-        continue;
+        // انعطاف حاد جداً مع مسافة قصيرة = غالباً ضوضاء مطابقة
+        if (turn > maxTurnDegrees && d1 < 35 && d2 < 35) {
+          continue;
+        }
       }
 
       out.add(cur);
     }
     out.add(input.last);
-    final result = dedupeNear(out, minMeters: 3);
-    return result;
+    return dedupeNear(out, minMeters: 3);
   }
 
   /// عيّنة نقاط تحكم بمسافة منتظمة تقريباً (أفضل من أخذ كل N فهرس)
   static List<RoutePoint> sampleByDistance(
     List<RoutePoint> input, {
-    double stepMeters = 40,
-    int maxPoints = 200,
+    double stepMeters = 140,
+    int maxPoints = 40,
   }) {
     if (input.length < 2) return List.of(input);
+
     final out = <RoutePoint>[input.first];
     var acc = 0.0;
     for (var i = 1; i < input.length; i++) {
@@ -188,51 +220,50 @@ class RoutePlanGeometry {
     return out;
   }
 
+  /// تبسيط Douglas-Peucker بالمتر تقريباً (إسقاط محلي)
   static List<RoutePoint> douglasPeucker(
     List<RoutePoint> points, {
     double epsilonMeters = 12,
   }) {
     if (points.length < 3) return List.of(points);
 
-    double perpendicularDistance(RoutePoint p, RoutePoint a, RoutePoint b) {
-      if ((a.latitude - b.latitude).abs() < 1e-12 && (a.longitude - b.longitude).abs() < 1e-12) {
-        return distanceMeters(p.latitude, p.longitude, a.latitude, a.longitude);
-      }
-      // تقريب محلي بالأمتار
-      final lat0 = (a.latitude + b.latitude) / 2;
-      final mPerDegLat = 111320.0;
-      final mPerDegLng = 111320.0 * math.cos(lat0 * math.pi / 180);
-      final ax = a.longitude * mPerDegLng;
-      final ay = a.latitude * mPerDegLat;
-      final bx = b.longitude * mPerDegLng;
-      final by = b.latitude * mPerDegLat;
-      final px = p.longitude * mPerDegLng;
-      final py = p.latitude * mPerDegLat;
+    double perpDist(RoutePoint p, RoutePoint a, RoutePoint b) {
+      // تقريب محلي بالأمتار حول خط a→b
+      final lat0 = _rad((a.latitude + b.latitude) / 2);
+      final ax = a.longitude * 111320 * math.cos(lat0);
+      final ay = a.latitude * 110540;
+      final bx = b.longitude * 111320 * math.cos(lat0);
+      final by = b.latitude * 110540;
+      final px = p.longitude * 111320 * math.cos(lat0);
+      final py = p.latitude * 110540;
       final dx = bx - ax;
       final dy = by - ay;
+      if (dx.abs() < 1e-6 && dy.abs() < 1e-6) {
+        return distanceMeters(p.latitude, p.longitude, a.latitude, a.longitude);
+      }
       final t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy);
       final tClamped = t.clamp(0.0, 1.0);
-      final qx = ax + tClamped * dx;
-      final qy = ay + tClamped * dy;
-      final ddx = px - qx;
-      final ddy = py - qy;
+      final sx = ax + tClamped * dx;
+      final sy = ay + tClamped * dy;
+      final ddx = px - sx;
+      final ddy = py - sy;
       return math.sqrt(ddx * ddx + ddy * ddy);
     }
 
     List<RoutePoint> recurse(List<RoutePoint> pts) {
       if (pts.length < 3) return pts;
-      var maxDist = 0.0;
+      var maxD = 0.0;
       var idx = 0;
       final a = pts.first;
       final b = pts.last;
       for (var i = 1; i < pts.length - 1; i++) {
-        final d = perpendicularDistance(pts[i], a, b);
-        if (d > maxDist) {
-          maxDist = d;
+        final d = perpDist(pts[i], a, b);
+        if (d > maxD) {
+          maxD = d;
           idx = i;
         }
       }
-      if (maxDist > epsilonMeters) {
+      if (maxD > epsilonMeters) {
         final left = recurse(pts.sublist(0, idx + 1));
         final right = recurse(pts.sublist(idx));
         return [...left.sublist(0, left.length - 1), ...right];
@@ -255,8 +286,7 @@ class RoutePlanGeometry {
     // أولاً مسافة دنيا ثم Douglas-Peucker أخف للحفاظ على انحناءات الشارع
     final spaced = dedupeNear(input, minMeters: minDistanceMeters * 0.55);
     if (spaced.length < 3) return spaced;
-    final result = douglasPeucker(spaced, epsilonMeters: minDistanceMeters * 0.45);
-    return result;
+    return douglasPeucker(spaced, epsilonMeters: minDistanceMeters * 0.45);
   }
 
   static double totalDistanceMeters(List<RoutePoint> points) {
@@ -281,7 +311,6 @@ class RoutePlanGeometry {
   }) {
     if (a.isEmpty) return List.of(b);
     if (b.isEmpty) return List.of(a);
-
     final out = List<RoutePoint>.of(a);
     var start = 0;
     if (distanceMeters(
@@ -294,7 +323,6 @@ class RoutePlanGeometry {
       start = 1;
     }
     out.addAll(b.skip(start));
-    final result = dedupeNear(out, minMeters: 3);
-    return result;
+    return dedupeNear(out, minMeters: 3);
   }
 }
