@@ -53,15 +53,6 @@ class RoutePlanGeometry {
         longitude: (c[0] as num).toDouble(),
       ));
     }
-    // DEBUG: Log first/last after parsing GeoJSON
-    if (path.isNotEmpty) {
-      debugPrintRoute(
-        '🔹 parseGeoJsonLine OUTPUT',
-        path.first,
-        path.last,
-        path.length,
-      );
-    }
     return path;
   }
 
@@ -72,13 +63,7 @@ class RoutePlanGeometry {
   ) {
     final out = <RoutePoint>[start];
     for (final p in path) {
-      if (distanceMeters(
-            out.last.latitude,
-            out.last.longitude,
-            p.latitude,
-            p.longitude,
-          ) >=
-          2.5) {
+      if (distanceMeters(out.last.latitude, out.last.longitude, p.latitude, p.longitude) > 1.0) {
         out.add(p);
       }
     }
@@ -92,15 +77,6 @@ class RoutePlanGeometry {
       out.add(end);
     } else if (out.isNotEmpty) {
       out[out.length - 1] = end;
-    }
-    // DEBUG: Log after stitching
-    if (out.isNotEmpty) {
-      debugPrintRoute(
-        '🔹 stitchEndpoints OUTPUT',
-        out.first,
-        out.last,
-        out.length,
-      );
     }
     return out;
   }
@@ -126,84 +102,48 @@ class RoutePlanGeometry {
     return out;
   }
 
-  /// إزالة القفزات الحادة (اختصار فوق مباني / أنفاق خاطئة)
   static List<RoutePoint> removeSpikes(
     List<RoutePoint> input, {
-    double maxJumpMeters = 180,
-    double maxTurnDegrees = 145,
+    double maxTurnDegrees = 150,
   }) {
     if (input.length < 3) return List.of(input);
-
     final out = <RoutePoint>[input.first];
     for (var i = 1; i < input.length - 1; i++) {
       final prev = out.last;
       final cur = input[i];
       final next = input[i + 1];
 
-      final d1 = distanceMeters(
-        prev.latitude,
-        prev.longitude,
-        cur.latitude,
-        cur.longitude,
-      );
-      final d2 = distanceMeters(
-        cur.latitude,
-        cur.longitude,
-        next.latitude,
-        next.longitude,
-      );
+      final d1 = distanceMeters(prev.latitude, prev.longitude, cur.latitude, cur.longitude);
+      final d2 = distanceMeters(cur.latitude, cur.longitude, next.latitude, next.longitude);
 
-      // قفزة مفاجئة طويلة جداً بين نقطتين متتاليتين
-      if (d1 > maxJumpMeters && d2 < maxJumpMeters * 0.5) {
+      if (d1 < 1 || d2 < 1) {
         continue;
       }
 
-      if (out.isNotEmpty && i + 1 < input.length) {
-        final b1 = bearingDegrees(
-          prev.latitude,
-          prev.longitude,
-          cur.latitude,
-          cur.longitude,
-        );
-        final b2 = bearingDegrees(
-          cur.latitude,
-          cur.longitude,
-          next.latitude,
-          next.longitude,
-        );
-        var turn = (b2 - b1).abs();
-        if (turn > 180) turn = 360 - turn;
+      final b1 = bearingDegrees(prev.latitude, prev.longitude, cur.latitude, cur.longitude);
+      final b2 = bearingDegrees(cur.latitude, cur.longitude, next.latitude, next.longitude);
+      var turn = (b2 - b1).abs();
+      if (turn > 180) turn = 360 - turn;
 
-        // انعطاف حاد جداً مع مسافة قصيرة = غالباً ضوضاء مطابقة
-        if (turn > maxTurnDegrees && d1 < 35 && d2 < 35) {
-          continue;
-        }
+      // انعطاف حاد جداً مع مسافة قصيرة = غالباً ضوضاء مطابقة
+      if (turn > maxTurnDegrees && d1 < 35 && d2 < 35) {
+        continue;
       }
 
       out.add(cur);
     }
     out.add(input.last);
     final result = dedupeNear(out, minMeters: 3);
-    // DEBUG: Log after spike removal
-    if (result.isNotEmpty) {
-      debugPrintRoute(
-        '🔹 removeSpikes OUTPUT',
-        result.first,
-        result.last,
-        result.length,
-      );
-    }
     return result;
   }
 
   /// عيّنة نقاط تحكم بمسافة منتظمة تقريباً (أفضل من أخذ كل N فهرس)
   static List<RoutePoint> sampleByDistance(
     List<RoutePoint> input, {
-    double stepMeters = 140,
-    int maxPoints = 40,
+    double stepMeters = 40,
+    int maxPoints = 200,
   }) {
     if (input.length < 2) return List.of(input);
-
     final out = <RoutePoint>[input.first];
     var acc = 0.0;
     for (var i = 1; i < input.length; i++) {
@@ -235,15 +175,6 @@ class RoutePlanGeometry {
     if (out.length > maxPoints) {
       return sampleEvenly(out, maxPoints);
     }
-    // DEBUG: Log after sampling
-    if (out.isNotEmpty) {
-      debugPrintRoute(
-        '🔹 sampleByDistance OUTPUT',
-        out.first,
-        out.last,
-        out.length,
-      );
-    }
     return out;
   }
 
@@ -257,50 +188,51 @@ class RoutePlanGeometry {
     return out;
   }
 
-  /// تبسيط Douglas-Peucker بالمتر تقريباً (إسقاط محلي)
   static List<RoutePoint> douglasPeucker(
     List<RoutePoint> points, {
     double epsilonMeters = 12,
   }) {
     if (points.length < 3) return List.of(points);
 
-    double perpDist(RoutePoint p, RoutePoint a, RoutePoint b) {
-      // تقريب محلي بالأمتار حول خط a→b
-      final lat0 = _rad((a.latitude + b.latitude) / 2);
-      final ax = a.longitude * 111320 * math.cos(lat0);
-      final ay = a.latitude * 110540;
-      final bx = b.longitude * 111320 * math.cos(lat0);
-      final by = b.latitude * 110540;
-      final px = p.longitude * 111320 * math.cos(lat0);
-      final py = p.latitude * 110540;
-      final dx = bx - ax;
-      final dy = by - ay;
-      if (dx.abs() < 1e-6 && dy.abs() < 1e-6) {
+    double perpendicularDistance(RoutePoint p, RoutePoint a, RoutePoint b) {
+      if ((a.latitude - b.latitude).abs() < 1e-12 && (a.longitude - b.longitude).abs() < 1e-12) {
         return distanceMeters(p.latitude, p.longitude, a.latitude, a.longitude);
       }
+      // تقريب محلي بالأمتار
+      final lat0 = (a.latitude + b.latitude) / 2;
+      final mPerDegLat = 111320.0;
+      final mPerDegLng = 111320.0 * math.cos(lat0 * math.pi / 180);
+      final ax = a.longitude * mPerDegLng;
+      final ay = a.latitude * mPerDegLat;
+      final bx = b.longitude * mPerDegLng;
+      final by = b.latitude * mPerDegLat;
+      final px = p.longitude * mPerDegLng;
+      final py = p.latitude * mPerDegLat;
+      final dx = bx - ax;
+      final dy = by - ay;
       final t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy);
       final tClamped = t.clamp(0.0, 1.0);
-      final sx = ax + tClamped * dx;
-      final sy = ay + tClamped * dy;
-      final ddx = px - sx;
-      final ddy = py - sy;
+      final qx = ax + tClamped * dx;
+      final qy = ay + tClamped * dy;
+      final ddx = px - qx;
+      final ddy = py - qy;
       return math.sqrt(ddx * ddx + ddy * ddy);
     }
 
     List<RoutePoint> recurse(List<RoutePoint> pts) {
       if (pts.length < 3) return pts;
-      var maxD = 0.0;
+      var maxDist = 0.0;
       var idx = 0;
       final a = pts.first;
       final b = pts.last;
       for (var i = 1; i < pts.length - 1; i++) {
-        final d = perpDist(pts[i], a, b);
-        if (d > maxD) {
-          maxD = d;
+        final d = perpendicularDistance(pts[i], a, b);
+        if (d > maxDist) {
+          maxDist = d;
           idx = i;
         }
       }
-      if (maxD > epsilonMeters) {
+      if (maxDist > epsilonMeters) {
         final left = recurse(pts.sublist(0, idx + 1));
         final right = recurse(pts.sublist(idx));
         return [...left.sublist(0, left.length - 1), ...right];
@@ -324,15 +256,6 @@ class RoutePlanGeometry {
     final spaced = dedupeNear(input, minMeters: minDistanceMeters * 0.55);
     if (spaced.length < 3) return spaced;
     final result = douglasPeucker(spaced, epsilonMeters: minDistanceMeters * 0.45);
-    // DEBUG: Log after simplification
-    if (result.isNotEmpty) {
-      debugPrintRoute(
-        '🔹 simplifyPoints OUTPUT',
-        result.first,
-        result.last,
-        result.length,
-      );
-    }
     return result;
   }
 
@@ -358,11 +281,7 @@ class RoutePlanGeometry {
   }) {
     if (a.isEmpty) return List.of(b);
     if (b.isEmpty) return List.of(a);
-    
-    // DEBUG: Log inputs to mergePaths
-    debugPrintRoute('🔹 mergePaths INPUT a', a.first, a.last, a.length);
-    debugPrintRoute('🔹 mergePaths INPUT b', b.first, b.last, b.length);
-    
+
     final out = List<RoutePoint>.of(a);
     var start = 0;
     if (distanceMeters(
@@ -376,30 +295,6 @@ class RoutePlanGeometry {
     }
     out.addAll(b.skip(start));
     final result = dedupeNear(out, minMeters: 3);
-    
-    // DEBUG: Log output
-    if (result.isNotEmpty) {
-      debugPrintRoute(
-        '🔹 mergePaths OUTPUT',
-        result.first,
-        result.last,
-        result.length,
-      );
-    }
     return result;
-  }
-
-  // DEBUG: Helper function
-  static void debugPrintRoute(
-    String label,
-    RoutePoint first,
-    RoutePoint last,
-    int count,
-  ) {
-    print(
-      '$label: $count points\n'
-      '  First: (${first.latitude.toStringAsFixed(6)}, ${first.longitude.toStringAsFixed(6)})\n'
-      '  Last:  (${last.latitude.toStringAsFixed(6)}, ${last.longitude.toStringAsFixed(6)})',
-    );
   }
 }
