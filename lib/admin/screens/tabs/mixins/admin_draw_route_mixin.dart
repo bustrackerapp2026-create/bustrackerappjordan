@@ -1,72 +1,323 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
+import 'package:provider/provider.dart';
 
-import '../../../core/models/route_point.dart';
-import '../../../core/services/mapbox_service.dart';
-import '../../../core/utils/route_plan_geometry.dart';
-import '../models/admin_route_point.dart';
-import '../services/admin_route_service.dart';
+import '../../../../core/map/map_core.dart';
+import '../../../../core/map/map_utils.dart';
+import '../../../../features/auth/providers/auth_provider.dart';
+import '../../../../models/planned_route.dart';
+import '../../../../models/route_point.dart';
+import '../../../../services/route_plan/route_plan_geometry.dart';
+import '../../../../services/route_plan_service.dart';
+import '../../../widgets/admin_save_drawn_route_sheet.dart';
 
-mixin AdminDrawRouteMixin<T extends StatefulWidget> on State<T> {
-  final List<RoutePoint> _drawPoints = <RoutePoint>[];
-  final List<List<RoutePoint>> _roadSegments = <List<RoutePoint>>[];
-  LineAnnotation? _drawLine;
+/// رسم مسار أدمن مع لصق حي على الشبكة الطرقية.
+mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
+  final RoutePlanService _drawRouteService = RoutePlanService();
+
+  bool isDrawingRoute = false;
+  bool isSnappingSegment = false;
+
+  final List<RoutePoint> _drawPoints = [];
+  final List<List<RoutePoint>> _roadSegments = [];
+
+  PolylineAnnotation? _drawLine;
+  bool _tapLocked = false;
   int _drawSession = 0;
   int _drawMutationSeq = 0;
   int _lineRedrawSeq = 0;
-  int _visualClearGen = 0;
   bool _lineRedrawBusy = false;
   bool _lineRedrawQueued = false;
-  Timer? _lineRedrawDone;
-  Timer? _tempLineCoalesce;
-  Timer? _finalLineCoalesce;
-  int _tapSeq = 0;
-  bool _tapLocked = false;
-  bool isDrawingRoute = false;
-  bool isSnappingSegment = false;
+  Completer<void>? _lineRedrawDone;
+  int _visualClearGen = 0;
+  bool _undoBusy = false;
+  bool _segmentOpBusy = false;
+  Completer<void>? _segmentOpDone;
 
   static const bool _liveDirectionsEnabled = true;
   static const bool _livePolylineEnabled = true;
   static const String _liveRouteSourceId = 'admin_draw_route_source';
   static const String _liveRouteLayerId = 'admin_draw_route_layer';
 
-  int _segmentOpSeq = 0;
-  bool _segmentOpBusy = false;
-  Completer<void>? _segmentOpDone;
-  int _directionsOpSeq = 0;
   bool _directionsBusy = false;
   Completer<void>? _directionsDone;
 
-  MapboxMap? _map;
+  bool _finalCoalesceRunning = false;
+  bool _finalCoalesceQueued = false;
+  int _finalCoalesceEpoch = 0;
+  int _finalCoalesceRunnerEpoch = 0;
 
-  int get drawPointCount => _drawPoints.length;
+  bool _tempCoalesceRunning = false;
+  bool _tempCoalesceQueued = false;
+  int _tempCoalesceEpoch = 0;
+  int _tempCoalesceRunnerEpoch = 0;
 
-  void setDrawRouteMap(MapboxMap map) {
-    _map = map;
+
+  List<RoutePoint> get _flattenedRoadPath {
+    if (_roadSegments.isEmpty) return List<RoutePoint>.from(_drawPoints);
+
+    final out = <RoutePoint>[];
+    for (final seg in _roadSegments) {
+      if (seg.isEmpty) continue;
+      // Keep the Directions geometry intact here. Simplifying every segment
+      // independently was visibly drifting the route on longer/curved roads.
+      final geometry = seg;
+      if (out.isEmpty) {
+        out.addAll(geometry);
+      } else {
+        final join = geometry.first;
+        final prev = out.last;
+        final d = _haversineMeters(
+          prev.latitude,
+          prev.longitude,
+          join.latitude,
+          join.longitude,
+        );
+        if (d <= 3.0) {
+          out.addAll(geometry.skip(1));
+        } else {
+          out.addAll(geometry);
+        }
+      }
+    }
+    return out;
+  }
+
+  void _invalidateFinalCoalesce() {
+    _finalCoalesceEpoch++;
+    _finalCoalesceQueued = false;
+  }
+
+  void _invalidateTempCoalesce() {
+    _tempCoalesceEpoch++;
+    _tempCoalesceQueued = false;
+  }
+
+  Future<void> _beginDirectionsOp() async {
+    while (_directionsBusy) {
+      final pending = _directionsDone;
+      if (pending != null) await pending.future;
+    }
+    _directionsBusy = true;
+    _directionsDone = Completer<void>();
+  }
+
+  void _endDirectionsOp() {
+    _directionsBusy = false;
+    final done = _directionsDone;
+    _directionsDone = null;
+    if (done != null && !done.isCompleted) done.complete();
+  }
+
+  void startDrawingRoute() {
+    if (!mounted) return;
+    _drawSession++;
+    _drawMutationSeq++;
+    _lineRedrawSeq++;
+    _tapLocked = false;
+    _invalidateFinalCoalesce();
+    _invalidateTempCoalesce();
+    setState(() {
+      isDrawingRoute = true;
+      isSnappingSegment = false;
+      _drawPoints.clear();
+      _roadSegments.clear();
+    });
+    unawaited(_clearDrawVisuals());
+    MapUtils.showSnackBar(context, 'وضع الرسم: انقر على الخريطة لإضافة نقاط المسار');
+  }
+
+  Future<void> cancelDrawingRoute() async {
+    if (!mounted) return;
+    _drawSession++;
+    _drawMutationSeq++;
+    _lineRedrawSeq++;
+    _tapLocked = false;
+    _invalidateFinalCoalesce();
+    _invalidateTempCoalesce();
+    setState(() {
+      isDrawingRoute = false;
+      isSnappingSegment = false;
+      _drawPoints.clear();
+      _roadSegments.clear();
+    });
+    await _clearDrawVisuals();
+  }
+
+  Future<void> _beginSegmentOp() async {
+    while (_segmentOpBusy) {
+      final pending = _segmentOpDone;
+      if (pending != null) await pending.future;
+    }
+    _segmentOpBusy = true;
+    _segmentOpDone = Completer<void>();
+  }
+
+  void _endSegmentOp() {
+    _segmentOpBusy = false;
+    final done = _segmentOpDone;
+    _segmentOpDone = null;
+    if (done != null && !done.isCompleted) done.complete();
+  }
+
+  Future<void> _clearDrawVisuals() async {
+    final clearGen = ++_visualClearGen;
+    _invalidateFinalCoalesce();
+    _invalidateTempCoalesce();
+    _lineRedrawQueued = false;
+    await _beginSegmentOp();
+    try {
+      if (clearGen != _visualClearGen) return;
+      _drawLine = null;
+      final map = mapboxMap;
+      if (map != null) {
+        try {
+          await map.style.setStyleSourceProperty(
+            _liveRouteSourceId,
+            'data',
+            jsonEncode({'type': 'FeatureCollection', 'features': const []}),
+          );
+        } catch (_) {}
+      }
+    } finally {
+      _endSegmentOp();
+    }
+  }
+
+  Future<void> onDrawRouteMapTap(Point point) async {
+    if (!isDrawingRoute || !mounted || _tapLocked) return;
+    final lat = point.coordinates.lat.toDouble();
+    final lng = point.coordinates.lng.toDouble();
+    final raw = RoutePoint(latitude: lat, longitude: lng);
+
+    _tapLocked = true;
+    setState(() => isSnappingSegment = true);
+    final session = _drawSession;
+    int? segmentIndex;
+    RoutePoint? from;
+    RoutePoint? to;
+
+    try {
+      final snapped = await _drawRouteService.snapPointToRoad(raw);
+      if (!mounted || session != _drawSession) return;
+      if (_drawPoints.isNotEmpty) {
+        final last = _drawPoints.last;
+        final distance = _haversineMeters(
+          last.latitude,
+          last.longitude,
+          snapped.latitude,
+          snapped.longitude,
+        );
+        if (distance < 15) {
+          MapUtils.showSnackBar(context, 'النقطة قريبة جداً من السابقة');
+          return;
+        }
+      }
+
+      _drawPoints.add(snapped);
+      if (_drawPoints.length < 2) {
+        if (mounted) setState(() {});
+        return;
+      }
+
+      from = _drawPoints[_drawPoints.length - 2];
+      to = _drawPoints.last;
+      segmentIndex = _roadSegments.length;
+      _roadSegments.add([from, to]);
+      await _redrawDrawLine(phase: 'temp');
+      if (mounted) setState(() {});
+    } catch (e) {
+      MapUtils.log('draw tap: $e', tag: 'AdminDraw');
+      if (mounted && _drawPoints.length >= 2) {
+        final a = _drawPoints[_drawPoints.length - 2];
+        final b = _drawPoints.last;
+        if (_roadSegments.length < _drawPoints.length - 1) {
+          _roadSegments.add([a, b]);
+          await _redrawDrawLine(phase: 'temp-fallback');
+        }
+        MapUtils.showSnackBar(
+          context,
+          'تمت إضافة النقطة، لكن تعذر تحسين المقطع بالطريق',
+          isError: true,
+        );
+        setState(() {});
+      } else if (mounted) {
+        MapUtils.showSnackBar(context, 'تعذر إضافة النقطة', isError: true);
+      }
+    } finally {
+      _tapLocked = false;
+      if (mounted) setState(() => isSnappingSegment = false);
+    }
+
+    if (segmentIndex == null || from == null || to == null) return;
+    if (session != _drawSession) return;
+    final idx = segmentIndex;
+    final a = from;
+    final b = to;
+    final mutation = _drawMutationSeq;
+
+    try {
+      if (!_liveDirectionsEnabled) {
+        if (idx < _roadSegments.length) {
+          _roadSegments[idx] = [a, b];
+          await _redrawDrawLine(phase: 'final-fallback');
+          if (mounted) setState(() {});
+        }
+        return;
+      }
+
+      // Directions requests are independent per segment. Keep them concurrent
+      // so rapid taps do not create a growing road-rendering backlog.
+      final road = await _drawRouteService.getDrivingPath(
+        from: a,
+        to: b,
+        attachControlEndpoints: false,
+      );
+
+      if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
+      if (idx >= _roadSegments.length) return;
+
+      final List<RoutePoint> pinned;
+      if (road.length >= 2) {
+        pinned = List<RoutePoint>.from(road);
+        if (idx > 0 && idx - 1 < _roadSegments.length && _roadSegments[idx - 1].isNotEmpty) {
+          pinned[0] = _roadSegments[idx - 1].last;
+        }
+      } else {
+        pinned = [a, b];
+      }
+
+      _roadSegments[idx] = pinned;
+      await _redrawDrawLine(phase: 'final');
+      if (mounted) setState(() {});
+    } catch (e) {
+      MapUtils.log('draw segment directions: $e', tag: 'AdminDraw');
+      if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
+      if (idx < _roadSegments.length) {
+        _roadSegments[idx] = [a, b];
+        await _redrawDrawLine(phase: 'final-fallback');
+        if (mounted) setState(() {});
+      }
+    }
   }
 
   Future<void> _ensureLiveRouteLayer() async {
-    final map = _map;
+    final map = mapboxMap;
     if (map == null) return;
-
     final style = map.style;
-    if (!await style.styleSourceExists(_liveRouteSourceId)) {
+    try {
       await style.addSource(
         GeoJsonSource(
           id: _liveRouteSourceId,
-          data: jsonEncode({
-            'type': 'FeatureCollection',
-            'features': const [],
-          }),
+          data: jsonEncode({'type': 'FeatureCollection', 'features': const []}),
         ),
       );
-    }
-
-    if (!await style.styleLayerExists(_liveRouteLayerId)) {
+    } catch (_) {}
+    try {
       await style.addLayer(
         LineLayer(
           id: _liveRouteLayerId,
@@ -77,215 +328,221 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on State<T> {
           lineWidth: 5.0,
         ),
       );
-    }
+    } catch (_) {}
   }
 
-  Map<String, dynamic> _liveRouteGeoJson(List<RoutePoint> path) {
-    return <String, dynamic>{
+  String _liveRouteGeoJson(List<RoutePoint> path) {
+    return jsonEncode({
       'type': 'FeatureCollection',
-      'features': <Map<String, dynamic>>[
-        <String, dynamic>{
+      'features': [
+        {
           'type': 'Feature',
-          'properties': <String, dynamic>{},
-          'geometry': <String, dynamic>{
+          'id': 'admin_draw_route',
+          'properties': const <String, dynamic>{},
+          'geometry': {
             'type': 'LineString',
-            'coordinates': path
-                .map((p) => <double>[p.longitude, p.latitude])
-                .toList(growable: false),
+            'coordinates': [for (final p in path) [p.longitude, p.latitude]],
           },
         },
       ],
-    };
-  }
-
-  Future<void> _beginDirectionsOp() async {
-    while (_directionsBusy) {
-      final done = _directionsDone;
-      if (done == null) break;
-      await done.future;
-    }
-    _directionsBusy = true;
-    _directionsDone = Completer<void>();
-    _directionsOpSeq++;
-  }
-
-  void _endDirectionsOp() {
-    _directionsBusy = false;
-    final done = _directionsDone;
-    _directionsDone = null;
-    if (done != null && !done.isCompleted) done.complete();
-  }
-
-  Future<void> _beginSegmentOp() async {
-    while (_segmentOpBusy) {
-      final done = _segmentOpDone;
-      if (done == null) break;
-      await done.future;
-    }
-    _segmentOpBusy = true;
-    _segmentOpDone = Completer<void>();
-    _segmentOpSeq++;
-  }
-
-  void _endSegmentOp() {
-    _segmentOpBusy = false;
-    final done = _segmentOpDone;
-    _segmentOpDone = null;
-    if (done != null && !done.isCompleted) done.complete();
-  }
-
-  void _invalidateFinalCoalesce() {
-    _finalLineCoalesce?.cancel();
-    _finalLineCoalesce = null;
-  }
-
-  void _invalidateTempCoalesce() {
-    _tempLineCoalesce?.cancel();
-    _tempLineCoalesce = null;
+    });
   }
 
   Future<void> _redrawDrawLine({
-    required List<RoutePoint> path,
-    required int session,
-    required int mutation,
-    required int clearGen,
-    bool temporary = false,
+    int? tapId,
+    int? segmentIndex,
+    String phase = '',
   }) async {
-    if (!_livePolylineEnabled) return;
-    if (!mounted || session != _drawSession || mutation != _drawMutationSeq || clearGen != _visualClearGen) {
+    if (!mounted || !_livePolylineEnabled) return;
+
+
+    if (phase == 'temp' || phase == 'temp-fallback') {
+      _tempCoalesceQueued = true;
+      if (_tempCoalesceRunning) return;
+      _tempCoalesceRunning = true;
+      final epoch = _tempCoalesceEpoch;
+      _tempCoalesceRunnerEpoch = epoch;
+      try {
+        // Keep temporary source updates below the rendering pressure observed
+        // on-device. Newer geometry supersedes older queued geometry.
+        while (_tempCoalesceQueued && mounted && epoch == _tempCoalesceEpoch) {
+          _tempCoalesceQueued = false;
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+          if (!mounted || epoch != _tempCoalesceEpoch) break;
+          await _redrawDrawLine(
+            tapId: tapId,
+            segmentIndex: segmentIndex,
+            phase: '_temp_coalesced',
+          );
+        }
+      } finally {
+        _tempCoalesceRunning = false;
+      }
       return;
     }
 
-    final map = _map;
-    if (map == null) return;
+    if (phase == 'final' || phase == 'final-fallback') {
+      _invalidateTempCoalesce();
+      _finalCoalesceQueued = true;
+      if (_finalCoalesceRunning) return;
+      _finalCoalesceRunning = true;
+      final epoch = _finalCoalesceEpoch;
+      _finalCoalesceRunnerEpoch = epoch;
+      try {
+        while (_finalCoalesceQueued && mounted && epoch == _finalCoalesceEpoch) {
+          _finalCoalesceQueued = false;
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+          if (!mounted || epoch != _finalCoalesceEpoch) break;
+          await _redrawDrawLine(
+            tapId: tapId,
+            segmentIndex: segmentIndex,
+            phase: '_final_coalesced',
+          );
+        }
+      } finally {
+        _finalCoalesceRunning = false;
+      }
+      return;
+    }
 
-    final geoJson = _liveRouteGeoJson(path);
+    await _beginSegmentOp();
     try {
-      await _ensureLiveRouteLayer();
-      if (!mounted || session != _drawSession || mutation != _drawMutationSeq || clearGen != _visualClearGen) {
+      final session = _drawSession;
+      final clearGen = _visualClearGen;
+      final rawPath = _flattenedRoadPath;
+      // Preserve road shape while keeping the single GeoJSON LineString small
+      // enough for the native renderer. One global sampling pass avoids the
+      // cumulative distortion caused by simplifying every Directions segment.
+      final path = rawPath.length > 400
+          ? RoutePlanGeometry.sampleByDistance(rawPath, stepMeters: 12, maxPoints: 400)
+          : List<RoutePoint>.from(rawPath);
+
+      if (session != _drawSession || clearGen != _visualClearGen) return;
+      if (path.length < 2) {
+        final map = mapboxMap;
+        if (map == null) return;
+        await _ensureLiveRouteLayer();
+        await map.style.setStyleSourceProperty(
+          _liveRouteSourceId,
+          'data',
+          jsonEncode({'type': 'FeatureCollection', 'features': const []}),
+        );
         return;
       }
+
+      if (phase == '_temp_coalesced' && _tempCoalesceRunnerEpoch != _tempCoalesceEpoch) return;
+      if (phase == '_final_coalesced' && _finalCoalesceRunnerEpoch != _finalCoalesceEpoch) return;
+
+      final map = mapboxMap;
+      if (map == null) return;
+      await _ensureLiveRouteLayer();
+      if (!mounted || session != _drawSession || clearGen != _visualClearGen) return;
+
       await map.style.setStyleSourceProperty(
         _liveRouteSourceId,
         'data',
-        jsonEncode(geoJson),
+        _liveRouteGeoJson(path),
       );
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Live route redraw failed: $e');
-      }
+      MapUtils.log('draw line source update: $e', tag: 'AdminDraw');
+    } finally {
+      _endSegmentOp();
     }
   }
 
-  List<RoutePoint> _flattenedRoadPath() {
-    final points = <RoutePoint>[];
-    for (final segment in _roadSegments) {
-      if (segment.isEmpty) continue;
-      points.addAll(segment);
-    }
-    if (points.length <= 400) return points;
-    return RoutePlanGeometry.sampleByDistance(
-      points,
-      stepMeters: 12,
-      maxPoints: 400,
-    );
-  }
-
-  void _scheduleTempLineRedraw(List<RoutePoint> path, int session, int mutation, int clearGen) {
-    _tempLineCoalesce?.cancel();
-    _tempLineCoalesce = Timer(const Duration(milliseconds: 40), () {
-      _redrawDrawLine(
-        path: path,
-        session: session,
-        mutation: mutation,
-        clearGen: clearGen,
-        temporary: true,
-      );
-    });
-  }
-
-  void _scheduleFinalLineRedraw(List<RoutePoint> path, int session, int mutation, int clearGen) {
-    _finalLineCoalesce?.cancel();
-    _finalLineCoalesce = Timer(const Duration(milliseconds: 40), () {
-      _redrawDrawLine(
-        path: path,
-        session: session,
-        mutation: mutation,
-        clearGen: clearGen,
-      );
-    });
-  }
-
-  Future<void> onDrawRouteMapTap(MapboxMap map, Point<double> point) async {
-    if (!mounted) return;
-    _map = map;
-
-    final rawPoint = RoutePoint(
-      latitude: point.coordinates.lat.toDouble(),
-      longitude: point.coordinates.lng.toDouble(),
-    );
-
-    final session = _drawSession;
-    final tapSeq = ++_tapSeq;
-    final mutation = ++_drawMutationSeq;
-    final clearGen = _visualClearGen;
-
-    _drawPoints.add(rawPoint);
-    if (_drawPoints.length >= 2) {
-      _roadSegments.add(<RoutePoint>[_drawPoints[_drawPoints.length - 2], rawPoint]);
-    }
-    if (mounted) setState(() {});
-
-    if (_drawPoints.length >= 2) {
-      _scheduleTempLineRedraw(
-        _flattenedRoadPath(),
-        session,
-        mutation,
-        clearGen,
-      );
-    }
-
-    if (_liveDirectionsEnabled && _drawPoints.length >= 2) {
-      final previous = _drawPoints[_drawPoints.length - 2];
-      final currentIndex = _drawPoints.length - 1;
-      final snapped = await MapboxService.snapPointToRoad(
-        previous,
-        rawPoint,
-      );
-      if (!mounted || session != _drawSession || tapSeq != _tapSeq || currentIndex >= _drawPoints.length) {
-        return;
-      }
-
-      _drawPoints[currentIndex] = snapped.last;
-      if (_roadSegments.isNotEmpty) {
-        _roadSegments[_roadSegments.length - 1] = snapped;
-      }
-      ++_drawMutationSeq;
+  Future<void> undoLastDrawPoint() async {
+    if (_drawPoints.isEmpty || isSnappingSegment || _undoBusy) return;
+    _undoBusy = true;
+    try {
+      _drawMutationSeq++;
+      _invalidateFinalCoalesce();
+      _invalidateTempCoalesce();
+      _drawPoints.removeLast();
+      if (_roadSegments.isNotEmpty) _roadSegments.removeLast();
+      await _redrawDrawLine(phase: 'undo');
       if (mounted) setState(() {});
-      _scheduleFinalLineRedraw(
-        _flattenedRoadPath(),
-        session,
-        _drawMutationSeq,
-        clearGen,
-      );
+    } finally {
+      _undoBusy = false;
     }
   }
 
-  void _clearDrawVisuals() {
-    _visualClearGen++;
-    _invalidateFinalCoalesce();
-    _invalidateTempCoalesce();
-    final map = _map;
-    if (map == null) return;
-    map.style.setStyleSourceProperty(
-      _liveRouteSourceId,
-      'data',
-      jsonEncode({
-        'type': 'FeatureCollection',
-        'features': const [],
-      }),
-    );
+  double _haversineMeters(double lat1, double lng1, double lat2, double lng2) {
+    const earthRadius = 6371000.0;
+    final dLat = _rad(lat2 - lat1);
+    final dLng = _rad(lng2 - lng1);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_rad(lat1)) * math.cos(_rad(lat2)) *
+            math.sin(dLng / 2) * math.sin(dLng / 2);
+    return earthRadius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
   }
+
+  double _rad(double degrees) => degrees * math.pi / 180;
+
+  String _friendlySaveError(Object error) {
+    final message = error.toString();
+    if (message.contains('permission') || message.contains('PERMISSION')) {
+      return 'رفض الصلاحيات على plannedRoutes — انشر firestore.rules ثم أعد المحاولة.';
+    }
+    return message;
+  }
+
+  Future<void> finishAndSaveDrawnRoute() async {
+    if (!mounted || isSnappingSegment) return;
+    if (_drawPoints.length < 2) {
+      MapUtils.showSnackBar(context, 'أضف نقطتين على الأقل', isError: true);
+      return;
+    }
+    final auth = context.read<AuthProvider>();
+    final adminId = auth.userId;
+    if (adminId == null) {
+      MapUtils.showSnackBar(context, 'يجب تسجيل الدخول كأدمن قبل الحفظ', isError: true);
+      return;
+    }
+    final result = await showModalBottomSheet<({String name, RouteDirection dir, List<String> aliases, String? notes, String start, String? middle, String end})>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SaveDrawnRouteSheet(
+        pointCount: _drawPoints.length,
+        roadPointCount: _flattenedRoadPath.length,
+      ),
+    );
+    if (result == null || !mounted) return;
+    try {
+      MapUtils.showSnackBar(context, 'جاري تحسين المسار على الشوارع والجسور ثم الحفظ…');
+      final control = List<RoutePoint>.from(_drawPoints);
+      final saved = await _drawRouteService.saveAdminDrawnRoute(
+        adminId: adminId,
+        lineName: result.name,
+        direction: result.dir,
+        points: control,
+        aliases: result.aliases,
+        notes: result.notes,
+        lineStart: result.start,
+        lineMiddle: result.middle,
+        lineEnd: result.end,
+        alreadySnapped: false,
+      );
+      if (!mounted) return;
+      setState(() {
+        isDrawingRoute = false;
+        isSnappingSegment = false;
+        _drawPoints.clear();
+        _roadSegments.clear();
+      });
+      await _clearDrawVisuals();
+      if (!mounted) return;
+      final km = ((saved.distanceMeters ?? 0) / 1000).toStringAsFixed(1);
+      MapUtils.showSnackBar(
+        context,
+        '✅ تم اعتماد مسار ${result.dir.labelAr} «${result.name}» ($km كم · ${saved.points.length} نقطة شارع) للجميع',
+      );
+    } catch (e) {
+      MapUtils.log('save drawn route: $e', tag: 'AdminDraw');
+      if (mounted) MapUtils.showSnackBar(context, '❌ ${_friendlySaveError(e)}', isError: true);
+    }
+  }
+
+  int get drawPointCount => _drawPoints.length;
 
   void disposeAdminDrawRoute() {
     _drawSession++;
