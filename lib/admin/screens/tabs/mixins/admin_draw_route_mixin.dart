@@ -9,7 +9,6 @@ import 'package:provider/provider.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
-import '../../../../models/planned_route.dart';
 import '../../../../models/route_point.dart';
 import '../../../../services/route_plan/route_plan_geometry.dart';
 import '../../../../services/route_plan_service.dart';
@@ -25,26 +24,19 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final List<RoutePoint> _drawPoints = [];
   final List<List<RoutePoint>> _roadSegments = [];
 
-  PolylineAnnotation? _drawLine;
   bool _tapLocked = false;
   int _drawSession = 0;
   int _drawMutationSeq = 0;
-  int _lineRedrawSeq = 0;
-  bool _lineRedrawBusy = false;
-  bool _lineRedrawQueued = false;
-  Completer<void>? _lineRedrawDone;
   int _visualClearGen = 0;
   bool _undoBusy = false;
   bool _segmentOpBusy = false;
   Completer<void>? _segmentOpDone;
 
+  // Diagnostic: Directions is disabled so we can isolate GeoJSON/Mapbox rendering.
   static const bool _liveDirectionsEnabled = false;
   static const bool _livePolylineEnabled = true;
   static const String _liveRouteSourceId = 'admin_draw_route_source';
   static const String _liveRouteLayerId = 'admin_draw_route_layer';
-
-  bool _directionsBusy = false;
-  Completer<void>? _directionsDone;
 
   bool _finalCoalesceRunning = false;
   bool _finalCoalesceQueued = false;
@@ -56,17 +48,18 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   int _tempCoalesceEpoch = 0;
   int _tempCoalesceRunnerEpoch = 0;
 
+  int get drawPointCount => _drawPoints.length;
+
   List<RoutePoint> get _flattenedRoadPath {
     if (_roadSegments.isEmpty) return List<RoutePoint>.from(_drawPoints);
 
     final out = <RoutePoint>[];
     for (final seg in _roadSegments) {
       if (seg.isEmpty) continue;
-      final geometry = seg;
       if (out.isEmpty) {
-        out.addAll(geometry);
+        out.addAll(seg);
       } else {
-        final join = geometry.first;
+        final join = seg.first;
         final prev = out.last;
         final d = _haversineMeters(
           prev.latitude,
@@ -75,9 +68,9 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           join.longitude,
         );
         if (d <= 3.0) {
-          out.addAll(geometry.skip(1));
+          out.addAll(seg.skip(1));
         } else {
-          out.addAll(geometry);
+          out.addAll(seg);
         }
       }
     }
@@ -94,27 +87,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _tempCoalesceQueued = false;
   }
 
-  Future<void> _beginDirectionsOp() async {
-    while (_directionsBusy) {
-      final pending = _directionsDone;
-      if (pending != null) await pending.future;
-    }
-    _directionsBusy = true;
-    _directionsDone = Completer<void>();
-  }
-
-  void _endDirectionsOp() {
-    _directionsBusy = false;
-    final done = _directionsDone;
-    _directionsDone = null;
-    if (done != null && !done.isCompleted) done.complete();
-  }
-
   void startDrawingRoute() {
     if (!mounted) return;
     _drawSession++;
     _drawMutationSeq++;
-    _lineRedrawSeq++;
     _tapLocked = false;
     _invalidateFinalCoalesce();
     _invalidateTempCoalesce();
@@ -132,7 +108,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (!mounted) return;
     _drawSession++;
     _drawMutationSeq++;
-    _lineRedrawSeq++;
     _tapLocked = false;
     _invalidateFinalCoalesce();
     _invalidateTempCoalesce();
@@ -165,21 +140,18 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final clearGen = ++_visualClearGen;
     _invalidateFinalCoalesce();
     _invalidateTempCoalesce();
-    _lineRedrawQueued = false;
     await _beginSegmentOp();
     try {
       if (clearGen != _visualClearGen) return;
-      _drawLine = null;
       final map = mapboxMap;
-      if (map != null) {
-        try {
-          await map.style.setStyleSourceProperty(
-            _liveRouteSourceId,
-            'data',
-            jsonEncode({'type': 'FeatureCollection', 'features': const []}),
-          );
-        } catch (_) {}
-      }
+      if (map == null) return;
+      try {
+        await map.style.setStyleSourceProperty(
+          _liveRouteSourceId,
+          'data',
+          jsonEncode({'type': 'FeatureCollection', 'features': const []}),
+        );
+      } catch (_) {}
     } finally {
       _endSegmentOp();
     }
@@ -187,9 +159,11 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   Future<void> onDrawRouteMapTap(Point point) async {
     if (!isDrawingRoute || !mounted || _tapLocked) return;
-    final lat = point.coordinates.lat.toDouble();
-    final lng = point.coordinates.lng.toDouble();
-    final raw = RoutePoint(latitude: lat, longitude: lng);
+
+    final raw = RoutePoint(
+      latitude: point.coordinates.lat.toDouble(),
+      longitude: point.coordinates.lng.toDouble(),
+    );
 
     _tapLocked = true;
     setState(() => isSnappingSegment = true);
@@ -201,6 +175,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     try {
       final snapped = await _drawRouteService.snapPointToRoad(raw);
       if (!mounted || session != _drawSession) return;
+
       if (_drawPoints.isNotEmpty) {
         final last = _drawPoints.last;
         final distance = _haversineMeters(
@@ -252,6 +227,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     if (segmentIndex == null || from == null || to == null) return;
     if (session != _drawSession) return;
+
     final idx = segmentIndex;
     final a = from;
     final b = to;
@@ -276,14 +252,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
       if (idx >= _roadSegments.length) return;
 
-      final List<RoutePoint> pinned;
-      if (road.length >= 2) {
-        pinned = List<RoutePoint>.from(road);
-        if (idx > 0 && idx - 1 < _roadSegments.length && _roadSegments[idx - 1].isNotEmpty) {
-          pinned[0] = _roadSegments[idx - 1].last;
-        }
-      } else {
-        pinned = [a, b];
+      final pinned = road.length >= 2 ? List<RoutePoint>.from(road) : [a, b];
+      if (road.length >= 2 && idx > 0 && idx - 1 < _roadSegments.length) {
+        final previous = _roadSegments[idx - 1];
+        if (previous.isNotEmpty) pinned[0] = previous.last;
       }
 
       _roadSegments[idx] = pinned;
@@ -326,28 +298,22 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     } catch (_) {}
   }
 
-  String _liveRouteGeoJson(List<RoutePoint> path) {
-    return jsonEncode({
-      'type': 'FeatureCollection',
-      'features': [
-        {
-          'type': 'Feature',
-          'id': 'admin_draw_route',
-          'properties': const <String, dynamic>{},
-          'geometry': {
-            'type': 'LineString',
-            'coordinates': [for (final p in path) [p.longitude, p.latitude]],
+  String _liveRouteGeoJson(List<RoutePoint> path) => jsonEncode({
+        'type': 'FeatureCollection',
+        'features': [
+          {
+            'type': 'Feature',
+            'id': 'admin_draw_route',
+            'properties': const <String, dynamic>{},
+            'geometry': {
+              'type': 'LineString',
+              'coordinates': [for (final p in path) [p.longitude, p.latitude]],
+            },
           },
-        },
-      ],
-    });
-  }
+        ],
+      });
 
-  Future<void> _redrawDrawLine({
-    int? tapId,
-    int? segmentIndex,
-    String phase = '',
-  }) async {
+  Future<void> _redrawDrawLine({String phase = ''}) async {
     if (!mounted || !_livePolylineEnabled) return;
 
     if (phase == 'temp' || phase == 'temp-fallback') {
@@ -361,11 +327,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           _tempCoalesceQueued = false;
           await Future<void>.delayed(const Duration(milliseconds: 40));
           if (!mounted || epoch != _tempCoalesceEpoch) break;
-          await _redrawDrawLine(
-            tapId: tapId,
-            segmentIndex: segmentIndex,
-            phase: '_temp_coalesced',
-          );
+          await _redrawDrawLine(phase: '_temp_coalesced');
         }
       } finally {
         _tempCoalesceRunning = false;
@@ -385,11 +347,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           _finalCoalesceQueued = false;
           await Future<void>.delayed(const Duration(milliseconds: 40));
           if (!mounted || epoch != _finalCoalesceEpoch) break;
-          await _redrawDrawLine(
-            tapId: tapId,
-            segmentIndex: segmentIndex,
-            phase: '_final_coalesced',
-          );
+          await _redrawDrawLine(phase: '_final_coalesced');
         }
       } finally {
         _finalCoalesceRunning = false;
@@ -407,10 +365,13 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           : List<RoutePoint>.from(rawPath);
 
       if (session != _drawSession || clearGen != _visualClearGen) return;
+
+      final map = mapboxMap;
+      if (map == null) return;
+      await _ensureLiveRouteLayer();
+      if (!mounted || session != _drawSession || clearGen != _visualClearGen) return;
+
       if (path.length < 2) {
-        final map = mapboxMap;
-        if (map == null) return;
-        await _ensureLiveRouteLayer();
         await map.style.setStyleSourceProperty(
           _liveRouteSourceId,
           'data',
@@ -421,11 +382,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       if (phase == '_temp_coalesced' && _tempCoalesceRunnerEpoch != _tempCoalesceEpoch) return;
       if (phase == '_final_coalesced' && _finalCoalesceRunnerEpoch != _finalCoalesceEpoch) return;
-
-      final map = mapboxMap;
-      if (map == null) return;
-      await _ensureLiveRouteLayer();
-      if (!mounted || session != _drawSession || clearGen != _visualClearGen) return;
 
       await map.style.setStyleSourceProperty(
         _liveRouteSourceId,
@@ -481,34 +437,49 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       MapUtils.showSnackBar(context, 'أضف نقطتين على الأقل', isError: true);
       return;
     }
+
     final auth = context.read<AuthProvider>();
     final adminId = auth.userId;
     if (adminId == null) {
       MapUtils.showSnackBar(context, 'يجب تسجيل الدخول كأدمن قبل الحفظ', isError: true);
       return;
     }
-    final routeNameController = TextEditingController();
-    final notesController = TextEditingController();
+
     try {
-      final result = await showModalBottomSheet<Map<String, dynamic>>(
+      final result = await showModalBottomSheet<({
+        String name,
+        RouteDirection dir,
+        List<String> aliases,
+        String? notes,
+        String start,
+        String? middle,
+        String end,
+      })>(
         context: context,
         isScrollControlled: true,
-        builder: (_) => AdminSaveDrawnRouteSheet(
-          nameController: routeNameController,
-          notesController: notesController,
+        builder: (_) => SaveDrawnRouteSheet(
+          pointCount: _drawPoints.length,
+          roadPointCount: _flattenedRoadPath.length,
         ),
       );
+
       if (result == null || !mounted) return;
-      final name = (result['name'] as String?)?.trim() ?? '';
-      final notes = (result['notes'] as String?)?.trim();
       final path = _flattenedRoadPath;
       if (path.length < 2) return;
-      await _drawRouteService.savePlannedRoute(
-        name: name,
-        notes: notes,
+
+      await _drawRouteService.saveAdminDrawnRoute(
         adminId: adminId,
+        lineName: result.name.trim(),
+        direction: result.dir,
         points: path,
+        aliases: result.aliases,
+        notes: result.notes,
+        lineStart: result.start,
+        lineMiddle: result.middle,
+        lineEnd: result.end,
+        alreadySnapped: true,
       );
+
       if (mounted) {
         MapUtils.showSnackBar(context, 'تم حفظ المسار بنجاح');
         await cancelDrawingRoute();
@@ -517,22 +488,16 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (mounted) {
         MapUtils.showSnackBar(context, _friendlySaveError(e), isError: true);
       }
-    } finally {
-      routeNameController.dispose();
-      notesController.dispose();
     }
   }
 
-  @override
   void disposeAdminDrawRoute() {
     _drawSession++;
     _drawMutationSeq++;
-    _lineRedrawSeq++;
     _invalidateFinalCoalesce();
     _invalidateTempCoalesce();
     _drawPoints.clear();
     _roadSegments.clear();
-    _drawLine = null;
     _tapLocked = false;
     isDrawingRoute = false;
     isSnappingSegment = false;
