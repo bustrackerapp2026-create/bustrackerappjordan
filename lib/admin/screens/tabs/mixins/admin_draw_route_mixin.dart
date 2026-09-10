@@ -276,17 +276,13 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         return;
       }
 
-      List<RoutePoint> road;
-      await _beginDirectionsOp();
-      try {
-        road = await _drawRouteService.getDrivingPath(
-          from: a,
-          to: b,
-          attachControlEndpoints: false,
-        );
-      } finally {
-        _endDirectionsOp();
-      }
+      // Directions requests are independent per segment. Keep them concurrent
+      // so rapid taps do not create a growing road-rendering backlog.
+      final road = await _drawRouteService.getDrivingPath(
+        from: a,
+        to: b,
+        attachControlEndpoints: false,
+      );
 
       if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
       if (idx >= _roadSegments.length) return;
