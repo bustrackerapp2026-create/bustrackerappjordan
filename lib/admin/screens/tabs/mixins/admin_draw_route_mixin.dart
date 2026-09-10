@@ -48,11 +48,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final out = <RoutePoint>[];
     for (final seg in _roadSegments) {
       if (seg.isEmpty) continue;
-      if (out.isEmpty) {
-        out.addAll(seg);
-      } else {
-        final join = seg.first;
-        final prev = out.last;
+      if (out.isEmpty) { out.addAll(seg); } else {
+        final join = seg.first; final prev = out.last;
         final d = _haversineMeters(prev.latitude, prev.longitude, join.latitude, join.longitude);
         if (d <= 3.0) out.addAll(seg.skip(1)); else out.addAll(seg);
       }
@@ -65,14 +62,12 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (!mounted) return;
     _drawSession++; _drawMutationSeq++; _tapLocked = false; _invalidateFinalCoalesce(); _invalidateTempCoalesce();
     setState(() { isDrawingRoute = true; isSnappingSegment = false; _drawPoints.clear(); _roadSegments.clear(); });
-    unawaited(_clearDrawVisuals());
-    MapUtils.showSnackBar(context, 'وضع الرسم: انقر على الخريطة لإضافة نقاط المسار');
+    unawaited(_clearDrawVisuals()); MapUtils.showSnackBar(context, 'وضع الرسم: انقر على الخريطة لإضافة نقاط المسار');
   }
   Future<void> cancelDrawingRoute() async {
     if (!mounted) return;
     _drawSession++; _drawMutationSeq++; _tapLocked = false; _invalidateFinalCoalesce(); _invalidateTempCoalesce();
-    setState(() { isDrawingRoute = false; isSnappingSegment = false; _drawPoints.clear(); _roadSegments.clear(); });
-    await _clearDrawVisuals();
+    setState(() { isDrawingRoute = false; isSnappingSegment = false; _drawPoints.clear(); _roadSegments.clear(); }); await _clearDrawVisuals();
   }
   Future<void> _beginSegmentOp() async { while (_segmentOpBusy) { final pending = _segmentOpDone; if (pending != null) await pending.future; } _segmentOpBusy = true; _segmentOpDone = Completer<void>(); }
   void _endSegmentOp() { _segmentOpBusy = false; final done = _segmentOpDone; _segmentOpDone = null; if (done != null && !done.isCompleted) done.complete(); }
