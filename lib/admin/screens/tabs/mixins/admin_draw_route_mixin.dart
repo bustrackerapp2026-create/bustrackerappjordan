@@ -35,10 +35,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   /// خط واحد للمسار الحي بالكامل.
   PolylineAnnotation? _drawLine;
 
-  /// نقاط الرسم كدوائر (بدون PointAnnotation/icon الافتراضي).
-  CircleAnnotationManager? _drawCircleManager;
-  final List<CircleAnnotation> _drawPointMarkers = [];
-
   /// يمنع تداخل معالجة نقرات متعددة في القسم الحرج فقط
   /// (إضافة نقطة + مقطع مؤقت)، دون انتظار Directions.
   bool _tapLocked = false;
@@ -127,16 +123,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _tempCoalesceQueued = false;
   }
 
-  Future<void> _ensureDrawCircleManager() async {
-    if (_drawCircleManager != null || mapboxMap == null) return;
-    try {
-      _drawCircleManager =
-          await mapboxMap!.annotations.createCircleAnnotationManager();
-    } catch (e) {
-      MapUtils.log('draw circle manager: $e', tag: 'AdminDraw');
-    }
-  }
-
   void startDrawingRoute() {
     if (!mounted) return;
 
@@ -211,21 +197,12 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (clearGen != _visualClearGen) return;
 
       final lineToDelete = _drawLine;
-      final markersToDelete =
-          List<CircleAnnotation>.from(_drawPointMarkers);
       _drawLine = null;
-      _drawPointMarkers.clear();
 
       final polyManager = polylineAnnotationManager;
       if (lineToDelete != null && polyManager != null) {
         try {
           await polyManager.delete(lineToDelete);
-        } catch (_) {}
-      }
-
-      for (final marker in markersToDelete) {
-        try {
-          await _drawCircleManager?.delete(marker);
         } catch (_) {}
       }
     } finally {
@@ -267,31 +244,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       _drawPoints.add(snapped);
-
-      try {
-        await _ensureDrawCircleManager();
-        final manager = _drawCircleManager;
-        if (manager != null) {
-          final marker = await manager.create(
-            CircleAnnotationOptions(
-              geometry: Point(
-                coordinates: Position(snapped.longitude, snapped.latitude),
-              ),
-              circleRadius: 3.0,
-              circleColor: 0xFF7C3AED,
-              circleStrokeColor: 0xFFFFFFFF,
-              circleStrokeWidth: 1.5,
-              // مخفية بصرياً بالكامل؛ المراجع تبقى لـ Undo
-              circleOpacity: 0.0,
-              circleStrokeOpacity: 0.0,
-            ),
-          );
-          if (session != _drawSession) return;
-          _drawPointMarkers.add(marker);
-        }
-      } catch (e) {
-        MapUtils.log('draw point marker: $e', tag: 'AdminDraw');
-      }
 
       if (_drawPoints.length < 2) {
         if (mounted) setState(() {});
@@ -535,8 +487,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         try {
           await manager.delete(previous);
         } catch (_) {}
-        // بعد delete: إن تغيّرت الجلسة لا نُعدّل _drawLine أكثر —
-        // clear الأحدث إما مسح المرجع أو سيمسح عبر لقطته الخاصة
       }
     } finally {
       _endSegmentOp();
@@ -556,14 +506,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       if (_roadSegments.isNotEmpty) {
         _roadSegments.removeLast();
-      }
-
-      if (_drawPointMarkers.isNotEmpty) {
-        final lastMarker = _drawPointMarkers.removeLast();
-
-        try {
-          await _drawCircleManager?.delete(lastMarker);
-        } catch (_) {}
       }
 
       await _redrawDrawLine(phase: 'undo');
@@ -734,8 +676,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _drawLine = null;
     _segmentOpBusy = false;
     _segmentOpDone = null;
-    _drawPointMarkers.clear();
-    _drawCircleManager = null;
 
     isDrawingRoute = false;
     isSnappingSegment = false;
