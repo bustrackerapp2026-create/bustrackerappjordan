@@ -25,9 +25,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final List<RoutePoint> _drawPoints = [];
   final List<List<RoutePoint>> _roadSegments = [];
 
-  /// Cached flatten of _roadSegments; invalidated on start/cancel/undo.
-  List<RoutePoint>? _flattenedPathCache;
-
   bool _tapLocked = false;
   int _drawSession = 0;
   int _drawMutationSeq = 0;
@@ -55,23 +52,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   int get drawPointCount => _drawPoints.length;
 
   List<RoutePoint> get _flattenedRoadPath {
-    if (_flattenedPathCache != null) {
-      return List<RoutePoint>.from(_flattenedPathCache!);
-    }
-    return _rebuildFlattenedPathCache();
-  }
-
-  void _invalidateFlattenedPathCache() {
-    _flattenedPathCache = null;
-  }
-
-  /// Same join logic as the original full flatten; builds and stores cache.
-  List<RoutePoint> _rebuildFlattenedPathCache() {
-    if (_roadSegments.isEmpty) {
-      final fallback = List<RoutePoint>.from(_drawPoints);
-      _flattenedPathCache = fallback;
-      return List<RoutePoint>.from(fallback);
-    }
+    if (_roadSegments.isEmpty) return List<RoutePoint>.from(_drawPoints);
 
     final out = <RoutePoint>[];
     for (final seg in _roadSegments) {
@@ -94,35 +75,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         }
       }
     }
-    _flattenedPathCache = out;
-    return List<RoutePoint>.from(out);
-  }
-
-  /// Append a finalized segment (Directions pinned or fallback) to the cache.
-  void _appendSegmentToFlattenedCache(List<RoutePoint> seg) {
-    if (seg.isEmpty) return;
-    if (_flattenedPathCache == null) {
-      _rebuildFlattenedPathCache();
-      return;
-    }
-    final out = _flattenedPathCache!;
-    if (out.isEmpty) {
-      out.addAll(seg);
-      return;
-    }
-    final join = seg.first;
-    final prev = out.last;
-    final d = _haversineMeters(
-      prev.latitude,
-      prev.longitude,
-      join.latitude,
-      join.longitude,
-    );
-    if (d <= 3.0) {
-      out.addAll(seg.skip(1));
-    } else {
-      out.addAll(seg);
-    }
+    return out;
   }
 
   void _invalidateFinalCoalesce() {
@@ -142,7 +95,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _tapLocked = false;
     _invalidateFinalCoalesce();
     _invalidateTempCoalesce();
-    _invalidateFlattenedPathCache();
     setState(() {
       isDrawingRoute = true;
       isSnappingSegment = false;
@@ -161,7 +113,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _tapLocked = false;
     _invalidateFinalCoalesce();
     _invalidateTempCoalesce();
-    _invalidateFlattenedPathCache();
     setState(() {
       isDrawingRoute = false;
       isSnappingSegment = false;
@@ -287,7 +238,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (!_liveDirectionsEnabled) {
         if (idx < _roadSegments.length) {
           _roadSegments[idx] = [a, b];
-          _appendSegmentToFlattenedCache([a, b]);
           await _redrawDrawLine(phase: 'final-fallback');
           if (mounted) setState(() {});
         }
@@ -311,7 +261,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       _roadSegments[idx] = pinned;
-      _appendSegmentToFlattenedCache(pinned);
       await _redrawDrawLine(phase: 'final');
       if (mounted) setState(() {});
     } catch (e) {
@@ -320,7 +269,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         return;
       if (idx < _roadSegments.length) {
         _roadSegments[idx] = [a, b];
-        _appendSegmentToFlattenedCache([a, b]);
         await _redrawDrawLine(phase: 'final-fallback');
         if (mounted) setState(() {});
       }
@@ -464,7 +412,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _drawMutationSeq++;
       _invalidateFinalCoalesce();
       _invalidateTempCoalesce();
-      _invalidateFlattenedPathCache();
       _drawPoints.removeLast();
       if (_roadSegments.isNotEmpty) _roadSegments.removeLast();
       await _redrawDrawLine(phase: 'undo');
@@ -563,7 +510,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _drawMutationSeq++;
     _invalidateFinalCoalesce();
     _invalidateTempCoalesce();
-    _invalidateFlattenedPathCache();
     _drawPoints.clear();
     _roadSegments.clear();
     _tapLocked = false;
