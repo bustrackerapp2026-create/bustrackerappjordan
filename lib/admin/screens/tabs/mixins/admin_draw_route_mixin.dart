@@ -730,26 +730,33 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (mounted) {
         MapUtils.showSnackBar(
           context,
-          _friendlySaveError(e),
+          '❌ ${_friendlySaveError(e)}',
           isError: true,
         );
       }
     }
   }
 
+  int get drawPointCount => _drawPoints.length;
+
   void disposeAdminDrawRoute() {
     _drawSession++;
     _drawMutationSeq++;
     _lineRedrawSeq++;
-    _tapLocked = false;
+    _visualClearGen++;
+    _lineRedrawQueued = false;
     _invalidateFinalCoalesce();
     _invalidateTempCoalesce();
-    _directionsBusy = false;
-    _directionsDone = null;
-    _segmentOpBusy = false;
-    _segmentOpDone = null;
-    _drawLine = null;
+    _tapLocked = false;
     _drawPoints.clear();
     _roadSegments.clear();
+    _drawLine = null;
+    _segmentOpBusy = false;
+    _segmentOpDone = null;
+    _directionsBusy = false;
+    _directionsDone = null;
+
+    isDrawingRoute = false;
+    isSnappingSegment = false;
   }
 }
