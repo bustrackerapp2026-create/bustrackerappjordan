@@ -36,3 +36,5 @@ jobs:
           git add lib/admin/screens/tabs/admin_map_tab.dart .github/workflows/one-shot-textureview-test.yml
           git commit -m "test(admin-map): switch Mapbox away from TextureView"
           git push origin integrate/vehicle-trip
+
+# trigger the one-shot diagnostic patch
