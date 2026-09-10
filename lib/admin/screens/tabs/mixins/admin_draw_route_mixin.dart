@@ -73,6 +73,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   // When false, each segment stays as a direct line [a, b].
   static const bool _liveDirectionsEnabled = false;
 
+  // Diagnostic switch: disable live Polyline redraw while keeping point capture
+  // and road snapping active. This isolates native Polyline rendering/update cost.
+  static const bool _livePolylineEnabled = false;
+
   // Serialize Directions requests so rapid taps cannot create many concurrent
   // route requests whose responses all compete for the native Mapbox layer.
   bool _directionsBusy = false;
@@ -396,6 +400,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     String phase = '',
   }) async {
     if (!mounted) return;
+    if (!_livePolylineEnabled) return;
 
     // Temporary redraws: keep only the newest geometry while a native write is running.
     if (phase == 'temp' || phase == 'temp-fallback') {
