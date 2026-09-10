@@ -56,10 +56,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   int _tempCoalesceEpoch = 0;
   int _tempCoalesceRunnerEpoch = 0;
 
-  // Diagnostic render batching: keep all captured/Directions geometry, but
-  // update the native route layer only on the first two points and then every
-  // four points.
-  int _nextLiveRenderPoint = 2;
 
   List<RoutePoint> get _flattenedRoadPath {
     if (_roadSegments.isEmpty) return List<RoutePoint>.from(_drawPoints);
@@ -130,7 +126,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       isSnappingSegment = false;
       _drawPoints.clear();
       _roadSegments.clear();
-      _nextLiveRenderPoint = 2;
     });
     unawaited(_clearDrawVisuals());
     MapUtils.showSnackBar(context, 'وضع الرسم: انقر على الخريطة لإضافة نقاط المسار');
@@ -149,7 +144,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       isSnappingSegment = false;
       _drawPoints.clear();
       _roadSegments.clear();
-      _nextLiveRenderPoint = 2;
     });
     await _clearDrawVisuals();
   }
@@ -361,13 +355,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }) async {
     if (!mounted || !_livePolylineEnabled) return;
 
-    final isRenderRequest = phase == 'temp' || phase == 'temp-fallback' ||
-        phase == 'final' || phase == 'final-fallback';
-    if (isRenderRequest && _drawPoints.length >= 2 &&
-        _drawPoints.length < _nextLiveRenderPoint) return;
-    if (isRenderRequest && _drawPoints.length >= _nextLiveRenderPoint) {
-      _nextLiveRenderPoint = _drawPoints.length + 4;
-    }
 
     if (phase == 'temp' || phase == 'temp-fallback') {
       _tempCoalesceQueued = true;
@@ -380,7 +367,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         // on-device. Newer geometry supersedes older queued geometry.
         while (_tempCoalesceQueued && mounted && epoch == _tempCoalesceEpoch) {
           _tempCoalesceQueued = false;
-          await Future<void>.delayed(const Duration(milliseconds: 250));
+          await Future<void>.delayed(const Duration(milliseconds: 40));
           if (!mounted || epoch != _tempCoalesceEpoch) break;
           await _redrawDrawLine(
             tapId: tapId,
@@ -404,7 +391,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       try {
         while (_finalCoalesceQueued && mounted && epoch == _finalCoalesceEpoch) {
           _finalCoalesceQueued = false;
-          await Future<void>.delayed(const Duration(milliseconds: 250));
+          await Future<void>.delayed(const Duration(milliseconds: 40));
           if (!mounted || epoch != _finalCoalesceEpoch) break;
           await _redrawDrawLine(
             tapId: tapId,
