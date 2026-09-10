@@ -1,3 +1,5 @@
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+
 /// ثوابت الخريطة المشتركة بين جميع الخرائط
 class MapConstants {
   // ─── حدود الأردن (تُفرض على الكاميرا) ───────────────────────────
@@ -37,4 +39,26 @@ class MapConstants {
   static const double routeOutlineOpacity = 0.22;
 
   static const int routeOutlineColor = 0xFFFFFFFF;
+}
+
+/// Compatibility bridge for Mapbox 2.3.0, where annotation tapEvents()
+/// is not available yet. Keep the existing call site unchanged.
+extension PointAnnotationManagerTapEventsCompat on PointAnnotationManager {
+  void tapEvents({required void Function(PointAnnotation) onTap}) {
+    addOnPointAnnotationClickListener(
+      _PointAnnotationClickListener(onTap),
+    );
+  }
+}
+
+class _PointAnnotationClickListener
+    extends OnPointAnnotationClickListener {
+  final void Function(PointAnnotation) onTap;
+
+  _PointAnnotationClickListener(this.onTap);
+
+  @override
+  void onPointAnnotationClick(PointAnnotation annotation) {
+    onTap(annotation);
+  }
 }
