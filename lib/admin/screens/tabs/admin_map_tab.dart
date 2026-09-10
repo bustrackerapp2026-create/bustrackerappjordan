@@ -142,7 +142,6 @@ class _AdminMapTabState extends State<AdminMapTab>
       listenToLandmarks();
       listenToTextLabels();
       listenToPickupPoints();
-      applyLabelLayersFilter();
       _scheduleFocusRequest();
     });
   }
