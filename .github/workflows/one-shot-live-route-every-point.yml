@@ -1,0 +1,163 @@
+name: One-shot every-point live route rendering
+on:
+  push:
+    paths:
+      - '.github/workflows/one-shot-live-route-every-point.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch route rendering cadence and immediate point preview
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart')
+          s = p.read_text()
+
+          s = s.replace("  // Diagnostic render batching: keep all captured/Directions geometry, but\n  // update the native route layer only on the first two points and then every\n  // four points.\n  int _nextLiveRenderPoint = 2;\n", "")
+          s = s.replace("      _nextLiveRenderPoint = 2;\n", "")
+
+          start = s.index('  Future<void> onDrawRouteMapTap(Point point) async {')
+          end = s.index('  Future<void> _ensureLiveRouteLayer() async {', start)
+          new_method = r'''  Future<void> onDrawRouteMapTap(Point point) async {
+    if (!isDrawingRoute || !mounted || _tapLocked) return;
+    final lat = point.coordinates.lat.toDouble();
+    final lng = point.coordinates.lng.toDouble();
+    final raw = RoutePoint(latitude: lat, longitude: lng);
+
+    _tapLocked = true;
+    final session = _drawSession;
+    final mutation = _drawMutationSeq;
+    int? segmentIndex;
+    RoutePoint? from;
+    RoutePoint? to;
+
+    try {
+      // Add the tapped point immediately so the administrator can see and
+      // verify every tap before the road-snapping request finishes.
+      if (_drawPoints.isNotEmpty) {
+        final last = _drawPoints.last;
+        final distance = _haversineMeters(
+          last.latitude,
+          last.longitude,
+          raw.latitude,
+          raw.longitude,
+        );
+        if (distance < 15) {
+          MapUtils.showSnackBar(context, 'النقطة قريبة جداً من السابقة');
+          return;
+        }
+      }
+
+      _drawPoints.add(raw);
+      if (_drawPoints.length < 2) {
+        if (mounted) setState(() {});
+        return;
+      }
+
+      from = _drawPoints[_drawPoints.length - 2];
+      to = raw;
+      segmentIndex = _roadSegments.length;
+      _roadSegments.add([from, to]);
+      await _redrawDrawLine(phase: 'temp');
+      if (mounted) {
+        setState(() => isSnappingSegment = true);
+      }
+    } catch (e) {
+      MapUtils.log('draw tap immediate: $e', tag: 'AdminDraw');
+      if (mounted) setState(() {});
+    } finally {
+      _tapLocked = false;
+    }
+
+    if (segmentIndex == null || from == null || to == null) return;
+    if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
+    final idx = segmentIndex;
+    final a = from;
+    final initialB = to;
+
+    try {
+      // First snap the point that was already shown immediately on the map.
+      // The provisional straight segment is then replaced by its road-snapped
+      // version, so the user sees the correction happen for this exact point.
+      final snapped = await _drawRouteService.snapPointToRoad(initialB);
+      if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
+      if (idx >= _drawPoints.length || idx >= _roadSegments.length) return;
+
+      _drawPoints[idx] = snapped;
+      final snappedFrom = idx > 0 ? _drawPoints[idx - 1] : a;
+      _roadSegments[idx] = [snappedFrom, snapped];
+      await _redrawDrawLine(phase: 'temp');
+      if (mounted) setState(() {});
+
+      if (!_liveDirectionsEnabled) {
+        await _redrawDrawLine(phase: 'final-fallback');
+        if (mounted) setState(() => isSnappingSegment = false);
+        return;
+      }
+
+      // Directions requests are independent per segment. Keep them concurrent
+      // so rapid taps do not create a growing road-rendering backlog.
+      final road = await _drawRouteService.getDrivingPath(
+        from: snappedFrom,
+        to: snapped,
+        attachControlEndpoints: false,
+      );
+
+      if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
+      if (idx >= _roadSegments.length) return;
+
+      final List<RoutePoint> pinned;
+      if (road.length >= 2) {
+        pinned = List<RoutePoint>.from(road);
+        if (idx > 0 && idx - 1 < _roadSegments.length && _roadSegments[idx - 1].isNotEmpty) {
+          pinned[0] = _roadSegments[idx - 1].last;
+        }
+      } else {
+        pinned = [snappedFrom, snapped];
+      }
+
+      _roadSegments[idx] = pinned;
+      await _redrawDrawLine(phase: 'final');
+      if (mounted) setState(() {});
+    } catch (e) {
+      MapUtils.log('draw segment directions: $e', tag: 'AdminDraw');
+      if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
+      if (idx < _roadSegments.length) {
+        final b = idx < _drawPoints.length ? _drawPoints[idx] : initialB;
+        final a = idx > 0 ? _drawPoints[idx - 1] : a;
+        _roadSegments[idx] = [a, b];
+        await _redrawDrawLine(phase: 'final-fallback');
+        if (mounted) setState(() {});
+      }
+    } finally {
+      if (mounted) setState(() => isSnappingSegment = false);
+    }
+  }
+
+'''
+          s = s[:start] + new_method + s[end:]
+
+          s = s.replace("    if (!mounted || !_livePolylineEnabled) return;\n\n    final isRenderRequest = phase == 'temp' || phase == 'temp-fallback' ||\n        phase == 'final' || phase == 'final-fallback';\n    if (isRenderRequest && _drawPoints.length >= 2 &&\n        _drawPoints.length < _nextLiveRenderPoint) return;\n    if (isRenderRequest && _drawPoints.length >= _nextLiveRenderPoint) {\n      _nextLiveRenderPoint = _drawPoints.length + 4;\n    }\n\n", "    if (!mounted || !_livePolylineEnabled) return;\n\n")
+
+          s = s.replace("          await Future<void>.delayed(const Duration(milliseconds: 250));\n", "          await Future<void>.delayed(const Duration(milliseconds: 40));\n")
+
+          p.write_text(s)
+          PY
+      - name: Verify and commit
+        run: |
+          dart format lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
+          git diff --check
+          git diff -- lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart .github/workflows/one-shot-live-route-every-point.yml
+          git commit -m 'fix(admin-map): render and snap every route point immediately'
+          git push
+          git rm .github/workflows/one-shot-live-route-every-point.yml
+          git commit -m 'chore: remove one-shot route rendering workflow'
+          git push
