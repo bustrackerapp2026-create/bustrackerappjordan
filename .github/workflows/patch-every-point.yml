@@ -9,7 +9,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Patch
         run: |
-          python3 -c 'from pathlib import Path; import re; p=Path("lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart"); s=p.read_text(); n=chr(10); s=re.sub("  // Diagnostic render batching:.*?int _nextLiveRenderPoint = 2;"+n, "", s, flags=re.S); s=s.replace("      _nextLiveRenderPoint = 2;"+n, ""); s=s.replace("Duration(milliseconds: 250)", "Duration(milliseconds: 40)"); p.write_text(s)'
+          sed -i '/Diagnostic render batching:/,+3d' lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
+          sed -i '/_nextLiveRenderPoint = 2;/d' lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
+          sed -i 's/milliseconds: 250/milliseconds: 40/g' lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
       - name: Commit
         run: |
           dart format lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
@@ -17,8 +19,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
-          git diff --cached --quiet || git commit -m 'fix(admin-map): render route after every point'
-          git push
-          git rm .github/workflows/patch-every-point.yml .github/workflows/one-shot-route-every-point-fix.yml .github/workflows/one-shot-live-route-every-point.yml .github/route-patch-trigger.txt
-          git commit -m 'chore: remove one-shot route workflows and trigger'
+          git commit -m 'fix(admin-map): render route after every point'
           git push
