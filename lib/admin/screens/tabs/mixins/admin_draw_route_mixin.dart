@@ -19,7 +19,7 @@ import '../../../widgets/admin_save_drawn_route_sheet.dart';
 /// استراتيجية الرسم:
 /// 1) تسجيل النقطة التي ضغط عليها المستخدم فوراً.
 /// 2) إظهار المقطع بين آخر نقطتين فوراً كخط مؤقت.
-/// 3) طلب Directions من Mapbox في الخلفية.
+/// 3) طلب Directions من Mapbox في الخلفية عند تفعيله.
 /// 4) استبدال الخط المؤقت بالمسار الحقيقي عند نجاح Directions.
 /// 5) إذا فشل الطلب، يبقى المقطع المباشر بدلاً من اختفائه.
 ///
@@ -68,6 +68,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   /// تسلسل عمليات الخط الواحد (redraw / clear).
   bool _segmentOpBusy = false;
   Completer<void>? _segmentOpDone;
+
+  // Diagnostic switch: disable live Directions while testing tap/render stability.
+  // When false, each segment stays as a direct line [a, b].
+  static const bool _liveDirectionsEnabled = false;
 
   // Serialize Directions requests so rapid taps cannot create many concurrent
   // route requests whose responses all compete for the native Mapbox layer.
@@ -322,6 +326,17 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final mutation = _drawMutationSeq;
 
     try {
+      if (!_liveDirectionsEnabled) {
+        // Diagnostic mode: keep only the direct segment so we can measure
+        // whether live Directions/HTTP is the source of the freezes.
+        if (idx < _roadSegments.length) {
+          _roadSegments[idx] = [a, b];
+          await _redrawDrawLine(phase: 'final-fallback');
+          if (mounted) setState(() {});
+        }
+        return;
+      }
+
       // Serialize only Directions. Taps remain independent and can continue
       // being accepted while an older segment is waiting for its route result.
       List<RoutePoint> road;
