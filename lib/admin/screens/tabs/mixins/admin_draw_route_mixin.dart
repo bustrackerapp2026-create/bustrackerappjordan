@@ -202,7 +202,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       to = _drawPoints.last;
       segmentIndex = _roadSegments.length;
       _roadSegments.add([from, to]);
-      await _redrawDrawLine(phase: 'temp');
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw tap: $e', tag: 'AdminDraw');
