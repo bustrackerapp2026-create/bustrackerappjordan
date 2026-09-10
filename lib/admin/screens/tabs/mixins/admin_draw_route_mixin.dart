@@ -10,6 +10,7 @@ import '../../../../core/map/map_utils.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../models/planned_route.dart';
 import '../../../../models/route_point.dart';
+import '../../../../services/route_plan/route_plan_geometry.dart';
 import '../../../../services/route_plan_service.dart';
 import '../../../widgets/admin_save_drawn_route_sheet.dart';
 
@@ -412,7 +413,16 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (manager == null) return;
       if (session != _drawSession || clearGen != _visualClearGen) return;
 
-      final path = List<RoutePoint>.from(_flattenedRoadPath);
+      final rawPath = _flattenedRoadPath;
+      // Keep the live Mapbox geometry bounded. The control points remain intact
+      // in _drawPoints for saving; only the temporary on-map LineString is sampled.
+      final path = rawPath.length > 140
+          ? RoutePlanGeometry.sampleByDistance(
+              rawPath,
+              stepMeters: 30,
+              maxPoints: 140,
+            )
+          : List<RoutePoint>.from(rawPath);
 
       // أقل من نقطتين → احذف الخط الحالي فقط إن كان ما زال لنا
       if (path.length < 2) {
