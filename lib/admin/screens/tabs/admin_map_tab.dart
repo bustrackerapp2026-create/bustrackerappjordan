@@ -493,8 +493,9 @@ class _AdminMapTabState extends State<AdminMapTab>
       if (!mounted) return;
       _safeSnack('🗑️ تم حذف المعلم');
     } catch (e) {
-      if (!mounted) return;
-      _safeSnack('فشل الحذف: $e', isError: true);
+      if (mounted) {
+        _safeSnack('فشل الحذف: $e', isError: true);
+      }
     }
   }
 
@@ -668,14 +669,10 @@ class _AdminMapTabState extends State<AdminMapTab>
         return;
       }
 
-      // حوار تفعيل GPS (مرة واحدة) — كان ناقصاً في خريطة الأدمن
       final serviceOn =
           await LocationPermissionSheet.ensureLocationService(context);
       if (!mounted) return;
-      if (!serviceOn) {
-        // المستخدم أغلق الحوار أو لم يفعّل — بدون رسالة حمراء مزعجة إن اختار «لاحقاً»
-        return;
-      }
+      if (!serviceOn) return;
 
       var shown = false;
 
@@ -908,7 +905,7 @@ class _AdminMapTabState extends State<AdminMapTab>
         RepaintBoundary(
           child: MapWidget(
             key: const ValueKey('admin_map_widget'),
-            textureView: true,
+            textureView: false,
             onMapCreated: onMapCreated,
             onCameraChangeListener: _onCameraChanged,
             // ignore: deprecated_member_use
