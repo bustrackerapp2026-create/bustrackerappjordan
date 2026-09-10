@@ -69,6 +69,11 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool _segmentOpBusy = false;
   Completer<void>? _segmentOpDone;
 
+  // Serialize Directions requests so rapid taps cannot create many concurrent
+  // route requests whose responses all compete for the native Mapbox layer.
+  bool _directionsBusy = false;
+  Completer<void>? _directionsDone;
+
   // Coalesce rapid final Polyline updates onto latest geometry.
   bool _finalCoalesceRunning = false;
   bool _finalCoalesceQueued = false;
@@ -122,6 +127,24 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   void _invalidateTempCoalesce() {
     _tempCoalesceEpoch++;
     _tempCoalesceQueued = false;
+  }
+
+  Future<void> _beginDirectionsOp() async {
+    while (_directionsBusy) {
+      final pending = _directionsDone;
+      if (pending != null) await pending.future;
+    }
+    _directionsBusy = true;
+    _directionsDone = Completer<void>();
+  }
+
+  void _endDirectionsOp() {
+    _directionsBusy = false;
+    final done = _directionsDone;
+    _directionsDone = null;
+    if (done != null && !done.isCompleted) {
+      done.complete();
+    }
   }
 
   void startDrawingRoute() {
@@ -292,12 +315,20 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final mutation = _drawMutationSeq;
 
     try {
-      // الرسم الحي: هندسة الطريق فقط — بدون stitch إلى نقاط النقر
-      final road = await _drawRouteService.getDrivingPath(
-        from: a,
-        to: b,
-        attachControlEndpoints: false,
-      );
+      // Serialize only Directions. Taps remain independent and can continue
+      // being accepted while an older segment is waiting for its route result.
+      List<RoutePoint> road;
+      await _beginDirectionsOp();
+      try {
+        road = await _drawRouteService.getDrivingPath(
+          from: a,
+          to: b,
+          attachControlEndpoints: false,
+        );
+      } finally {
+        _endDirectionsOp();
+      }
+
       if (!mounted ||
           session != _drawSession ||
           mutation != _drawMutationSeq) {
@@ -694,6 +725,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _drawLine = null;
     _segmentOpBusy = false;
     _segmentOpDone = null;
+    _directionsBusy = false;
+    _directionsDone = null;
 
     isDrawingRoute = false;
     isSnappingSegment = false;
