@@ -1,4 +1,4 @@
-name: One-shot isolate live polyline
+name: One-shot route cadence fix
 
 on:
   push:
@@ -10,38 +10,58 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message != 'test(admin-map): isolate polyline rendering'
+    if: github.event.head_commit.message != 'fix(admin-map): render each route point promptly'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: integrate/vehicle-trip
           fetch-depth: 0
-      - name: Disable live PolylineAnnotation redraw
+      - name: Remove point batching and shorten coalescing
         shell: python
         run: |
           from pathlib import Path
+          import re
           p = Path('lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart')
           s = p.read_text(encoding='utf-8')
-          marker = "  static const bool _liveDirectionsEnabled = false;\n"
-          addition = "\n  // Diagnostic switch: disable every live PolylineAnnotation redraw while\n  // keeping point capture and road snapping active.\n  static const bool _livePolylineEnabled = false;\n"
-          if '_livePolylineEnabled' not in s:
-              if marker not in s:
-                  raise SystemExit('Directions diagnostic switch not found')
-              s = s.replace(marker, marker + addition, 1)
-          old = """    if (!mounted) return;\n\n    // Temporary redraws: keep only the newest geometry while a native write is running.\n"""
-          new = """    if (!mounted) return;\n    if (!_livePolylineEnabled) return;\n\n    // Temporary redraws: keep only the newest geometry while a native write is running.\n"""
-          if old in s:
-              s = s.replace(old, new, 1)
-          elif "if (!_livePolylineEnabled) return;" not in s:
-              raise SystemExit('Polyline redraw marker not found')
+
+          # Remove the diagnostic four-point native-render batching block.
+          s, n = re.subn(
+              r"\n  // Diagnostic render batching:.*?\n  int _nextLiveRenderPoint = 2;\n",
+              "\n",
+              s,
+              count=1,
+              flags=re.S,
+          )
+          if n != 1:
+              raise SystemExit('render batching block not found')
+
+          # Remove resets that belong only to the deleted batching counter.
+          s = s.replace('      _nextLiveRenderPoint = 2;\n', '')
+
+          # Remove the corresponding guard/update logic from _redrawDrawLine.
+          s, n = re.subn(
+              r"\n    final isRenderRequest = phase == 'temp' \|\| phase == 'temp-fallback' \|\|\n        phase == 'final' \|\| phase == 'final-fallback';\n    if \(isRenderRequest && _drawPoints\.length >= 2 &&\n        _drawPoints\.length < _nextLiveRenderPoint\) return;\n    if \(isRenderRequest && _drawPoints\.length >= _nextLiveRenderPoint\) \{\n      _nextLiveRenderPoint = _drawPoints\.length \+ 4;\n    \}\n",
+              "\n",
+              s,
+              count=1,
+          )
+          if n != 1:
+              raise SystemExit('render batching logic not found')
+
+          # Keep the existing coalescing architecture, but make the visible
+          # update latency small enough that each snapped point appears promptly.
+          if s.count('Duration(milliseconds: 250)') == 0:
+              raise SystemExit('250ms coalescing delay not found')
+          s = s.replace('Duration(milliseconds: 250)', 'Duration(milliseconds: 40)')
+
           p.write_text(s, encoding='utf-8')
-      - name: Commit diagnostic patch and remove workflow
+      - name: Commit patch and remove workflow
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           rm -f .github/workflows/one-shot-polyline-isolation.yml
           git add lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart .github/workflows/one-shot-polyline-isolation.yml
-          git commit -m "test(admin-map): isolate polyline rendering"
+          git commit -m "fix(admin-map): render each route point promptly"
           git push origin integrate/vehicle-trip
