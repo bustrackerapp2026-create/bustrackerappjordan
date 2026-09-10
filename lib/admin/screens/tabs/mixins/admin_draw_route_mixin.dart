@@ -38,7 +38,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool _segmentOpBusy = false;
   Completer<void>? _segmentOpDone;
 
-  static const bool _liveDirectionsEnabled = true;
+  static const bool _liveDirectionsEnabled = false;
   static const bool _livePolylineEnabled = true;
   static const String _liveRouteSourceId = 'admin_draw_route_source';
   static const String _liveRouteLayerId = 'admin_draw_route_layer';
@@ -56,15 +56,12 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   int _tempCoalesceEpoch = 0;
   int _tempCoalesceRunnerEpoch = 0;
 
-
   List<RoutePoint> get _flattenedRoadPath {
     if (_roadSegments.isEmpty) return List<RoutePoint>.from(_drawPoints);
 
     final out = <RoutePoint>[];
     for (final seg in _roadSegments) {
       if (seg.isEmpty) continue;
-      // Keep the Directions geometry intact here. Simplifying every segment
-      // independently was visibly drifting the route on longer/curved roads.
       final geometry = seg;
       if (out.isEmpty) {
         out.addAll(geometry);
@@ -270,8 +267,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         return;
       }
 
-      // Directions requests are independent per segment. Keep them concurrent
-      // so rapid taps do not create a growing road-rendering backlog.
       final road = await _drawRouteService.getDrivingPath(
         from: a,
         to: b,
@@ -355,7 +350,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }) async {
     if (!mounted || !_livePolylineEnabled) return;
 
-
     if (phase == 'temp' || phase == 'temp-fallback') {
       _tempCoalesceQueued = true;
       if (_tempCoalesceRunning) return;
@@ -363,8 +357,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final epoch = _tempCoalesceEpoch;
       _tempCoalesceRunnerEpoch = epoch;
       try {
-        // Keep temporary source updates below the rendering pressure observed
-        // on-device. Newer geometry supersedes older queued geometry.
         while (_tempCoalesceQueued && mounted && epoch == _tempCoalesceEpoch) {
           _tempCoalesceQueued = false;
           await Future<void>.delayed(const Duration(milliseconds: 40));
@@ -410,9 +402,6 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final session = _drawSession;
       final clearGen = _visualClearGen;
       final rawPath = _flattenedRoadPath;
-      // Preserve road shape while keeping the single GeoJSON LineString small
-      // enough for the native renderer. One global sampling pass avoids the
-      // cumulative distortion caused by simplifying every Directions segment.
       final path = rawPath.length > 400
           ? RoutePlanGeometry.sampleByDistance(rawPath, stepMeters: 12, maxPoints: 400)
           : List<RoutePoint>.from(rawPath);
@@ -498,68 +487,53 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       MapUtils.showSnackBar(context, 'يجب تسجيل الدخول كأدمن قبل الحفظ', isError: true);
       return;
     }
-    final result = await showModalBottomSheet<({String name, RouteDirection dir, List<String> aliases, String? notes, String start, String? middle, String end})>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => SaveDrawnRouteSheet(
-        pointCount: _drawPoints.length,
-        roadPointCount: _flattenedRoadPath.length,
-      ),
-    );
-    if (result == null || !mounted) return;
+    final routeNameController = TextEditingController();
+    final notesController = TextEditingController();
     try {
-      MapUtils.showSnackBar(context, 'جاري تحسين المسار على الشوارع والجسور ثم الحفظ…');
-      final control = List<RoutePoint>.from(_drawPoints);
-      final saved = await _drawRouteService.saveAdminDrawnRoute(
+      final result = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => AdminSaveDrawnRouteSheet(
+          nameController: routeNameController,
+          notesController: notesController,
+        ),
+      );
+      if (result == null || !mounted) return;
+      final name = (result['name'] as String?)?.trim() ?? '';
+      final notes = (result['notes'] as String?)?.trim();
+      final path = _flattenedRoadPath;
+      if (path.length < 2) return;
+      await _drawRouteService.savePlannedRoute(
+        name: name,
+        notes: notes,
         adminId: adminId,
-        lineName: result.name,
-        direction: result.dir,
-        points: control,
-        aliases: result.aliases,
-        notes: result.notes,
-        lineStart: result.start,
-        lineMiddle: result.middle,
-        lineEnd: result.end,
-        alreadySnapped: false,
+        points: path,
       );
-      if (!mounted) return;
-      setState(() {
-        isDrawingRoute = false;
-        isSnappingSegment = false;
-        _drawPoints.clear();
-        _roadSegments.clear();
-      });
-      await _clearDrawVisuals();
-      if (!mounted) return;
-      final km = ((saved.distanceMeters ?? 0) / 1000).toStringAsFixed(1);
-      MapUtils.showSnackBar(
-        context,
-        '✅ تم اعتماد مسار ${result.dir.labelAr} «${result.name}» ($km كم · ${saved.points.length} نقطة شارع) للجميع',
-      );
+      if (mounted) {
+        MapUtils.showSnackBar(context, 'تم حفظ المسار بنجاح');
+        await cancelDrawingRoute();
+      }
     } catch (e) {
-      MapUtils.log('save drawn route: $e', tag: 'AdminDraw');
-      if (mounted) MapUtils.showSnackBar(context, '❌ ${_friendlySaveError(e)}', isError: true);
+      if (mounted) {
+        MapUtils.showSnackBar(context, _friendlySaveError(e), isError: true);
+      }
+    } finally {
+      routeNameController.dispose();
+      notesController.dispose();
     }
   }
 
-  int get drawPointCount => _drawPoints.length;
-
+  @override
   void disposeAdminDrawRoute() {
     _drawSession++;
     _drawMutationSeq++;
     _lineRedrawSeq++;
-    _visualClearGen++;
-    _lineRedrawQueued = false;
     _invalidateFinalCoalesce();
     _invalidateTempCoalesce();
-    _tapLocked = false;
     _drawPoints.clear();
     _roadSegments.clear();
     _drawLine = null;
-    _segmentOpBusy = false;
-    _segmentOpDone = null;
-    _directionsBusy = false;
-    _directionsDone = null;
+    _tapLocked = false;
     isDrawingRoute = false;
     isSnappingSegment = false;
   }
