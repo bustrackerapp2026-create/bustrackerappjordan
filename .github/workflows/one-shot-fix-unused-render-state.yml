@@ -1,0 +1,38 @@
+name: One-shot fix unused render state
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integrate/vehicle-trip
+          fetch-depth: 0
+      - name: Remove stale render-state reset
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart')
+          s = p.read_text(encoding='utf-8')
+          old = '    _nextLiveRenderPoint = 2;\n'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exactly one stale reset, found {s.count(old)}')
+          s = s.replace(old, '', 1)
+          p.write_text(s, encoding='utf-8')
+      - name: Validate
+        run: |
+          git diff --check
+          flutter --version
+          flutter analyze
+      - name: Commit fix and remove workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/one-shot-fix-unused-render-state.yml
+          git add lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart .github/workflows/one-shot-fix-unused-render-state.yml
+          git commit -m "fix(admin-map): remove stale render state reference"
+          git push origin integrate/vehicle-trip
