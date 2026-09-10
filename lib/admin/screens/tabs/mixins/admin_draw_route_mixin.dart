@@ -61,7 +61,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   /// جيل المسح البصري — يمنع clear قديماً من حذف خط جلسة أحدث.
   int _visualClearGen = 0;
 
-  /// يمنع تداخل استدعاءات Undo المتعددة السريعة.
+  /// يمنع تداخل عمليات Undo المتعددة السريعة.
   bool _undoBusy = false;
 
   /// تسلسل عمليات الخط الواحد (redraw / clear).
@@ -370,6 +370,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
 
     // A final route result supersedes any queued temporary geometry.
+    // Throttle native final updates so a burst of Directions responses does not
+    // repeatedly submit the entire growing LineString to Mapbox.
     if (phase == 'final' || phase == 'final-fallback') {
       _invalidateTempCoalesce();
       _finalCoalesceQueued = true;
@@ -384,6 +386,12 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             mounted &&
             epoch == _finalCoalesceEpoch) {
           _finalCoalesceQueued = false;
+
+          // Give additional Directions results a short window to arrive so
+          // only the newest complete geometry is sent to the native Mapbox layer.
+          await Future<void>.delayed(const Duration(milliseconds: 120));
+          if (!mounted || epoch != _finalCoalesceEpoch) break;
+
           await _redrawDrawLine(
             tapId: tapId,
             segmentIndex: segmentIndex,
