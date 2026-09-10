@@ -10,152 +10,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch route rendering cadence and immediate point preview
+      - name: Apply patch
+        env:
+          PATCH_B64: ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnA9UGF0aCgnbGliL2FkbWluL3NjcmVlbnMvdGFicy9taXhpbnMvYWRtaW5fZHJhd19yb3V0ZV9taXhpbi5kYXJ0JykKcz1wLnJlYWRfdGV4dCgpCnM9cy5yZXBsYWNlKCIgIC8vIERpYWdub3N0aWMgcmVuZGVyIGJhdGNoaW5nOiBrZWVwIGFsbCBjYXB0dXJlZC9EaXJlY3Rpb25zIGdlb21ldHJ5LCBidXRcbiAgLy8gdXBkYXRlIHRoZSBuYXRpdmUgcm91dGUgbGF5ZXIgb25seSBvbiB0aGUgZmlyc3QgdHdvIHBvaW50cyBhbmQgdGhlbiBldmVyeVxuICAvLyBmb3VyIHBvaW50cy5cbiAgaW50IF9uZXh0TGl2ZVJlbmRlclBvaW50ID0gMjtcbiIsICIiKQpzPXMucmVwbGFjZSgiICAgICAgX25leHRMaXZlUmVuZGVyUG9pbnQgPSAyO1xuIiwgIiIpCnN0YXJ0PXMuaW5kZXgoJyAgRnV0dXJlPHZvaWQ+IG9uRHJhd1JvdXRlTWFwVGFwKFBvaW50IHBvaW50KSBhc3luYyB7JykKZW5kPXMuaW5kZXgoJyAgRnV0dXJlPHZvaWQ+IF9lbnN1cmVMaXZlUm91dGVMYXllcigpIGFzeW5jIHsnLCBzdGFydCkKbmV3PScnJyAgRnV0dXJlPHZvaWQ+IG9uRHJhd1JvdXRlTWFwVGFwKFBvaW50IHBvaW50KSBhc3luYyB7XG4gICAgaWYgKCFpc0RyYXdpbmdSb3V0ZSB8fCAhbW91bnRlZCB8fCBfdGFwTG9ja2VkKSByZXR1cm47XG4gICAgZmluYWwgbGF0ID0gcG9pbnQuY29vcmRpbmF0ZXMubGF0LnRvRG91YmxlKCk7XG4gICAgZmluYWwgbG5nID0gcG9pbnQuY29vcmRpbmF0ZXMubG5nLnRvRG91YmxlKCk7XG4gICAgZmluYWwgcmF3ID0gUm91dGVQb2ludChsYXRpdHVkZTogbGF0LCBsb25naXR1ZGU6IGxuZyk7XG5cbiAgICBfdGFwTG9ja2VkID0gdHJ1ZTtcbiAgICBmaW5hbCBzZXNzaW9uID0gX2RyYXdTZXNzaW9uO1xuICAgIGZpbmFsIG11dGF0aW9uID0gX2RyYXdNdXRhdGlvblNlcTsKICAgIGludD8gc2VnbWVudEluZGV4O1xuICAgIFJvdXRlUG9pbnQ/IGZyb207XG4gICAgUm91dGVQb2ludD8gdG87XG5cbiAgICB0cnkge1xuICAgICAgaWYgKF9kcmF3UG9pbnRzLmlzTm90RW1wdHkpIHtcbiAgICAgICAgZmluYWwgbGFzdCA9IF9kcmF3UG9pbnRzLmxhc3Q7XG4gICAgICAgIGZpbmFsIGRpc3RhbmNlID0gX2hhdmVyc2luZU1ldGVycyhsYXN0LmxhdGl0dWRlLCBsYXN0LmxvbmdpdHVkZSwgcmF3LmxhdGl0dWRlLCByYXcubG9uZ2l0dWRlKTtcbiAgICAgICAgaWYgKGRpc3RhbmNlIDwgMTUpIHtcbiAgICAgICAgICBNYXBVdGlscy5zaG93U25hY2tCYXIoY29udGV4dCwgJ9in2YTZhtmC2LfYqSDZgtix2YrYqNipINis2K/Yp9mLINmF2YYg2KfZhNiz2KfYqNmC2KknKTsKICAgICAgICAgIHJldHVybjsKICAgICAgICB9CiAgICAgIH0KCiAgICAgIC8vIFNob3cgZXZlcnkgdGFwIGltbWVkaWF0ZWx5LiBUaGUgc2FtZSBwb2ludCBpcyB0aGVuIGNvcnJlY3RlZCB0byB0aGVcbiAgICAgIC8vIG5lYXJlc3Qgcm9hZCBhcyBzb29uIGFzIHRoZSBzbmFwIHJlcXVlc3QgcmV0dXJucy5cbiAgICAgIF9kcmF3UG9pbnRzLmFkZChyYXcpO1xuICAgICAgaWYgKF9kcmF3UG9pbnRzLmxlbmd0aCA8IDIpIHsKICAgICAgICBpZiAobW91bnRlZCkgc2V0U3RhdGUoKCkge30pOwogICAgICAgIHJldHVybjsKICAgICAgfVxuXG4gICAgICBmcm9tID0gX2RyYXdQb2ludHNbX2RyYXdQb2ludHMubGVuZ3RoIC0gMl07XG4gICAgICB0byA9IHJhdztcbiAgICAgIHNlZ21lbnRJbmRleCA9IF9yb2FkU2VnbWVudHMubGVuZ3RoO1xuICAgICAgX3JvYWRTZWdtZW50cy5hZGQoW2Zyb20sIHRvXSk7XG4gICAgICBhd2FpdCBfcmVkcmF3RHJhd0xpbmUocGhhc2U6ICd0ZW1wJyk7XG4gICAgICBpZiAobW91bnRlZCkgc2V0U3RhdGUoKCkgPT4gaXNTbmFwcGluZ1NlZ21lbnQgPSB0cnVlKTtcbiAgICB9IGNhdGNoIChlKSB7XG4gICAgICBNYXBVdGlscy5sb2coJ2RyYXcgdGFwIGltbWVkaWF0ZTogJGUnLCB0YWc6ICdBZG1pbkRyYXcnKTtcbiAgICAgIGlmIChtb3VudGVkKSBzZXRTdGF0ZSgoKSB7fSk7XG4gICAgfSBmaW5hbGx5IHtcbiAgICAgIF90YXBMb2NrZWQgPSBmYWxzZTtcbiAgICB9XG5cbiAgICBpZiAoc2VnbWVudEluZGV4ID09IG51bGwgfHwgZnJvbSA9PSBudWxsIHx8IHRvID09IG51bGwpIHJldHVybjtcbiAgICBpZiAoIW1vdW50ZWQgfHwgc2Vzc2lvbiAhPSBfZHJhd1Nlc3Npb24gfHwgbXV0YXRpb24gIT0gX2RyYXdNdXRhdGlvblNlcSkgcmV0dXJuO1xuICAgIGZpbmFsIGlkeCA9IHNlZ21lbnRJbmRleDtcbiAgICBmaW5hbCBpbml0aWFsRnJvbSA9IGZyb207XG4gICAgZmluYWwgaW5pdGlhbFRvID0gdG87XG5cbiAgICB0cnkge1xuICAgICAgLy8gUmVwbGFjZSB0aGUgcHJvdmlzaW9uYWwgcG9pbnQgd2l0aCB0aGUgc25hcHBlZCByb2FkIHBvaW50LlxuICAgICAgZmluYWwgc25hcHBlZCA9IGF3YWl0IF9kcmF3Um91dGVTZXJ2aWNlLnNuYXBQb2ludFRvUm9hZChpbml0aWFsVG8pO1xuICAgICAgaWYgKCFtb3VudGVkIHx8IHNlc3Npb24gIT0gX2RyYXdTZXNzaW9uIHx8IG11dGF0aW9uICE9IF9kcmF3TXV0YXRpb25TZXEpIHJldHVybjtcbiAgICAgIGlmIChpZHggPj0gX2RyYXdQb2ludHMubGVuZ3RoIHx8IGlkeCA+PSBfcm9hZFNlZ21lbnRzLmxlbmd0aCkgcmV0dXJuO1xuXG4gICAgICBfZHJhd1BvaW50c1tpZHhdID0gc25hcHBlZDtcbiAgICAgIGZpbmFsIHNuYXBwZWRGcm9tID0gaWR4ID4gMCA/IF9kcmF3UG9pbnRzW2lkeCAtIDFdIDogaW5pdGlhbEZyb207XG4gICAgICBfcm9hZFNlZ21lbnRzW2lkeF0gPSBbc25hcHBlZEZyb20sIHNuYXBwZWRdO1xuICAgICAgYXdhaXQgX3JlZHJhd0RyYXdMaW5lKHBoYXNlOiAndGVtcCcpO1xuICAgICAgaWYgKG1vdW50ZWQpIHNldFN0YXRlKCgpIHt9KTtcblxuICAgICAgaWYgKCFfbGl2ZURpcmVjdGlvbnNFbmFibGVkKSB7XG4gICAgICAgIGF3YWl0IF9yZWRyYXdEcmF3TGluZShwaGFzZTogJ2ZpbmFsLWZhbGxiYWNrJyk7XG4gICAgICAgIHJldHVybjtcbiAgICAgIH1cblxuICAgICAgLy8gRWFjaCBzZWdtZW50IGdldHMgaXRzIG93biBEaXJlY3Rpb25zIHJlcXVlc3Q7IHJlcXVlc3RzIG1heSBjb21wbGV0ZVxuICAgICAgLy8gaW5kZXBlbmRlbnRseSwgYnV0IHNlc3Npb24vbXV0YXRpb24gZ3VhcmRzIHByZXZlbnQgc3RhbGUgd3JpdGVzLlxuICAgICAgZmluYWwgcm9hZCA9IGF3YWl0IF9kcmF3Um91dGVTZXJ2aWNlLmdldERyaXZpbmdQYXRoKFxuICAgICAgICBmcm9tOiBzbmFwcGVkRnJvbSxcbiAgICAgICAgdG86IHNuYXBwZWQsXG4gICAgICAgIGF0dGFjaENvbnRyb2xFbmRwb2ludHM6IGZhbHNlLFxuICAgICAgKTtcblxuICAgICAgaWYgKCFtb3VudGVkIHx8IHNlc3Npb24gIT0gX2RyYXdTZXNzaW9uIHx8IG11dGF0aW9uICE9IF9kcmF3TXV0YXRpb25TZXEpIHJldHVybjtcbiAgICAgIGlmIChpZHggPj0gX3JvYWRTZWdtZW50cy5sZW5ndGgpIHJldHVybjtcblxuICAgICAgZmluYWwgTGlzdDxSb3V0ZVBvaW50PiBwaW5uZWQ7XG4gICAgICBpZiAocm9hZC5sZW5ndGggPj0gMikge1xuICAgICAgICBwaW5uZWQgPSBMaXN0PFJvdXRlUG9pbnQ+LmZyb20ocm9hZCk7XG4gICAgICAgIGlmIChpZHggPiAwICYmIGlkeCAtIDEgPCBfcm9hZFNlZ21lbnRzLmxlbmd0aCAmJiBfcm9hZFNlZ21lbnRzW2lkeCAtIDFdLmlzTm90RW1wdHkpIHtcbiAgICAgICAgICBwaW5uZWRbMF0gPSBfcm9hZFNlZ21lbnRzW2lkeCAtIDFdLmxhc3Q7XG4gICAgICAgIH1cbiAgICAgIH0gZWxzZSB7XG4gICAgICAgIHBpbm5lZCA9IFtzbmFwcGVkRnJvbSwgc25hcHBlZF07XG4gICAgICB9CgogICAgICBfcm9hZFNlZ21lbnRzW2lkeF0gPSBwaW5uZWQ7CiAgICAgIGF3YWl0IF9yZWRyYXdEcmF3TGluZShwaGFzZTogJ2ZpbmFsJyk7CiAgICAgIGlmIChtb3VudGVkKSBzZXRTdGF0ZSgoKSB7fSk7CiAgICB9IGNhdGNoIChlKSB7CiAgICAgIE1hcFV0aWxzLmxvZygnZHJhdyBzZWdtZW50IGRpcmVjdGlvbnM6ICRlJywgdGFnOiAnQWRtaW5EcmF3Jyk7CiAgICAgIGlmICghbW91bnRlZCB8fCBzZXNzaW9uICE9IF9kcmF3U2Vzc2lvbiB8fCBtdXRhdGlvbiAhPSBfZHJhd011dGF0aW9uU2VxKSByZXR1cm47CiAgICAgIGlmIChpZHggPCBfcm9hZFNlZ21lbnRzLmxlbmd0aCkgewogICAgICAgIGZpbmFsIGIgPSBpZHggPCBfZHJhd1BvaW50cy5sZW5ndGggPyBfZHJhd1BvaW50c1tpZHhdIDogaW5pdGlhbFRvOwogICAgICAgIGZpbmFsIGEgPSBpZHggPiAwID8gX2RyYXdQb2ludHNbaWR4IC0gMV0gOiBpbml0aWFsRnJvbTsKICAgICAgICBfcm9hZFNlZ21lbnRzW2lkeF0gPSBbYSwgYl07CiAgICAgICAgYXdhaXQgX3JlZHJhd0RyYXdMaW5lKHBoYXNlOiAnZmluYWwtZmFsbGJhY2snKTsKICAgICAgICBpZiAobW91bnRlZCkgc2V0U3RhdGUoKCkge30pOwogICAgICB9CiAgICB9IGZpbmFsbHkgewogICAgICBpZiAobW91bnRlZCkgc2V0U3RhdGUoKCkgPT4gaXNTbmFwcGluZ1NlZ21lbnQgPSBmYWxzZSk7CiAgICB9CiAgfQoKIiIiCnM9c1s6c3RhcnRdK25ldytzW2VuZDpdCnM9cy5yZXBsYWNlKCIgICAgZmluYWwgaXNSZW5kZXJSZXF1ZXN0ID0gcGhhc2UgPT0gJ3RlbXAnIHx8IHBoYXNlID09ICd0ZW1wLWZhbGxiYWNrJyB8fFxuICAgICAgICBwaGFzZSA9PSAnZmluYWwnIHx8IHBoYXNlID09ICdmaW5hbC1mYWxsYmFjayc7XG4gICAgaWYgKGlzUmVuZGVyUmVxdWVzdCAmJiBfZHJhd1BvaW50cy5sZW5ndGggPj0gMiAmJlxuICAgICAgICBfZHJhd1BvaW50cy5sZW5ndGggPCBfbmV4dExpdmVSZW5kZXJQb2ludCkgcmV0dXJuO1xuICAgIGlmIChpc1JlbmRlclJlcXVlc3QgJiYgX2RyYXdQb2ludHMubGVuZ3RoID49IF9uZXh0TGl2ZVJlbmRlclBvaW50KSB7XG4gICAgICBfbmV4dExpdmVSZW5kZXJQb2ludCA9IF9kcmF3UG9pbnRzLmxlbmd0aCArIDQ7XG4gICAgfVxuXG4iLCAiIikKcz1zLnJlcGxhY2UoJ0R1cmF0aW9uKG1pbGxpc2Vjb25kczogMjUwKScsICdEdXJhdGlvbihbJUIpJykKcC53cml0ZV90ZXh0KHMK
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          p = Path('lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart')
-          s = p.read_text()
-
-          s = s.replace("  // Diagnostic render batching: keep all captured/Directions geometry, but\n  // update the native route layer only on the first two points and then every\n  // four points.\n  int _nextLiveRenderPoint = 2;\n", "")
-          s = s.replace("      _nextLiveRenderPoint = 2;\n", "")
-
-          start = s.index('  Future<void> onDrawRouteMapTap(Point point) async {')
-          end = s.index('  Future<void> _ensureLiveRouteLayer() async {', start)
-          new_method = r'''  Future<void> onDrawRouteMapTap(Point point) async {
-    if (!isDrawingRoute || !mounted || _tapLocked) return;
-    final lat = point.coordinates.lat.toDouble();
-    final lng = point.coordinates.lng.toDouble();
-    final raw = RoutePoint(latitude: lat, longitude: lng);
-
-    _tapLocked = true;
-    final session = _drawSession;
-    final mutation = _drawMutationSeq;
-    int? segmentIndex;
-    RoutePoint? from;
-    RoutePoint? to;
-
-    try {
-      // Add the tapped point immediately so the administrator can see and
-      // verify every tap before the road-snapping request finishes.
-      if (_drawPoints.isNotEmpty) {
-        final last = _drawPoints.last;
-        final distance = _haversineMeters(
-          last.latitude,
-          last.longitude,
-          raw.latitude,
-          raw.longitude,
-        );
-        if (distance < 15) {
-          MapUtils.showSnackBar(context, 'النقطة قريبة جداً من السابقة');
-          return;
-        }
-      }
-
-      _drawPoints.add(raw);
-      if (_drawPoints.length < 2) {
-        if (mounted) setState(() {});
-        return;
-      }
-
-      from = _drawPoints[_drawPoints.length - 2];
-      to = raw;
-      segmentIndex = _roadSegments.length;
-      _roadSegments.add([from, to]);
-      await _redrawDrawLine(phase: 'temp');
-      if (mounted) {
-        setState(() => isSnappingSegment = true);
-      }
-    } catch (e) {
-      MapUtils.log('draw tap immediate: $e', tag: 'AdminDraw');
-      if (mounted) setState(() {});
-    } finally {
-      _tapLocked = false;
-    }
-
-    if (segmentIndex == null || from == null || to == null) return;
-    if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
-    final idx = segmentIndex;
-    final a = from;
-    final initialB = to;
-
-    try {
-      // First snap the point that was already shown immediately on the map.
-      // The provisional straight segment is then replaced by its road-snapped
-      // version, so the user sees the correction happen for this exact point.
-      final snapped = await _drawRouteService.snapPointToRoad(initialB);
-      if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
-      if (idx >= _drawPoints.length || idx >= _roadSegments.length) return;
-
-      _drawPoints[idx] = snapped;
-      final snappedFrom = idx > 0 ? _drawPoints[idx - 1] : a;
-      _roadSegments[idx] = [snappedFrom, snapped];
-      await _redrawDrawLine(phase: 'temp');
-      if (mounted) setState(() {});
-
-      if (!_liveDirectionsEnabled) {
-        await _redrawDrawLine(phase: 'final-fallback');
-        if (mounted) setState(() => isSnappingSegment = false);
-        return;
-      }
-
-      // Directions requests are independent per segment. Keep them concurrent
-      // so rapid taps do not create a growing road-rendering backlog.
-      final road = await _drawRouteService.getDrivingPath(
-        from: snappedFrom,
-        to: snapped,
-        attachControlEndpoints: false,
-      );
-
-      if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
-      if (idx >= _roadSegments.length) return;
-
-      final List<RoutePoint> pinned;
-      if (road.length >= 2) {
-        pinned = List<RoutePoint>.from(road);
-        if (idx > 0 && idx - 1 < _roadSegments.length && _roadSegments[idx - 1].isNotEmpty) {
-          pinned[0] = _roadSegments[idx - 1].last;
-        }
-      } else {
-        pinned = [snappedFrom, snapped];
-      }
-
-      _roadSegments[idx] = pinned;
-      await _redrawDrawLine(phase: 'final');
-      if (mounted) setState(() {});
-    } catch (e) {
-      MapUtils.log('draw segment directions: $e', tag: 'AdminDraw');
-      if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
-      if (idx < _roadSegments.length) {
-        final b = idx < _drawPoints.length ? _drawPoints[idx] : initialB;
-        final a = idx > 0 ? _drawPoints[idx - 1] : a;
-        _roadSegments[idx] = [a, b];
-        await _redrawDrawLine(phase: 'final-fallback');
-        if (mounted) setState(() {});
-      }
-    } finally {
-      if (mounted) setState(() => isSnappingSegment = false);
-    }
-  }
-
-'''
-          s = s[:start] + new_method + s[end:]
-
-          s = s.replace("    if (!mounted || !_livePolylineEnabled) return;\n\n    final isRenderRequest = phase == 'temp' || phase == 'temp-fallback' ||\n        phase == 'final' || phase == 'final-fallback';\n    if (isRenderRequest && _drawPoints.length >= 2 &&\n        _drawPoints.length < _nextLiveRenderPoint) return;\n    if (isRenderRequest && _drawPoints.length >= _nextLiveRenderPoint) {\n      _nextLiveRenderPoint = _drawPoints.length + 4;\n    }\n\n", "    if (!mounted || !_livePolylineEnabled) return;\n\n")
-
-          s = s.replace("          await Future<void>.delayed(const Duration(milliseconds: 250));\n", "          await Future<void>.delayed(const Duration(milliseconds: 40));\n")
-
-          p.write_text(s)
-          PY
-      - name: Verify and commit
+          echo "$PATCH_B64" | base64 -d > /tmp/patch.py
+          python3 /tmp/patch.py
+      - name: Commit patch
         run: |
           dart format lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
           git diff --check
-          git diff -- lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart .github/workflows/one-shot-live-route-every-point.yml
+          git add lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
           git commit -m 'fix(admin-map): render and snap every route point immediately'
           git push
           git rm .github/workflows/one-shot-live-route-every-point.yml
