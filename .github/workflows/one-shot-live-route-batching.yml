@@ -1,0 +1,74 @@
+name: One-shot live route batching fix
+
+on:
+  push:
+    branches:
+      - integrate/vehicle-trip
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.event.head_commit.message != 'fix(admin-map): batch live route rendering'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integrate/vehicle-trip
+          fetch-depth: 0
+
+      - name: Apply focused batching fix
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart')
+          s = p.read_text(encoding='utf-8')
+
+          old = """  int _tempCoalesceRunnerEpoch = 0;\n\n  List<RoutePoint> get _flattenedRoadPath {"""
+          new = """  int _tempCoalesceRunnerEpoch = 0;\n\n  // Native Mapbox rendering is the bottleneck on long drawing sessions.\n  // Keep capturing/snapping every tap, but publish the live line in batches.\n  static const int _liveRenderBatchSize = 4;\n  int _lastLiveRenderedPointCount = 0;\n\n  List<RoutePoint> get _flattenedRoadPath {"""
+          if old not in s:
+              raise SystemExit('anchor 1 not found')
+          s = s.replace(old, new, 1)
+
+          old = """      _drawPoints.add(snapped);\n      if (_drawPoints.length < 2) {\n        if (mounted) setState(() {});\n        return;\n      }\n\n      from = _drawPoints[_drawPoints.length - 2];\n      to = _drawPoints.last;\n      segmentIndex = _roadSegments.length;\n      _roadSegments.add([from, to]);\n      await _redrawDrawLine(phase: 'temp');\n      if (mounted) setState(() {});"""
+          new = """      _drawPoints.add(snapped);\n      if (mounted) setState(() {});\n      if (_drawPoints.length < 2) {\n        return;\n      }\n\n      from = _drawPoints[_drawPoints.length - 2];\n      to = _drawPoints.last;\n      segmentIndex = _roadSegments.length;\n      _roadSegments.add([from, to]);\n      unawaited(_redrawDrawLine(phase: 'temp'));"""
+          if old not in s:
+              raise SystemExit('anchor 2 not found')
+          s = s.replace(old, new, 1)
+
+          old = """    if (!mounted || !_livePolylineEnabled) return;\n\n    if (phase == 'temp' || phase == 'temp-fallback') {"""
+          new = """    if (!mounted || !_livePolylineEnabled) return;\n\n    // Do not send every tap to the native renderer. The point list and road\n    // geometry continue to update on every tap; only the visual publication\n    // is batched. Always render the first two points, then every Nth point.\n    final pointCount = _drawPoints.length;\n    if ((phase == 'temp' || phase == 'temp-fallback' ||\n            phase == 'final' || phase == 'final-fallback') &&\n        pointCount > 2 &&\n        pointCount - _lastLiveRenderedPointCount < _liveRenderBatchSize) {\n      return;\n    }\n\n    if (phase == 'temp' || phase == 'temp-fallback') {"""
+          if old not in s:
+              raise SystemExit('anchor 3 not found')
+          s = s.replace(old, new, 1)
+
+          old = """      final path = rawPath.length > 400\n          ? RoutePlanGeometry.sampleByDistance(rawPath, stepMeters: 12, maxPoints: 400)\n          : List<RoutePoint>.from(rawPath);"""
+          new = """      final path = rawPath.length > 400\n          ? RoutePlanGeometry.sampleByDistance(rawPath, stepMeters: 12, maxPoints: 400)\n          : List<RoutePoint>.from(rawPath);"""
+          if old not in s:
+              raise SystemExit('anchor 4 not found')
+
+          old = """      await map.style.setStyleSourceProperty(\n        _liveRouteSourceId,\n        'data',\n        _liveRouteGeoJson(path),\n      );"""
+          new = """      await map.style.setStyleSourceProperty(\n        _liveRouteSourceId,\n        'data',\n        _liveRouteGeoJson(path),\n      );\n      _lastLiveRenderedPointCount = pointCount;"""
+          if old not in s:
+              raise SystemExit('anchor 5 not found')
+          s = s.replace(old, new, 1)
+
+          old = """      _drawPoints.clear();\n      _roadSegments.clear();"""
+          new = """      _drawPoints.clear();\n      _roadSegments.clear();\n      _lastLiveRenderedPointCount = 0;"""
+          if old not in s:
+              raise SystemExit('anchor 6 not found')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s, encoding='utf-8')
+
+      - name: Commit focused fix and remove one-shot workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
+          git commit -m 'fix(admin-map): batch live route rendering'
+          git push origin integrate/vehicle-trip
+          git rm .github/workflows/one-shot-live-route-batching.yml
+          git commit -m 'chore: remove one-shot route batching workflow'
+          git push origin integrate/vehicle-trip
