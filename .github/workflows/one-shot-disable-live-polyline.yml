@@ -1,0 +1,45 @@
+name: One-shot disable live polyline
+
+on:
+  push:
+    branches:
+      - integrate/vehicle-trip
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'test(admin-map): isolate polyline rendering'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integrate/vehicle-trip
+          fetch-depth: 0
+      - name: Patch diagnostic switch
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart')
+          s = p.read_text(encoding='utf-8')
+          old = """  static const bool _liveDirectionsEnabled = false;\n"""
+          new = """  static const bool _liveDirectionsEnabled = false;\n\n  // Diagnostic switch: disable every live PolylineAnnotation redraw while\n  // keeping point capture and road snapping active. This isolates native\n  // Polyline rendering from the remaining tap/map work.\n  static const bool _livePolylineEnabled = false;\n"""
+          if old not in s:
+              raise SystemExit('live Directions switch not found')
+          if '_livePolylineEnabled' not in s:
+              s = s.replace(old, new, 1)
+          marker = """    if (!mounted) return;\n\n    // Temporary redraws: keep only the newest geometry while a native write is running.\n"""
+          replacement = """    if (!mounted) return;\n    if (!_livePolylineEnabled) return;\n\n    // Temporary redraws: keep only the newest geometry while a native write is running.\n"""
+          if marker not in s:
+              raise SystemExit('redraw marker not found')
+          s = s.replace(marker, replacement, 1)
+          p.write_text(s, encoding='utf-8')
+      - name: Commit diagnostic patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/one-shot-disable-live-polyline.yml
+          git add lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart .github/workflows/one-shot-disable-live-polyline.yml
+          git commit -m "test(admin-map): isolate polyline rendering"
+          git push origin integrate/vehicle-trip
