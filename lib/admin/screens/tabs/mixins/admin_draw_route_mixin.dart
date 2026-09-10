@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/map/map_core.dart';
 import '../../../../core/map/map_utils.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
+import '../../../../models/planned_route.dart';
 import '../../../../models/route_point.dart';
 import '../../../../services/route_plan/route_plan_geometry.dart';
 import '../../../../services/route_plan_service.dart';
@@ -101,7 +102,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       _roadSegments.clear();
     });
     unawaited(_clearDrawVisuals());
-    MapUtils.showSnackBar(context, 'وضع الرسم: انقر على الخريطة لإضافة نقاط المسار');
+    MapUtils.showSnackBar(
+        context, 'وضع الرسم: انقر على الخريطة لإضافة نقاط المسار');
   }
 
   Future<void> cancelDrawingRoute() async {
@@ -249,7 +251,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         attachControlEndpoints: false,
       );
 
-      if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
+      if (!mounted || session != _drawSession || mutation != _drawMutationSeq)
+        return;
       if (idx >= _roadSegments.length) return;
 
       final pinned = road.length >= 2 ? List<RoutePoint>.from(road) : [a, b];
@@ -263,7 +266,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw segment directions: $e', tag: 'AdminDraw');
-      if (!mounted || session != _drawSession || mutation != _drawMutationSeq) return;
+      if (!mounted || session != _drawSession || mutation != _drawMutationSeq)
+        return;
       if (idx < _roadSegments.length) {
         _roadSegments[idx] = [a, b];
         await _redrawDrawLine(phase: 'final-fallback');
@@ -307,7 +311,9 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             'properties': const <String, dynamic>{},
             'geometry': {
               'type': 'LineString',
-              'coordinates': [for (final p in path) [p.longitude, p.latitude]],
+              'coordinates': [
+                for (final p in path) [p.longitude, p.latitude]
+              ],
             },
           },
         ],
@@ -343,7 +349,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final epoch = _finalCoalesceEpoch;
       _finalCoalesceRunnerEpoch = epoch;
       try {
-        while (_finalCoalesceQueued && mounted && epoch == _finalCoalesceEpoch) {
+        while (
+            _finalCoalesceQueued && mounted && epoch == _finalCoalesceEpoch) {
           _finalCoalesceQueued = false;
           await Future<void>.delayed(const Duration(milliseconds: 40));
           if (!mounted || epoch != _finalCoalesceEpoch) break;
@@ -361,7 +368,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final clearGen = _visualClearGen;
       final rawPath = _flattenedRoadPath;
       final path = rawPath.length > 400
-          ? RoutePlanGeometry.sampleByDistance(rawPath, stepMeters: 12, maxPoints: 400)
+          ? RoutePlanGeometry.sampleByDistance(rawPath,
+              stepMeters: 12, maxPoints: 400)
           : List<RoutePoint>.from(rawPath);
 
       if (session != _drawSession || clearGen != _visualClearGen) return;
@@ -369,7 +377,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final map = mapboxMap;
       if (map == null) return;
       await _ensureLiveRouteLayer();
-      if (!mounted || session != _drawSession || clearGen != _visualClearGen) return;
+      if (!mounted || session != _drawSession || clearGen != _visualClearGen)
+        return;
 
       if (path.length < 2) {
         await map.style.setStyleSourceProperty(
@@ -380,8 +389,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         return;
       }
 
-      if (phase == '_temp_coalesced' && _tempCoalesceRunnerEpoch != _tempCoalesceEpoch) return;
-      if (phase == '_final_coalesced' && _finalCoalesceRunnerEpoch != _finalCoalesceEpoch) return;
+      if (phase == '_temp_coalesced' &&
+          _tempCoalesceRunnerEpoch != _tempCoalesceEpoch) return;
+      if (phase == '_final_coalesced' &&
+          _finalCoalesceRunnerEpoch != _finalCoalesceEpoch) return;
 
       await map.style.setStyleSourceProperty(
         _liveRouteSourceId,
@@ -416,8 +427,10 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final dLat = _rad(lat2 - lat1);
     final dLng = _rad(lng2 - lng1);
     final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_rad(lat1)) * math.cos(_rad(lat2)) *
-            math.sin(dLng / 2) * math.sin(dLng / 2);
+        math.cos(_rad(lat1)) *
+            math.cos(_rad(lat2)) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
     return earthRadius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
   }
 
@@ -441,20 +454,22 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final auth = context.read<AuthProvider>();
     final adminId = auth.userId;
     if (adminId == null) {
-      MapUtils.showSnackBar(context, 'يجب تسجيل الدخول كأدمن قبل الحفظ', isError: true);
+      MapUtils.showSnackBar(context, 'يجب تسجيل الدخول كأدمن قبل الحفظ',
+          isError: true);
       return;
     }
 
     try {
-      final result = await showModalBottomSheet<({
-        String name,
-        RouteDirection dir,
-        List<String> aliases,
-        String? notes,
-        String start,
-        String? middle,
-        String end,
-      })>(
+      final result = await showModalBottomSheet<
+          ({
+            String name,
+            RouteDirection dir,
+            List<String> aliases,
+            String? notes,
+            String start,
+            String? middle,
+            String end,
+          })>(
         context: context,
         isScrollControlled: true,
         builder: (_) => SaveDrawnRouteSheet(
