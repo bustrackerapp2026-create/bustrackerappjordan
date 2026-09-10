@@ -62,9 +62,9 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final out = <RoutePoint>[];
     for (final seg in _roadSegments) {
       if (seg.isEmpty) continue;
-      final geometry = seg.length > 20
-          ? RoutePlanGeometry.sampleEvenly(seg, 20)
-          : seg;
+      // Keep the Directions geometry intact here. Simplifying every segment
+      // independently was visibly drifting the route on longer/curved roads.
+      final geometry = seg;
       if (out.isEmpty) {
         out.addAll(geometry);
       } else {
@@ -365,11 +365,11 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final epoch = _tempCoalesceEpoch;
       _tempCoalesceRunnerEpoch = epoch;
       try {
-        // Throttle temporary source updates. Multiple taps can arrive while
-        // Mapbox is rendering; only the newest geometry is sent to native.
+        // Keep temporary source updates below the rendering pressure observed
+        // on-device. Newer geometry supersedes older queued geometry.
         while (_tempCoalesceQueued && mounted && epoch == _tempCoalesceEpoch) {
           _tempCoalesceQueued = false;
-          await Future<void>.delayed(const Duration(milliseconds: 100));
+          await Future<void>.delayed(const Duration(milliseconds: 250));
           if (!mounted || epoch != _tempCoalesceEpoch) break;
           await _redrawDrawLine(
             tapId: tapId,
@@ -393,7 +393,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       try {
         while (_finalCoalesceQueued && mounted && epoch == _finalCoalesceEpoch) {
           _finalCoalesceQueued = false;
-          await Future<void>.delayed(const Duration(milliseconds: 120));
+          await Future<void>.delayed(const Duration(milliseconds: 250));
           if (!mounted || epoch != _finalCoalesceEpoch) break;
           await _redrawDrawLine(
             tapId: tapId,
@@ -412,8 +412,11 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final session = _drawSession;
       final clearGen = _visualClearGen;
       final rawPath = _flattenedRoadPath;
-      final path = rawPath.length > 140
-          ? RoutePlanGeometry.sampleByDistance(rawPath, stepMeters: 30, maxPoints: 140)
+      // Preserve road shape while keeping the single GeoJSON LineString small
+      // enough for the native renderer. One global sampling pass avoids the
+      // cumulative distortion caused by simplifying every Directions segment.
+      final path = rawPath.length > 400
+          ? RoutePlanGeometry.sampleByDistance(rawPath, stepMeters: 12, maxPoints: 400)
           : List<RoutePoint>.from(rawPath);
 
       if (session != _drawSession || clearGen != _visualClearGen) return;
