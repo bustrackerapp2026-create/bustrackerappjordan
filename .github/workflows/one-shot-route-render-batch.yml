@@ -1,0 +1,58 @@
+name: One-shot route render batching
+
+on:
+  push:
+    branches:
+      - integrate/vehicle-trip
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'fix(admin-map): batch live route rendering'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch route renderer
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart')
+          s = p.read_text()
+          old = "  int _tempCoalesceRunnerEpoch = 0;\n\n  List<RoutePoint> get _flattenedRoadPath {"
+          new = "  int _tempCoalesceRunnerEpoch = 0;\n\n  // Diagnostic render batching: keep all captured/Directions geometry, but\n  // update the native route layer only on the first two points and then every\n  // four points. This isolates native source-update frequency from geometry.\n  int _nextLiveRenderPoint = 2;\n\n  List<RoutePoint> get _flattenedRoadPath {"
+          if old not in s: raise SystemExit('state marker not found')
+          s = s.replace(old, new, 1)
+          old = "      _roadSegments.clear();\n    });\n    unawaited(_clearDrawVisuals());"
+          new = "      _roadSegments.clear();\n      _nextLiveRenderPoint = 2;\n    });\n    unawaited(_clearDrawVisuals());"
+          if old not in s: raise SystemExit('start marker not found')
+          s = s.replace(old, new, 1)
+          old = "    if (!mounted || !_livePolylineEnabled) return;\n\n    if (phase == 'temp' || phase == 'temp-fallback') {"
+          new = "    if (!mounted || !_livePolylineEnabled) return;\n\n    // Do not enqueue a native source update for every captured point. The\n    // complete geometry remains in _roadSegments and is used for saving.\n    final isRenderRequest = phase == 'temp' || phase == 'temp-fallback' ||\n        phase == 'final' || phase == 'final-fallback';\n    if (isRenderRequest && _drawPoints.length >= 2 &&\n        _drawPoints.length < _nextLiveRenderPoint) {\n      return;\n    }\n    if (isRenderRequest && _drawPoints.length >= _nextLiveRenderPoint) {\n      _nextLiveRenderPoint = _drawPoints.length + 4;\n    }\n\n    if (phase == 'temp' || phase == 'temp-fallback') {"
+          if old not in s: raise SystemExit('redraw marker not found')
+          s = s.replace(old, new, 1)
+          old = "      _drawPoints.clear();\n      _roadSegments.clear();\n    });\n    await _clearDrawVisuals();"
+          new = "      _drawPoints.clear();\n      _roadSegments.clear();\n      _nextLiveRenderPoint = 2;\n    });\n    await _clearDrawVisuals();"
+          if old not in s: raise SystemExit('cancel marker not found')
+          s = s.replace(old, new, 1)
+          old = "    _drawPoints.clear();\n    _roadSegments.clear();\n    _drawLine = null;"
+          new = "    _drawPoints.clear();\n    _roadSegments.clear();\n    _nextLiveRenderPoint = 2;\n    _drawLine = null;"
+          if old not in s: raise SystemExit('dispose marker not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          git diff --check
+          git diff -- lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
+      - name: Commit and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/admin/screens/tabs/mixins/admin_draw_route_mixin.dart
+          git rm .github/workflows/one-shot-route-render-batch.yml
+          git commit -m "fix(admin-map): batch live route rendering"
+          git push origin HEAD:integrate/vehicle-trip
