@@ -97,9 +97,9 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     for (final seg in _roadSegments) {
       if (seg.isEmpty) continue;
 
-      // Directions can still return up to 60 stored vertices per segment.
-      // Do not flatten all of those into the growing live path on every tap;
-      // keep a small representative geometry per segment first.
+      // Keep each segment small before rebuilding the growing live path.
+      // This avoids repeatedly scanning dozens of Directions vertices per
+      // segment while preserving a representative road shape.
       final geometry = seg.length > 20
           ? RoutePlanGeometry.sampleEvenly(seg, 20)
           : seg;
@@ -443,194 +443,299 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       return;
     }
 
-    final path = _flattenedRoadPath;
-    if (path.length < 2) return;
-
-    final simplifiedPath = path.length > 140
-        ? RoutePlanGeometry.sampleByDistance(
-            path,
-            stepMeters: 30,
-            maxPoints: 140,
-          )
-        : path;
-
-    final polyManager = polylineAnnotationManager;
-    if (polyManager == null) return;
-
-    final redrawSeq = ++_lineRedrawSeq;
-    _lineRedrawQueued = true;
-
-    if (_lineRedrawBusy) return;
-
-    _lineRedrawBusy = true;
-    _lineRedrawDone = Completer<void>();
+    await _beginSegmentOp();
     try {
-      while (_lineRedrawQueued && mounted) {
-        _lineRedrawQueued = false;
+      final session = _drawSession;
+      final clearGen = _visualClearGen;
+      final manager = polylineAnnotationManager;
+      if (manager == null) return;
+      if (session != _drawSession || clearGen != _visualClearGen) return;
 
-        final line = _drawLine;
-        _drawLine = null;
+      final rawPath = _flattenedRoadPath;
+      // Keep the live Mapbox geometry bounded. The control points remain intact
+      // in _drawPoints for saving; only the temporary on-map LineString is sampled.
+      final path = rawPath.length > 140
+          ? RoutePlanGeometry.sampleByDistance(
+              rawPath,
+              stepMeters: 30,
+              maxPoints: 140,
+            )
+          : List<RoutePoint>.from(rawPath);
 
-        if (line != null) {
+      // أقل من نقطتين → احذف الخط الحالي فقط إن كان ما زال لنا
+      if (path.length < 2) {
+        final old = _drawLine;
+        if (old != null &&
+            session == _drawSession &&
+            clearGen == _visualClearGen) {
+          _drawLine = null;
           try {
-            await polyManager.delete(line);
+            await manager.delete(old);
           } catch (_) {}
         }
+        return;
+      }
 
-        if (!mounted) break;
-        if (redrawSeq != _lineRedrawSeq && _lineRedrawQueued) continue;
+      final coords = <Position>[
+        for (final p in path) Position(p.longitude, p.latitude),
+      ];
 
-        final points = simplifiedPath
-            .map((p) => Position(p.longitude, p.latitude))
-            .toList(growable: false);
+      final geometry = LineString(coordinates: coords);
 
-        final created = await polyManager.create(
+      // Drop stale coalesced temporary redraw before any native write.
+      if (phase == '_temp_coalesced' &&
+          _tempCoalesceRunnerEpoch != _tempCoalesceEpoch) {
+        return;
+      }
+
+      // Drop stale coalesced final before any native write.
+      if (phase == '_final_coalesced' &&
+          _finalCoalesceRunnerEpoch != _finalCoalesceEpoch) {
+        return;
+      }
+
+      // المسار السعيد: update فقط
+      final existing = _drawLine;
+      if (existing != null) {
+        try {
+          existing.geometry = geometry;
+          await manager.update(existing);
+          // بعد await: لا نلمس شيئًا إن تغيّرت الجلسة/المسح
+          if (session != _drawSession || clearGen != _visualClearGen) return;
+          return;
+        } catch (e) {
+          MapUtils.log('draw line update fallback: $e', tag: 'AdminDraw');
+          // لا نُفرّغ _drawLine هنا — قد يبقى صالحًا؛ نحاول create ثم نستبدل بحذر
+        }
+      }
+
+      // fallback: create أولًا
+      if (session != _drawSession || clearGen != _visualClearGen) return;
+
+      PolylineAnnotation? created;
+      try {
+        created = await manager.create(
           PolylineAnnotationOptions(
-            geometry: LineString(coordinates: points),
-            lineColor: const Color(0xFF1565C0).value,
+            geometry: geometry,
+            lineColor: 0xFF7C3AED,
             lineWidth: 5.0,
-            lineOpacity: 0.95,
           ),
         );
-        _drawLine = created;
+      } catch (e) {
+        MapUtils.log('draw line create: $e', tag: 'AdminDraw');
+        return;
+      }
+
+      // بعد create: إن أصبحنا stale احذف المُنشأ فقط ولا تلمس _drawLine الحالي
+      if (!mounted ||
+          session != _drawSession ||
+          clearGen != _visualClearGen) {
+        try {
+          await manager.delete(created);
+        } catch (_) {}
+        return;
+      }
+
+      // ما زلنا أصحاب الجلسة: اعتمد المُنشأ ثم احذف السابق إن وُجد
+      final previous = _drawLine;
+      _drawLine = created;
+      if (previous != null && !identical(previous, created)) {
+        try {
+          await manager.delete(previous);
+        } catch (_) {}
       }
     } finally {
-      _lineRedrawBusy = false;
-      final done = _lineRedrawDone;
-      _lineRedrawDone = null;
-      if (done != null && !done.isCompleted) done.complete();
+      _endSegmentOp();
     }
   }
 
   Future<void> undoLastDrawPoint() async {
-    if (!mounted || _undoBusy || _drawPoints.isEmpty) return;
+    if (_drawPoints.isEmpty || isSnappingSegment || _undoBusy) return;
+
     _undoBusy = true;
     try {
       _drawMutationSeq++;
-      _drawSession++;
-      _lineRedrawSeq++;
       _invalidateFinalCoalesce();
       _invalidateTempCoalesce();
 
       _drawPoints.removeLast();
+
       if (_roadSegments.isNotEmpty) {
         _roadSegments.removeLast();
       }
 
-      await _redrawDrawLine(phase: 'final');
-      if (mounted) setState(() {});
+      await _redrawDrawLine(phase: 'undo');
+
+      if (mounted) {
+        setState(() {});
+      }
     } finally {
       _undoBusy = false;
     }
   }
 
-  Future<void> saveDrawnRoute() async {
-    if (!mounted || _drawPoints.length < 2) return;
+  double _haversineMeters(
+    double lat1,
+    double lng1,
+    double lat2,
+    double lng2,
+  ) {
+    const earthRadius = 6371000.0;
 
-    final path = _flattenedRoadPath;
-    if (path.length < 2) {
-      MapUtils.showSnackBar(context, 'أضف نقطتين على الأقل', isError: true);
+    final dLat = _rad(lat2 - lat1);
+    final dLng = _rad(lng2 - lng1);
+
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_rad(lat1)) *
+            math.cos(_rad(lat2)) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+
+    return earthRadius *
+        2 *
+        math.atan2(
+          math.sqrt(a),
+          math.sqrt(1 - a),
+        );
+  }
+
+  double _rad(double degrees) {
+    return degrees * math.pi / 180;
+  }
+
+  String _friendlySaveError(Object error) {
+    final message = error.toString();
+
+    if (message.contains('permission') || message.contains('PERMISSION')) {
+      return 'رفض الصلاحيات على plannedRoutes — انشر firestore.rules ثم أعد المحاولة.';
+    }
+
+    return message;
+  }
+
+  Future<void> finishAndSaveDrawnRoute() async {
+    if (!mounted || isSnappingSegment) return;
+
+    if (_drawPoints.length < 2) {
+      MapUtils.showSnackBar(
+        context,
+        'أضف نقطتين على الأقل',
+        isError: true,
+      );
       return;
     }
 
     final auth = context.read<AuthProvider>();
-    final user = auth.user;
-    if (user == null) {
-      MapUtils.showSnackBar(context, 'يجب تسجيل الدخول أولاً', isError: true);
+    final adminId = auth.userId;
+
+    if (adminId == null) {
+      MapUtils.showSnackBar(
+        context,
+        'يجب تسجيل الدخول كأدمن قبل الحفظ',
+        isError: true,
+      );
       return;
     }
 
-    final nameController = TextEditingController();
-    final descriptionController = TextEditingController();
-
-    final result = await showModalBottomSheet<bool>(
+    final result = await showModalBottomSheet<
+        ({
+          String name,
+          RouteDirection dir,
+          List<String> aliases,
+          String? notes,
+          String start,
+          String? middle,
+          String end,
+        })>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => AdminSaveDrawnRouteSheet(
-        nameController: nameController,
-        descriptionController: descriptionController,
-        onSave: () async {
-          final name = nameController.text.trim();
-          if (name.isEmpty) {
-            MapUtils.showSnackBar(context, 'أدخل اسم المسار', isError: true);
-            return false;
-          }
-
-          try {
-            final route = PlannedRoute(
-              id: '',
-              name: name,
-              description: descriptionController.text.trim(),
-              geometry: path,
-              createdAt: DateTime.now(),
-              createdBy: user.uid,
-            );
-
-            await _drawRouteService.savePlannedRoute(route);
-            if (mounted) Navigator.of(context).pop(true);
-            return true;
-          } catch (e) {
-            MapUtils.log('save drawn route: $e', tag: 'AdminDrawRoute');
-            if (mounted) {
-              MapUtils.showSnackBar(
-                context,
-                'تعذر حفظ المسار: $e',
-                isError: true,
-              );
-            }
-            return false;
-          }
-        },
+      builder: (ctx) => SaveDrawnRouteSheet(
+        pointCount: _drawPoints.length,
+        roadPointCount: _flattenedRoadPath.length,
       ),
     );
 
-    nameController.dispose();
-    descriptionController.dispose();
+    if (result == null || !mounted) return;
 
-    if (result == true && mounted) {
-      await cancelDrawingRoute();
-      MapUtils.showSnackBar(context, 'تم حفظ المسار بنجاح');
+    try {
+      MapUtils.showSnackBar(
+        context,
+        'جاري تحسين المسار على الشوارع والجسور ثم الحفظ…',
+      );
+
+      final control = List<RoutePoint>.from(
+        _drawPoints,
+      );
+
+      final saved = await _drawRouteService.saveAdminDrawnRoute(
+        adminId: adminId,
+        lineName: result.name,
+        direction: result.dir,
+        points: control,
+        aliases: result.aliases,
+        notes: result.notes,
+        lineStart: result.start,
+        lineMiddle: result.middle,
+        lineEnd: result.end,
+        alreadySnapped: false,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        isDrawingRoute = false;
+        isSnappingSegment = false;
+        _drawPoints.clear();
+        _roadSegments.clear();
+      });
+
+      await _clearDrawVisuals();
+
+      if (!mounted) return;
+
+      final km = ((saved.distanceMeters ?? 0) / 1000).toStringAsFixed(1);
+
+      MapUtils.showSnackBar(
+        context,
+        '✅ تم اعتماد مسار ${result.dir.labelAr} «${result.name}» '
+        '($km كم · ${saved.points.length} نقطة شارع) للجميع',
+      );
+    } catch (e) {
+      MapUtils.log(
+        'save drawn route: $e',
+        tag: 'AdminDraw',
+      );
+
+      if (mounted) {
+        MapUtils.showSnackBar(
+          context,
+          '❌ ${_friendlySaveError(e)}',
+          isError: true,
+        );
+      }
     }
   }
+
+  int get drawPointCount => _drawPoints.length;
 
   void disposeAdminDrawRoute() {
     _drawSession++;
     _drawMutationSeq++;
     _lineRedrawSeq++;
+    _visualClearGen++;
+    _lineRedrawQueued = false;
     _invalidateFinalCoalesce();
     _invalidateTempCoalesce();
     _tapLocked = false;
-    _lineRedrawQueued = false;
-    _lineRedrawBusy = false;
-    _lineRedrawDone = null;
+    _drawPoints.clear();
+    _roadSegments.clear();
+    _drawLine = null;
     _segmentOpBusy = false;
     _segmentOpDone = null;
     _directionsBusy = false;
     _directionsDone = null;
-    _drawLine = null;
-    _drawPoints.clear();
-    _roadSegments.clear();
+
     isDrawingRoute = false;
     isSnappingSegment = false;
   }
-
-  double _haversineMeters(
-    double lat1,
-    double lon1,
-    double lat2,
-    double lon2,
-  ) {
-    const r = 6371000.0;
-    final dLat = _degToRad(lat2 - lat1);
-    final dLon = _degToRad(lon2 - lon1);
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_degToRad(lat1)) *
-            math.cos(_degToRad(lat2)) *
-            math.sin(dLon / 2) *
-            math.sin(dLon / 2);
-    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    return r * c;
-  }
-
-  double _degToRad(double deg) => deg * math.pi / 180;
 }
