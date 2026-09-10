@@ -56,6 +56,11 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   int _tempCoalesceEpoch = 0;
   int _tempCoalesceRunnerEpoch = 0;
 
+  // Diagnostic render batching: keep all captured/Directions geometry, but
+  // update the native route layer only on the first two points and then every
+  // four points.
+  int _nextLiveRenderPoint = 2;
+
   List<RoutePoint> get _flattenedRoadPath {
     if (_roadSegments.isEmpty) return List<RoutePoint>.from(_drawPoints);
 
@@ -125,6 +130,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       isSnappingSegment = false;
       _drawPoints.clear();
       _roadSegments.clear();
+      _nextLiveRenderPoint = 2;
     });
     unawaited(_clearDrawVisuals());
     MapUtils.showSnackBar(context, 'وضع الرسم: انقر على الخريطة لإضافة نقاط المسار');
@@ -143,6 +149,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       isSnappingSegment = false;
       _drawPoints.clear();
       _roadSegments.clear();
+      _nextLiveRenderPoint = 2;
     });
     await _clearDrawVisuals();
   }
@@ -358,6 +365,14 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }) async {
     if (!mounted || !_livePolylineEnabled) return;
 
+    final isRenderRequest = phase == 'temp' || phase == 'temp-fallback' ||
+        phase == 'final' || phase == 'final-fallback';
+    if (isRenderRequest && _drawPoints.length >= 2 &&
+        _drawPoints.length < _nextLiveRenderPoint) return;
+    if (isRenderRequest && _drawPoints.length >= _nextLiveRenderPoint) {
+      _nextLiveRenderPoint = _drawPoints.length + 4;
+    }
+
     if (phase == 'temp' || phase == 'temp-fallback') {
       _tempCoalesceQueued = true;
       if (_tempCoalesceRunning) return;
@@ -557,6 +572,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _tapLocked = false;
     _drawPoints.clear();
     _roadSegments.clear();
+    _nextLiveRenderPoint = 2;
     _drawLine = null;
     _segmentOpBusy = false;
     _segmentOpDone = null;
