@@ -95,6 +95,7 @@ class AuthProvider extends ChangeNotifier {
     String? phoneNumber,
     String? busNumber,
     String? route,
+    String? routeId,
     int? capacity,
   }) async {
     try {
@@ -114,6 +115,7 @@ class AuthProvider extends ChangeNotifier {
           phoneNumber: phoneNumber ?? '',
           busNumber: busNumber ?? '',
           route: route ?? '',
+          routeId: routeId,
           capacity: UserRoles.isDriverLike(userType) ? capacity : null,
           isVerified: false,
         );
@@ -141,7 +143,6 @@ class AuthProvider extends ChangeNotifier {
       throw Exception('⚠️ يجب تسجيل الدخول بحساب بريد إلكتروني أولاً');
     }
 
-    // تأكد أن الحساب يدعم البريد/كلمة المرور
     final providers = user.providerData.map((p) => p.providerId).toList();
     if (!providers.contains('password')) {
       throw Exception(
@@ -170,8 +171,6 @@ class AuthProvider extends ChangeNotifier {
 
       await user.reauthenticateWithCredential(credential);
       await user.updatePassword(next);
-
-      // نجحت — لا signOut هنا حتى تُغلق ورقة التغيير بأمان
     } on firebase_auth.FirebaseAuthException catch (e) {
       throw Exception(_getAuthErrorMessage(e.code));
     } catch (e) {
@@ -194,7 +193,6 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('signOutAfterPasswordChange: $e');
-      // حتى لو فشل جزء، حاول الخروج من Auth
       try {
         await _auth.signOut();
       } catch (_) {}
@@ -212,7 +210,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// إطفاء التوصيل على السيرفر (users + driverPublic) إن كان دور سائق/مشغّل.
   Future<void> _goOfflineIfDriver() async {
     final uid = _user?.uid ?? _userData?.uid;
     if (uid == null || uid.isEmpty) return;
@@ -230,7 +227,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// تسجيل الخروج + إطفاء isOnline للسائق على Firestore.
   Future<void> signOut() async {
     try {
       await _goOfflineIfDriver();
@@ -267,25 +263,22 @@ class AuthProvider extends ChangeNotifier {
 
   String _getAuthErrorMessage(String code) {
     switch (code) {
-      case 'user-not-found':
-        return '⚠️ لم يتم العثور على مستخدم بهذا البريد';
-      case 'wrong-password':
-      case 'invalid-credential':
-        return '⚠️ كلمة المرور الحالية غير صحيحة';
-      case 'email-already-in-use':
-        return '⚠️ هذا البريد مستخدم بالفعل';
-      case 'invalid-email':
-        return '⚠️ صيغة البريد الإلكتروني غير صحيحة';
       case 'weak-password':
-        return '⚠️ كلمة السر ضعيفة جداً (يجب أن تكون 6 أحرف على الأقل)';
-      case 'requires-recent-login':
-        return '🔒 لأسباب أمنية، سجّل الخروج ثم الدخول مجدداً وحاول تغيير كلمة المرور';
+        return 'كلمة المرور ضعيفة جداً';
+      case 'email-already-in-use':
+        return 'البريد الإلكتروني مستخدم بالفعل';
+      case 'invalid-email':
+        return 'البريد الإلكتروني غير صحيح';
+      case 'user-not-found':
+        return 'المستخدم غير موجود';
+      case 'wrong-password':
+        return 'كلمة المرور غير صحيحة';
       case 'too-many-requests':
-        return '⚠️ تم إرسال العديد من الطلبات. حاول لاحقاً';
-      case 'network-request-failed':
-        return '⚠️ تحقق من اتصال الإنترنت ثم أعد المحاولة';
+        return 'محاولات كثيرة. حاول لاحقاً';
+      case 'user-disabled':
+        return 'تم تعطيل هذا الحساب';
       default:
-        return '⚠️ حدث خطأ: $code';
+        return 'حدث خطأ أثناء المصادقة: $code';
     }
   }
 }
