@@ -14,6 +14,9 @@ class UserModel {
   /// اتجاه الخط العام (من → إلى)
   final String? route;
 
+  /// معرّف المسار المعتمد المختار من السائق عند التسجيل.
+  final String? routeId;
+
   /// تفاصيل مسار الخط (المناطق بالترتيب)
   final String? routeDetail;
 
@@ -33,6 +36,7 @@ class UserModel {
     this.phoneNumber,
     this.busNumber,
     this.route,
+    this.routeId,
     this.routeDetail,
     this.photoUrl,
     this.capacity,
@@ -50,6 +54,7 @@ class UserModel {
       phoneNumber: _safePhoneNumber(map['phoneNumber']),
       busNumber: map['busNumber'] as String?,
       route: map['route'] as String?,
+      routeId: map['routeId'] as String?,
       routeDetail: map['routeDetail'] as String?,
       photoUrl: map['photoUrl'] as String?,
       capacity: BusCapacity.normalize(map['capacity']),
@@ -73,6 +78,7 @@ class UserModel {
       'phoneNumber': phoneNumber,
       'busNumber': busNumber,
       'route': route,
+      'routeId': routeId,
       'routeDetail': routeDetail,
       'photoUrl': photoUrl,
       'capacity': capacity,
@@ -90,6 +96,7 @@ class UserModel {
       'phoneNumber': phoneNumber,
       'busNumber': busNumber,
       'route': route,
+      'routeId': routeId,
       'routeDetail': routeDetail,
       'photoUrl': photoUrl,
       'capacity': capacity,
@@ -108,6 +115,7 @@ class UserModel {
       phoneNumber: json['phoneNumber'] as String?,
       busNumber: json['busNumber'] as String?,
       route: json['route'] as String?,
+      routeId: json['routeId'] as String?,
       routeDetail: json['routeDetail'] as String?,
       photoUrl: json['photoUrl'] as String?,
       capacity: BusCapacity.normalize(json['capacity']),
@@ -126,6 +134,7 @@ class UserModel {
     String? phoneNumber,
     String? busNumber,
     String? route,
+    String? routeId,
     String? routeDetail,
     String? photoUrl,
     int? capacity,
@@ -141,6 +150,7 @@ class UserModel {
       phoneNumber: phoneNumber ?? this.phoneNumber,
       busNumber: busNumber ?? this.busNumber,
       route: route ?? this.route,
+      routeId: routeId ?? this.routeId,
       routeDetail: routeDetail ?? this.routeDetail,
       photoUrl: photoUrl ?? this.photoUrl,
       capacity: capacity ?? this.capacity,
