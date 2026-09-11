@@ -7,6 +7,8 @@ import 'package:jordan_bus_tracker_new/core/theme/app_theme.dart';
 import 'package:jordan_bus_tracker_new/core/utils/validators.dart';
 import 'package:jordan_bus_tracker_new/features/auth/providers/auth_provider.dart';
 import 'package:jordan_bus_tracker_new/l10n/app_localizations.dart';
+import 'package:jordan_bus_tracker_new/models/planned_route.dart';
+import 'package:jordan_bus_tracker_new/services/route_plan_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -26,9 +28,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _busNumberController = TextEditingController();
   final _routeController = TextEditingController();
 
+  final RoutePlanService _routePlanService = RoutePlanService();
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isSearchingRoutes = false;
+  bool _showRouteSuggestions = false;
+  List<PlannedRoute> _routeSuggestions = const [];
+  PlannedRoute? _selectedPlannedRoute;
 
   String _selectedUserType = UserRoles.passenger;
   int? _selectedCapacity = BusCapacity.medium;
@@ -45,6 +53,65 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _busNumberController.dispose();
     _routeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _searchApprovedRoutes(String query) async {
+    if (!_showDriverFields) return;
+    final q = query.trim();
+    if (q.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _routeSuggestions = const [];
+          _showRouteSuggestions = false;
+          _isSearchingRoutes = false;
+        });
+      }
+      return;
+    }
+
+    setState(() => _isSearchingRoutes = true);
+    try {
+      final results = await _routePlanService.searchApprovedRoutes(q, limit: 20);
+      if (!mounted) return;
+      setState(() {
+        _routeSuggestions = results;
+        _showRouteSuggestions = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _routeSuggestions = const [];
+        _showRouteSuggestions = true;
+      });
+      debugPrint('register route search: $e');
+    } finally {
+      if (mounted) setState(() => _isSearchingRoutes = false);
+    }
+  }
+
+  void _selectApprovedRoute(PlannedRoute route) {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _selectedPlannedRoute = route;
+      _routeController.text = route.lineName;
+      _routeSuggestions = const [];
+      _showRouteSuggestions = false;
+    });
+  }
+
+  void _markRouteAsManual() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _selectedPlannedRoute = null;
+      _routeSuggestions = const [];
+      _showRouteSuggestions = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('يمكنك كتابة مسار مقترح يدويًا الآن. تدفق «مساري غير موجود» الكامل سيُضاف في مرحلة اقتراح وتسجيل المسار.'),
+        duration: Duration(seconds: 4),
+      ),
+    );
   }
 
   Future<void> _register() async {
@@ -95,6 +162,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         userType: _selectedUserType,
         busNumber: _showDriverFields ? busNumber : null,
         route: _showDriverFields ? route : null,
+        routeId: _showDriverFields ? _selectedPlannedRoute?.id : null,
         capacity: _showDriverFields ? _selectedCapacity : null,
       );
 
@@ -537,9 +605,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
                           ),
                           const SizedBox(height: 12),
+                          Text(
+                            'المسار المعتمد (اختياري الآن)',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           TextFormField(
                             controller: _routeController,
                             textInputAction: TextInputAction.next,
+                            onChanged: (value) {
+                              if (_selectedPlannedRoute != null &&
+                                  value.trim() != _selectedPlannedRoute!.lineName.trim()) {
+                                setState(() => _selectedPlannedRoute = null);
+                              }
+                              _searchApprovedRoutes(value);
+                            },
                             validator: (value) {
                               if (_showDriverFields &&
                                   (value == null || value.trim().isEmpty)) {
@@ -548,11 +632,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               return null;
                             },
                             decoration: InputDecoration(
-                              hintText: l10n.routeHint,
+                              hintText: 'اكتب مثل: الجيزة',
                               prefixIcon: const Icon(
-                                Icons.route,
+                                Icons.search,
                                 color: AppTheme.primaryColor,
                               ),
+                              suffixIcon: _isSearchingRoutes
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                    )
+                                  : (_selectedPlannedRoute != null
+                                      ? const Icon(Icons.check_circle, color: Colors.green)
+                                      : null),
                               filled: true,
                               fillColor: Colors.grey.shade50,
                               border: OutlineInputBorder(
@@ -568,55 +664,73 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'نوع الباص / عدد الركاب',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<int>(
-                            initialValue: _selectedCapacity,
-                            decoration: InputDecoration(
-                              prefixIcon: const Icon(
-                                Icons.event_seat_outlined,
-                                color: AppTheme.primaryColor,
-                              ),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
+                          if (_showRouteSuggestions)
+                            Container(
+                              margin: const EdgeInsets.only(top: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
                                 borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide.none,
+                                border: Border.all(color: Colors.grey.shade200),
                               ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: const BorderSide(
-                                  color: AppTheme.primaryColor,
-                                  width: 2,
-                                ),
+                              child: _routeSuggestions.isEmpty
+                                  ? Padding(
+                                      padding: const EdgeInsets.all(14),
+                                      child: OutlinedButton.icon(
+                                        onPressed: _markRouteAsManual,
+                                        icon: const Icon(Icons.add_road),
+                                        label: const Text('مساري غير موجود'),
+                                      ),
+                                    )
+                                  : Column(
+                                      children: [
+                                        for (final route in _routeSuggestions)
+                                          ListTile(
+                                            dense: true,
+                                            leading: const Icon(
+                                              Icons.route,
+                                              color: AppTheme.primaryColor,
+                                            ),
+                                            title: Text(
+                                              route.lineName,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            subtitle: Text(route.direction.labelAr),
+                                            trailing: const Icon(Icons.chevron_left),
+                                            onTap: () => _selectApprovedRoute(route),
+                                          ),
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                                          child: OutlinedButton.icon(
+                                            onPressed: _markRouteAsManual,
+                                            icon: const Icon(Icons.add_road),
+                                            label: const Text('مساري غير موجود'),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                          if (_selectedPlannedRoute != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'تم اختيار مسار معتمد • ${_selectedPlannedRoute!.direction.labelAr}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.green.shade700,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                            items: BusCapacity.options
-                                .map(
-                                  (c) => DropdownMenuItem<int>(
-                                    value: c,
-                                    child: Text(BusCapacity.label(c)),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) =>
-                                setState(() => _selectedCapacity = v),
-                            validator: (value) {
-                              if (_showDriverFields && value == null) {
-                                return 'اختر نوع الباص';
-                              }
-                              return null;
-                            },
-                          ),
+                          ],
                         ],
+                        const SizedBox(height: 12),
+                        if (_showDriverFields)
+                          Text(
+                            'يمكن للسائق لاحقًا طلب إضافة مسار جديد من خيار «مساري غير موجود».',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
                         const SizedBox(height: 24),
                         SizedBox(
                           width: double.infinity,
