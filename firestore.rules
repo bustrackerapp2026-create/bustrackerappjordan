@@ -306,6 +306,78 @@ service cloud.firestore {
       allow delete: if isDriver() && isOwner(driverId) || isAdmin();
     }
 
+    // الخط التشغيلي الرسمي المستقل عن المسار الجغرافي.
+    match /transitLines/{lineId} {
+      allow read: if isSignedIn();
+
+      allow create: if isDriver()
+        && request.resource.data.proposedBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.normalizedName is string
+        && request.resource.data.normalizedName.size() > 0
+        && request.resource.data.proposedBy is string;
+
+      allow update: if isAdmin()
+        || (
+          isDriver()
+          && resource.data.proposedBy == request.auth.uid
+          && resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name',
+            'normalizedName',
+            'aliases',
+            'updatedAt'
+          ])
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.proposedBy == resource.data.proposedBy
+        );
+
+      allow delete: if isAdmin()
+        || (
+          isDriver()
+          && resource.data.proposedBy == request.auth.uid
+          && resource.data.status == 'pending'
+        );
+    }
+
+    // طلب تعيين خط رسمي للسائق — الاعتماد النهائي بيد الأدمن.
+    match /driverLineAssignments/{assignmentId} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.driverId == request.auth.uid);
+
+      allow create: if isDriver()
+        && request.resource.data.driverId == request.auth.uid
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.lineId is string
+        && request.resource.data.lineId.size() > 0
+        && request.resource.data.status == 'pending';
+
+      allow update: if isAdmin()
+        || (
+          isDriver()
+          && resource.data.driverId == request.auth.uid
+          && resource.data.requestedBy == request.auth.uid
+          && resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'lineId',
+            'updatedAt'
+          ])
+          && request.resource.data.driverId == resource.data.driverId
+          && request.resource.data.requestedBy == resource.data.requestedBy
+          && request.resource.data.status == 'pending'
+        );
+
+      allow delete: if isAdmin()
+        || (
+          isDriver()
+          && resource.data.driverId == request.auth.uid
+          && resource.data.status == 'pending'
+        );
+    }
+
     // معالم الخريطة الخاصة بالمشروع (طبقة خاصة فوق Mapbox)
     match /mapLandmarks/{landmarkId} {
       allow read: if isSignedIn() && (
