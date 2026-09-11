@@ -46,15 +46,25 @@ class TransitLineService {
   Future<TransitLine> proposeLine({
     required String driverId,
     required String name,
+    required String startName,
+    required String endName,
+    String? middleName,
+    List<String> passingPlaces = const [],
     List<String> aliases = const [],
   }) async {
     final id = driverId.trim();
     final displayName = name.trim();
+    final start = startName.trim();
+    final end = endName.trim();
+    final middle = middleName?.trim();
     if (id.isEmpty) {
       throw const TransitLineServiceException('معرف السائق مطلوب.');
     }
     if (displayName.isEmpty) {
       throw const TransitLineServiceException('اسم الخط مطلوب.');
+    }
+    if (start.isEmpty || end.isEmpty) {
+      throw const TransitLineServiceException('بداية الخط ونهايته مطلوبتان.');
     }
 
     final normalized = ArabicSearch.normalize(displayName);
@@ -73,6 +83,11 @@ class TransitLineService {
     }
 
     final docRef = _col.doc();
+    final cleanPassingPlaces = passingPlaces
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
     final cleanAliases = aliases
         .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
@@ -82,6 +97,10 @@ class TransitLineService {
     await docRef.set({
       'name': displayName,
       'normalizedName': normalized,
+      'startName': start,
+      if (middle != null && middle.isNotEmpty) 'middleName': middle,
+      'endName': end,
+      'passingPlaces': cleanPassingPlaces,
       'aliases': cleanAliases,
       'status': TransitLineStatus.pending.firestoreValue,
       'proposedBy': id,
@@ -93,6 +112,10 @@ class TransitLineService {
       id: docRef.id,
       name: displayName,
       normalizedName: normalized,
+      startName: start,
+      middleName: middle != null && middle.isNotEmpty ? middle : null,
+      endName: end,
+      passingPlaces: cleanPassingPlaces,
       aliases: cleanAliases,
       status: TransitLineStatus.pending,
       proposedBy: id,
