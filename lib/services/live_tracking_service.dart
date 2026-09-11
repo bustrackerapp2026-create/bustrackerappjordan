@@ -127,6 +127,17 @@ class LiveTrackingService {
     if (uid.isEmpty) {
       throw ArgumentError('uid مطلوب');
     }
+
+    if (isTripActive) {
+      final activeVehicleTrip = await FirebaseFirestore.instance
+          .collection('vehicleTrips')
+          .where('driverId', isEqualTo: uid)
+          .where('status', isEqualTo: 'active')
+          .limit(1)
+          .get();
+      if (activeVehicleTrip.docs.isEmpty) return;
+    }
+
     await _db.collection('users').doc(uid).update({
       'isTripActive': isTripActive,
       'updatedAt': FieldValue.serverTimestamp(),
