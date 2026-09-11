@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -15,7 +14,7 @@ import '../../../../services/route_plan_service.dart';
 import '../../../widgets/admin_route_direction_filter.dart';
 
 /// عرض مسارات plannedRoutes على خريطة الأدمن
-/// مع فلتر ذهاب/إياب وعلامات بداية/نهاية متوهجة (نبض).
+/// مع فلتر ذهاب/إياب وعلامات بداية/نهاية ثابتة.
 mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final RoutePlanService _plannedService = RoutePlanService();
   StreamSubscription<List<PlannedRoute>>? _plannedSub;
@@ -24,11 +23,6 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final List<PointAnnotation> _endpointAnns = [];
   List<PlannedRoute> _plannedRoutes = const [];
   bool _drawingPlanned = false;
-
-  /// نبض التوهج لعلامات البداية/النهاية
-  Timer? _endpointPulseTimer;
-  double _pulsePhase = 0;
-  bool _pulseBusy = false;
 
   bool showPlannedRoutes = true;
 
@@ -50,7 +44,7 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   static const int _outboundColor = 0xFF1D8FE1;
   static const int _returnColor = 0xFF0E9F5D;
 
-  /// حجم أساسي للعلامة
+  /// حجم ثابت للعلامة (بدون نبض مستمر)
   static const double _baseIconSize = 0.72;
 
   void listenToPlannedRoutes() {
@@ -165,8 +159,7 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           endImage: isOutbound ? endOut : endRet,
         );
       }
-
-      _startEndpointPulse();
+      // علامات ثابتة — بدون Timer نبض (كان يسبب رجة بعد الحفظ)
     } finally {
       _drawingPlanned = false;
     }
@@ -218,54 +211,7 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
-  /// نبض ناعم: يضيء ويكبر قليلاً ثم يخفت
-  void _startEndpointPulse() {
-    _endpointPulseTimer?.cancel();
-    if (_endpointAnns.isEmpty) return;
-
-    _endpointPulseTimer = Timer.periodic(const Duration(milliseconds: 90), (_) {
-      if (!mounted || _endpointAnns.isEmpty || _pulseBusy) return;
-      _pulsePhase += 0.18;
-      if (_pulsePhase > math.pi * 2) {
-        _pulsePhase -= math.pi * 2;
-      }
-      unawaited(_applyPulseFrame());
-    });
-  }
-
-  Future<void> _applyPulseFrame() async {
-    final manager = pointAnnotationManager;
-    if (manager == null || _endpointAnns.isEmpty) return;
-
-    _pulseBusy = true;
-    try {
-      // 0 → 1 → 0
-      final wave = (math.sin(_pulsePhase) + 1) / 2;
-      final size = _baseIconSize + (0.22 * wave);
-      final opacity = 0.55 + (0.45 * wave);
-
-      for (final ann in List<PointAnnotation>.from(_endpointAnns)) {
-        try {
-          ann.iconSize = size;
-          ann.iconOpacity = opacity;
-          await manager.update(ann);
-        } catch (_) {}
-      }
-    } finally {
-      _pulseBusy = false;
-    }
-  }
-
-  void _stopEndpointPulse() {
-    _endpointPulseTimer?.cancel();
-    _endpointPulseTimer = null;
-    _pulsePhase = 0;
-    _pulseBusy = false;
-  }
-
   Future<void> _clearPlannedLines() async {
-    _stopEndpointPulse();
-
     for (final ann in _plannedAnns) {
       try {
         await polylineAnnotationManager?.delete(ann);
@@ -284,7 +230,6 @@ mixin AdminPlannedRoutesMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Future<void> redrawPlannedRoutes() => _drawPlannedRoutes();
 
   void disposePlannedRoutes() {
-    _stopEndpointPulse();
     _plannedSub?.cancel();
     _plannedSub = null;
     _plannedAnns.clear();

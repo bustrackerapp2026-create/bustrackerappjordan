@@ -363,6 +363,13 @@ class LocationService {
       return _lastKnownPosition;
     }
 
+    // لا نستدعي getCurrentPosition والموقع مغلق — يمنع حوار GPS ثانياً من Geolocator
+    final serviceOn = await Geolocator.isLocationServiceEnabled();
+    if (!serviceOn) {
+      _logStage('+${sw.elapsedMilliseconds}ms service_off_skip_request');
+      return _lastKnownPosition;
+    }
+
     Position? best;
 
     final cached = await getLastKnownPosition();
@@ -375,7 +382,6 @@ class LocationService {
       );
       onProgress?.call(cached, LocationFixStage.cached);
 
-      // مسار سريع: كاش حديث ودقيق بما يكفي → أعرضه فوراً وحسّن في الخلفية
       if (_isAccurateEnough(cached, _acceptableQuickMeters)) {
         if (refineToPrecise) {
           unawaited(_refineInBackground(onProgress));
@@ -423,7 +429,6 @@ class LocationService {
     } catch (e) {
       _logStage('+${sw.elapsedMilliseconds}ms quick_error $e');
       debugPrint('⚠️ [Location] quick fix: $e');
-      // بعد Timeout: إن كان لدينا كاش/أفضل نقطة مقبولة لا نحجب المستخدم على precise فقط
       if (best != null && _isAccurateEnough(best, _acceptableQuickMeters)) {
         if (refineToPrecise) {
           unawaited(_refineInBackground(onProgress));

@@ -1,5 +1,5 @@
 name: jordan_bus_tracker_new
-description: "Jordan Bus Tracker App"
+description: "A comprehensive bus tracking application for Jordan"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -26,12 +26,18 @@ dependencies:
 
   # Location & Maps
   geolocator: ^14.0.3
-  mapbox_maps_flutter: ^2.0.0
+  mapbox_maps_flutter: 2.4.0
   url_launcher: ^6.3.1
 
   # Helpers
-  shared_preferences: ^2.3.2
+  cupertino_icons: ^1.0.8
+  http: ^1.2.2
+  shared_preferences: ^2.3.3
+  uuid: ^4.5.1
   image_picker: ^1.1.2
+  path_provider: ^2.1.5
+  logger: ^2.4.0
+  collection: ^1.19.0
 
 dev_dependencies:
   flutter_test:
@@ -47,10 +53,3 @@ flutter:
     # مطلوب لـ flutter_dotenv (أنشئ .env محلياً من .env.example)
     - .env
     - .env.example
-
-flutter_launcher_icons:
-  android: true
-  ios: true
-  image_path: "assets/images/app_icon.png"
-  adaptive_icon_background: "#1A73E8"
-  adaptive_icon_foreground: "assets/images/app_icon.png"

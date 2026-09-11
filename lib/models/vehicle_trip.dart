@@ -1,6 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// حالة الرحلة التشغيلية للحافلة (منفصلة عن TripStatus الخاصة بطلبات الركاب).
+/// ╪¡╪º┘ä╪⌐ ╪º┘ä╪▒╪¡┘ä╪⌐ ╪º┘ä╪¬╪┤╪║┘è┘ä┘è╪⌐ ┘ä┘ä╪¡╪º┘ü┘ä╪⌐ (┘à┘å┘ü╪╡┘ä╪⌐ ╪╣┘å TripStatus ╪º┘ä╪«╪º╪╡╪⌐ ╪¿╪╖┘ä╪¿╪º╪¬ ╪º┘ä╪▒┘â╪º╪¿).
 enum VehicleTripStatus {
   active,
   completed,
@@ -22,11 +22,11 @@ extension VehicleTripStatusX on VehicleTripStatus {
   String get labelAr {
     switch (this) {
       case VehicleTripStatus.active:
-        return 'نشطة';
+        return '┘å╪┤╪╖╪⌐';
       case VehicleTripStatus.completed:
-        return 'مكتملة';
+        return '┘à┘â╪¬┘à┘ä╪⌐';
       case VehicleTripStatus.cancelled:
-        return 'ملغاة';
+        return '┘à┘ä╪║╪º╪⌐';
     }
   }
 
@@ -49,21 +49,21 @@ extension VehicleTripStatusX on VehicleTripStatus {
   }
 }
 
-/// رحلة تشغيلية لحافلة واحدة على مسار معتمد (Vehicle Operation).
+/// ╪▒╪¡┘ä╪⌐ ╪¬╪┤╪║┘è┘ä┘è╪⌐ ┘ä╪¡╪º┘ü┘ä╪⌐ ┘ê╪º╪¡╪»╪⌐ ╪╣┘ä┘ë ┘à╪│╪º╪▒ ┘à╪╣╪¬┘à╪» (Vehicle Operation).
 ///
-/// لا علاقة لها بطلبات الركاب (Passenger Trip).
-/// المصدر التشغيلي للحقيقة: vehicleTrips/{id}
+/// ┘ä╪º ╪╣┘ä╪º┘é╪⌐ ┘ä┘ç╪º ╪¿╪╖┘ä╪¿╪º╪¬ ╪º┘ä╪▒┘â╪º╪¿ (Passenger Trip).
+/// ╪º┘ä┘à╪╡╪»╪▒ ╪º┘ä╪¬╪┤╪║┘è┘ä┘è ┘ä┘ä╪¡┘é┘è┘é╪⌐: vehicleTrips/{id}
 class VehicleTrip {
   final String id;
   final String driverId;
 
-  /// لقطة رقم الحافلة وقت بدء الرحلة (لا يتغير لاحقًا).
+  /// ┘ä┘é╪╖╪⌐ ╪▒┘é┘à ╪º┘ä╪¡╪º┘ü┘ä╪⌐ ┘ê┘é╪¬ ╪¿╪»╪í ╪º┘ä╪▒╪¡┘ä╪⌐ (┘ä╪º ┘è╪¬╪║┘è╪▒ ┘ä╪º╪¡┘é┘ï╪º).
   final String busNumber;
 
-  /// معرف PlannedRoute المعتمد.
+  /// ┘à╪╣╪▒┘ü PlannedRoute ╪º┘ä┘à╪╣╪¬┘à╪».
   final String routeId;
 
-  /// outbound | return — من PlannedRoute.direction
+  /// outbound | return ΓÇö ┘à┘å PlannedRoute.direction
   final String direction;
 
   final VehicleTripStatus status;
@@ -72,10 +72,10 @@ class VehicleTrip {
   final double? speed;
   final double? heading;
 
-  /// نسبة التقدم على المسار 0.0 → 1.0 (محسوبة لاحقًا، ليست من العميل).
+  /// ┘å╪│╪¿╪⌐ ╪º┘ä╪¬┘é╪»┘à ╪╣┘ä┘ë ╪º┘ä┘à╪│╪º╪▒ 0.0 ΓåÆ 1.0 (┘à╪¡╪│┘ê╪¿╪⌐ ┘ä╪º╪¡┘é┘ï╪º╪î ┘ä┘è╪│╪¬ ┘à┘å ╪º┘ä╪╣┘à┘è┘ä).
   final double? routeProgress;
 
-  /// آخر وقت استُقبل فيه GPS صالح.
+  /// ╪ó╪«╪▒ ┘ê┘é╪¬ ╪º╪│╪¬┘Å┘é╪¿┘ä ┘ü┘è┘ç GPS ╪╡╪º┘ä╪¡.
   final DateTime? lastLocationAt;
 
   final DateTime? startedAt;
@@ -129,7 +129,7 @@ class VehicleTrip {
     return VehicleTrip.fromMap(data, doc.id);
   }
 
-  /// خريطة الإنشاء — تستخدم server timestamps للحقول الزمنية الحساسة.
+  /// ╪«╪▒┘è╪╖╪⌐ ╪º┘ä╪Ñ┘å╪┤╪º╪í ΓÇö ╪¬╪│╪¬╪«╪»┘à server timestamps ┘ä┘ä╪¡┘é┘ê┘ä ╪º┘ä╪▓┘à┘å┘è╪⌐ ╪º┘ä╪¡╪│╪º╪│╪⌐.
   Map<String, dynamic> toCreateMap() {
     return {
       'driverId': driverId,
@@ -218,6 +218,7 @@ class VehicleTrip {
   }
 
   static GeoPoint? _parseGeoPoint(dynamic value) {
+    if (value == null) return null;
     if (value is GeoPoint) return value;
     if (value is Map) {
       final lat = (value['latitude'] as num?)?.toDouble();
@@ -239,3 +240,4 @@ class VehicleTrip {
       'VehicleTrip(id: $id, driverId: $driverId, routeId: $routeId, '
       'direction: $direction, status: ${status.firestoreValue})';
 }
+

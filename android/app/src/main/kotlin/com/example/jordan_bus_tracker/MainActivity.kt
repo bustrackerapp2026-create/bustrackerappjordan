@@ -2,7 +2,6 @@ package com.example.jordan_bus_tracker
 
 import android.app.Activity
 import android.content.Intent
-import android.content.IntentSender
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
@@ -13,8 +12,11 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * FlutterFragmentActivity مطلوب حتى تصل نتيجة نافذة تفعيل الموقع
- * (startResolutionForResult) بشكل موثوق.
+ * نافذة تفعيل الموقع عبر Google Settings API.
+ * النتائج:
+ * - success(true)  = الموقع مفعّل أو وافق المستخدم
+ * - success(false) = ظهر الحوار ورفض/أغلق المستخدم (لا تعرض حوار Flutter)
+ * - error(UNRESOLVABLE) = تعذر عرض حوار النظام → يسمح لـ Flutter بعرض حوار واحد
  */
 class MainActivity : FlutterFragmentActivity() {
     private val channelName = "com.example.jordan_bus_tracker/location_service"
@@ -34,6 +36,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun enableLocationService(result: MethodChannel.Result) {
         if (pendingResult != null) {
+            // طلب جارٍ — لا تفتح حواراً ثانياً
             result.error("BUSY", "Another location-settings request is in progress", null)
             return
         }
@@ -59,13 +62,20 @@ class MainActivity : FlutterFragmentActivity() {
                 if (exception is ResolvableApiException) {
                     try {
                         exception.startResolutionForResult(this, requestCheckSettings)
+                        // النتيجة تُرسل من onActivityResult
                     } catch (e: Exception) {
-                        pendingResult?.success(false)
+                        val r = pendingResult
                         pendingResult = null
+                        r?.error("UNRESOLVABLE", e.message, null)
                     }
                 } else {
-                    pendingResult?.success(false)
+                    val r = pendingResult
                     pendingResult = null
+                    r?.error(
+                        "UNRESOLVABLE",
+                        exception.message ?: "Location settings cannot be resolved",
+                        null,
+                    )
                 }
             }
     }

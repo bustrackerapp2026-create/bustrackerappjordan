@@ -74,7 +74,6 @@ class _AdminMapTabState extends State<AdminMapTab>
   @override
   bool get wantKeepAlive => true;
 
-  /// حفظ/استعادة آخر موضع كاميرا للأدمن (SharedPreferences).
   @override
   String get mapCameraPrefsRole => MapCameraPrefsService.roleAdmin;
 
@@ -143,7 +142,6 @@ class _AdminMapTabState extends State<AdminMapTab>
       listenToLandmarks();
       listenToTextLabels();
       listenToPickupPoints();
-      applyLabelLayersFilter();
       _scheduleFocusRequest();
     });
   }
@@ -495,8 +493,9 @@ class _AdminMapTabState extends State<AdminMapTab>
       if (!mounted) return;
       _safeSnack('🗑️ تم حذف المعلم');
     } catch (e) {
-      if (!mounted) return;
-      _safeSnack('فشل الحذف: $e', isError: true);
+      if (mounted) {
+        _safeSnack('فشل الحذف: $e', isError: true);
+      }
     }
   }
 
@@ -574,10 +573,10 @@ class _AdminMapTabState extends State<AdminMapTab>
       await MapLandmarkService().createLandmark(
         name: result.name,
         type: result.type,
+        notes: result.notes,
         latitude: lat,
         longitude: lng,
         createdBy: userId,
-        notes: result.notes,
       );
       if (!mounted) return;
       _safeSnack('✅ تم إضافة المعلم');
@@ -670,6 +669,11 @@ class _AdminMapTabState extends State<AdminMapTab>
         return;
       }
 
+      final serviceOn =
+          await LocationPermissionSheet.ensureLocationService(context);
+      if (!mounted) return;
+      if (!serviceOn) return;
+
       var shown = false;
 
       final position = await _locationService.locateProgressive(
@@ -689,8 +693,10 @@ class _AdminMapTabState extends State<AdminMapTab>
       if (!mounted) return;
 
       if (position == null && !shown) {
-        _safeSnack('⚠️ تعذر الحصول على الموقع. تأكد من تفعيل GPS',
-            isError: true);
+        _safeSnack(
+          '⚠️ تعذر الحصول على الموقع. حاول مرة أخرى.',
+          isError: true,
+        );
         return;
       }
 
@@ -899,7 +905,7 @@ class _AdminMapTabState extends State<AdminMapTab>
         RepaintBoundary(
           child: MapWidget(
             key: const ValueKey('admin_map_widget'),
-            textureView: true,
+            textureView: false,
             onMapCreated: onMapCreated,
             onCameraChangeListener: _onCameraChanged,
             // ignore: deprecated_member_use

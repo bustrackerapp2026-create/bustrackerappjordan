@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +19,7 @@ import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/pending_approval_screen.dart';
 import 'driver/screens/driver_dashboard.dart';
+import 'driver/services/driver_tracking_hub.dart';
 import 'passenger/screens/passenger_dashboard.dart';
 import 'admin/screens/admin_dashboard.dart';
 import 'driver/providers/driver_provider.dart';
@@ -150,8 +153,8 @@ class _DriverAuthBridgeState extends State<_DriverAuthBridge> {
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
       final driver = context.read<DriverProvider>();
-      // الحالة المحلية فقط — إطفاء السيرفر يتم داخل AuthProvider.signOut
       auth.onBeforeSignOut = () {
+        unawaited(DriverTrackingHub.instance.shutdown());
         driver.reset();
       };
     });
@@ -209,8 +212,6 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  /// يُستخدم فقط لتجنّب وميض شاشة التحميل عند تأخّر بث userData.
-  /// لا يُثبّت isVerified=true بشكل دائم.
   String? _cachedType;
   String? _cachedUid;
   String? _loggedRole;
@@ -232,7 +233,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
       final driver = context.read<DriverProvider>();
       if (driver.isBound || driver.isOnline || driver.isTripActive) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (context.mounted) context.read<DriverProvider>().reset();
+          if (context.mounted) {
+            unawaited(DriverTrackingHub.instance.shutdown());
+            context.read<DriverProvider>().reset();
+          }
         });
       }
       return const LoginScreen();
@@ -252,6 +256,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
       if (_cachedUid != null && _cachedUid != snapshot.uid) {
         _cachedType = null;
         _loggedRole = null;
+        unawaited(DriverTrackingHub.instance.shutdown());
         context.read<DriverProvider>().reset();
       }
       _cachedUid = snapshot.uid;
@@ -262,8 +267,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
     }
 
     final type = snapshot.type ?? _cachedType;
-
-    // التوثيق دائماً من المصدر الحي — إن سُحب التحقق يعود السائق لشاشة الانتظار
     final verified = snapshot.verified == true;
 
     if (type == null) {
@@ -275,7 +278,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
       return const AdminDashboard();
     }
 
-    // سائق / سرفيس / باص شركة — نفس مسار التحقق ولوحة التشغيل
     if (UserRoles.isDriverLike(type)) {
       if (snapshot.verified == null && snapshot.type == null) {
         return const _AuthLoadingScreen();

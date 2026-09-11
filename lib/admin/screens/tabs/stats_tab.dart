@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../../../services/firestore_service.dart';
+import '../../../services/map_landmark_service.dart';
 
 class StatsTab extends StatefulWidget {
   const StatsTab({super.key});
@@ -10,8 +12,11 @@ class StatsTab extends StatefulWidget {
 
 class _StatsTabState extends State<StatsTab> {
   final FirestoreService _service = FirestoreService();
+  final MapLandmarkService _landmarks = MapLandmarkService();
+
   late Future<Map<String, int>> _usersStatsFuture;
   late Future<Map<String, int>> _pointsStatsFuture;
+  late Future<Map<String, int>> _landmarksStatsFuture;
   late Future<int> _routesCountFuture;
 
   @override
@@ -23,6 +28,7 @@ class _StatsTabState extends State<StatsTab> {
   void _reloadFutures() {
     _usersStatsFuture = _service.getAllUsersStats(useFallback: false);
     _pointsStatsFuture = _service.getPickupPointsStats(useFallback: false);
+    _landmarksStatsFuture = _landmarks.getStats(useFallback: false);
     _routesCountFuture = _service.getActiveRoutesCount(useFallback: false);
   }
 
@@ -76,79 +82,250 @@ class _StatsTabState extends State<StatsTab> {
                     return _errorBox(snapshot.error);
                   }
                   final stats = snapshot.data ?? {};
-                  return GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1.5,
+                  return Column(
                     children: [
-                      _buildStatCard(
-                          'الإجمالي', stats['total'] ?? 0, Colors.blue),
-                      _buildStatCard(
-                          '🚶 راكب', stats['passenger'] ?? 0, Colors.green),
-                      _buildStatCard(
-                          '🚌 سائق', stats['driver'] ?? 0, Colors.orange),
-                      _buildStatCard(
-                          '🛠️ سرفيس', stats['service'] ?? 0, Colors.purple),
-                      _buildStatCard('🏢 باص شركة',
-                          stats['bus_company'] ?? 0, Colors.teal),
-                      _buildStatCard(
-                          '👑 أدمن', stats['admin'] ?? 0, Colors.indigo),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              'الإجمالي',
+                              stats['total'] ?? 0,
+                              Colors.blue,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildStatCard(
+                              '🚶 راكب',
+                              stats['passenger'] ?? 0,
+                              Colors.green,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildStatCard(
+                              '🚌 سائق',
+                              stats['driver'] ?? 0,
+                              Colors.orange,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              '🛠️ سرفيس',
+                              stats['service'] ?? 0,
+                              Colors.purple,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildStatCard(
+                              'شركة باصات',
+                              stats['bus_company'] ?? 0,
+                              Colors.teal,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildStatCard(
+                              '👑 أدمن',
+                              stats['admin'] ?? 0,
+                              Colors.indigo,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              'المعلقون',
+                              stats['pending'] ?? 0,
+                              Colors.orange,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildStatCard(
+                              'الموثقون',
+                              stats['verified'] ?? 0,
+                              Colors.green,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildStatCard(
+                              'المرفوضون',
+                              stats['rejected'] ?? 0,
+                              Colors.red,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   );
                 },
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
 
               const Text(
-                '📋 حالة السائقين / السرفيس / باصات الشركات',
+                '🗺️ إحصائيات المعالم',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
               Text(
-                'المعلقون = غير موثّقين وغير مرفوضين',
+                'تشمل المعالم والمجمعات (مثل مجمع الجنوب) وأسماء الشوارع والتسميات النصية',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
               const SizedBox(height: 12),
               FutureBuilder<Map<String, int>>(
-                future: _usersStatsFuture,
+                future: _landmarksStatsFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const SizedBox.shrink();
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
                   }
                   if (snapshot.hasError) {
                     return _errorBox(snapshot.error);
                   }
-                  final stats = snapshot.data ?? {};
-                  return Row(
+                  final s = snapshot.data ?? {};
+                  final totalLandmarks = s['total'] ?? 0;
+                  final fromAdmin = s['fromAdmin'] ?? 0;
+                  final fromUsers = s['fromUsers'] ?? 0;
+                  final textLabels = s['textLabels'] ?? 0;
+                  final combined = totalLandmarks + textLabels;
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: _buildStatCard(
-                            'المعلقون', stats['pending'] ?? 0, Colors.orange),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              'إجمالي المعالم',
+                              totalLandmarks,
+                              Colors.deepPurple,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildStatCard(
+                              'مع التسميات',
+                              combined,
+                              Colors.purple,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildStatCard(
-                            'الموثقون', stats['verified'] ?? 0, Colors.green),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'حسب مصدر الإضافة',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildStatCard(
-                            'المرفوضون', stats['rejected'] ?? 0, Colors.red),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              'من شاشة الأدمن',
+                              fromAdmin,
+                              Colors.indigo,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildStatCard(
+                              'من المستخدمين',
+                              fromUsers,
+                              Colors.cyan,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'حالة الاعتماد + التسميات',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              'معتمدة',
+                              s['approved'] ?? 0,
+                              Colors.green,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildStatCard(
+                              'قيد المراجعة',
+                              s['pending'] ?? 0,
+                              Colors.orange,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildStatCard(
+                              'مرفوضة',
+                              s['rejected'] ?? 0,
+                              Colors.red,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              'أسماء شوارع / تسميات',
+                              textLabels,
+                              Colors.brown,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildStatCard(
+                              'تسميات معتمدة',
+                              s['textLabelsApproved'] ?? 0,
+                              Colors.brown,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   );
                 },
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
 
               const Text(
                 '📍 نقاط التجمع',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'نقاط تجمع الركاب ونقاط تجمع الباصات فقط — منفصلة عن المعالم',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
               const SizedBox(height: 12),
               FutureBuilder<Map<String, int>>(
@@ -172,12 +349,18 @@ class _StatsTabState extends State<StatsTab> {
                         children: [
                           Expanded(
                             child: _buildStatCard(
-                                'الإجمالي', stats['total'] ?? 0, Colors.blue),
+                              'الإجمالي',
+                              stats['total'] ?? 0,
+                              Colors.blue,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: _buildStatCard('موثّقة',
-                                stats['approved'] ?? 0, Colors.green),
+                            child: _buildStatCard(
+                              'موثّقة',
+                              stats['approved'] ?? 0,
+                              Colors.green,
+                            ),
                           ),
                         ],
                       ),
@@ -185,13 +368,19 @@ class _StatsTabState extends State<StatsTab> {
                       Row(
                         children: [
                           Expanded(
-                            child: _buildStatCard('قيد المراجعة',
-                                stats['pending'] ?? 0, Colors.orange),
+                            child: _buildStatCard(
+                              'قيد المراجعة',
+                              stats['pending'] ?? 0,
+                              Colors.orange,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: _buildStatCard('مرفوضة',
-                                stats['rejected'] ?? 0, Colors.red),
+                            child: _buildStatCard(
+                              'مرفوضة',
+                              stats['rejected'] ?? 0,
+                              Colors.red,
+                            ),
                           ),
                         ],
                       ),

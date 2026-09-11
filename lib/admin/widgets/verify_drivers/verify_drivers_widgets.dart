@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../l10n/app_localizations.dart';
 import '../../screens/tabs/stat_details_screen.dart';
+import '../../screens/tabs/landmark_stats_details_screen.dart';
 import 'verify_drivers_models.dart';
 
 class VerifyDriversHeroSummaryCard extends StatelessWidget {
@@ -19,86 +20,63 @@ class VerifyDriversHeroSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final primaryColor = theme.colorScheme.primary;
+    final colorScheme = theme.colorScheme;
 
     return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            primaryColor,
-            Color.alphaBlend(Colors.black.withValues(alpha: 0.2), primaryColor)
+            colorScheme.primary,
+            colorScheme.primary.withValues(alpha: 0.85),
           ],
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withValues(alpha: 0.25),
-            blurRadius: 10,
+            color: colorScheme.primary.withValues(alpha: 0.25),
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  l10n.systemOverview,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w500,
+                  l10n.registeredStats,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        l10n.totalUsers,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '$totalUsers',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: Colors.amberAccent,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 4),
+                Text(
+                  '$totalUsers',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ],
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white24, width: 0.8),
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: const BoxDecoration(
-                    color: Colors.greenAccent,
-                    shape: BoxShape.circle,
-                  ),
-                ),
+                const Icon(Icons.bolt, color: Colors.white, size: 18),
                 const SizedBox(width: 6),
                 Text(
                   l10n.activeNow(activeTotal),
@@ -180,21 +158,19 @@ class VerifyDriversCompactSectionCard extends StatelessWidget {
                 ),
               ),
               if (isLive) ...[
-                const SizedBox(width: 6),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.green.shade200),
+                    color: Colors.green.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 5,
-                        height: 5,
+                        width: 6,
+                        height: 6,
                         decoration: const BoxDecoration(
                           color: Colors.green,
                           shape: BoxShape.circle,
@@ -265,6 +241,22 @@ class VerifyDriversUltraMiniStatCard extends StatelessWidget {
           child: InkWell(
             onTap: () {
               if (!context.mounted) return;
+              final q = item.queryType;
+              if (q.startsWith('landmarks_')) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => LandmarkStatsDetailsScreen(
+                      title: item.label,
+                      queryType: q,
+                    ),
+                  ),
+                );
+                return;
+              }
+              if (q.startsWith('points_')) {
+                return;
+              }
               Navigator.push(
                 context,
                 MaterialPageRoute(

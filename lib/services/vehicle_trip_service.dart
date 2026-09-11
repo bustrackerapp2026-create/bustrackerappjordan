@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/vehicle_trip.dart';
 
-/// استثناءات خدمة الرحلات التشغيلية.
+/// ╪º╪│╪¬╪½┘å╪º╪í╪º╪¬ ╪«╪»┘à╪⌐ ╪º┘ä╪▒╪¡┘ä╪º╪¬ ╪º┘ä╪¬╪┤╪║┘è┘ä┘è╪⌐.
 class VehicleTripServiceException implements Exception {
   final String message;
   final String? code;
@@ -15,9 +15,9 @@ class VehicleTripServiceException implements Exception {
   String toString() => message;
 }
 
-/// خدمة إدارة الرحلات التشغيلية (Vehicle Operation).
+/// ╪«╪»┘à╪⌐ ╪Ñ╪»╪º╪▒╪⌐ ╪º┘ä╪▒╪¡┘ä╪º╪¬ ╪º┘ä╪¬╪┤╪║┘è┘ä┘è╪⌐ (Vehicle Operation).
 ///
-/// منفصلة تمامًا عن [TripService] الخاصة بطلبات الركاب.
+/// ┘à┘å┘ü╪╡┘ä╪⌐ ╪¬┘à╪º┘à┘ï╪º ╪╣┘å [TripService] ╪º┘ä╪«╪º╪╡╪⌐ ╪¿╪╖┘ä╪¿╪º╪¬ ╪º┘ä╪▒┘â╪º╪¿.
 /// Collection: vehicleTrips
 class VehicleTripService {
   VehicleTripService._();
@@ -56,7 +56,7 @@ class VehicleTripService {
         if (attempt >= retries) {
           if (e is FirebaseException) throw _mapFirebaseError(e);
           throw VehicleTripServiceException(
-            'فشلت العملية بعد $retries محاولات: $e',
+            '┘ü╪┤┘ä╪¬ ╪º┘ä╪╣┘à┘ä┘è╪⌐ ╪¿╪╣╪» $retries ┘à╪¡╪º┘ê┘ä╪º╪¬: $e',
           );
         }
         await Future.delayed(delay);
@@ -69,28 +69,28 @@ class VehicleTripService {
     switch (e.code) {
       case 'permission-denied':
         return const VehicleTripServiceException(
-          'رفض الصلاحيات. تأكد من نشر قواعد vehicleTrips ثم أعد المحاولة.',
+          '╪▒┘ü╪╢ ╪º┘ä╪╡┘ä╪º╪¡┘è╪º╪¬. ╪¬╪ú┘â╪» ┘à┘å ┘å╪┤╪▒ ┘é┘ê╪º╪╣╪» vehicleTrips ╪½┘à ╪ú╪╣╪» ╪º┘ä┘à╪¡╪º┘ê┘ä╪⌐.',
           code: 'permission-denied',
         );
       case 'not-found':
         return const VehicleTripServiceException(
-          'الرحلة التشغيلية غير موجودة.',
+          '╪º┘ä╪▒╪¡┘ä╪⌐ ╪º┘ä╪¬╪┤╪║┘è┘ä┘è╪⌐ ╪║┘è╪▒ ┘à┘ê╪¼┘ê╪»╪⌐.',
           code: 'not-found',
         );
       case 'unavailable':
         return const VehicleTripServiceException(
-          'الخدمة غير متاحة مؤقتًا. تحقق من الاتصال.',
+          '╪º┘ä╪«╪»┘à╪⌐ ╪║┘è╪▒ ┘à╪¬╪º╪¡╪⌐ ┘à╪ñ┘é╪¬┘ï╪º. ╪¬╪¡┘é┘é ┘à┘å ╪º┘ä╪º╪¬╪╡╪º┘ä.',
           code: 'unavailable',
         );
       default:
         return VehicleTripServiceException(
-          'خطأ Firebase (${e.code}): ${e.message}',
+          '╪«╪╖╪ú Firebase (${e.code}): ${e.message}',
           code: e.code,
         );
     }
   }
 
-  /// يتحقق مما إذا كان للسائق رحلة تشغيلية نشطة حاليًا.
+  /// ┘è╪¬╪¡┘é┘é ┘à┘à╪º ╪Ñ╪░╪º ┘â╪º┘å ┘ä┘ä╪│╪º╪ª┘é ╪▒╪¡┘ä╪⌐ ╪¬╪┤╪║┘è┘ä┘è╪⌐ ┘å╪┤╪╖╪⌐ ╪¡╪º┘ä┘è┘ï╪º.
   Future<VehicleTrip?> findActiveTripForDriver(String driverId) async {
     if (driverId.isEmpty) return null;
 
@@ -104,13 +104,13 @@ class VehicleTripService {
     return VehicleTrip.fromMap(snap.docs.first.data(), snap.docs.first.id);
   }
 
-  /// يبدأ رحلة تشغيلية جديدة.
+  /// ┘è╪¿╪»╪ú ╪▒╪¡┘ä╪⌐ ╪¬╪┤╪║┘è┘ä┘è╪⌐ ╪¼╪»┘è╪»╪⌐.
   ///
-  /// القواعد:
-  /// - لا يُنشأ إن وُجدت رحلة ACTIVE لنفس السائق.
-  /// - [routeId] يجب أن يشير إلى PlannedRoute معتمد (التحقق يتم قبل الاستدعاء).
-  /// - [direction] قيمته outbound أو return.
-  /// - لا يُفعَّل DriverProvider قبل نجاح هذه العملية.
+  /// ╪º┘ä┘é┘ê╪º╪╣╪»:
+  /// - ┘ä╪º ┘è┘Å┘å╪┤╪ú ╪Ñ┘å ┘ê┘Å╪¼╪»╪¬ ╪▒╪¡┘ä╪⌐ ACTIVE ┘ä┘å┘ü╪│ ╪º┘ä╪│╪º╪ª┘é.
+  /// - [routeId] ┘è╪¼╪¿ ╪ú┘å ┘è╪┤┘è╪▒ ╪Ñ┘ä┘ë PlannedRoute ┘à╪╣╪¬┘à╪» (╪º┘ä╪¬╪¡┘é┘é ┘è╪¬┘à ┘é╪¿┘ä ╪º┘ä╪º╪│╪¬╪»╪╣╪º╪í).
+  /// - [direction] ┘é┘è┘à╪¬┘ç outbound ╪ú┘ê return.
+  /// - ┘ä╪º ┘è┘Å┘ü╪╣┘æ┘Ä┘ä DriverProvider ┘é╪¿┘ä ┘å╪¼╪º╪¡ ┘ç╪░┘ç ╪º┘ä╪╣┘à┘ä┘è╪⌐.
   Future<VehicleTrip> startTrip({
     required String driverId,
     required String busNumber,
@@ -121,10 +121,10 @@ class VehicleTripService {
     double? heading,
   }) async {
     if (driverId.isEmpty) {
-      throw const VehicleTripServiceException('معرف السائق مطلوب.');
+      throw const VehicleTripServiceException('┘à╪╣╪▒┘ü ╪º┘ä╪│╪º╪ª┘é ┘à╪╖┘ä┘ê╪¿.');
     }
     if (routeId.isEmpty) {
-      throw const VehicleTripServiceException('معرف المسار مطلوب.');
+      throw const VehicleTripServiceException('┘à╪╣╪▒┘ü ╪º┘ä┘à╪│╪º╪▒ ┘à╪╖┘ä┘ê╪¿.');
     }
 
     final normalizedDirection = _parseDirectionForStart(direction);
@@ -133,7 +133,7 @@ class VehicleTripService {
     final trip = VehicleTrip(
       id: docRef.id,
       driverId: driverId,
-      busNumber: busNumber.trim().isEmpty ? '—' : busNumber.trim(),
+      busNumber: busNumber.trim().isEmpty ? 'ΓÇö' : busNumber.trim(),
       routeId: routeId,
       direction: normalizedDirection,
       status: VehicleTripStatus.active,
@@ -149,9 +149,9 @@ class VehicleTripService {
           final existingId = lockSnap.data()?['tripId']?.toString();
           throw VehicleTripServiceException(
             existingId == null || existingId.isEmpty
-                ? 'لديك رحلة تشغيلية نشطة بالفعل. أنهِها قبل بدء رحلة جديدة.'
-                : 'لديك رحلة تشغيلية نشطة بالفعل ($existingId). أنهِها قبل بدء رحلة جديدة.',
-            code: 'already-active',
+                ? '┘ä╪»┘è┘â ╪▒╪¡┘ä╪⌐ ╪¬╪┤╪║┘è┘ä┘è╪⌐ ┘å╪┤╪╖╪⌐ ╪¿╪º┘ä┘ü╪╣┘ä. ╪ú┘å┘ç┘É┘ç╪º ┘é╪¿┘ä ╪¿╪»╪í ╪▒╪¡┘ä╪⌐ ╪¼╪»┘è╪»╪⌐.'
+                : '┘ä╪»┘è┘â ╪▒╪¡┘ä╪⌐ ╪¬╪┤╪║┘è┘ä┘è╪⌐ ┘å╪┤╪╖╪⌐ ╪¿╪º┘ä┘ü╪╣┘ä ($existingId). ╪ú┘å┘ç┘É┘ç╪º ┘é╪¿┘ä ╪¿╪»╪í ╪▒╪¡┘ä╪⌐ ╪¼╪»┘è╪»╪⌐.',
+            code: 'active-trip-exists',
           );
         }
 
@@ -171,7 +171,7 @@ class VehicleTripService {
 
   VehicleTripServiceException _invalidDirection(String value) =>
       VehicleTripServiceException(
-        'اتجاه الرحلة غير صالح: $value. استخدم outbound أو return.',
+        '╪º╪¬╪¼╪º┘ç ╪º┘ä╪▒╪¡┘ä╪⌐ ╪║┘è╪▒ ╪╡╪º┘ä╪¡: $value. ╪º╪│╪¬╪«╪»┘à outbound ╪ú┘ê return.',
         code: 'invalid-direction',
       );
 
@@ -183,7 +183,7 @@ class VehicleTripService {
     }
   }
 
-  /// إنهاء رحلة تشغيلية (ACTIVE → COMPLETED).
+  /// ╪Ñ┘å┘ç╪º╪í ╪▒╪¡┘ä╪⌐ ╪¬╪┤╪║┘è┘ä┘è╪⌐ (ACTIVE ΓåÆ COMPLETED).
   Future<void> completeTrip({
     required String tripId,
     required String driverId,
@@ -195,7 +195,7 @@ class VehicleTripService {
     );
   }
 
-  /// إلغاء رحلة تشغيلية (ACTIVE → CANCELLED).
+  /// ╪Ñ┘ä╪║╪º╪í ╪▒╪¡┘ä╪⌐ ╪¬╪┤╪║┘è┘ä┘è╪⌐ (ACTIVE ΓåÆ CANCELLED).
   Future<void> cancelTrip({
     required String tripId,
     required String driverId,
@@ -213,10 +213,10 @@ class VehicleTripService {
     required VehicleTripStatus target,
   }) async {
     if (tripId.isEmpty || driverId.isEmpty) {
-      throw const VehicleTripServiceException('بيانات العملية غير مكتملة.');
+      throw const VehicleTripServiceException('╪¿┘è╪º┘å╪º╪¬ ╪º┘ä╪╣┘à┘ä┘è╪⌐ ╪║┘è╪▒ ┘à┘â╪¬┘à┘ä╪⌐.');
     }
     if (!target.isTerminal) {
-      throw const VehicleTripServiceException('الحالة المستهدفة غير نهائية.');
+      throw const VehicleTripServiceException('╪º┘ä╪¡╪º┘ä╪⌐ ╪º┘ä┘à╪│╪¬┘ç╪»┘ü╪⌐ ╪║┘è╪▒ ┘å┘ç╪º╪ª┘è╪⌐.');
     }
 
     await _withRetryAndTimeout(() async {
@@ -227,7 +227,7 @@ class VehicleTripService {
         final lockSnap = await transaction.get(lockRef);
         if (!snap.exists || snap.data() == null) {
           throw const VehicleTripServiceException(
-            'الرحلة التشغيلية غير موجودة.',
+            '╪º┘ä╪▒╪¡┘ä╪⌐ ╪º┘ä╪¬╪┤╪║┘è┘ä┘è╪⌐ ╪║┘è╪▒ ┘à┘ê╪¼┘ê╪»╪⌐.',
             code: 'not-found',
           );
         }
@@ -236,7 +236,7 @@ class VehicleTripService {
         final tripDriverId = data['driverId']?.toString() ?? '';
         if (tripDriverId != driverId) {
           throw const VehicleTripServiceException(
-            'غير مصرح لك بتعديل هذه الرحلة التشغيلية.',
+            '╪║┘è╪▒ ┘à╪╡╪▒╪¡ ┘ä┘â ╪¿╪¬╪╣╪»┘è┘ä ┘ç╪░┘ç ╪º┘ä╪▒╪¡┘ä╪⌐ ╪º┘ä╪¬╪┤╪║┘è┘ä┘è╪⌐.',
             code: 'permission-denied',
           );
         }
@@ -245,12 +245,13 @@ class VehicleTripService {
             VehicleTripStatusX.fromString(data['status']?.toString());
         final lockTripId = lockSnap.data()?['tripId']?.toString();
         if (current.isTerminal) {
-          if (lockTripId == tripId) transaction.delete(lockRef);
+          if (lockTripId == tripId || !lockSnap.exists) transaction.delete(lockRef);
           return;
         }
         if (current != VehicleTripStatus.active) {
-          throw VehicleTripServiceException(
-            'لا يمكن تحويل الرحلة من ${current.firestoreValue} إلى ${target.firestoreValue}.',
+          throw const VehicleTripServiceException(
+            'حالة الرحلة الحالية غير صالحة للانتقال.',
+            code: 'invalid-transition',
           );
         }
 
@@ -259,20 +260,20 @@ class VehicleTripService {
           'endedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
-        if (lockTripId == tripId) transaction.delete(lockRef);
+        if (lockTripId == tripId || !lockSnap.exists) transaction.delete(lockRef);
       });
     });
   }
 
-  /// يجلب رحلة تشغيلية بالمعرّف.
-  Future<VehicleTrip?> getTrip(String tripId) async {
+  /// ┘è╪¼┘ä╪¿ ╪▒╪¡┘ä╪⌐ ╪¬╪┤╪║┘è┘ä┘è╪⌐ ╪¿╪º┘ä┘à╪╣╪▒┘æ┘ü.
+  Future<VehicleTrip?> getById(String tripId) async {
     if (tripId.isEmpty) return null;
     final snap = await _col.doc(tripId).get();
     if (!snap.exists || snap.data() == null) return null;
     return VehicleTrip.fromMap(snap.data()!, snap.id);
   }
 
-  /// يراقب الرحلة التشغيلية النشطة للسائق (إن وُجدت).
+  /// ┘è╪▒╪º┘é╪¿ ╪º┘ä╪▒╪¡┘ä╪⌐ ╪º┘ä╪¬╪┤╪║┘è┘ä┘è╪⌐ ╪º┘ä┘å╪┤╪╖╪⌐ ┘ä┘ä╪│╪º╪ª┘é (╪Ñ┘å ┘ê┘Å╪¼╪»╪¬).
   Stream<VehicleTrip?> watchActiveTripForDriver(String driverId) {
     if (driverId.isEmpty) {
       return Stream.value(null);
@@ -288,3 +289,4 @@ class VehicleTripService {
     });
   }
 }
+

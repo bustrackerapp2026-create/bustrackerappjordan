@@ -27,6 +27,7 @@ import '../../../services/trip_service.dart';
 import '../../../services/trip_service_exception.dart';
 import '../../../l10n/app_localizations.dart';
 import 'mixins/driver_location_mixin.dart';
+import '../../../core/location/location_permission_sheet.dart';
 import 'mixins/route_plan_recording_mixin.dart';
 
 /// خريطة السائق.
@@ -558,6 +559,25 @@ class _DriverMapTabState extends State<DriverMapTab>
     if (uid == null || uid.isEmpty) return;
     if (!driver.isBound || driver.boundUserId != uid) driver.bindToUser(uid);
     MapUtils.mediumHaptic();
+
+    final goingOnline = !driver.isOnline;
+
+    // اتصال: بوابة الصلاحية أولاً — لا Online / driverPublic قبل الجاهزية
+    if (goingOnline) {
+      final ready =
+          await LocationPermissionSheet.ensureDriverBackgroundAccess(context);
+      if (!mounted) return;
+      if (!ready) {
+        MapUtils.showSnackBar(
+          context,
+          '⚠️ يلزم تفعيل الموقع قبل الاتصال.',
+          isError: true,
+        );
+        return;
+      }
+      markDriverLocationGatePassed();
+    }
+
     final ok = driver.toggleOnlineStatus(userId: uid);
     if (!ok) return;
     final isOnline = driver.isOnline;

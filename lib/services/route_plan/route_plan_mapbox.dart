@@ -8,34 +8,45 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../models/route_point.dart';
 import 'route_plan_geometry.dart';
 
-/// طلبات Mapbox Matching / Directions — لصق محسّن على شبكة الطرق.
+/// طلبات Mapbox Matching / Directions لبناء مسارات محاذية لشبكة الطرق.
 ///
 /// الاستراتيجية:
-/// 1) تنعيم نقاط التحكم بالمسافة
-/// 2) لصق كل نقطة على أقرب شارع (Matching ضيق)
-/// 3) Directions عبر نوافذ متداخلة (waypoints)
-/// 4) Matching نهائي على النوافذ لتنعيم الشكل
-/// 5) إزالة القفزات + Douglas-Peucker
+/// 1) نقاط التحكم الخام تبقى مرتبة كما أدخلها المستخدم.
+/// 2) لا يتم استخدام Map Matching لنقطة واحدة.
+/// 3) Directions يستخدم نقاطًا حقيقية فقط.
+/// 4) Map Matching يستخدم فقط مع نافذة تحتوي على نقطتين حقيقيتين
+///    أو أكثر.
+/// 5) عند فشل أي خدمة خارجية، نستخدم fallback آمن بدل اختراع
+///    إحداثيات جديدة.
+/// 6) لا يتم تغيير ترتيب نقاط المسار من خلال عمليات الـ snapping.
 class RoutePlanMapbox {
   RoutePlanMapbox._();
+
   static final RoutePlanMapbox instance = RoutePlanMapbox._();
 
-  /// نصف قطر لصق النقطة على أقرب شارع (متر) — أضيق = أقل قفز فوق مباني
+  /// نصف قطر اللصق داخل Map Matching للنقاط الداخلية.
   static const double pointSnapRadiusM = 40;
 
-  /// نصف قطر أوسع عند فشل اللصق الضيق
+  /// نصف قطر أوسع عند أطراف نافذة الـ Matching.
   static const double pointSnapRadiusWideM = 75;
 
-  /// حد نقاط Map Matching في الطلب الواحد (Mapbox ≤ 100)
+  /// الحد الآمن لعدد النقاط في طلب Matching.
   static const int _matchWindow = 48;
 
-  /// حد نقاط Directions في الطلب الواحد (عملياً أفضل ≤ 12)
+  /// عدد نقاط Directions في النافذة الواحدة.
   static const int _directionsWindow = 10;
 
+  /// أقل مسافة نعتبر عندها نقطتين مختلفتين فعليًا.
+  static const double _minimumUsefulDistanceM = 2;
+
   String? get _mapboxToken {
-    final t = dotenv.env['MAPBOX_ACCESS_TOKEN'] ?? '';
-    if (t.isEmpty || t == 'YOUR_MAPBOX_ACCESS_TOKEN_HERE') return null;
-    return t;
+    final token = dotenv.env['MAPBOX_ACCESS_TOKEN'] ?? '';
+
+    if (token.isEmpty || token == 'YOUR_MAPBOX_ACCESS_TOKEN_HERE') {
+      return null;
+    }
+
+    return token;
   }
 
   Future<String?> _httpGet(
@@ -43,429 +54,562 @@ class RoutePlanMapbox {
     Duration timeout = const Duration(seconds: 16),
   }) async {
     final client = HttpClient();
+
     try {
-      final req = await client.getUrl(uri);
-      final res = await req.close().timeout(timeout);
-      if (res.statusCode != HttpStatus.ok) {
+      final request = await client.getUrl(uri);
+
+      final response = await request.close().timeout(timeout);
+
+      if (response.statusCode != HttpStatus.ok) {
         if (kDebugMode) {
-          debugPrint('mapbox HTTP ${res.statusCode} → ${uri.path}');
+          debugPrint(
+            'mapbox HTTP ${response.statusCode} → ${uri.path}',
+          );
         }
+
         return null;
       }
-      return await res.transform(utf8.decoder).join();
+
+      return await response.transform(utf8.decoder).join();
     } catch (e) {
-      if (kDebugMode) debugPrint('mapbox HTTP error: $e');
+      if (kDebugMode) {
+        debugPrint('mapbox HTTP error: $e');
+      }
+
       return null;
     } finally {
       client.close(force: true);
     }
   }
 
-  String _coord(RoutePoint p) =>
-      '${p.longitude.toStringAsFixed(6)},${p.latitude.toStringAsFixed(6)}';
+  String _coord(RoutePoint point) {
+    return '${point.longitude.toStringAsFixed(6)},'
+        '${point.latitude.toStringAsFixed(6)}';
+  }
 
-  /// لصق نقطة واحدة على أقرب طريق قيادة.
-  Future<RoutePoint> snapPointToRoad(RoutePoint point) async {
-    final token = _mapboxToken;
-    if (token == null) return point;
-
-    // محاولة ضيقة ثم أوسع
-    for (final radius in [pointSnapRadiusM, pointSnapRadiusWideM]) {
-      final snapped = await _matchSinglePoint(point, token, radius);
-      if (snapped != null) {
-        final d = RoutePlanGeometry.distanceMeters(
-          point.latitude,
-          point.longitude,
-          snapped.latitude,
-          snapped.longitude,
-        );
-        // ارفض إزاحة غير منطقية
-        if (d <= radius * 1.15) return snapped;
-      }
-    }
+  /// لصق نقطة واحدة على الطريق.
+  ///
+  /// مهم:
+  /// Mapbox Map Matching v5 مخصص لمسار/trace متعدد النقاط.
+  ///
+  /// لا نقوم هنا:
+  /// - بإنشاء نقطة ثانية اصطناعية.
+  /// - بإضافة dLng.
+  /// - بإرسال طلب Matching لنقطة واحدة.
+  ///
+  /// النقطة المعزولة تعاد كما هي.
+  ///
+  /// محاذاة الطريق الحقيقية تتم لاحقًا عبر:
+  /// - Directions بين نقطتين حقيقيتين.
+  /// - snapToRoads() عند وجود عدة نقاط.
+  Future<RoutePoint> snapPointToRoad(
+    RoutePoint point,
+  ) async {
     return point;
   }
 
-  Future<RoutePoint?> _matchSinglePoint(
-    RoutePoint point,
-    String token,
-    double radiusM,
-  ) async {
-    // Map Matching يحتاج ≥ 2 إحداثيات — نستخدم إزاحة صغيرة جداً على نفس الشارع المتوقع
-    const dLng = 0.000045; // ~4.5م
-    final p2 = RoutePoint(
-      latitude: point.latitude,
-      longitude: point.longitude + dLng,
-    );
-    final coords = '${_coord(point)};${_coord(p2)}';
-    final r = radiusM.toStringAsFixed(0);
-
-    final uri = Uri.parse(
-      'https://api.mapbox.com/matching/v5/mapbox/driving/$coords'
-      '?geometries=geojson&overview=full&tidy=true'
-      '&radiuses=$r;$r'
-      '&gaps=ignore'
-      '&access_token=$token',
-    );
-
-    final body = await _httpGet(uri, timeout: const Duration(seconds: 8));
-    if (body == null) return null;
-
-    try {
-      final data = jsonDecode(body) as Map<String, dynamic>;
-      final matchings = data['matchings'] as List<dynamic>?;
-      if (matchings == null || matchings.isEmpty) return null;
-
-      final path = RoutePlanGeometry.parseGeoJsonLine(
-        matchings.first['geometry'] as Map<String, dynamic>?,
-      );
-      if (path.isEmpty) return null;
-
-      // أقرب نقطة على الهندسة المُطابقة
-      RoutePoint best = path.first;
-      var bestD = double.infinity;
-      for (final p in path) {
-        final d = RoutePlanGeometry.distanceMeters(
-          point.latitude,
-          point.longitude,
-          p.latitude,
-          p.longitude,
-        );
-        if (d < bestD) {
-          bestD = d;
-          best = p;
-        }
-      }
-      return best;
-    } catch (e) {
-      if (kDebugMode) debugPrint('snapPointToRoad: $e');
-      return null;
-    }
-  }
-
+  /// بناء مسار قيادة بين نقطتين حقيقيتين.
+  ///
+  /// لا يوجد هنا أي إحداثي اصطناعي.
   Future<List<RoutePoint>> getDrivingPath({
     required RoutePoint from,
     required RoutePoint to,
     bool snapEndpoints = true,
+    /// عند false: تُعاد هندسة Directions على الطريق دون فرض
+    /// نقاط التحكم كأطراف (مناسب للرسم الحي؛ Markers منفصلة).
+    bool attachControlEndpoints = true,
   }) async {
     final token = _mapboxToken;
-    if (token == null) return [from, to];
+
+    if (token == null) {
+      return [from, to];
+    }
 
     var a = from;
     var b = to;
+
     if (snapEndpoints) {
+      // snapPointToRoad لا يرسل Matching لنقطة واحدة.
       final snapped = await Future.wait([
         snapPointToRoad(from),
         snapPointToRoad(to),
       ]);
+
       a = snapped[0];
       b = snapped[1];
     }
 
-    final dist = RoutePlanGeometry.distanceMeters(
+    final distance = RoutePlanGeometry.distanceMeters(
       a.latitude,
       a.longitude,
       b.latitude,
       b.longitude,
     );
-    if (dist < 10) return [a, b];
 
-    final path = await _directionsRequest([a, b], token);
-    if (path.length < 2) return [a, b];
-    return RoutePlanGeometry.stitchEndpoints(path, a, b);
+    if (distance < 10) {
+      return [a, b];
+    }
+
+    final path = await _directionsRequest(
+      [a, b],
+      token,
+    );
+
+    if (path.length < 2) {
+      return [a, b];
+    }
+
+    if (!attachControlEndpoints) {
+      // الرسم الحي: ابقَ على هندسة الطريق فقط.
+      return path;
+    }
+
+    return RoutePlanGeometry.stitchEndpoints(
+      path,
+      a,
+      b,
+    );
   }
 
+  /// طلب Mapbox Directions لمجموعة نقاط حقيقية.
   Future<List<RoutePoint>> _directionsRequest(
-    List<RoutePoint> pts,
+    List<RoutePoint> points,
     String token,
   ) async {
-    if (pts.length < 2) return List.of(pts);
+    if (points.length < 2) {
+      return List<RoutePoint>.of(points);
+    }
 
-    final coords = pts.map(_coord).join(';');
+    final validPoints = _removeNearDuplicates(
+      points,
+      minDistanceMeters: _minimumUsefulDistanceM,
+    );
+
+    if (validPoints.length < 2) {
+      return List<RoutePoint>.of(points);
+    }
+
+    final coords = validPoints.map(_coord).join(';');
+
     final uri = Uri.parse(
-      'https://api.mapbox.com/directions/v5/mapbox/driving/$coords'
-      '?geometries=geojson&overview=full&steps=false'
-      '&continue_straight=true&alternatives=false'
+      'https://api.mapbox.com/directions/v5/'
+      'mapbox/driving/$coords'
+      '?geometries=geojson'
+      '&overview=full'
+      '&steps=false'
+      '&continue_straight=true'
+      '&alternatives=false'
       '&exclude=ferry'
       '&access_token=$token',
     );
 
     final body = await _httpGet(
       uri,
-      timeout: Duration(seconds: 10 + pts.length),
+      timeout: Duration(
+        seconds: 10 + validPoints.length,
+      ),
     );
-    if (body == null) return const [];
+
+    if (body == null) {
+      return const [];
+    }
 
     try {
       final data = jsonDecode(body) as Map<String, dynamic>;
+
       final code = data['code']?.toString();
+
       if (code != null && code != 'Ok') {
-        if (kDebugMode) debugPrint('directions code=$code');
+        if (kDebugMode) {
+          debugPrint(
+            'directions code=$code',
+          );
+        }
+
         return const [];
       }
+
       final routes = data['routes'] as List<dynamic>?;
-      if (routes == null || routes.isEmpty) return const [];
+
+      if (routes == null || routes.isEmpty) {
+        return const [];
+      }
+
+      final firstRoute = routes.first as Map<String, dynamic>;
+
+      final geometry = firstRoute['geometry'] as Map<String, dynamic>?;
+
+      if (geometry == null) {
+        return const [];
+      }
+
       return RoutePlanGeometry.parseGeoJsonLine(
-        routes.first['geometry'] as Map<String, dynamic>?,
+        geometry,
       );
     } catch (e) {
-      if (kDebugMode) debugPrint('directions parse: $e');
+      if (kDebugMode) {
+        debugPrint(
+          'directions parse: $e',
+        );
+      }
+
       return const [];
     }
   }
 
+  /// بناء مسار كامل عبر مجموعة نقاط تحكم.
+  ///
+  /// [preserveWaypoints]: عند true لا يُطبَّق sampleByDistance (مناسب
+  /// لنقاط الأدمن اليدوية عند التقاطعات). الافتراضي false لمسارات GPS الكثيفة.
   Future<List<RoutePoint>> getDrivingPathThrough(
     List<RoutePoint> waypoints, {
     bool snapWaypoints = true,
+    bool preserveWaypoints = false,
   }) async {
-    if (waypoints.length < 2) return List.of(waypoints);
-    final token = _mapboxToken;
-    if (token == null) return List.of(waypoints);
+    if (waypoints.length < 2) {
+      return List<RoutePoint>.of(waypoints);
+    }
 
-    var pts = RoutePlanGeometry.sampleByDistance(
-      waypoints,
-      stepMeters: 120,
-      maxPoints: 36,
+    final token = _mapboxToken;
+
+    if (token == null) {
+      return List<RoutePoint>.of(waypoints);
+    }
+
+    List<RoutePoint> points;
+    if (preserveWaypoints) {
+      // نقاط تحكم الأدمن: أبقِ كل النقاط بعد إزالة التكرارات القريبة فقط.
+      points = List<RoutePoint>.of(waypoints);
+    } else {
+      points = RoutePlanGeometry.sampleByDistance(
+        waypoints,
+        stepMeters: 120,
+        maxPoints: 36,
+      );
+    }
+
+    points = _removeNearDuplicates(
+      points,
+      minDistanceMeters: _minimumUsefulDistanceM,
     );
 
+    if (points.length < 2) {
+      return List<RoutePoint>.of(waypoints);
+    }
+
     if (snapWaypoints) {
-      pts = await _snapWaypointsBatched(pts);
-      pts = RoutePlanGeometry.dedupeNear(pts, minMeters: 12);
-      if (pts.length < 2) return List.of(waypoints);
+      points = await _snapWaypointsBatched(
+        points,
+      );
+
+      // dedupe 12م مناسب لـ GPS؛ يحذف نقاط تحكم أدمن متقاربة عند الانعطاف.
+      if (!preserveWaypoints) {
+        points = RoutePlanGeometry.dedupeNear(
+          points,
+          minMeters: 12,
+        );
+      }
+
+      if (points.length < 2) {
+        return List<RoutePoint>.of(waypoints);
+      }
     }
 
-    // نوافذ Directions متداخلة لنقاط تحكم كثيرة
-    final driven = await _driveInChunks(pts, token);
+    final driven = await _driveInChunks(
+      points,
+      token,
+    );
+
     if (driven.length < 2) {
-      return await snapToRoads(waypoints, minSpacingMeters: 15);
+      return await snapToRoads(
+        waypoints,
+        minSpacingMeters: 15,
+      );
     }
 
-    // تلميع Matching على النتيجة
-    final polished = await snapToRoads(driven, minSpacingMeters: 12);
+    // مسار أدمن: Directions يعطي هندسة الطريق؛ Map Matching + tidy=true
+    // مخصص لآثار GPS الصاخبة وقد يحرّف الخط عن نقاط التحكم.
+    if (preserveWaypoints) {
+      final cleaned = RoutePlanGeometry.removeSpikes(
+        driven,
+        maxJumpMeters: 160,
+      );
+      return RoutePlanGeometry.simplifyPoints(
+        cleaned,
+        minDistanceMeters: 5,
+      );
+    }
+
+    final polished = await snapToRoads(
+      driven,
+      minSpacingMeters: 12,
+    );
+
     final cleaned = RoutePlanGeometry.removeSpikes(
       polished.length >= 2 ? polished : driven,
       maxJumpMeters: 160,
     );
-    return RoutePlanGeometry.simplifyPoints(cleaned, minDistanceMeters: 7);
+
+    return RoutePlanGeometry.simplifyPoints(
+      cleaned,
+      minDistanceMeters: 7,
+    );
   }
 
-  Future<List<RoutePoint>> _snapWaypointsBatched(List<RoutePoint> pts) async {
-    final snapped = <RoutePoint>[];
-    const batch = 5;
-    for (var i = 0; i < pts.length; i += batch) {
-      final chunk = pts.sublist(i, math.min(i + batch, pts.length));
-      final done = await Future.wait(chunk.map(snapPointToRoad));
-      snapped.addAll(done);
-      // تأخير بسيط لتجنب rate-limit
-      if (i + batch < pts.length) {
-        await Future<void>.delayed(const Duration(milliseconds: 40));
-      }
+  Future<List<RoutePoint>> _snapWaypointsBatched(
+    List<RoutePoint> points,
+  ) async {
+    if (points.length < 2) {
+      return List<RoutePoint>.of(points);
     }
-    return snapped;
+
+    final cleaned = _removeNearDuplicates(
+      points,
+      minDistanceMeters: _minimumUsefulDistanceM,
+    );
+
+    if (cleaned.length < 2) {
+      return List<RoutePoint>.of(points);
+    }
+
+    return List<RoutePoint>.of(cleaned);
   }
 
   Future<List<RoutePoint>> _driveInChunks(
-    List<RoutePoint> pts,
+    List<RoutePoint> points,
     String token,
   ) async {
-    if (pts.length <= _directionsWindow) {
-      final one = await _directionsRequest(pts, token);
-      return one.length >= 2 ? one : List.of(pts);
+    if (points.length < 2) {
+      return List<RoutePoint>.of(points);
     }
 
-    var out = <RoutePoint>[];
-    // تداخل نقطة واحدة بين النوافذ لضمان اتصال المسار
-    final step = _directionsWindow - 1;
-    for (var i = 0; i < pts.length - 1; i += step) {
-      final end = math.min(i + _directionsWindow, pts.length);
-      final chunk = pts.sublist(i, end);
-      if (chunk.length < 2) continue;
-
-      var path = await _directionsRequest(chunk, token);
-
-      // إن فشل النافذة: قطّعها إلى أزواج
-      if (path.length < 2) {
-        path = await _drivePairs(chunk, token);
-      }
-
-      // إن بقي فشل: خط مستقيم بين أطراف النافذة (نادر)
-      if (path.length < 2) {
-        path = List.of(chunk);
-      }
-
-      // ارفض قطعاً أطول بكثير من المسافة الجوية (مسار خاطئ التفافي)
-      final air = RoutePlanGeometry.distanceMeters(
-        chunk.first.latitude,
-        chunk.first.longitude,
-        chunk.last.latitude,
-        chunk.last.longitude,
+    if (points.length <= _directionsWindow) {
+      final one = await _directionsRequest(
+        points,
+        token,
       );
-      final road = RoutePlanGeometry.totalDistanceMeters(path);
-      if (air > 80 && road > air * 4.5) {
-        // أعد المحاولة بأزواج فقط
-        final pairs = await _drivePairs(chunk, token);
-        if (pairs.length >= 2) {
-          final pairsLen = RoutePlanGeometry.totalDistanceMeters(pairs);
-          if (pairsLen < road) path = pairs;
-        }
+
+      return one.length >= 2 ? one : List<RoutePoint>.of(points);
+    }
+
+    var output = <RoutePoint>[];
+
+    final step = _directionsWindow - 1;
+
+    for (var start = 0; start < points.length - 1; start += step) {
+      final end = math.min(
+        start + _directionsWindow,
+        points.length,
+      );
+
+      final window = points.sublist(start, end);
+
+      final segment = await _directionsRequest(
+        window,
+        token,
+      );
+
+      final piece = segment.length >= 2
+          ? segment
+          : List<RoutePoint>.of(window);
+
+      if (output.isEmpty) {
+        output = List<RoutePoint>.of(piece);
+      } else {
+        output = RoutePlanGeometry.mergePaths(
+          output,
+          piece,
+        );
       }
-
-      out = out.isEmpty
-          ? path
-          : RoutePlanGeometry.mergePaths(out, path, joinToleranceM: 30);
     }
 
-    return RoutePlanGeometry.dedupeNear(out, minMeters: 4);
-  }
-
-  Future<List<RoutePoint>> _drivePairs(
-    List<RoutePoint> pts,
-    String token,
-  ) async {
-    var out = <RoutePoint>[];
-    for (var i = 0; i < pts.length - 1; i++) {
-      final seg = await _directionsRequest([pts[i], pts[i + 1]], token);
-      final use = seg.length >= 2 ? seg : [pts[i], pts[i + 1]];
-      out = out.isEmpty
-          ? use
-          : RoutePlanGeometry.mergePaths(out, use, joinToleranceM: 20);
-    }
-    return out;
+    return output.length >= 2 ? output : List<RoutePoint>.of(points);
   }
 
   Future<List<RoutePoint>> snapToRoads(
     List<RoutePoint> points, {
     double minSpacingMeters = 20,
   }) async {
-    final simplified = RoutePlanGeometry.simplifyPoints(
-      points,
-      minDistanceMeters: minSpacingMeters,
-    );
-    if (simplified.length < 2) return simplified;
+    if (points.length < 2) {
+      return List<RoutePoint>.of(points);
+    }
 
     final token = _mapboxToken;
-    if (token == null) return simplified;
 
-    try {
-      // نوافذ Matching متداخلة بدل طلب عملاق واحد
-      var out = <RoutePoint>[];
-      final step = _matchWindow - 4;
-      for (var i = 0; i < simplified.length; i += step) {
-        final end = math.min(i + _matchWindow, simplified.length);
-        final chunk = simplified.sublist(i, end);
-        if (chunk.length < 2) continue;
-
-        final matched = await _matchWindowRequest(chunk, token);
-        final use = matched.length >= 2 ? matched : chunk;
-        out = out.isEmpty
-            ? use
-            : RoutePlanGeometry.mergePaths(out, use, joinToleranceM: 25);
-
-        if (end >= simplified.length) break;
-        await Future<void>.delayed(const Duration(milliseconds: 30));
-      }
-
-      if (out.isEmpty) return simplified;
-
-      final cleaned = RoutePlanGeometry.removeSpikes(out, maxJumpMeters: 150);
-      return RoutePlanGeometry.simplifyPoints(cleaned, minDistanceMeters: 7);
-    } catch (e) {
-      if (kDebugMode) debugPrint('snapToRoads: $e');
-      return simplified;
+    if (token == null) {
+      return List<RoutePoint>.of(points);
     }
+
+    final cleaned = _removeNearDuplicates(
+      points,
+      minDistanceMeters: _minimumUsefulDistanceM,
+    );
+
+    if (cleaned.length < 2) {
+      return List<RoutePoint>.of(points);
+    }
+
+    final matched = await _matchWindowRequest(
+      cleaned,
+      token,
+    );
+
+    if (matched.length < 2) {
+      return List<RoutePoint>.of(cleaned);
+    }
+
+    return _removeNearDuplicates(
+      matched,
+      minDistanceMeters: minSpacingMeters,
+    );
+  }
+
+  /// محاذاة مسار من نقاط تحكم (رسم أدمن يدوي).
+  /// يحافظ على نقاط التحكم؛ لا يُسقِطها بـ sampleByDistance كل 120م.
+  Future<List<RoutePoint>> buildRoadAlignedRoute(
+    List<RoutePoint> controlPoints,
+  ) async {
+    if (controlPoints.length < 2) {
+      return List<RoutePoint>.of(controlPoints);
+    }
+
+    return getDrivingPathThrough(
+      controlPoints,
+      snapWaypoints: true,
+      preserveWaypoints: true,
+    );
   }
 
   Future<List<RoutePoint>> _matchWindowRequest(
-    List<RoutePoint> sample,
+    List<RoutePoint> points,
     String token,
   ) async {
-    final coords = sample.map(_coord).join(';');
-
-    // نصف قطر متدرج: أضيق في الوسط، أوسع عند الأطراف
-    final radiuses = <String>[];
-    for (var i = 0; i < sample.length; i++) {
-      final edge = i == 0 || i == sample.length - 1;
-      radiuses.add(
-        (edge ? pointSnapRadiusWideM : pointSnapRadiusM).toStringAsFixed(0),
-      );
+    if (points.length < 2) {
+      return List<RoutePoint>.of(points);
     }
 
+    if (points.length <= _matchWindow) {
+      return await _matchOnce(points, token);
+    }
+
+    var output = <RoutePoint>[];
+    final step = _matchWindow - 1;
+
+    for (var start = 0; start < points.length - 1; start += step) {
+      final end = math.min(start + _matchWindow, points.length);
+      final window = points.sublist(start, end);
+      final segment = await _matchOnce(window, token);
+      final piece = segment.length >= 2
+          ? segment
+          : List<RoutePoint>.of(window);
+
+      if (output.isEmpty) {
+        output = List<RoutePoint>.of(piece);
+      } else {
+        output = RoutePlanGeometry.mergePaths(output, piece);
+      }
+    }
+
+    return output.length >= 2 ? output : List<RoutePoint>.of(points);
+  }
+
+  Future<List<RoutePoint>> _matchOnce(
+    List<RoutePoint> points,
+    String token,
+  ) async {
+    if (points.length < 2) {
+      return List<RoutePoint>.of(points);
+    }
+
+    final coords = points.map(_coord).join(';');
+    final radiuses = List.filled(points.length, pointSnapRadiusM.toStringAsFixed(0))
+        .join(';');
+
     final uri = Uri.parse(
-      'https://api.mapbox.com/matching/v5/mapbox/driving/$coords'
-      '?geometries=geojson&overview=full&tidy=true'
-      '&radiuses=${radiuses.join(';')}'
-      '&gaps=ignore'
+      'https://api.mapbox.com/matching/v5/'
+      'mapbox/driving/$coords'
+      '?geometries=geojson'
+      '&overview=full'
+      '&tidy=true'
+      '&radiuses=$radiuses'
       '&access_token=$token',
     );
 
     final body = await _httpGet(uri);
-    if (body == null) return const [];
+
+    if (body == null) {
+      return const [];
+    }
 
     try {
       final data = jsonDecode(body) as Map<String, dynamic>;
       final code = data['code']?.toString();
-      // NoMatch / NoSegment شائع — نرجع فارغ للـ fallback
-      if (code != null && code != 'Ok') return const [];
+
+      if (code != null && code != 'Ok') {
+        return const [];
+      }
 
       final matchings = data['matchings'] as List<dynamic>?;
-      if (matchings == null || matchings.isEmpty) return const [];
 
-      final snapped = <RoutePoint>[];
-      for (final m in matchings) {
-        if (m is! Map<String, dynamic>) continue;
-        final path = RoutePlanGeometry.parseGeoJsonLine(
-          m['geometry'] as Map<String, dynamic>?,
-        );
-        if (path.isEmpty) continue;
-        if (snapped.isEmpty) {
-          snapped.addAll(path);
-        } else {
-          snapped.addAll(path.skip(1));
-        }
+      if (matchings == null || matchings.isEmpty) {
+        return const [];
       }
-      return snapped;
+
+      final first = matchings.first as Map<String, dynamic>;
+      final geometry = first['geometry'] as Map<String, dynamic>?;
+
+      if (geometry == null) {
+        return const [];
+      }
+
+      return RoutePlanGeometry.parseGeoJsonLine(geometry);
     } catch (_) {
       return const [];
     }
   }
 
-  /// بناء مسار كامل محاذٍ للطرق من نقاط تحكم خام.
-  Future<List<RoutePoint>> buildRoadAlignedRoute(
-    List<RoutePoint> controlPoints,
-  ) async {
-    if (controlPoints.length < 2) return List.of(controlPoints);
+  List<RoutePoint> _removeNearDuplicates(
+    List<RoutePoint> points, {
+    required double minDistanceMeters,
+  }) {
+    if (points.isEmpty) {
+      return const [];
+    }
 
-    // 1) تنظيف أولي حسب المسافة
-    final prepared = RoutePlanGeometry.sampleByDistance(
-      RoutePlanGeometry.dedupeNear(controlPoints, minMeters: 8),
-      stepMeters: 110,
-      maxPoints: 42,
-    );
+    final output = <RoutePoint>[points.first];
 
-    // 2) مسار قيادة عبر النقاط
-    final viaDirs = await getDrivingPathThrough(
-      prepared,
-      snapWaypoints: true,
-    );
+    for (var i = 1; i < points.length; i++) {
+      final last = output.last;
+      final current = points[i];
 
-    if (viaDirs.length >= 8) {
-      final cleaned = RoutePlanGeometry.removeSpikes(
-        viaDirs,
-        maxJumpMeters: 150,
-        maxTurnDegrees: 150,
+      final distance = RoutePlanGeometry.distanceMeters(
+        last.latitude,
+        last.longitude,
+        current.latitude,
+        current.longitude,
       );
-      return RoutePlanGeometry.simplifyPoints(cleaned, minDistanceMeters: 7);
+
+      if (distance >= minDistanceMeters) {
+        output.add(current);
+      }
     }
 
-    // 3) fallback: Matching مباشر على نقاط التحكم
-    final matched = await snapToRoads(prepared, minSpacingMeters: 12);
-    if (matched.length >= 2) {
-      return RoutePlanGeometry.removeSpikes(matched, maxJumpMeters: 150);
+    if (points.length >= 2) {
+      final lastOriginal = points.last;
+      final lastKept = output.last;
+
+      final distance = RoutePlanGeometry.distanceMeters(
+        lastKept.latitude,
+        lastKept.longitude,
+        lastOriginal.latitude,
+        lastOriginal.longitude,
+      );
+
+      if (distance >= minDistanceMeters) {
+        output.add(lastOriginal);
+      }
     }
 
-    return RoutePlanGeometry.simplifyPoints(
-      controlPoints,
-      minDistanceMeters: 12,
-    );
+    return output;
   }
 }
