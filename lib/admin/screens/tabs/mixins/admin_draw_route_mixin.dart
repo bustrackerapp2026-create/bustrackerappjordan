@@ -34,6 +34,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   static const bool _liveGeoJsonSourceUpdateEnabled = false;
   static const String _liveRouteSourceId = 'admin_draw_route_source';
   static const String _liveRouteLayerId = 'admin_draw_route_layer';
+  String? _liveRouteStyleKey;
   bool _finalCoalesceRunning = false;
   bool _finalCoalesceQueued = false;
   int _finalCoalesceEpoch = 0;
@@ -61,6 +62,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   void startDrawingRoute() {
     if (!mounted) return;
     _drawSession++; _drawMutationSeq++; _tapLocked = false; _invalidateFinalCoalesce(); _invalidateTempCoalesce();
+    _liveRouteStyleKey = null;
     setState(() { isDrawingRoute = true; isSnappingSegment = false; _drawPoints.clear(); _roadSegments.clear(); });
     unawaited(_clearDrawVisuals()); MapUtils.showSnackBar(context, 'وضع الرسم: انقر على الخريطة لإضافة نقاط المسار');
   }
@@ -82,7 +84,8 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     try {
       final snapped = await _drawRouteService.snapPointToRoad(raw); if (!mounted || session != _drawSession) return;
       if (_drawPoints.isNotEmpty) { final last = _drawPoints.last; final distance = _haversineMeters(last.latitude, last.longitude, snapped.latitude, snapped.longitude); if (distance < 15) { MapUtils.showSnackBar(context, 'النقطة قريبة جداً من السابقة'); return; } }
-      _drawPoints.add(snapped); if (_drawPoints.length < 2) { if (mounted) setState(() {}); return; }
+      _drawPoints.add(snapped);
+      if (_drawPoints.length < 2) { if (mounted) setState(() {}); return; }
       from = _drawPoints[_drawPoints.length - 2]; to = _drawPoints.last; segmentIndex = _roadSegments.length; _roadSegments.add([from, to]); if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw tap: $e', tag: 'AdminDraw');
@@ -103,8 +106,19 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
   Future<void> _ensureLiveRouteLayer() async {
     final map = mapboxMap; if (map == null) return; final style = map.style;
-    try { await style.addSource(GeoJsonSource(id: _liveRouteSourceId, data: jsonEncode({'type': 'FeatureCollection', 'features': const []}))); } catch (_) {}
-    try { await style.addLayer(LineLayer(id: _liveRouteLayerId, sourceId: _liveRouteSourceId, lineJoin: LineJoin.ROUND, lineCap: LineCap.ROUND, lineColor: 0xFF7C3AED, lineWidth: 5.0)); } catch (_) {}
+    final styleKey = currentMapStyle;
+    if (_liveRouteStyleKey == styleKey) return;
+    try {
+      if (!await style.styleSourceExists(_liveRouteSourceId)) {
+        await style.addSource(GeoJsonSource(id: _liveRouteSourceId, data: jsonEncode({'type': 'FeatureCollection', 'features': const []})));
+      }
+      if (!await style.styleLayerExists(_liveRouteLayerId)) {
+        await style.addLayer(LineLayer(id: _liveRouteLayerId, sourceId: _liveRouteSourceId, lineJoin: LineJoin.ROUND, lineCap: LineCap.ROUND, lineColor: 0xFF7C3AED, lineWidth: 5.0));
+      }
+      _liveRouteStyleKey = styleKey;
+    } catch (e) {
+      MapUtils.log('draw line layer init: $e', tag: 'AdminDraw');
+    }
   }
   String _liveRouteGeoJson(List<RoutePoint> path) => jsonEncode({'type': 'FeatureCollection', 'features': [{'type': 'Feature', 'id': 'admin_draw_route', 'properties': const <String, dynamic>{}, 'geometry': {'type': 'LineString', 'coordinates': [for (final p in path) [p.longitude, p.latitude]]}}]});
   Future<void> _redrawDrawLine({String phase = ''}) async {
