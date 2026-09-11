@@ -57,14 +57,18 @@ class TransitLineService {
     final start = startName.trim();
     final end = endName.trim();
     final middle = middleName?.trim();
+
     if (id.isEmpty) {
       throw const TransitLineServiceException('معرف السائق مطلوب.');
     }
     if (displayName.isEmpty) {
       throw const TransitLineServiceException('اسم الخط مطلوب.');
     }
-    if (start.isEmpty || end.isEmpty) {
-      throw const TransitLineServiceException('بداية الخط ونهايته مطلوبتان.');
+    if (start.isEmpty) {
+      throw const TransitLineServiceException('بداية الخط مطلوبة.');
+    }
+    if (end.isEmpty) {
+      throw const TransitLineServiceException('نهاية الخط مطلوبة.');
     }
 
     final normalized = ArabicSearch.normalize(displayName);
@@ -113,7 +117,7 @@ class TransitLineService {
       name: displayName,
       normalizedName: normalized,
       startName: start,
-      middleName: middle != null && middle.isNotEmpty ? middle : null,
+      middleName: middle?.isNotEmpty == true ? middle : null,
       endName: end,
       passingPlaces: cleanPassingPlaces,
       aliases: cleanAliases,
