@@ -423,5 +423,29 @@ service cloud.firestore {
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
+
+    // فهرس عام محدود للبحث عن المسارات أثناء التسجيل فقط.
+    // لا يُخزّن أي نقاط GPS أو بيانات السائق.
+    match /routeCatalog/{catalogId} {
+      allow read: if true;
+
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'routeId',
+          'lineName',
+          'direction',
+          'searchKeys',
+          'aliases',
+          'status'
+        ])
+        && request.resource.data.routeId is string
+        && request.resource.data.routeId.size() > 0
+        && request.resource.data.lineName is string
+        && request.resource.data.lineName.size() > 0
+        && request.resource.data.direction in ['outbound', 'return']
+        && request.resource.data.status == 'approved';
+
+      allow delete: if isAdmin();
+    }
   }
 }
