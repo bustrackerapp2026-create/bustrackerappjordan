@@ -88,6 +88,8 @@ class PlannedRoute {
   /// من سجّل المسار أول مرة (سائق أو أدمن)
   final String createdBy;
   final String lineName;
+  /// الهوية الثابتة للخط التشغيلي المرتبط بالمسار، وتبقى اختيارية للتوافق مع المسارات القديمة.
+  final String? lineId;
   final RouteDirection direction;
   final List<RoutePoint> points;
   final PlannedRouteStatus status;
@@ -113,6 +115,7 @@ class PlannedRoute {
     required this.id,
     required this.createdBy,
     required this.lineName,
+    this.lineId,
     required this.direction,
     required this.points,
     this.status = PlannedRouteStatus.approved,
@@ -147,6 +150,7 @@ class PlannedRoute {
       'createdBy': createdBy,
       'driverId': createdBy, // توافق خلفي
       'lineName': lineName,
+      if (lineId != null && lineId!.trim().isNotEmpty) 'lineId': lineId!.trim(),
       'direction': direction.firestoreValue,
       'points': points.map((p) => p.toMap()).toList(),
       'status': status.firestoreValue,
@@ -191,10 +195,13 @@ class PlannedRoute {
           .toList();
     }
 
+    final rawLineId = data['lineId']?.toString().trim();
+
     return PlannedRoute(
       id: id,
       createdBy: createdBy,
       lineName: data['lineName']?.toString() ?? '',
+      lineId: rawLineId == null || rawLineId.isEmpty ? null : rawLineId,
       direction: RouteDirectionX.fromString(data['direction']?.toString()),
       points: points,
       status: PlannedRouteStatusX.fromString(data['status']?.toString()),
