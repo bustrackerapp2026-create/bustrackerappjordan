@@ -31,7 +31,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   Completer<void>? _segmentOpDone;
   static const bool _liveDirectionsEnabled = true;
   static const bool _livePolylineEnabled = true;
-  static const bool _liveGeoJsonSourceUpdateEnabled = false;
+  static const bool _liveGeoJsonSourceUpdateEnabled = true;
   static const String _liveRouteSourceId = 'admin_draw_route_source';
   static const String _liveRouteLayerId = 'admin_draw_route_layer';
   String? _liveRouteStyleKey;
