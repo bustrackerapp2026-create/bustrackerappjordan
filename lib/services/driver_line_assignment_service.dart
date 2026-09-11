@@ -35,7 +35,7 @@ class DriverLineAssignmentService {
       if (assignment.status == DriverLineAssignmentStatus.approved) {
         if (approved == null) {
           approved = assignment;
-        } else if (_timestampOf(assignment) > _timestampOf(approved)) {
+        } else if (_timestampOf(assignment).isAfter(_timestampOf(approved))) {
           approved = assignment;
         }
       }
