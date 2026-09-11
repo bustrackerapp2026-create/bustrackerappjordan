@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../features/auth/providers/auth_provider.dart';
 import '../providers/driver_provider.dart';
+import '../services/vehicle_trip_service.dart';
 import '../widgets/driver_custom_app_bar.dart';
 import '../widgets/driver_custom_bottom_nav_bar.dart';
 import 'tabs/driver_map_tab.dart';
@@ -26,6 +27,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
   String? _boundUid;
   bool _sessionReady = false;
+  final VehicleTripService _vehicleTripService = VehicleTripService();
 
   @override
   void initState() {
@@ -54,10 +56,13 @@ class _DriverDashboardState extends State<DriverDashboard> {
       if (!mounted) return;
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
+        final activeVehicleTrip =
+            await _vehicleTripService.findActiveTripForDriver(uid);
+        if (!mounted) return;
         driver.syncFromRemote(
           userId: uid,
           isOnline: data['isOnline'] == true,
-          isTripActive: data['isTripActive'] == true,
+          isTripActive: activeVehicleTrip != null,
         );
       } else {
         driver.syncFromRemote(
