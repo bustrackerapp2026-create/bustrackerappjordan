@@ -244,6 +244,68 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Smart Bus / VehicleTrip — الرحلة التشغيلية للحافلة
+    match /vehicleTrips/{tripId} {
+      allow read: if isSignedIn();
+
+      allow create: if isDriver()
+        && request.resource.data.driverId == request.auth.uid
+        && request.resource.data.routeId is string
+        && request.resource.data.routeId.size() > 0
+        && request.resource.data.direction in ['outbound', 'return']
+        && request.resource.data.status == 'active'
+        && request.resource.data.busNumber is string;
+
+      allow update: if isAdmin()
+        || (
+          isDriver()
+          && resource.data.driverId == request.auth.uid
+          && request.resource.data.driverId == resource.data.driverId
+          && request.resource.data.routeId == resource.data.routeId
+          && request.resource.data.direction == resource.data.direction
+          && request.resource.data.busNumber == resource.data.busNumber
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status',
+            'currentLocation',
+            'speed',
+            'heading',
+            'routeProgress',
+            'lastLocationAt',
+            'startedAt',
+            'endedAt',
+            'updatedAt'
+          ])
+          && (
+            request.resource.data.status == resource.data.status
+            || (resource.data.status == 'active'
+              && request.resource.data.status in ['completed', 'cancelled'])
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // قفل تشغيلي: يمنع أكثر من VehicleTrip نشطة للسائق نفسه.
+    match /vehicleTripDriverLocks/{driverId} {
+      allow read: if isSignedIn() && (isOwner(driverId) || isAdmin());
+
+      allow create: if isDriver()
+        && isOwner(driverId)
+        && request.resource.data.driverId == request.auth.uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.tripId is string
+        && request.resource.data.tripId.size() > 0;
+
+      allow update: if isDriver()
+        && isOwner(driverId)
+        && resource.data.driverId == request.auth.uid
+        && request.resource.data.driverId == resource.data.driverId
+        && request.resource.data.tripId == resource.data.tripId
+        && request.resource.data.status == 'active';
+
+      allow delete: if isDriver() && isOwner(driverId) || isAdmin();
+    }
+
     // معالم الخريطة الخاصة بالمشروع (طبقة خاصة فوق Mapbox)
     match /mapLandmarks/{landmarkId} {
       allow read: if isSignedIn() && (
