@@ -41,6 +41,10 @@ class TransitLine {
   final String id;
   final String name;
   final String normalizedName;
+  final String startName;
+  final String? middleName;
+  final String endName;
+  final List<String> passingPlaces;
   final List<String> aliases;
   final TransitLineStatus status;
   final String proposedBy;
@@ -54,7 +58,11 @@ class TransitLine {
     required this.id,
     required this.name,
     required this.normalizedName,
+    required this.startName,
+    required this.endName,
     required this.proposedBy,
+    this.middleName,
+    this.passingPlaces = const [],
     this.aliases = const [],
     this.status = TransitLineStatus.pending,
     this.approvedBy,
@@ -70,6 +78,11 @@ class TransitLine {
     return {
       'name': name,
       'normalizedName': normalizedName,
+      'startName': startName,
+      if (middleName != null && middleName!.trim().isNotEmpty)
+        'middleName': middleName!.trim(),
+      'endName': endName,
+      'passingPlaces': passingPlaces,
       'aliases': aliases,
       'status': status.firestoreValue,
       'proposedBy': proposedBy,
@@ -101,6 +114,12 @@ class TransitLine {
       id: id,
       name: data['name']?.toString() ?? '',
       normalizedName: data['normalizedName']?.toString() ?? '',
+      startName: data['startName']?.toString().trim() ?? '',
+      middleName: data['middleName']?.toString().trim().isNotEmpty == true
+          ? data['middleName']?.toString().trim()
+          : null,
+      endName: data['endName']?.toString().trim() ?? '',
+      passingPlaces: readStringList(data['passingPlaces']),
       aliases: readStringList(data['aliases']),
       status: TransitLineStatusX.fromString(data['status']?.toString()),
       proposedBy: data['proposedBy']?.toString() ?? '',
