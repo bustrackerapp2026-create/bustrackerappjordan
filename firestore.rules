@@ -316,15 +316,30 @@ service cloud.firestore {
     match /transitLines/{lineId} {
       allow read: if isSignedIn();
 
-      allow create: if isDriver()
-        && request.resource.data.proposedBy == request.auth.uid
-        && request.resource.data.status == 'pending'
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() <= 120
-        && request.resource.data.normalizedName is string
-        && request.resource.data.normalizedName.size() > 0
-        && request.resource.data.proposedBy is string;
+      allow create: if (
+          isDriver()
+          && request.resource.data.proposedBy == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 120
+          && request.resource.data.normalizedName is string
+          && request.resource.data.normalizedName.size() > 0
+          && request.resource.data.proposedBy is string
+        )
+        || (
+          isAdmin()
+          && request.resource.data.proposedBy == request.auth.uid
+          && request.resource.data.approvedBy == request.auth.uid
+          && request.resource.data.status == 'approved'
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 120
+          && request.resource.data.normalizedName is string
+          && request.resource.data.normalizedName.size() > 0
+          && request.resource.data.proposedBy is string
+          && request.resource.data.approvedBy is string
+        );
 
       allow update: if isAdmin()
         || (
