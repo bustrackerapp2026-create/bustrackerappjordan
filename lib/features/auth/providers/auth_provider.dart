@@ -4,13 +4,18 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 import 'package:jordan_bus_tracker_new/core/constants/user_roles.dart';
 import 'package:jordan_bus_tracker_new/models/user_model.dart';
+import 'package:jordan_bus_tracker_new/services/driver_line_assignment_service.dart';
 import 'package:jordan_bus_tracker_new/services/firestore_service.dart';
 import 'package:jordan_bus_tracker_new/services/live_tracking_service.dart';
+import 'package:jordan_bus_tracker_new/services/transit_line_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
   final LiveTrackingService _liveTracking = LiveTrackingService();
+  final TransitLineService _transitLineService = TransitLineService();
+  final DriverLineAssignmentService _driverLineAssignmentService =
+      DriverLineAssignmentService();
 
   firebase_auth.User? _user;
   UserModel? _userData;
@@ -121,6 +126,30 @@ class AuthProvider extends ChangeNotifier {
         );
 
         await _firestoreService.saveUserData(newUser);
+
+        // عند اختيار مسار رسمي من البحث أثناء تسجيل السائق، نربط الحساب
+        // تلقائيًا بالخط التشغيلي المعتمد وننشئ طلب تعيين Pending.
+        // routeId هنا هو PlannedRoute.id وليس TransitLine.id، لذلك نحدد
+        // TransitLine عبر اسم الخط ثم نخزن lineId الصحيح داخل التعيين.
+        if (UserRoles.isDriverLike(userType) &&
+            routeId != null &&
+            routeId.trim().isNotEmpty &&
+            route != null &&
+            route.trim().isNotEmpty) {
+          final line = await _transitLineService.findByNormalizedName(route);
+          if (line == null || !line.isApproved) {
+            throw const TransitLineServiceException(
+              'تعذر ربط المسار المختار بالخط التشغيلي المعتمد.',
+              code: 'driver-line-not-found',
+            );
+          }
+
+          await _driverLineAssignmentService.requestAssignment(
+            driverId: credential.user!.uid,
+            lineId: line.id,
+          );
+        }
+
         _userData = newUser;
         _user = credential.user;
         notifyListeners();
