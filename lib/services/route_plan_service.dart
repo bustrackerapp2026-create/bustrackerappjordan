@@ -18,6 +18,11 @@ class RoutePlanService {
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection('plannedRoutes');
 
+  /// فهرس عام صغير للبحث أثناء التسجيل قبل إنشاء الحساب.
+  /// لا يحتوي نقاط GPS أو بيانات تشغيلية حساسة.
+  CollectionReference<Map<String, dynamic>> get _catalogCol =>
+      _db.collection('routeCatalog');
+
   static const int minPointsToSave = 8;
   static const int maxPointsToStore = RoutePlanGeometry.maxPointsToStore;
   static const double pointSnapRadiusM = RoutePlanMapbox.pointSnapRadiusM;
@@ -113,53 +118,74 @@ class RoutePlanService {
         .toList();
   }
 
+  /// بحث عام وآمن للمسارات المعتمدة أثناء التسجيل.
+  ///
+  /// شاشة التسجيل تعمل قبل إنشاء الحساب، لذلك لا يمكنها قراءة plannedRoutes
+  /// المحمية. بدلاً من ذلك نستخدم routeCatalog الذي يحتوي metadata فقط.
   Future<List<PlannedRoute>> searchApprovedRoutes(
     String query, {
     int limit = 40,
   }) async {
     final q = query.trim();
-    if (q.isEmpty) return listApprovedRoutes(limit: limit);
-
-    final tokens = ArabicSearch.tokens(q).take(10).toList();
     final cap = limit.clamp(1, 100);
 
-    QuerySnapshot<Map<String, dynamic>> snap;
-    try {
-      if (tokens.isNotEmpty) {
-        snap = await _col
-            .where('status', isEqualTo: 'approved')
-            .where('searchKeys', arrayContainsAny: tokens)
-            .limit(cap)
-            .get();
-      } else {
-        snap = await _col
-            .where('status', isEqualTo: 'approved')
-            .orderBy('lineName')
-            .limit(cap)
-            .get();
+    final snap = await _catalogCol
+        .where('status', isEqualTo: PlannedRouteStatus.approved.firestoreValue)
+        .limit(200)
+        .get();
+
+    final candidates = <PlannedRoute>[];
+    for (final d in snap.docs) {
+      final data = d.data();
+      final routeId = data['routeId']?.toString().trim();
+      final lineName = data['lineName']?.toString().trim() ?? '';
+      if (lineName.isEmpty) continue;
+
+      final rawDirection = data['direction']?.toString();
+      final direction = RouteDirectionX.fromString(rawDirection);
+
+      List<String> readStringList(dynamic raw) {
+        if (raw is! List) return const [];
+        return raw
+            .map((e) => e?.toString().trim() ?? '')
+            .where((e) => e.isNotEmpty)
+            .toList();
       }
-    } catch (_) {
-      snap = await _col
-          .where('status', isEqualTo: 'approved')
-          .limit(cap)
-          .get();
+
+      candidates.add(
+        PlannedRoute(
+          id: routeId == null || routeId.isEmpty ? d.id : routeId,
+          createdBy: '',
+          lineName: lineName,
+          direction: direction,
+          points: const [],
+          status: PlannedRouteStatus.approved,
+          source: RouteSource.admin,
+          searchKeys: readStringList(data['searchKeys']),
+          aliases: readStringList(data['aliases']),
+        ),
+      );
+    }
+
+    if (q.isEmpty) {
+      candidates.sort((a, b) => a.lineName.compareTo(b.lineName));
+      return candidates.take(cap).toList();
     }
 
     final results = <PlannedRoute>[];
-    for (final d in snap.docs) {
-      final r = PlannedRoute.fromDoc(d.id, d.data());
-      if (r.points.length < 2) continue;
+    for (final route in candidates) {
       if (ArabicSearch.matches(
         query: q,
-        lineName: r.lineName,
-        searchKeys: r.searchKeys,
-        aliases: r.aliases,
+        lineName: route.lineName,
+        searchKeys: route.searchKeys,
+        aliases: route.aliases,
       )) {
-        results.add(r);
+        results.add(route);
       }
     }
+
     results.sort((a, b) => a.lineName.compareTo(b.lineName));
-    return results;
+    return results.take(cap).toList();
   }
 
   Future<List<String>> listApprovedLineNames() async {
