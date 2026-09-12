@@ -221,6 +221,12 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
+    
+    match /routeCatalog/{routeId} {
+  allow read: if resource.data.status == 'approved';
+
+  allow create, update, delete: if isAdmin();
+} 
 
     match /plannedRoutes/{routeId} {
       allow read: if isSignedIn();
@@ -421,30 +427,6 @@ service cloud.firestore {
         && request.resource.data.status in ['pending', 'approved', 'rejected'];
 
       allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    // فهرس عام محدود للبحث عن المسارات أثناء التسجيل فقط.
-    // لا يُخزّن أي نقاط GPS أو بيانات السائق.
-    match /routeCatalog/{catalogId} {
-      allow read: if true;
-
-      allow create, update: if isAdmin()
-        && request.resource.data.keys().hasOnly([
-          'routeId',
-          'lineName',
-          'direction',
-          'searchKeys',
-          'aliases',
-          'status'
-        ])
-        && request.resource.data.routeId is string
-        && request.resource.data.routeId.size() > 0
-        && request.resource.data.lineName is string
-        && request.resource.data.lineName.size() > 0
-        && request.resource.data.direction in ['outbound', 'return']
-        && request.resource.data.status == 'approved';
-
       allow delete: if isAdmin();
     }
   }
