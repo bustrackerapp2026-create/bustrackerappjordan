@@ -221,6 +221,12 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
+    
+    match /routeCatalog/{routeId} {
+  allow read: if resource.data.status == 'approved';
+
+  allow create, update, delete: if isAdmin();
+} 
 
     match /plannedRoutes/{routeId} {
       allow read: if isSignedIn();
