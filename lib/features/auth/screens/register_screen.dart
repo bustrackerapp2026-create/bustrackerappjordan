@@ -180,7 +180,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (isDriver && _routeNotPresentSelected) {
       final manualLine = _manualLineNameController.text.trim();
       final manualStart = _manualStartController.text.trim();
-      final manualMiddle = _manualMiddleController.text.trim();
       final manualEnd = _manualEndController.text.trim();
 
       if (manualLine.isEmpty || manualStart.isEmpty || manualEnd.isEmpty) {
