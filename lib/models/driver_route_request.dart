@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'planned_route.dart';
+
 /// حالة طلب إنشاء/اعتماد مسار جديد من السائق.
 enum DriverRouteRequestStatus {
   pending,
