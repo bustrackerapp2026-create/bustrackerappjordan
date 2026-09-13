@@ -16,6 +16,7 @@ import '../../models/trip_model.dart';
 import '../../models/trip_status.dart';
 import '../../models/route_point.dart';
 import '../../models/planned_route.dart';
+import '../../models/driver_line_assignment.dart';
 
 mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool _isProcessingTrip = false;
@@ -25,8 +26,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PolylineAnnotation? _polylineAnnotation;
   final TripService _tripService = TripService();
   final VehicleTripService _vehicleTripService = VehicleTripService();
-  final DriverLineAssignmentService _driverLineAssignmentService =
-      DriverLineAssignmentService();
+  final DriverLineAssignmentService _driverLineAssignmentService = DriverLineAssignmentService();
 
   static const double _routeStartMatchMaxMeters = 750.0;
 
@@ -40,24 +40,17 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       await _polylineAnnotationManager?.delete(_polylineAnnotation!);
       _polylineAnnotation = null;
     }
-    _polylineAnnotationManager ??=
-        await mapboxMap?.annotations.createPolylineAnnotationManager();
-    if (_polylineAnnotationManager == null) return;
-
-    final positions =
-        routePoints.map((p) => Position(p.longitude, p.latitude)).toList();
+    if (_polylineAnnotationManager == null) {
+      _polylineAnnotationManager = await mapboxMap?.annotations.createPolylineAnnotationManager();
+      if (_polylineAnnotationManager == null) return;
+    }
+    final positions = routePoints.map((p) => Position(p.longitude, p.latitude)).toList();
     final options = PolylineAnnotationOptions(
       geometry: LineString(coordinates: positions),
-      lineColor: Colors.blue.toARGB32(),
-      lineWidth: 4.0,
-      lineOpacity: 0.8,
+      lineColor: Colors.blue.toARGB32(), lineWidth: 4.0, lineOpacity: 0.8,
     );
-    _polylineAnnotation =
-        await _polylineAnnotationManager!.create(options);
-    MapUtils.log(
-      '✅ تم رسم المسار - عدد النقاط: ${routePoints.length}',
-      tag: 'TripManager',
-    );
+    _polylineAnnotation = await _polylineAnnotationManager?.create(options);
+    MapUtils.log('✅ تم رسم المسار - عدد النقاط: ${routePoints.length}', tag: 'TripManager');
   }
 
   Future<PlannedRoute?> _getApprovedRouteForAssignment(
