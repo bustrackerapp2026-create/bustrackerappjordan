@@ -399,6 +399,58 @@ service cloud.firestore {
         );
     }
 
+    // طلب مسار جديد من السائق عندما لا يكون المسار موجودًا في الكتالوج.
+    match /driverRouteRequests/{requestId} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.driverId == request.auth.uid);
+
+      allow create: if isDriver()
+        && request.resource.data.driverId == request.auth.uid
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.lineName is string
+        && request.resource.data.lineName.size() > 0
+        && request.resource.data.lineName.size() <= 120
+        && request.resource.data.startName is string
+        && request.resource.data.startName.size() > 0
+        && request.resource.data.startName.size() <= 200
+        && request.resource.data.endName is string
+        && request.resource.data.endName.size() > 0
+        && request.resource.data.endName.size() <= 200
+        && request.resource.data.direction in ['outbound', 'return']
+        && request.resource.data.keys().hasOnly([
+          'driverId',
+          'lineId',
+          'lineName',
+          'startName',
+          'middleName',
+          'endName',
+          'direction',
+          'status',
+          'requestedBy',
+          'requestedAt',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow update: if isAdmin()
+        || (
+          isDriver()
+          && resource.data.driverId == request.auth.uid
+          && resource.data.requestedBy == request.auth.uid
+          && resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status',
+            'updatedAt'
+          ])
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.driverId == resource.data.driverId
+          && request.resource.data.requestedBy == resource.data.requestedBy
+        );
+
+      allow delete: if isAdmin();
+    }
+
     // معالم الخريطة الخاصة بالمشروع (طبقة خاصة فوق Mapbox)
     match /mapLandmarks/{landmarkId} {
       allow read: if isSignedIn() && (
