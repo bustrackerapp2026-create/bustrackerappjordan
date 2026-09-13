@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:jordan_bus_tracker_new/core/constants/user_roles.dart';
 import 'package:jordan_bus_tracker_new/models/user_model.dart';
@@ -22,7 +23,6 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   StreamSubscription<UserModel?>? _userDataSubscription;
 
-  /// يُستدعى عند تسجيل الخروج لتصفير الحالة المحلية فقط (DriverProvider).
   VoidCallback? onBeforeSignOut;
 
   firebase_auth.User? get user => _user;
@@ -92,6 +92,28 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<String?> _resolveLineIdForRoute(String routeId) async {
+    final id = routeId.trim();
+    if (id.isEmpty) return null;
+
+    final catalogRef = FirebaseFirestore.instance.collection('routeCatalog');
+    final byId = await catalogRef.doc(id).get();
+    if (byId.exists && byId.data() != null) {
+      final lineId = byId.data()!['lineId']?.toString().trim();
+      if (lineId != null && lineId.isNotEmpty) return lineId;
+    }
+
+    final snap = await catalogRef
+        .where('routeId', isEqualTo: id)
+        .where('status', isEqualTo: 'approved')
+        .limit(1)
+        .get();
+    if (snap.docs.isEmpty) return null;
+
+    final lineId = snap.docs.first.data()['lineId']?.toString().trim();
+    return lineId == null || lineId.isEmpty ? null : lineId;
+  }
+
   Future<void> signUp({
     required String email,
     required String password,
@@ -128,18 +150,24 @@ class AuthProvider extends ChangeNotifier {
 
         await _firestoreService.saveUserData(newUser);
 
-        // عند اختيار مسار رسمي من البحث أثناء تسجيل السائق، نمرر
-        // routeId و lineId كما ظهرا معًا في سجل PlannedRoute المفهرس.
-        // routeId هو المرجع التشغيلي الأساسي للتعيين، وlineId يحدد الخط الأب.
         if (UserRoles.isDriverLike(userType) &&
             routeId != null &&
-            routeId.trim().isNotEmpty &&
-            lineId != null &&
-            lineId.trim().isNotEmpty) {
+            routeId.trim().isNotEmpty) {
+          final resolvedLineId = lineId?.trim().isNotEmpty == true
+              ? lineId!.trim()
+              : await _resolveLineIdForRoute(routeId);
+
+          if (resolvedLineId == null || resolvedLineId.isEmpty) {
+            throw const TransitLineServiceException(
+              'تعذر تحديد الخط التشغيلي المرتبط بالمسار المختار.',
+              code: 'driver-line-not-found',
+            );
+          }
+
           await _driverLineAssignmentService.requestAssignment(
             driverId: credential.user!.uid,
             routeId: routeId,
-            lineId: lineId,
+            lineId: resolvedLineId,
           );
         }
 
@@ -154,8 +182,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// يغيّر كلمة المرور فقط (إعادة مصادقة + تحديث).
-  /// لا يسجّل خروجاً هنا — الاستدعاء من الواجهة يغلق الورقة ثم يستدعي [signOutAfterPasswordChange].
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -203,7 +229,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// بعد نجاح تغيير كلمة المرور: إطفاء السائق إن لزم + تسجيل خروج آمن.
   Future<void> signOutAfterPasswordChange() async {
     try {
       await _goOfflineIfDriver();
