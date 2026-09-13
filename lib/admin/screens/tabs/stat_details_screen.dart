@@ -82,7 +82,7 @@ class _StatDetailsScreenState extends State<StatDetailsScreen> {
     if (_busyIds.contains(user.uid)) return;
     setState(() => _busyIds.add(user.uid));
     try {
-      final adminId = FirebaseAuth.instance.currentUser?.uid?.trim();
+      final adminId = FirebaseAuth.instance.currentUser?.uid.trim();
       if (adminId == null || adminId.isEmpty) {
         throw Exception('تعذر تحديد حساب الأدمن الحالي.');
       }
