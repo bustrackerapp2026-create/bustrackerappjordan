@@ -19,7 +19,6 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
-
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -27,6 +26,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _phoneController = TextEditingController();
   final _busNumberController = TextEditingController();
   final _routeController = TextEditingController();
+  final _manualLineNameController = TextEditingController();
+  final _manualStartController = TextEditingController();
+  final _manualMiddleController = TextEditingController();
+  final _manualEndController = TextEditingController();
 
   final RoutePlanService _routePlanService = RoutePlanService();
 
@@ -41,6 +44,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   String _selectedUserType = UserRoles.passenger;
   int? _selectedCapacity = BusCapacity.medium;
+  RouteDirection _manualDirection = RouteDirection.outbound;
 
   bool get _showDriverFields => UserRoles.isDriverLike(_selectedUserType);
 
@@ -53,6 +57,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _phoneController.dispose();
     _busNumberController.dispose();
     _routeController.dispose();
+    _manualLineNameController.dispose();
+    _manualStartController.dispose();
+    _manualMiddleController.dispose();
+    _manualEndController.dispose();
     super.dispose();
   }
 
@@ -112,6 +120,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
   }
 
+  void _clearManualRequest() {
+    setState(() {
+      _routeNotPresentSelected = false;
+      _manualLineNameController.clear();
+      _manualStartController.clear();
+      _manualMiddleController.clear();
+      _manualEndController.clear();
+      _manualDirection = RouteDirection.outbound;
+    });
+  }
+
   Future<void> _register() async {
     final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
@@ -119,13 +138,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (!_formKey.currentState!.validate()) return;
 
+    final isDriver = _showDriverFields;
     final name = _nameController.text.trim();
     final email = AppValidators.sanitizeEmail(_emailController.text);
     final password = _passwordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
     final phoneNumber = _phoneController.text.trim();
     final busNumber = _busNumberController.text.trim();
-    final route = _routeController.text.trim();
+    final selectedRoute = _selectedPlannedRoute;
 
     if (password != confirmPassword) {
       messenger.showSnackBar(
@@ -137,7 +157,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    if (_showDriverFields && _selectedCapacity == null) {
+    if (isDriver && _selectedCapacity == null) {
       messenger.showSnackBar(
         const SnackBar(
           content: Text('⚠️ اختر نوع الباص / عدد الركاب'),
@@ -147,24 +167,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    if (_showDriverFields && _routeNotPresentSelected) {
+    if (isDriver && !_routeNotPresentSelected && selectedRoute == null) {
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('سيتم تنفيذ «مساري غير موجود» كتدفق مستقل لإرسال طلب المسار، لذلك لن نسمح بتسجيل مسار نصي حر.'),
+          content: Text('⚠️ يجب اختيار مسار معتمد من نتائج البحث.'),
           backgroundColor: Colors.orange,
         ),
       );
       return;
     }
 
-    if (_showDriverFields && _selectedPlannedRoute == null) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ يجب اختيار مسار معتمد من نتائج البحث قبل إنشاء حساب السائق.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
+    if (isDriver && _routeNotPresentSelected) {
+      final manualLine = _manualLineNameController.text.trim();
+      final manualStart = _manualStartController.text.trim();
+      final manualMiddle = _manualMiddleController.text.trim();
+      final manualEnd = _manualEndController.text.trim();
+
+      if (manualLine.isEmpty || manualStart.isEmpty || manualEnd.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ أدخل اسم الخط والبداية والنهاية للمسار الجديد.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
     }
 
     setState(() => _isLoading = true);
@@ -178,17 +205,42 @@ class _RegisterScreenState extends State<RegisterScreen> {
         fullName: name,
         phoneNumber: phoneNumber.isNotEmpty ? phoneNumber : null,
         userType: _selectedUserType,
-        busNumber: _showDriverFields ? busNumber : null,
-        route: _showDriverFields ? route : null,
-        routeId: _showDriverFields ? _selectedPlannedRoute!.id : null,
-        capacity: _showDriverFields ? _selectedCapacity : null,
+        busNumber: isDriver ? busNumber : null,
+        route: isDriver && selectedRoute != null ? selectedRoute.lineName : null,
+        routeId: isDriver && selectedRoute != null ? selectedRoute.id : null,
+        lineId: isDriver && selectedRoute != null ? selectedRoute.lineId : null,
+        capacity: isDriver ? _selectedCapacity : null,
+        routeRequestLineName:
+            isDriver && _routeNotPresentSelected
+                ? _manualLineNameController.text.trim()
+                : null,
+        routeRequestStartName:
+            isDriver && _routeNotPresentSelected
+                ? _manualStartController.text.trim()
+                : null,
+        routeRequestMiddleName:
+            isDriver && _routeNotPresentSelected
+                ? _manualMiddleController.text.trim().isEmpty
+                    ? null
+                    : _manualMiddleController.text.trim()
+                : null,
+        routeRequestEndName:
+            isDriver && _routeNotPresentSelected
+                ? _manualEndController.text.trim()
+                : null,
+        routeRequestDirection:
+            isDriver && _routeNotPresentSelected ? _manualDirection : null,
       );
 
       if (!mounted) return;
 
       messenger.showSnackBar(
         SnackBar(
-          content: Text(l10n.registerSuccess),
+          content: Text(
+            isDriver && _routeNotPresentSelected
+                ? '✅ تم إنشاء الحساب وإرسال طلب المسار بشكل مستقل للمراجعة.'
+                : l10n.registerSuccess,
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -204,10 +256,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  InputDecoration _fieldDecoration({
+    required String hint,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(icon, color: AppTheme.primaryColor),
+      filled: true,
+      fillColor: Colors.grey.shade50,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(
+          color: AppTheme.primaryColor,
+          width: 2,
+        ),
+      ),
+    );
   }
 
   @override
@@ -234,7 +307,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
                   width: 100,
@@ -286,125 +358,51 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          l10n.fullName,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
+                        Text(l10n.fullName,
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
                         const SizedBox(height: 8),
                         TextFormField(
                           controller: _nameController,
                           textInputAction: TextInputAction.next,
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return l10n.enterFullName;
-                            }
-                            return null;
-                          },
-                          decoration: InputDecoration(
-                            hintText: 'Ahmad Mohammad',
-                            prefixIcon: const Icon(
-                              Icons.person_outline,
-                              color: AppTheme.primaryColor,
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey.shade50,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
-                                color: AppTheme.primaryColor,
-                                width: 2,
-                              ),
-                            ),
+                          validator: (value) =>
+                              value == null || value.trim().isEmpty
+                                  ? l10n.enterFullName
+                                  : null,
+                          decoration: _fieldDecoration(
+                            hint: 'Ahmad Mohammad',
+                            icon: Icons.person_outline,
                           ),
                         ),
                         const SizedBox(height: 20),
-                        Text(
-                          l10n.phone,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
+                        Text(l10n.phone,
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
                         const SizedBox(height: 8),
                         TextFormField(
                           controller: _phoneController,
                           keyboardType: TextInputType.phone,
                           textInputAction: TextInputAction.next,
-                          decoration: InputDecoration(
-                            hintText: '079 0000 000',
-                            prefixIcon: const Icon(
-                              Icons.phone_outlined,
-                              color: AppTheme.primaryColor,
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey.shade50,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
-                                color: AppTheme.primaryColor,
-                                width: 2,
-                              ),
-                            ),
+                          decoration: _fieldDecoration(
+                            hint: '079 0000 000',
+                            icon: Icons.phone_outlined,
                           ),
                         ),
                         const SizedBox(height: 20),
-                        Text(
-                          l10n.email,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
+                        Text(l10n.email,
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
                         const SizedBox(height: 8),
                         TextFormField(
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
                           validator: AppValidators.validateEmail,
-                          decoration: InputDecoration(
-                            hintText: 'example@gmail.com',
-                            prefixIcon: const Icon(
-                              Icons.email_outlined,
-                              color: AppTheme.primaryColor,
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey.shade50,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
-                                color: AppTheme.primaryColor,
-                                width: 2,
-                              ),
-                            ),
+                          decoration: _fieldDecoration(
+                            hint: 'example@gmail.com',
+                            icon: Icons.email_outlined,
                           ),
                         ),
                         const SizedBox(height: 20),
-                        Text(
-                          l10n.password,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
+                        Text(l10n.password,
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
                         const SizedBox(height: 8),
                         TextFormField(
                           controller: _passwordController,
@@ -413,12 +411,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           autocorrect: false,
                           enableSuggestions: false,
                           validator: AppValidators.validatePassword,
-                          decoration: InputDecoration(
-                            hintText: '••••••••',
-                            prefixIcon: const Icon(
-                              Icons.lock_outline,
-                              color: AppTheme.primaryColor,
-                            ),
+                          decoration: _fieldDecoration(
+                            hint: '••••••••',
+                            icon: Icons.lock_outline,
+                          ).copyWith(
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _obscurePassword
@@ -426,36 +422,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     : Icons.visibility,
                                 color: Colors.grey,
                               ),
-                              onPressed: () {
-                                setState(
-                                  () => _obscurePassword = !_obscurePassword,
-                                );
-                              },
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey.shade50,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
-                                color: AppTheme.primaryColor,
-                                width: 2,
+                              onPressed: () => setState(
+                                () => _obscurePassword = !_obscurePassword,
                               ),
                             ),
                           ),
                         ),
                         const SizedBox(height: 20),
-                        Text(
-                          l10n.confirmPassword,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
+                        Text(l10n.confirmPassword,
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
                         const SizedBox(height: 8),
                         TextFormField(
                           controller: _confirmPasswordController,
@@ -469,20 +444,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               value,
                               fieldName: l10n.confirmPassword,
                             );
-                            if (requiredValidation != null) {
-                              return requiredValidation;
-                            }
-                            if (value != _passwordController.text) {
-                              return l10n.passwordsDoNotMatch;
-                            }
-                            return null;
+                            if (requiredValidation != null) return requiredValidation;
+                            return value == _passwordController.text
+                                ? null
+                                : l10n.passwordsDoNotMatch;
                           },
-                          decoration: InputDecoration(
-                            hintText: '••••••••',
-                            prefixIcon: const Icon(
-                              Icons.lock_outline,
-                              color: AppTheme.primaryColor,
-                            ),
+                          decoration: _fieldDecoration(
+                            hint: '••••••••',
+                            icon: Icons.lock_outline,
+                          ).copyWith(
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _obscureConfirmPassword
@@ -490,37 +460,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     : Icons.visibility,
                                 color: Colors.grey,
                               ),
-                              onPressed: () {
-                                setState(
-                                  () => _obscureConfirmPassword =
-                                      !_obscureConfirmPassword,
-                                );
-                              },
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey.shade50,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
-                                color: AppTheme.primaryColor,
-                                width: 2,
+                              onPressed: () => setState(
+                                () => _obscureConfirmPassword =
+                                    !_obscureConfirmPassword,
                               ),
                             ),
                           ),
                         ),
                         const SizedBox(height: 20),
-                        Text(
-                          l10n.accountType,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
+                        Text(l10n.accountType,
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
                         const SizedBox(height: 8),
                         Row(
                           children: [
@@ -530,17 +479,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 selected: isDriverSelected,
                                 onSelected: (selected) {
                                   if (selected) {
-                                    setState(
-                                      () => _selectedUserType = UserRoles.driver,
-                                    );
+                                    setState(() => _selectedUserType = UserRoles.driver);
                                   }
                                 },
                                 selectedColor: AppTheme.primaryColor,
                                 backgroundColor: Colors.grey.shade200,
                                 labelStyle: TextStyle(
-                                  color: isDriverSelected
-                                      ? Colors.white
-                                      : Colors.black87,
+                                  color: isDriverSelected ? Colors.white : Colors.black87,
                                 ),
                               ),
                             ),
@@ -551,18 +496,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 selected: isPassengerSelected,
                                 onSelected: (selected) {
                                   if (selected) {
-                                    setState(
-                                      () => _selectedUserType =
-                                          UserRoles.passenger,
-                                    );
+                                    setState(() => _selectedUserType = UserRoles.passenger);
                                   }
                                 },
                                 selectedColor: AppTheme.primaryColor,
                                 backgroundColor: Colors.grey.shade200,
                                 labelStyle: TextStyle(
-                                  color: isPassengerSelected
-                                      ? Colors.white
-                                      : Colors.black87,
+                                  color: isPassengerSelected ? Colors.white : Colors.black87,
                                 ),
                               ),
                             ),
@@ -582,85 +522,48 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         if (_showDriverFields) ...[
                           const SizedBox(height: 20),
-                          Text(
-                            l10n.driverInfoRequired,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
+                          Text(l10n.driverInfoRequired,
+                              style: const TextStyle(fontWeight: FontWeight.w600)),
                           const SizedBox(height: 8),
                           TextFormField(
                             controller: _busNumberController,
                             textInputAction: TextInputAction.next,
-                            validator: (value) {
-                              if (_showDriverFields &&
-                                  (value == null || value.trim().isEmpty)) {
-                                return l10n.enterBusNumber;
-                              }
-                              return null;
-                            },
-                            decoration: InputDecoration(
-                              hintText: l10n.busNumberHint,
-                              prefixIcon: const Icon(
-                                Icons.directions_bus,
-                                color: AppTheme.primaryColor,
-                              ),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide.none,
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: const BorderSide(
-                                  color: AppTheme.primaryColor,
-                                  width: 2,
-                                ),
-                              ),
+                            validator: (value) => value == null || value.trim().isEmpty
+                                ? l10n.enterBusNumber
+                                : null,
+                            decoration: _fieldDecoration(
+                              hint: l10n.busNumberHint,
+                              icon: Icons.directions_bus,
                             ),
                           ),
                           const SizedBox(height: 12),
-                          Text(
-                            'المسار المعتمد المطلوب',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
+                          Text('المسار المعتمد المطلوب',
+                              style: const TextStyle(fontWeight: FontWeight.w600)),
                           const SizedBox(height: 8),
                           TextFormField(
                             controller: _routeController,
-                            textInputAction: TextInputAction.next,
                             enabled: !_routeNotPresentSelected,
+                            textInputAction: TextInputAction.next,
                             onChanged: (value) {
                               if (_selectedPlannedRoute != null &&
-                                  value.trim() !=
-                                      _selectedPlannedRoute!.lineName.trim()) {
+                                  value.trim() != _selectedPlannedRoute!.lineName.trim()) {
                                 setState(() => _selectedPlannedRoute = null);
                               }
                               _searchApprovedRoutes(value);
                             },
                             validator: (value) {
-                              if (!_showDriverFields) return null;
-                              if (_routeNotPresentSelected) return null;
+                              if (!_showDriverFields || _routeNotPresentSelected) return null;
                               if (value == null || value.trim().isEmpty) {
                                 return l10n.enterRoute;
                               }
-                              if (_selectedPlannedRoute == null) {
-                                return 'اختر مسارًا معتمدًا من نتائج البحث.';
-                              }
-                              return null;
+                              return _selectedPlannedRoute == null
+                                  ? 'اختر مسارًا معتمدًا من نتائج البحث.'
+                                  : null;
                             },
-                            decoration: InputDecoration(
-                              hintText: 'ابحث عن مسار معتمد',
-                              prefixIcon: const Icon(
-                                Icons.search,
-                                color: AppTheme.primaryColor,
-                              ),
+                            decoration: _fieldDecoration(
+                              hint: 'ابحث عن مسار معتمد',
+                              icon: Icons.search,
+                            ).copyWith(
                               suffixIcon: _isSearchingRoutes
                                   ? const Padding(
                                       padding: EdgeInsets.all(12),
@@ -673,19 +576,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   : (_selectedPlannedRoute != null
                                       ? const Icon(Icons.check_circle, color: Colors.green)
                                       : null),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide.none,
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: const BorderSide(
-                                  color: AppTheme.primaryColor,
-                                  width: 2,
-                                ),
-                              ),
                             ),
                           ),
                           if (_showRouteSuggestions)
@@ -710,10 +600,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                         for (final route in _routeSuggestions)
                                           ListTile(
                                             dense: true,
-                                            leading: const Icon(
-                                              Icons.route,
-                                              color: AppTheme.primaryColor,
-                                            ),
+                                            leading: const Icon(Icons.route,
+                                                color: AppTheme.primaryColor),
                                             title: Text(
                                               route.lineName,
                                               maxLines: 1,
@@ -746,7 +634,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
                           ],
                           if (_routeNotPresentSelected) ...[
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 10),
                             Container(
                               width: double.infinity,
                               padding: const EdgeInsets.all(12),
@@ -755,31 +643,105 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(color: Colors.orange.shade200),
                               ),
-                              child: const Row(
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Icon(Icons.add_road, color: Colors.orange),
-                                  SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'تم اختيار «مساري غير موجود». لن يتم قبول مسار نصي يدوي هنا؛ سيُرسل طلب المسار كتدفق مستقل لاحقًا.',
-                                      style: TextStyle(fontSize: 12),
+                                  const Text(
+                                    'طلب مسار جديد',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.orange,
                                     ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextFormField(
+                                    controller: _manualLineNameController,
+                                    textInputAction: TextInputAction.next,
+                                    decoration: _fieldDecoration(
+                                      hint: 'اسم الخط',
+                                      icon: Icons.route_outlined,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextFormField(
+                                    controller: _manualStartController,
+                                    textInputAction: TextInputAction.next,
+                                    decoration: _fieldDecoration(
+                                      hint: 'نقطة بداية الخط',
+                                      icon: Icons.trip_origin,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextFormField(
+                                    controller: _manualMiddleController,
+                                    textInputAction: TextInputAction.next,
+                                    decoration: _fieldDecoration(
+                                      hint: 'محطة / نقطة وسطية (اختياري)',
+                                      icon: Icons.more_horiz,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextFormField(
+                                    controller: _manualEndController,
+                                    textInputAction: TextInputAction.done,
+                                    decoration: _fieldDecoration(
+                                      hint: 'نقطة نهاية الخط',
+                                      icon: Icons.location_on_outlined,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  const Text(
+                                    'اتجاه المسار',
+                                    style: TextStyle(fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Wrap(
+                                    spacing: 8,
+                                    children: [
+                                      ChoiceChip(
+                                        label: const Text('ذهاب'),
+                                        selected: _manualDirection == RouteDirection.outbound,
+                                        onSelected: (selected) {
+                                          if (selected) {
+                                            setState(() =>
+                                                _manualDirection = RouteDirection.outbound);
+                                          }
+                                        },
+                                      ),
+                                      ChoiceChip(
+                                        label: const Text('إياب'),
+                                        selected: _manualDirection == RouteDirection.returnTrip,
+                                        onSelected: (selected) {
+                                          if (selected) {
+                                            setState(() => _manualDirection =
+                                                RouteDirection.returnTrip);
+                                          }
+                                        },
+                                      ),
+                                      TextButton.icon(
+                                        onPressed: _clearManualRequest,
+                                        icon: const Icon(Icons.close, size: 16),
+                                        label: const Text('اختيار مسار معتمد'),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'سيتم إرسال طلب اعتماد الحساب وطلب المسار الجديد بشكل منفصل.',
+                                    style: TextStyle(fontSize: 12),
                                   ),
                                 ],
                               ),
                             ),
                           ],
                         ],
-                        const SizedBox(height: 12),
-                        if (_showDriverFields)
+                        if (_showDriverFields && !_routeNotPresentSelected) ...[
+                          const SizedBox(height: 12),
                           Text(
-                            'يجب اختيار مسار معتمد فعليًا. خيار «مساري غير موجود» سيكون طلبًا مستقلًا عن طلب اعتماد الحساب.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade700,
-                            ),
+                            'باختيار مسار معتمد سيتم إنشاء طلب تعيين للمسار مع طلب اعتماد الحساب.',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                           ),
+                        ],
                         const SizedBox(height: 24),
                         SizedBox(
                           width: double.infinity,
@@ -816,25 +778,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
-                              l10n.alreadyHaveAccount,
-                              style: const TextStyle(color: Colors.grey),
-                            ),
+                            Text(l10n.alreadyHaveAccount,
+                                style: const TextStyle(color: Colors.grey)),
                             const SizedBox(width: 4),
                             TextButton(
-                              onPressed: () {
-                                Navigator.pop(context);
-                              },
+                              onPressed: () => Navigator.pop(context),
                               style: TextButton.styleFrom(
                                 foregroundColor: AppTheme.primaryColor,
                                 padding: EdgeInsets.zero,
-                                minimumSize: const Size(80, 30),
                               ),
                               child: Text(
                                 l10n.login,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
                             ),
                           ],
