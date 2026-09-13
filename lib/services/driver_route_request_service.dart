@@ -102,13 +102,14 @@ class DriverRouteRequestService {
     final existing = await getPendingForDriver(driver);
     if (existing != null &&
         _sameRequest(
-            existing,
-            lineName: name,
-            startName: start,
-            middleName: middle,
-            endName: end,
-            direction: direction,
-            lineId: cleanLineId)) {
+          existing,
+          lineName: name,
+          startName: start,
+          middleName: middle,
+          endName: end,
+          direction: direction,
+          lineId: cleanLineId,
+        )) {
       return existing;
     }
 
