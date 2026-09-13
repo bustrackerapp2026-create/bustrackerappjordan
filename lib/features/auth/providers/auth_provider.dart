@@ -4,8 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:jordan_bus_tracker_new/core/constants/user_roles.dart';
+import 'package:jordan_bus_tracker_new/models/driver_route_request.dart';
+import 'package:jordan_bus_tracker_new/models/planned_route.dart';
 import 'package:jordan_bus_tracker_new/models/user_model.dart';
 import 'package:jordan_bus_tracker_new/services/driver_line_assignment_service.dart';
+import 'package:jordan_bus_tracker_new/services/driver_route_request_service.dart';
 import 'package:jordan_bus_tracker_new/services/firestore_service.dart';
 import 'package:jordan_bus_tracker_new/services/live_tracking_service.dart';
 import 'package:jordan_bus_tracker_new/services/transit_line_service.dart';
@@ -16,6 +19,8 @@ class AuthProvider extends ChangeNotifier {
   final LiveTrackingService _liveTracking = LiveTrackingService();
   final DriverLineAssignmentService _driverLineAssignmentService =
       DriverLineAssignmentService();
+  final DriverRouteRequestService _driverRouteRequestService =
+      DriverRouteRequestService();
 
   firebase_auth.User? _user;
   UserModel? _userData;
@@ -124,6 +129,11 @@ class AuthProvider extends ChangeNotifier {
     String? routeId,
     String? lineId,
     int? capacity,
+    String? routeRequestLineName,
+    String? routeRequestStartName,
+    String? routeRequestMiddleName,
+    String? routeRequestEndName,
+    RouteDirection? routeRequestDirection,
   }) async {
     try {
       _setLoading(true);
@@ -134,6 +144,13 @@ class AuthProvider extends ChangeNotifier {
       );
 
       if (credential.user != null) {
+        final driver = UserRoles.isDriverLike(userType);
+        final hasRouteRequest = driver &&
+            routeRequestLineName?.trim().isNotEmpty == true &&
+            routeRequestStartName?.trim().isNotEmpty == true &&
+            routeRequestEndName?.trim().isNotEmpty == true &&
+            routeRequestDirection != null;
+
         final newUser = UserModel(
           uid: credential.user!.uid,
           email: email,
@@ -143,15 +160,13 @@ class AuthProvider extends ChangeNotifier {
           busNumber: busNumber ?? '',
           route: route ?? '',
           routeId: routeId,
-          capacity: UserRoles.isDriverLike(userType) ? capacity : null,
+          capacity: driver ? capacity : null,
           isVerified: false,
         );
 
         await _firestoreService.saveUserData(newUser);
 
-        if (UserRoles.isDriverLike(userType) &&
-            routeId != null &&
-            routeId.trim().isNotEmpty) {
+        if (driver && routeId != null && routeId.trim().isNotEmpty) {
           final resolvedLineId = lineId?.trim().isNotEmpty == true
               ? lineId!.trim()
               : await _resolveLineIdForRoute(routeId);
@@ -167,6 +182,17 @@ class AuthProvider extends ChangeNotifier {
             driverId: credential.user!.uid,
             routeId: routeId,
             lineId: resolvedLineId,
+          );
+        }
+
+        if (hasRouteRequest) {
+          await _driverRouteRequestService.createRequest(
+            driverId: credential.user!.uid,
+            lineName: routeRequestLineName!.trim(),
+            startName: routeRequestStartName!.trim(),
+            middleName: routeRequestMiddleName?.trim(),
+            endName: routeRequestEndName!.trim(),
+            direction: routeRequestDirection!,
           );
         }
 
