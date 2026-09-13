@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/driver_line_assignment.dart';
+import '../models/planned_route.dart';
 import '../models/transit_line.dart';
 import 'transit_line_service.dart';
 
-/// إدارة طلبات تعيين الخطوط الرسمية للسائقين.
+/// إدارة طلبات تعيين المسارات الرسمية للسائقين.
 class DriverLineAssignmentService {
   DriverLineAssignmentService._();
   static final DriverLineAssignmentService instance =
@@ -17,6 +18,9 @@ class DriverLineAssignmentService {
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection('driverLineAssignments');
 
+  CollectionReference<Map<String, dynamic>> get _routesCol =>
+      _db.collection('plannedRoutes');
+
   Future<DriverLineAssignment?> getById(String assignmentId) async {
     if (assignmentId.trim().isEmpty) return null;
     final snap = await _col.doc(assignmentId.trim()).get();
@@ -24,23 +28,30 @@ class DriverLineAssignmentService {
     return DriverLineAssignment.fromDoc(snap.id, snap.data()!);
   }
 
-  Future<DriverLineAssignment?> getApprovedForDriver(String driverId) async {
+  /// جميع التعيينات المعتمدة للسائق. يمكن للسائق امتلاك مسارين منفصلين
+  /// (مثلاً ذهاب وإياب) ما دام كل واحد منهما routeId مختلفًا.
+  Future<List<DriverLineAssignment>> getApprovedAssignmentsForDriver(
+    String driverId, {
+    int limit = 50,
+  }) async {
     final id = driverId.trim();
-    if (id.isEmpty) return null;
+    if (id.isEmpty) return const [];
 
-    final snap = await _col.where('driverId', isEqualTo: id).limit(50).get();
-    DriverLineAssignment? approved;
-    for (final doc in snap.docs) {
-      final assignment = DriverLineAssignment.fromDoc(doc.id, doc.data());
-      if (assignment.status == DriverLineAssignmentStatus.approved) {
-        if (approved == null) {
-          approved = assignment;
-        } else if (_timestampOf(assignment).isAfter(_timestampOf(approved))) {
-          approved = assignment;
-        }
-      }
-    }
-    return approved;
+    final snap = await _col.where('driverId', isEqualTo: id).limit(200).get();
+    final approved = snap.docs
+        .map((doc) => DriverLineAssignment.fromDoc(doc.id, doc.data()))
+        .where((item) =>
+            item.status == DriverLineAssignmentStatus.approved &&
+            item.routeId.trim().isNotEmpty)
+        .toList();
+    approved.sort((a, b) => _timestampOf(b).compareTo(_timestampOf(a)));
+    return approved.take(limit.clamp(1, 200)).toList();
+  }
+
+  /// توافق خلفي مع الكود الحالي الذي يفترض تعيينًا واحدًا فقط.
+  Future<DriverLineAssignment?> getApprovedForDriver(String driverId) async {
+    final approved = await getApprovedAssignmentsForDriver(driverId, limit: 50);
+    return approved.isEmpty ? null : approved.first;
   }
 
   Future<TransitLine?> getApprovedLineForDriver(String driverId) async {
@@ -97,16 +108,51 @@ class DriverLineAssignmentService {
     });
   }
 
+  Future<PlannedRoute?> _getRouteById(String routeId) async {
+    final id = routeId.trim();
+    if (id.isEmpty) return null;
+
+    final snap = await _routesCol.doc(id).get();
+    if (!snap.exists || snap.data() == null) return null;
+    return PlannedRoute.fromDoc(snap.id, snap.data()!);
+  }
+
   Future<DriverLineAssignment> requestAssignment({
     required String driverId,
+    required String routeId,
     required String lineId,
   }) async {
     final driver = driverId.trim();
+    final route = routeId.trim();
     final line = lineId.trim();
-    if (driver.isEmpty || line.isEmpty) {
+    if (driver.isEmpty || route.isEmpty || line.isEmpty) {
       throw const TransitLineServiceException(
         'بيانات طلب التعيين غير مكتملة.',
         code: 'invalid-request',
+      );
+    }
+
+    final selectedRoute = await _getRouteById(route);
+    if (selectedRoute == null) {
+      throw const TransitLineServiceException(
+        'المسار المطلوب غير موجود.',
+        code: 'route-not-found',
+      );
+    }
+    if (!selectedRoute.isApproved || selectedRoute.points.length < 2) {
+      throw const TransitLineServiceException(
+        'لا يمكن طلب تعيين مسار غير معتمد أو غير مكتمل.',
+        code: 'route-not-approved',
+      );
+    }
+
+    final routeLineId = selectedRoute.lineId?.trim();
+    if (routeLineId != null &&
+        routeLineId.isNotEmpty &&
+        routeLineId != line) {
+      throw const TransitLineServiceException(
+        'الخط المرسل لا يطابق الخط المرتبط بالمسار المختار.',
+        code: 'route-line-mismatch',
       );
     }
 
@@ -127,7 +173,7 @@ class DriverLineAssignmentService {
     final existing = await listForDriver(driver, limit: 200);
     final activeOrPending = existing.where(
       (item) =>
-          item.lineId == line &&
+          item.routeId == route &&
           (item.status == DriverLineAssignmentStatus.pending ||
               item.status == DriverLineAssignmentStatus.approved),
     );
@@ -135,19 +181,10 @@ class DriverLineAssignmentService {
       return activeOrPending.first;
     }
 
-    final approvedOther = existing.where(
-      (item) => item.status == DriverLineAssignmentStatus.approved,
-    );
-    if (approvedOther.isNotEmpty) {
-      throw const TransitLineServiceException(
-        'لديك خط معتمد حاليًا. يجب إلغاء التعيين الحالي قبل طلب خط آخر.',
-        code: 'approved-line-exists',
-      );
-    }
-
     final ref = _col.doc();
     await ref.set({
       'driverId': driver,
+      'routeId': route,
       'lineId': line,
       'status': DriverLineAssignmentStatus.pending.firestoreValue,
       'requestedBy': driver,
@@ -159,6 +196,7 @@ class DriverLineAssignmentService {
     return DriverLineAssignment(
       id: ref.id,
       driverId: driver,
+      routeId: route,
       lineId: line,
       requestedBy: driver,
       status: DriverLineAssignmentStatus.pending,
@@ -176,6 +214,24 @@ class DriverLineAssignmentService {
         code: 'not-found',
       );
     }
+    if (assignment.status != DriverLineAssignmentStatus.pending) {
+      throw const TransitLineServiceException(
+        'طلب التعيين ليس بانتظار المراجعة.',
+        code: 'not-pending',
+      );
+    }
+
+    final route = await _getRouteById(assignment.routeId);
+    if (route == null ||
+        !route.isApproved ||
+        route.points.length < 2 ||
+        (route.lineId?.trim().isNotEmpty == true &&
+            route.lineId!.trim() != assignment.lineId)) {
+      throw const TransitLineServiceException(
+        'لا يمكن اعتماد تعيين لمسار غير صالح أو غير مرتبط بالخط المطلوب.',
+        code: 'route-not-approved',
+      );
+    }
 
     final line = await _lines.getById(assignment.lineId);
     if (line == null || !line.isApproved) {
@@ -185,11 +241,18 @@ class DriverLineAssignmentService {
       );
     }
 
-    final current = await getApprovedForDriver(assignment.driverId);
-    if (current != null && current.id != assignment.id) {
+    final approved = await getApprovedAssignmentsForDriver(
+      assignment.driverId,
+      limit: 200,
+    );
+    final duplicateRoute = approved.any(
+      (item) =>
+          item.id != assignment.id && item.routeId == assignment.routeId,
+    );
+    if (duplicateRoute) {
       throw const TransitLineServiceException(
-        'لدى السائق خط معتمد بالفعل.',
-        code: 'approved-line-exists',
+        'هذا المسار معيّن للسائق بالفعل.',
+        code: 'approved-route-exists',
       );
     }
 
