@@ -127,15 +127,16 @@ class AuthProvider extends ChangeNotifier {
 
         await _firestoreService.saveUserData(newUser);
 
-        // عند اختيار مسار رسمي من البحث أثناء تسجيل السائق، نربط الحساب
-        // تلقائيًا بالخط التشغيلي المعتمد وننشئ طلب تعيين Pending.
-        // routeId هنا هو PlannedRoute.id وليس TransitLine.id، لذلك نحدد
-        // TransitLine عبر اسم الخط ثم نخزن lineId الصحيح داخل التعيين.
+        // عند اختيار مسار رسمي من البحث أثناء تسجيل السائق، نرسل هويتي
+        // المسار والخط معًا. routeId هو PlannedRoute.id، وهو المرجع
+        // التشغيلي الأساسي للتعيين، بينما lineId يحدد الخط الأب.
         if (UserRoles.isDriverLike(userType) &&
             routeId != null &&
             routeId.trim().isNotEmpty &&
             route != null &&
             route.trim().isNotEmpty) {
+          // يُبقي TransitLineService جزء التحقق الحالي من وجود الخط المعتمد
+          // بينما أصبح التعيين نفسه مرتبطًا بالمسار المحدد وليس باسم الخط فقط.
           final line = await _transitLineService.findByNormalizedName(route);
           if (line == null || !line.isApproved) {
             throw const TransitLineServiceException(
@@ -146,6 +147,7 @@ class AuthProvider extends ChangeNotifier {
 
           await _driverLineAssignmentService.requestAssignment(
             driverId: credential.user!.uid,
+            routeId: routeId,
             lineId: line.id,
           );
         }
