@@ -101,8 +101,9 @@ class DriverRouteRequestService {
 
     final existing = await getPendingForDriver(driver);
     if (existing != null &&
-        _sameRequest(existing,
-            name: name,
+        _sameRequest(
+            existing,
+            lineName: name,
             startName: start,
             middleName: middle,
             endName: end,
