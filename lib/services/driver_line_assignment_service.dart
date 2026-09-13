@@ -61,7 +61,8 @@ class DriverLineAssignmentService {
       final assignment = DriverLineAssignment.fromDoc(doc.id, doc.data());
       if (assignment.status != DriverLineAssignmentStatus.pending) continue;
       if (assignment.routeId.trim().isEmpty) continue;
-      if (pending == null || _timestampOf(assignment).isAfter(_timestampOf(pending))) {
+      if (pending == null ||
+          _timestampOf(assignment).isAfter(_timestampOf(pending))) {
         pending = assignment;
       }
     }
@@ -358,8 +359,10 @@ class DriverLineAssignmentService {
         );
       }
 
-      final lineSnap = await tx.get(_db.collection('transitLines').doc(assignment.lineId));
-      if (!lineSnap.exists || lineSnap.data() == null ||
+      final lineSnap =
+          await tx.get(_db.collection('transitLines').doc(assignment.lineId));
+      if (!lineSnap.exists ||
+          lineSnap.data() == null ||
           lineSnap.data()!['status']?.toString() != 'approved') {
         throw const TransitLineServiceException(
           'الخط التشغيلي غير معتمد.',
@@ -369,7 +372,10 @@ class DriverLineAssignmentService {
 
       final existingApproved = await _col
           .where('driverId', isEqualTo: driver)
-          .where('status', isEqualTo: DriverLineAssignmentStatus.approved.firestoreValue)
+          .where(
+            'status',
+            isEqualTo: DriverLineAssignmentStatus.approved.firestoreValue,
+          )
           .get();
       for (final doc in existingApproved.docs) {
         if (doc.id == assignment.id) continue;
@@ -395,6 +401,81 @@ class DriverLineAssignmentService {
         'reviewedBy': cleanAdmin,
         'reviewedAt': now,
         'reviewNote': FieldValue.delete(),
+        'updatedAt': now,
+      });
+    });
+  }
+
+  /// رفض ذري لحساب السائق + طلب تعيين المسار.
+  /// يُستخدم عندما يكون للسائق طلب مسار قائم، حتى لا يبقى التعيين معلقًا
+  /// بعد رفض حساب السائق.
+  Future<void> rejectDriverAndAssignment({
+    required String driverId,
+    required String assignmentId,
+    required String adminId,
+    String? reason,
+  }) async {
+    final driver = driverId.trim();
+    final assignmentRef = _col.doc(assignmentId.trim());
+    final userRef = _db.collection('users').doc(driver);
+    final cleanAdmin = adminId.trim();
+    final cleanReason = reason?.trim();
+
+    if (driver.isEmpty || assignmentId.trim().isEmpty || cleanAdmin.isEmpty) {
+      throw const TransitLineServiceException(
+        'بيانات الرفض غير مكتملة.',
+        code: 'invalid-rejection',
+      );
+    }
+
+    await _db.runTransaction((tx) async {
+      final assignmentSnap = await tx.get(assignmentRef);
+      final userSnap = await tx.get(userRef);
+
+      if (!assignmentSnap.exists || assignmentSnap.data() == null) {
+        throw const TransitLineServiceException(
+          'طلب تعيين المسار غير موجود.',
+          code: 'assignment-not-found',
+        );
+      }
+      if (!userSnap.exists || userSnap.data() == null) {
+        throw const TransitLineServiceException(
+          'حساب السائق غير موجود.',
+          code: 'driver-not-found',
+        );
+      }
+
+      final assignment = DriverLineAssignment.fromDoc(
+        assignmentSnap.id,
+        assignmentSnap.data()!,
+      );
+      if (assignment.driverId != driver) {
+        throw const TransitLineServiceException(
+          'طلب التعيين لا يخص هذا السائق.',
+          code: 'driver-assignment-mismatch',
+        );
+      }
+      if (assignment.status != DriverLineAssignmentStatus.pending) {
+        throw const TransitLineServiceException(
+          'طلب التعيين ليس بانتظار المراجعة.',
+          code: 'not-pending',
+        );
+      }
+
+      final now = FieldValue.serverTimestamp();
+      tx.update(userRef, {
+        'isVerified': false,
+        'isRejected': true,
+        'updatedAt': now,
+      });
+      tx.update(assignmentRef, {
+        'status': DriverLineAssignmentStatus.rejected.firestoreValue,
+        'reviewedBy': cleanAdmin,
+        'reviewedAt': now,
+        if (cleanReason != null && cleanReason.isNotEmpty)
+          'reviewNote': cleanReason
+        else
+          'reviewNote': FieldValue.delete(),
         'updatedAt': now,
       });
     });
