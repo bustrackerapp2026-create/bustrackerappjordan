@@ -1,14 +1,15 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart' as geo;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import '../map/map_core.dart';
 import '../map/map_utils.dart';
 import '../../driver/providers/driver_provider.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import '../../services/trip_service.dart';
-import '../../services/route_plan_service.dart';
 import '../../services/vehicle_trip_service.dart';
 import '../../services/driver_line_assignment_service.dart';
 import '../../models/trip_model.dart';
@@ -23,9 +24,11 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PolylineAnnotationManager? _polylineAnnotationManager;
   PolylineAnnotation? _polylineAnnotation;
   final TripService _tripService = TripService();
-  final RoutePlanService _routePlanService = RoutePlanService();
   final VehicleTripService _vehicleTripService = VehicleTripService();
-  final DriverLineAssignmentService _driverLineAssignmentService = DriverLineAssignmentService();
+  final DriverLineAssignmentService _driverLineAssignmentService =
+      DriverLineAssignmentService();
+
+  static const double _routeStartMatchMaxMeters = 750.0;
 
   bool get isProcessingTrip => _isProcessingTrip;
   String? get currentTripId => _currentTripId;
@@ -37,61 +40,126 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       await _polylineAnnotationManager?.delete(_polylineAnnotation!);
       _polylineAnnotation = null;
     }
-    if (_polylineAnnotationManager == null) {
-      _polylineAnnotationManager = await mapboxMap?.annotations.createPolylineAnnotationManager();
-      if (_polylineAnnotationManager == null) return;
-    }
-    final positions = routePoints.map((p) => Position(p.longitude, p.latitude)).toList();
+    _polylineAnnotationManager ??=
+        await mapboxMap?.annotations.createPolylineAnnotationManager();
+    if (_polylineAnnotationManager == null) return;
+
+    final positions =
+        routePoints.map((p) => Position(p.longitude, p.latitude)).toList();
     final options = PolylineAnnotationOptions(
       geometry: LineString(coordinates: positions),
-      lineColor: Colors.blue.toARGB32(), lineWidth: 4.0, lineOpacity: 0.8,
+      lineColor: Colors.blue.toARGB32(),
+      lineWidth: 4.0,
+      lineOpacity: 0.8,
     );
-    _polylineAnnotation = await _polylineAnnotationManager?.create(options);
-    MapUtils.log('✅ تم رسم المسار - عدد النقاط: ${routePoints.length}', tag: 'TripManager');
+    _polylineAnnotation =
+        await _polylineAnnotationManager!.create(options);
+    MapUtils.log(
+      '✅ تم رسم المسار - عدد النقاط: ${routePoints.length}',
+      tag: 'TripManager',
+    );
   }
 
-  Future<List<PlannedRoute>> _approvedRoutesForLine(String lineName) async {
-    final name = lineName.trim();
-    if (name.isEmpty) return const [];
-    final results = <PlannedRoute>[];
-    for (final direction in RouteDirection.values) {
-      final route = await _routePlanService.getLineDirection(lineName: name, direction: direction);
-      if (route == null) continue;
-      if (route.status != PlannedRouteStatus.approved) continue;
-      if (route.points.length < 2) continue;
-      results.add(route);
-    }
-    return results;
-  }
+  Future<PlannedRoute?> _getApprovedRouteForAssignment(
+    String routeId,
+    String lineId,
+  ) async {
+    final id = routeId.trim();
+    final expectedLineId = lineId.trim();
+    if (id.isEmpty || expectedLineId.isEmpty) return null;
 
-  Future<PlannedRoute?> _resolveApprovedRoute(String lineName) async {
-    final approved = await _approvedRoutesForLine(lineName);
-    if (approved.isEmpty) {
-      if (mounted) MapUtils.showSnackBar(context, '⚠️ لا يوجد مسار معتمد لهذا الخط حاليًا.', isError: true);
+    final snap = await FirebaseFirestore.instance
+        .collection('plannedRoutes')
+        .doc(id)
+        .get();
+    if (!snap.exists || snap.data() == null) return null;
+
+    final route = PlannedRoute.fromDoc(snap.id, snap.data()!);
+    if (!route.isApproved || route.points.length < 2) return null;
+
+    final routeLineId = route.lineId?.trim();
+    if (routeLineId == null ||
+        routeLineId.isEmpty ||
+        routeLineId != expectedLineId) {
       return null;
     }
-    if (approved.length == 1) return approved.first;
-    if (!mounted) return null;
-    return showDialog<PlannedRoute>(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => AlertDialog(
-        title: const Text('اختر اتجاه الرحلة'),
-        content: const Text('لهذا الخط مساران معتمدان. اختر اتجاه الرحلة التشغيلية.'),
-        actions: [
-          for (final r in approved)
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, r),
-              child: Text(r.direction == RouteDirection.outbound ? 'ذهاب' : 'عودة'),
-            ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
-        ],
-      ),
+    return route;
+  }
+
+  double _distanceMeters(
+    double lat1,
+    double lng1,
+    double lat2,
+    double lng2,
+  ) {
+    const earthRadius = 6371000.0;
+    final dLat = (lat2 - lat1) * math.pi / 180.0;
+    final dLng = (lng2 - lng1) * math.pi / 180.0;
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180.0) *
+            math.cos(lat2 * math.pi / 180.0) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  double _distanceToRouteStart(
+    PlannedRoute route,
+    geo.Position current,
+  ) {
+    final start = route.direction == RouteDirection.outbound
+        ? route.points.first
+        : route.points.last;
+    return _distanceMeters(
+      current.latitude,
+      current.longitude,
+      start.latitude,
+      start.longitude,
     );
   }
 
-  /// مصدر الحقيقة للخط هو التعيين المعتمد للسائق.
-  /// lineName القادم من الواجهة اختياري للتوافق، ولا يمكنه اختيار خط آخر.
+  Future<AssignedRouteChoice?> _resolveAssignedRoute(
+    String driverId,
+    geo.Position currentPosition,
+  ) async {
+    final assignments =
+        await _driverLineAssignmentService.getApprovedAssignmentsForDriver(
+      driverId,
+      limit: 50,
+    );
+
+    final candidates = <AssignedRouteChoice>[];
+    for (final assignment in assignments) {
+      final route = await _getApprovedRouteForAssignment(
+        assignment.routeId,
+        assignment.lineId,
+      );
+      if (route == null) continue;
+
+      candidates.add(
+        AssignedRouteChoice(
+          assignment: assignment,
+          route: route,
+          distanceMeters: _distanceToRouteStart(route, currentPosition),
+        ),
+      );
+    }
+
+    if (candidates.isEmpty) return null;
+    candidates.sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
+
+    final best = candidates.first;
+    if (candidates.length > 1 &&
+        best.distanceMeters > _routeStartMatchMaxMeters) {
+      return null;
+    }
+    return best;
+  }
+
+  /// مصدر الحقيقة للمسار هو التعيين المعتمد للسائق.
+  /// عند وجود ذهاب + إياب، يحدد الموقع الحالي أي تعيين يبدأ منه السائق:
+  /// ذهاب = أول نقطة، إياب = آخر نقطة في PlannedRoute.
   Future<void> startTrip({String? lineName}) async {
     if (_isProcessingTrip || !mounted) return;
 
@@ -113,33 +181,44 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       MapUtils.showSnackBar(context, '⚠️ الرحلة مفعلة بالفعل.', isError: true);
       return;
     }
-    if (driverProvider.currentPosition == null) {
-      MapUtils.showSnackBar(context, '⚠️ يرجى تحديد موقعك أولاً (اضغط على زر الموقع).', isError: true);
+
+    final currentPosition = driverProvider.currentPosition;
+    if (currentPosition == null) {
+      MapUtils.showSnackBar(
+        context,
+        '⚠️ يرجى تحديد موقعك أولاً (اضغط على زر الموقع).',
+        isError: true,
+      );
       return;
     }
 
     setState(() => _isProcessingTrip = true);
     try {
-      // 1) اقرأ التعيين المعتمد للسائق، ولا تعتمد على lineName الحر من الواجهة.
-      final assignment = await _driverLineAssignmentService.getApprovedForDriver(userId);
-      final assignedLine = assignment == null
-          ? null
-          : await _driverLineAssignmentService.getApprovedLineForDriver(userId);
+      final resolved = await _resolveAssignedRoute(userId, currentPosition);
 
-      if (assignment == null || assignedLine == null || !assignedLine.isApproved) {
+      if (resolved == null) {
+        final assignments =
+            await _driverLineAssignmentService.getApprovedAssignmentsForDriver(
+          userId,
+          limit: 50,
+        );
+        final message = assignments.isEmpty
+            ? '⚠️ لا يوجد مسار معتمد ومخصص لك. اطلب تعيين مسار من الأدمن أولاً.'
+            : assignments.length == 1
+                ? '⚠️ المسار المخصص لك غير صالح أو غير مرتبط بالخط التشغيلي المعتمد.'
+                : '⚠️ تعذر تحديد اتجاه الرحلة من موقعك الحالي. ابدأ من نقطة بداية الذهاب أو نقطة بداية الإياب.';
         if (mounted) {
-          MapUtils.showSnackBar(
-            context,
-            '⚠️ لا يوجد خط معتمد ومخصص لك. اطلب تعيين خط من الخطوط المعتمدة أولاً.',
-            isError: true,
-          );
+          MapUtils.showSnackBar(context, message, isError: true);
         }
         return;
       }
 
-      // 2) إن كانت الواجهة ترسل lineName، نتحقق فقط من تطابقه مع الخط المعيّن.
+      final assignment = resolved.assignment;
+      final route = resolved.route;
+      final resolvedLine = route.lineName.trim();
+
       final requestedLine = (lineName ?? '').trim();
-      if (requestedLine.isNotEmpty && requestedLine != assignedLine.name.trim()) {
+      if (requestedLine.isNotEmpty && requestedLine != resolvedLine) {
         if (mounted) {
           MapUtils.showSnackBar(
             context,
@@ -150,43 +229,25 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         return;
       }
 
-      final resolvedLine = assignedLine.name.trim();
-      if (resolvedLine.isEmpty) {
-        if (mounted) {
-          MapUtils.showSnackBar(context, '⚠️ تعيين الخط الخاص بك غير صالح حاليًا.', isError: true);
-        }
-        return;
-      }
+      final busNumber =
+          authProvider.userData?.busNumber?.trim().isNotEmpty == true
+              ? authProvider.userData!.busNumber!.trim()
+              : '—';
 
-      // 3) ابحث فقط عن PlannedRoute تابع لاسم الخط المعتمد.
-      final route = await _resolveApprovedRoute(resolvedLine);
-      if (route == null || !mounted) return;
-
-      // PlannedRoute الحالي لا يحتوي lineId، لذلك نتحقق من lineName بعد التطبيع.
-      final routeLineName = route.lineName.trim();
-      if (routeLineName != assignedLine.name.trim()) {
-        MapUtils.showSnackBar(
-          context,
-          '⚠️ المسار المعتمد لا يتبع الخط المخصص لهذا السائق.',
-          isError: true,
-        );
-        return;
-      }
-
-      final busNumber = authProvider.userData?.busNumber?.trim().isNotEmpty == true
-          ? authProvider.userData!.busNumber!.trim()
-          : '—';
-
-      // 4) VehicleTrip أولاً — لا تفعيل محلي قبل نجاح Firestore.
       final vehicleTrip = await _vehicleTripService.startTrip(
         driverId: userId,
         busNumber: busNumber,
-        routeId: route.id,
+        routeId: assignment.routeId,
         direction: route.direction.firestoreValue,
+        currentLocation: GeoPoint(
+          currentPosition.latitude,
+          currentPosition.longitude,
+        ),
+        speed: currentPosition.speed,
+        heading: currentPosition.heading,
       );
       if (!mounted) return;
 
-      // 5) فقط بعد نجاح VehicleTrip.
       final started = driverProvider.startTrip(userId: userId);
       if (!started) {
         MapUtils.showSnackBar(
@@ -200,7 +261,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       setState(() => _currentVehicleTripId = vehicleTrip.id);
 
-      // منظومة trips القديمة تبقى انتقالية فقط.
       final docRef = FirebaseFirestore.instance.collection('trips').doc();
       final tripId = docRef.id;
       final trip = TripModel(
@@ -219,20 +279,35 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         await _tripService.createTrip(trip);
         if (mounted) setState(() => _currentTripId = tripId);
       } catch (e) {
-        MapUtils.log('⚠️ فشل إنشاء trips القديمة بعد VehicleTrip: $e', tag: 'TripManager');
+        MapUtils.log(
+          '⚠️ فشل إنشاء trips القديمة بعد VehicleTrip: $e',
+          tag: 'TripManager',
+        );
       }
 
       if (!mounted) return;
-      MapUtils.showSnackBar(context, '🚀 تم بدء الرحلة (${route.direction.labelAr})', isError: false);
+      MapUtils.showSnackBar(
+        context,
+        '🚀 تم بدء رحلة ${route.direction.labelAr} على المسار المخصص',
+        isError: false,
+      );
     } on VehicleTripServiceException catch (e) {
       MapUtils.log('❌ VehicleTrip: $e', tag: 'TripManager');
       if (mounted) {
-        MapUtils.showSnackBar(context, e.message.isNotEmpty ? e.message : '❌ فشل بدء الرحلة التشغيلية.', isError: true);
+        MapUtils.showSnackBar(
+          context,
+          e.message.isNotEmpty ? e.message : '❌ فشل بدء الرحلة التشغيلية.',
+          isError: true,
+        );
       }
     } catch (e) {
       MapUtils.log('❌ فشل بدء الرحلة: $e', tag: 'TripManager');
       if (mounted) {
-        MapUtils.showSnackBar(context, '❌ فشل بدء الرحلة، يرجى المحاولة لاحقاً.', isError: true);
+        MapUtils.showSnackBar(
+          context,
+          '❌ فشل بدء الرحلة، يرجى المحاولة لاحقاً.',
+          isError: true,
+        );
       }
     } finally {
       if (mounted) setState(() => _isProcessingTrip = false);
@@ -263,26 +338,52 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     setState(() => _isProcessingTrip = true);
     try {
       if (vehicleTripId != null && vehicleTripId.isNotEmpty) {
-        await _vehicleTripService.completeTrip(tripId: vehicleTripId, driverId: driverId);
+        await _vehicleTripService.completeTrip(
+          tripId: vehicleTripId,
+          driverId: driverId,
+        );
       }
       final route = driverProvider.endTrip(userId: driverId);
       if (tripId != null) {
         if (route.length > 5000) {
-          throw Exception('عدد نقاط المسار (${route.length}) يتجاوز الحد الأقصى (5000).');
+          throw Exception(
+            'عدد نقاط المسار (${route.length}) يتجاوز الحد الأقصى (5000).',
+          );
         }
         if (route.isNotEmpty) {
-          await _tripService.updateTripStatus(tripId, TripStatus.completed, routePoints: route, driverId: driverId);
+          await _tripService.updateTripStatus(
+            tripId,
+            TripStatus.completed,
+            routePoints: route,
+            driverId: driverId,
+          );
           if (!mounted) return;
           await showRouteOnMap(route);
           if (!mounted) return;
-          MapUtils.showSnackBar(context, '🏁 تم إنهاء الرحلة وحفظ المسار (${route.length} نقطة).', isError: false);
+          MapUtils.showSnackBar(
+            context,
+            '🏁 تم إنهاء الرحلة وحفظ المسار (${route.length} نقطة).',
+            isError: false,
+          );
         } else {
-          await _tripService.updateTripStatus(tripId, TripStatus.completed, driverId: driverId);
+          await _tripService.updateTripStatus(
+            tripId,
+            TripStatus.completed,
+            driverId: driverId,
+          );
           if (!mounted) return;
-          MapUtils.showSnackBar(context, '🏁 تم إنهاء الرحلة (بدون مسار).', isError: false);
+          MapUtils.showSnackBar(
+            context,
+            '🏁 تم إنهاء الرحلة (بدون مسار).',
+            isError: false,
+          );
         }
       } else if (mounted) {
-        MapUtils.showSnackBar(context, '🏁 تم إنهاء الرحلة محلياً.', isError: false);
+        MapUtils.showSnackBar(
+          context,
+          '🏁 تم إنهاء الرحلة محلياً.',
+          isError: false,
+        );
       }
       if (mounted) {
         setState(() {
@@ -292,7 +393,13 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
     } catch (e) {
       MapUtils.log('❌ فشل حفظ المسار: $e', tag: 'TripManager');
-      if (mounted) MapUtils.showSnackBar(context, '❌ فشل حفظ بيانات الرحلة على السيرفر.', isError: true);
+      if (mounted) {
+        MapUtils.showSnackBar(
+          context,
+          '❌ فشل حفظ بيانات الرحلة على السيرفر.',
+          isError: true,
+        );
+      }
     } finally {
       if (mounted) setState(() => _isProcessingTrip = false);
     }
@@ -302,4 +409,16 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _polylineAnnotationManager = null;
     _polylineAnnotation = null;
   }
+}
+
+class AssignedRouteChoice {
+  final DriverLineAssignment assignment;
+  final PlannedRoute route;
+  final double distanceMeters;
+
+  const AssignedRouteChoice({
+    required this.assignment,
+    required this.route,
+    required this.distanceMeters,
+  });
 }
