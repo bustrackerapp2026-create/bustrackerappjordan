@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// حالة طلب/تعيين الخط للسائق.
+/// حالة طلب/تعيين المسار للسائق.
 enum DriverLineAssignmentStatus {
   pending,
   approved,
@@ -36,10 +36,14 @@ extension DriverLineAssignmentStatusX on DriverLineAssignmentStatus {
   }
 }
 
-/// تعيين خط رسمي لسائق بعد موافقة الأدمن.
+/// تعيين مسار رسمي لسائق بعد موافقة الأدمن.
+///
+/// routeId هو الهوية التشغيلية الأساسية للمسار (ذهاب/إياب)، بينما lineId
+/// يحدد الخط الأب الذي ينتمي إليه المسار.
 class DriverLineAssignment {
   final String id;
   final String driverId;
+  final String routeId;
   final String lineId;
   final DriverLineAssignmentStatus status;
   final String requestedBy;
@@ -53,6 +57,7 @@ class DriverLineAssignment {
   const DriverLineAssignment({
     required this.id,
     required this.driverId,
+    required this.routeId,
     required this.lineId,
     required this.requestedBy,
     this.status = DriverLineAssignmentStatus.pending,
@@ -69,6 +74,7 @@ class DriverLineAssignment {
   Map<String, dynamic> toMap() {
     return {
       'driverId': driverId,
+      'routeId': routeId,
       'lineId': lineId,
       'status': status.firestoreValue,
       'requestedBy': requestedBy,
@@ -92,6 +98,7 @@ class DriverLineAssignment {
     return DriverLineAssignment(
       id: id,
       driverId: data['driverId']?.toString() ?? '',
+      routeId: data['routeId']?.toString() ?? '',
       lineId: data['lineId']?.toString() ?? '',
       status: DriverLineAssignmentStatusX.fromString(
         data['status']?.toString(),
