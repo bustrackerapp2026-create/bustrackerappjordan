@@ -14,7 +14,6 @@ class AuthProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
   final LiveTrackingService _liveTracking = LiveTrackingService();
-  final TransitLineService _transitLineService = TransitLineService();
   final DriverLineAssignmentService _driverLineAssignmentService =
       DriverLineAssignmentService();
 
