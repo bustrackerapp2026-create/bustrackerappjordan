@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../models/driver_line_assignment.dart';
 import '../models/driver_route_request.dart';
 import '../models/planned_route.dart';
 
@@ -14,6 +15,9 @@ class DriverRouteRequestService {
 
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection('driverRouteRequests');
+
+  CollectionReference<Map<String, dynamic>> get _assignmentsCol =>
+      _db.collection('driverLineAssignments');
 
   Future<DriverRouteRequest?> getById(String requestId) async {
     final id = requestId.trim();
@@ -198,6 +202,9 @@ class DriverRouteRequestService {
     });
   }
 
+  /// اعتماد طلب المسار يعني أن الأدمن اختار مسارًا فعليًا تم اعتماده
+  /// من plannedRoutes. عندها يتحول الطلب إلى تعيين routeId/lineId مستقل
+  /// للسائق، بينما يبقى اعتماد حساب السائق عملية منفصلة.
   Future<void> approveRequest({
     required String requestId,
     required String adminId,
@@ -277,19 +284,72 @@ class DriverRouteRequestService {
           code: 'line-name-mismatch',
         );
       }
-      if (current.lineId?.trim().isNotEmpty == true &&
-          plannedRoute.lineId?.trim() != current.lineId!.trim()) {
+
+      final plannedLineId = plannedRoute.lineId?.trim();
+      final requestedLineId = current.lineId?.trim();
+      if (requestedLineId != null &&
+          requestedLineId.isNotEmpty &&
+          plannedLineId != requestedLineId) {
         throw const DriverRouteRequestException(
           'الخط المرتبط بالمسار لا يطابق طلب السائق.',
           code: 'line-mismatch',
         );
       }
+      if (plannedLineId == null || plannedLineId.isEmpty) {
+        throw const DriverRouteRequestException(
+          'المسار الناتج لا يحتوي على معرف خط صالح.',
+          code: 'route-line-missing',
+        );
+      }
+
+      final lineSnap =
+          await tx.get(_db.collection('transitLines').doc(plannedLineId));
+      if (!lineSnap.exists ||
+          lineSnap.data() == null ||
+          lineSnap.data()!['status']?.toString() != 'approved') {
+        throw const DriverRouteRequestException(
+          'الخط التشغيلي المرتبط بالمسار غير معتمد.',
+          code: 'line-not-approved',
+        );
+      }
+
+      final existingApproved = await _assignmentsCol
+          .where('driverId', isEqualTo: current.driverId)
+          .where(
+            'status',
+            isEqualTo: DriverLineAssignmentStatus.approved.firestoreValue,
+          )
+          .get();
+      for (final doc in existingApproved.docs) {
+        final existing = DriverLineAssignment.fromDoc(doc.id, doc.data());
+        if (existing.routeId == plannedRoute.id) {
+          throw const DriverRouteRequestException(
+            'هذا المسار معيّن للسائق بالفعل.',
+            code: 'approved-route-exists',
+          );
+        }
+      }
+
+      final assignmentRef = _assignmentsCol.doc();
+      tx.set(assignmentRef, {
+        'driverId': current.driverId,
+        'routeId': plannedRoute.id,
+        'lineId': plannedLineId,
+        'status': DriverLineAssignmentStatus.approved.firestoreValue,
+        'requestedBy': current.requestedBy,
+        'reviewedBy': reviewer,
+        'reviewedAt': FieldValue.serverTimestamp(),
+        'requestedAt': current.requestedAt == null
+            ? FieldValue.serverTimestamp()
+            : Timestamp.fromDate(current.requestedAt!),
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       tx.update(ref, {
         'status': DriverRouteRequestStatus.approved.firestoreValue,
         'routeId': plannedRoute.id,
-        if (plannedRoute.lineId?.trim().isNotEmpty == true)
-          'lineId': plannedRoute.lineId!.trim(),
+        'lineId': plannedLineId,
         'reviewedBy': reviewer,
         'reviewedAt': FieldValue.serverTimestamp(),
         'reviewNote': FieldValue.delete(),
