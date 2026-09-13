@@ -101,6 +101,7 @@ class AuthProvider extends ChangeNotifier {
     String? busNumber,
     String? route,
     String? routeId,
+    String? lineId,
     int? capacity,
   }) async {
     try {
@@ -127,28 +128,18 @@ class AuthProvider extends ChangeNotifier {
 
         await _firestoreService.saveUserData(newUser);
 
-        // عند اختيار مسار رسمي من البحث أثناء تسجيل السائق، نرسل هويتي
-        // المسار والخط معًا. routeId هو PlannedRoute.id، وهو المرجع
-        // التشغيلي الأساسي للتعيين، بينما lineId يحدد الخط الأب.
+        // عند اختيار مسار رسمي من البحث أثناء تسجيل السائق، نمرر
+        // routeId و lineId كما ظهرا معًا في سجل PlannedRoute المفهرس.
+        // routeId هو المرجع التشغيلي الأساسي للتعيين، وlineId يحدد الخط الأب.
         if (UserRoles.isDriverLike(userType) &&
             routeId != null &&
             routeId.trim().isNotEmpty &&
-            route != null &&
-            route.trim().isNotEmpty) {
-          // يُبقي TransitLineService جزء التحقق الحالي من وجود الخط المعتمد
-          // بينما أصبح التعيين نفسه مرتبطًا بالمسار المحدد وليس باسم الخط فقط.
-          final line = await _transitLineService.findByNormalizedName(route);
-          if (line == null || !line.isApproved) {
-            throw const TransitLineServiceException(
-              'تعذر ربط المسار المختار بالخط التشغيلي المعتمد.',
-              code: 'driver-line-not-found',
-            );
-          }
-
+            lineId != null &&
+            lineId.trim().isNotEmpty) {
           await _driverLineAssignmentService.requestAssignment(
             driverId: credential.user!.uid,
             routeId: routeId,
-            lineId: line.id,
+            lineId: lineId,
           );
         }
 
