@@ -35,6 +35,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscureConfirmPassword = true;
   bool _isSearchingRoutes = false;
   bool _showRouteSuggestions = false;
+  bool _routeNotPresentSelected = false;
   List<PlannedRoute> _routeSuggestions = const [];
   PlannedRoute? _selectedPlannedRoute;
 
@@ -56,7 +57,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _searchApprovedRoutes(String query) async {
-    if (!_showDriverFields) return;
+    if (!_showDriverFields || _routeNotPresentSelected) return;
     final q = query.trim();
     if (q.isEmpty) {
       if (mounted) {
@@ -93,6 +94,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     FocusScope.of(context).unfocus();
     setState(() {
       _selectedPlannedRoute = route;
+      _routeNotPresentSelected = false;
       _routeController.text = route.lineName;
       _routeSuggestions = const [];
       _showRouteSuggestions = false;
@@ -103,15 +105,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     FocusScope.of(context).unfocus();
     setState(() {
       _selectedPlannedRoute = null;
+      _routeNotPresentSelected = true;
+      _routeController.clear();
       _routeSuggestions = const [];
       _showRouteSuggestions = false;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('يمكنك كتابة مسار مقترح يدويًا الآن. تدفق «مساري غير موجود» الكامل سيُضاف في مرحلة اقتراح وتسجيل المسار.'),
-        duration: Duration(seconds: 4),
-      ),
-    );
   }
 
   Future<void> _register() async {
@@ -149,6 +147,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
+    if (_showDriverFields && _routeNotPresentSelected) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('سيتم تنفيذ «مساري غير موجود» كتدفق مستقل لإرسال طلب المسار، لذلك لن نسمح بتسجيل مسار نصي حر.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (_showDriverFields && _selectedPlannedRoute == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ يجب اختيار مسار معتمد من نتائج البحث قبل إنشاء حساب السائق.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -162,7 +180,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         userType: _selectedUserType,
         busNumber: _showDriverFields ? busNumber : null,
         route: _showDriverFields ? route : null,
-        routeId: _showDriverFields ? _selectedPlannedRoute?.id : null,
+        routeId: _showDriverFields ? _selectedPlannedRoute!.id : null,
         capacity: _showDriverFields ? _selectedCapacity : null,
       );
 
@@ -606,7 +624,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            'المسار المعتمد (اختياري الآن)',
+                            'المسار المعتمد المطلوب',
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -617,22 +635,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           TextFormField(
                             controller: _routeController,
                             textInputAction: TextInputAction.next,
+                            enabled: !_routeNotPresentSelected,
                             onChanged: (value) {
                               if (_selectedPlannedRoute != null &&
-                                  value.trim() != _selectedPlannedRoute!.lineName.trim()) {
+                                  value.trim() !=
+                                      _selectedPlannedRoute!.lineName.trim()) {
                                 setState(() => _selectedPlannedRoute = null);
                               }
                               _searchApprovedRoutes(value);
                             },
                             validator: (value) {
-                              if (_showDriverFields &&
-                                  (value == null || value.trim().isEmpty)) {
+                              if (!_showDriverFields) return null;
+                              if (_routeNotPresentSelected) return null;
+                              if (value == null || value.trim().isEmpty) {
                                 return l10n.enterRoute;
+                              }
+                              if (_selectedPlannedRoute == null) {
+                                return 'اختر مسارًا معتمدًا من نتائج البحث.';
                               }
                               return null;
                             },
                             decoration: InputDecoration(
-                              hintText: 'اكتب مثل: الجيزة',
+                              hintText: 'ابحث عن مسار معتمد',
                               prefixIcon: const Icon(
                                 Icons.search,
                                 color: AppTheme.primaryColor,
@@ -721,11 +745,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                             ),
                           ],
+                          if (_routeNotPresentSelected) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.orange.shade200),
+                              ),
+                              child: const Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(Icons.add_road, color: Colors.orange),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'تم اختيار «مساري غير موجود». لن يتم قبول مسار نصي يدوي هنا؛ سيُرسل طلب المسار كتدفق مستقل لاحقًا.',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                         const SizedBox(height: 12),
                         if (_showDriverFields)
                           Text(
-                            'يمكن للسائق لاحقًا طلب إضافة مسار جديد من خيار «مساري غير موجود».',
+                            'يجب اختيار مسار معتمد فعليًا. خيار «مساري غير موجود» سيكون طلبًا مستقلًا عن طلب اعتماد الحساب.',
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey.shade700,
