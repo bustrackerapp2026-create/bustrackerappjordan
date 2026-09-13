@@ -369,12 +369,27 @@ service cloud.firestore {
       allow read: if isAdmin()
         || (isSignedIn() && resource.data.driverId == request.auth.uid);
 
-      allow create: if isDriver()
-        && request.resource.data.driverId == request.auth.uid
-        && request.resource.data.requestedBy == request.auth.uid
-        && request.resource.data.lineId is string
-        && request.resource.data.lineId.size() > 0
-        && request.resource.data.status == 'pending';
+      allow create: if (
+          isAdmin()
+          && request.resource.data.driverId is string
+          && request.resource.data.driverId.size() > 0
+          && request.resource.data.requestedBy is string
+          && request.resource.data.requestedBy.size() > 0
+          && request.resource.data.routeId is string
+          && request.resource.data.routeId.size() > 0
+          && request.resource.data.lineId is string
+          && request.resource.data.lineId.size() > 0
+          && request.resource.data.status == 'approved'
+          && request.resource.data.reviewedBy == request.auth.uid
+        )
+        || (
+          isDriver()
+          && request.resource.data.driverId == request.auth.uid
+          && request.resource.data.requestedBy == request.auth.uid
+          && request.resource.data.lineId is string
+          && request.resource.data.lineId.size() > 0
+          && request.resource.data.status == 'pending'
+        );
 
       allow update: if isAdmin()
         || (
