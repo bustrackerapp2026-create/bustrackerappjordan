@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:jordan_bus_tracker_new/core/constants/user_roles.dart';
-import 'package:jordan_bus_tracker_new/models/driver_route_request.dart';
 import 'package:jordan_bus_tracker_new/models/planned_route.dart';
 import 'package:jordan_bus_tracker_new/models/user_model.dart';
 import 'package:jordan_bus_tracker_new/services/driver_line_assignment_service.dart';
@@ -192,7 +191,7 @@ class AuthProvider extends ChangeNotifier {
             startName: routeRequestStartName!.trim(),
             middleName: routeRequestMiddleName?.trim(),
             endName: routeRequestEndName!.trim(),
-            direction: routeRequestDirection!,
+            direction: routeRequestDirection,
           );
         }
 
