@@ -12,7 +12,6 @@ import '../../features/auth/providers/auth_provider.dart';
 import '../../services/trip_service.dart';
 import '../../services/vehicle_trip_service.dart';
 import '../../services/driver_line_assignment_service.dart';
-import '../../models/trip_model.dart';
 import '../../models/trip_status.dart';
 import '../../models/route_point.dart';
 import '../../models/planned_route.dart';
@@ -325,7 +324,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       return;
     }
 
-    final tripId = _currentTripId;
     final vehicleTripId = _currentVehicleTripId;
     setState(() => _isProcessingTrip = true);
     try {
@@ -336,48 +334,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         );
       }
 
-      final route = driverProvider.endTrip(userId: driverId);
-      if (tripId != null) {
-        if (route.length > 5000) {
-          throw Exception(
-            'عدد نقاط المسار (${route.length}) يتجاوز الحد الأقصى (5000).',
-          );
-        }
-        if (route.isNotEmpty) {
-          await _tripService.updateTripStatus(
-            tripId,
-            TripStatus.completed,
-            routePoints: route,
-            driverId: driverId,
-          );
-          if (!mounted) return;
-          await showRouteOnMap(route);
-          if (!mounted) return;
-          MapUtils.showSnackBar(
-            context,
-            '🏁 تم إنهاء الرحلة وحفظ المسار (${route.length} نقطة).',
-            isError: false,
-          );
-        } else {
-          await _tripService.updateTripStatus(
-            tripId,
-            TripStatus.completed,
-            driverId: driverId,
-          );
-          if (!mounted) return;
-          MapUtils.showSnackBar(
-            context,
-            '🏁 تم إنهاء الرحلة (بدون مسار).',
-            isError: false,
-          );
-        }
-      } else if (mounted) {
-        MapUtils.showSnackBar(
-          context,
-          '🏁 تم إنهاء الرحلة محلياً.',
-          isError: false,
-        );
-      }
+      driverProvider.endTrip(userId: driverId);
 
       if (mounted) {
         setState(() {
@@ -385,13 +342,24 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           _currentVehicleTripId = null;
           _currentOperationalRoute = null;
         });
+        if (_polylineAnnotation != null) {
+          try {
+            await _polylineAnnotationManager?.delete(_polylineAnnotation!);
+          } catch (_) {}
+          _polylineAnnotation = null;
+        }
+        MapUtils.showSnackBar(
+          context,
+          '🏁 تم إنهاء الرحلة التشغيلية.',
+          isError: false,
+        );
       }
     } catch (e) {
-      MapUtils.log('❌ فشل حفظ المسار: $e', tag: 'TripManager');
+      MapUtils.log('❌ فشل إنهاء الرحلة: $e', tag: 'TripManager');
       if (mounted) {
         MapUtils.showSnackBar(
           context,
-          '❌ فشل حفظ بيانات الرحلة على السيرفر.',
+          '❌ فشل إنهاء الرحلة على السيرفر.',
           isError: true,
         );
       }
