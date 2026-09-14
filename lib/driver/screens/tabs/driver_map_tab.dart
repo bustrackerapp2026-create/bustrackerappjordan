@@ -419,7 +419,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     String driverId,
     geo.Position currentPosition,
   ) async {
-    final resolved = await _resolveAssignedRoute(driverId, currentPosition);
+    final resolved = await resolveAssignedRoute(driverId, currentPosition);
     return resolved != null;
   }
 
