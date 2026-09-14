@@ -106,6 +106,12 @@ service cloud.firestore {
       ]);
     }
 
+    function isVerifiedDriverAssignedToRoute(routeId) {
+      return isDriver()
+        && userDoc().data.get('isVerified', false) == true
+        && userDoc().data.get('routeId', '') == routeId;
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
 
@@ -253,7 +259,7 @@ service cloud.firestore {
     match /vehicleTrips/{tripId} {
       allow read: if isSignedIn();
 
-      allow create: if isDriver()
+      allow create: if isVerifiedDriverAssignedToRoute(request.resource.data.routeId)
         && request.resource.data.driverId == request.auth.uid
         && request.resource.data.routeId is string
         && request.resource.data.routeId.size() > 0
