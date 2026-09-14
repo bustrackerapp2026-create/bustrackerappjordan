@@ -204,13 +204,40 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           userId,
           limit: 50,
         );
-        final message = assignments.isEmpty
-            ? '⚠️ لا يوجد مسار معتمد ومخصص لك. اطلب تعيين مسار من الأدمن أولاً.'
-            : assignments.length == 1
-                ? '⚠️ المسار المخصص لك غير صالح أو غير مرتبط بالخط التشغيلي المعتمد.'
-                : '⚠️ تعذر تحديد اتجاه الرحلة من موقعك الحالي. ابدأ من نقطة بداية الذهاب أو نقطة بداية الإياب.';
-        if (mounted) {
-          MapUtils.showSnackBar(context, message, isError: true);
+        if (assignments.isEmpty) {
+          if (mounted) {
+            MapUtils.showSnackBar(
+              context,
+              '⚠️ لا يوجد مسار معتمد ومخصص لك. اطلب تعيين مسار من الأدمن أولاً.',
+              isError: true,
+            );
+          }
+        } else {
+          final validAssignments = <DriverLineAssignment>[];
+          for (final assignment in assignments) {
+            final route = await _getApprovedRouteForAssignment(
+              assignment.routeId,
+              assignment.lineId,
+            );
+            if (route != null) validAssignments.add(assignment);
+          }
+
+          if (validAssignments.isEmpty) {
+            if (mounted) {
+              MapUtils.showSnackBar(
+                context,
+                '⚠️ المسار المخصص لك غير صالح أو غير مرتبط بالخط التشغيلي المعتمد.',
+                isError: true,
+              );
+            }
+          } else {
+            final message = validAssignments.length == 1
+                ? '⚠️ أنت بعيد عن نقطة بداية المسار المخصص لك. اقترب من نقطة البداية (بحد أقصى 750م) ثم ابدأ الرحلة.'
+                : '⚠️ أنت بعيد عن نقاط بداية المسارات المخصصة لك. ابدأ من نقطة بداية الذهاب أو نقطة بداية الإياب ضمن 750م.';
+            if (mounted) {
+              MapUtils.showSnackBar(context, message, isError: true);
+            }
+          }
         }
         return;
       }
