@@ -159,6 +159,14 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return best;
   }
 
+  Future<bool> isNearAssignedRouteStart(
+    String driverId,
+    geo.Position currentPosition,
+  ) async {
+    final resolved = await _resolveAssignedRoute(driverId, currentPosition);
+    return resolved != null;
+  }
+
   /// مصدر الحقيقة للمسار هو التعيين المعتمد للسائق.
   /// عند وجود ذهاب + إياب، يحدد الموقع الحالي أي تعيين يبدأ منه السائق:
   /// ذهاب = أول نقطة، إياب = آخر نقطة في PlannedRoute.
