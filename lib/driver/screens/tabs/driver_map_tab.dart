@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
@@ -21,7 +20,6 @@ import '../../../driver/providers/driver_provider.dart';
 import '../../../driver/widgets/driver_active_trip_banner.dart';
 import '../../../driver/widgets/driver_pending_request_banner.dart';
 import '../../../features/auth/providers/auth_provider.dart';
-import '../../../models/route_point.dart';
 import '../../../models/trip_model.dart';
 import '../../../models/trip_status.dart';
 import '../../../services/live_tracking_service.dart';
@@ -158,9 +156,7 @@ class _DriverMapTabState extends State<DriverMapTab>
   /// تنبيه مرة واحدة لكل طلب جديد: اهتزاز + توجيه الكاميرا لموقع الراكب.
   void _alertNewPendingIfNeeded(TripModel? next) {
     if (next == null) return;
-    // لا نكرر التنبيه لنفس الطلب
     if (next.id == _lastAlertedPendingId) return;
-    // إذا كان هناك رحلة نشطة فالبانر أصلاً لا يظهر
     if (_activeBoardTrip != null) return;
     if (!widget.isActive) return;
 
@@ -217,7 +213,6 @@ class _DriverMapTabState extends State<DriverMapTab>
     _activeSub = _tripService.getActiveDriverTrips(uid).listen(
       (list) {
         if (!mounted) return;
-        // فضّل رحلة راكب حقيقية (فيها passengerId) على رحلة يدوية فارغة
         TripModel? board;
         for (final t in list) {
           if (t.passengerId.trim().isNotEmpty) {
@@ -247,7 +242,6 @@ class _DriverMapTabState extends State<DriverMapTab>
       return;
     }
 
-    // نفس الرحلة ونفس الموضع → لا إعادة إنشاء
     if (_pickupAnnotation != null &&
         _pickupMarkerTripId == trip.id &&
         trip.pickupLat == lat &&
@@ -311,7 +305,6 @@ class _DriverMapTabState extends State<DriverMapTab>
         'تم قبول طلب ${_passengerLabel(trip)}',
       );
 
-      // حدّث محلياً فوراً قبل وصول الـ stream
       final accepted = trip.copyWith(status: TripStatus.active);
       setState(() {
         _pendingTrip = null;
@@ -419,8 +412,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     String driverId,
     geo.Position currentPosition,
   ) async {
-    final resolved = await resolveAssignedRoute(driverId, currentPosition);
-    return resolved != null;
+    return isNearAssignedRouteStart(driverId, currentPosition);
   }
 
   @override
@@ -486,7 +478,6 @@ class _DriverMapTabState extends State<DriverMapTab>
     listenToPickupPoints();
     unawaited(initRoutePlanLayer());
     unawaited(redrawDisplayLandmarks());
-    // بعد إعادة إنشاء مديري العلامات
     _pickupAnnotation = null;
     _pickupMarkerTripId = null;
     unawaited(_syncPickupMarker(_activeBoardTrip));
@@ -570,7 +561,6 @@ class _DriverMapTabState extends State<DriverMapTab>
 
     final goingOnline = !driver.isOnline;
 
-    // اتصال: بوابة الصلاحية أولاً — لا Online / driverPublic قبل الجاهزية
     if (goingOnline) {
       final ready =
           await LocationPermissionSheet.ensureDriverBackgroundAccess(context);
