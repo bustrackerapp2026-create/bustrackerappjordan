@@ -9,10 +9,8 @@ import '../map/map_core.dart';
 import '../map/map_utils.dart';
 import '../../driver/providers/driver_provider.dart';
 import '../../features/auth/providers/auth_provider.dart';
-import '../../services/trip_service.dart';
 import '../../services/vehicle_trip_service.dart';
 import '../../services/driver_line_assignment_service.dart';
-import '../../models/trip_status.dart';
 import '../../models/route_point.dart';
 import '../../models/planned_route.dart';
 import '../../models/driver_line_assignment.dart';
@@ -24,7 +22,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PlannedRoute? _currentOperationalRoute;
   PolylineAnnotationManager? _polylineAnnotationManager;
   PolylineAnnotation? _polylineAnnotation;
-  final TripService _tripService = TripService();
   final VehicleTripService _vehicleTripService = VehicleTripService();
   final DriverLineAssignmentService _driverLineAssignmentService = DriverLineAssignmentService();
 
