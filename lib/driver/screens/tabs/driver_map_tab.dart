@@ -729,6 +729,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     } else {
       await startTrip();
       if (!mounted) return;
+      if (!driver.isTripActive) return;
       try {
         await LiveTrackingService()
             .setDriverTripActive(uid: uid, isTripActive: true);
