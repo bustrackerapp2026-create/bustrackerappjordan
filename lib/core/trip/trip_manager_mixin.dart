@@ -279,16 +279,29 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       final started = driverProvider.startTrip(userId: userId);
       if (!started) {
-        MapUtils.showSnackBar(
-          context,
-          '⚠️ تم إنشاء الرحلة التشغيلية لكن تعذر تفعيل الحالة المحلية.',
-          isError: true,
-        );
-        setState(() {
-          _currentVehicleTripId = vehicleTrip.id;
-          _currentOperationalRoute = route;
-        });
-        await showRouteOnMap(route.points);
+        try {
+          await _vehicleTripService.cancelTrip(
+            tripId: vehicleTrip.id,
+            driverId: userId,
+          );
+        } catch (rollbackError, rollbackStack) {
+          MapUtils.log(
+            '❌ فشل التراجع عن الرحلة التشغيلية بعد فشل التفعيل المحلي: $rollbackError\n$rollbackStack',
+            tag: 'TripManager',
+          );
+        }
+
+        if (mounted) {
+          setState(() {
+            _currentVehicleTripId = null;
+            _currentOperationalRoute = null;
+          });
+          MapUtils.showSnackBar(
+            context,
+            '⚠️ تعذر تفعيل الرحلة محليًا، وتمت محاولة إلغاء الرحلة التشغيلية.',
+            isError: true,
+          );
+        }
         return;
       }
 
