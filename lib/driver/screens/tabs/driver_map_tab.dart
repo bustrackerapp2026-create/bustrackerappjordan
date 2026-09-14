@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:provider/provider.dart';
@@ -19,6 +21,7 @@ import '../../../driver/providers/driver_provider.dart';
 import '../../../driver/widgets/driver_active_trip_banner.dart';
 import '../../../driver/widgets/driver_pending_request_banner.dart';
 import '../../../features/auth/providers/auth_provider.dart';
+import '../../../models/route_point.dart';
 import '../../../models/trip_model.dart';
 import '../../../models/trip_status.dart';
 import '../../../services/live_tracking_service.dart';
@@ -70,6 +73,8 @@ class _DriverMapTabState extends State<DriverMapTab>
   PointAnnotation? _pickupAnnotation;
   Uint8List? _pickupPinBytes;
   String? _pickupMarkerTripId;
+
+  static const double _assignedRouteStartMaxMeters = 750.0;
 
   @override
   bool get wantKeepAlive => true;
@@ -415,6 +420,82 @@ class _DriverMapTabState extends State<DriverMapTab>
     return 'الراكب';
   }
 
+  double _distanceMeters(
+    double lat1,
+    double lng1,
+    double lat2,
+    double lng2,
+  ) {
+    const earthRadius = 6371000.0;
+    final dLat = (lat2 - lat1) * math.pi / 180.0;
+    final dLng = (lng2 - lng1) * math.pi / 180.0;
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180.0) *
+            math.cos(lat2 * math.pi / 180.0) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  Future<bool> _isNearAssignedRouteStart(
+    String driverId,
+    geo.Position currentPosition,
+  ) async {
+    final assignments = await FirebaseFirestore.instance
+        .collection('driverLineAssignments')
+        .where('driverId', isEqualTo: driverId)
+        .limit(200)
+        .get();
+
+    var hasValidAssignment = false;
+    var bestDistance = double.infinity;
+
+    for (final assignmentDoc in assignments.docs) {
+      final data = assignmentDoc.data();
+      if (data['status']?.toString().trim() != 'approved') continue;
+
+      final routeId = data['routeId']?.toString().trim() ?? '';
+      final lineId = data['lineId']?.toString().trim() ?? '';
+      if (routeId.isEmpty || lineId.isEmpty) continue;
+
+      final routeDoc = await FirebaseFirestore.instance
+          .collection('plannedRoutes')
+          .doc(routeId)
+          .get();
+      if (!routeDoc.exists || routeDoc.data() == null) continue;
+
+      final route = routeDoc.data()!;
+      if (route['status']?.toString().trim() != 'approved') continue;
+
+      final routeLineId = route['lineId']?.toString().trim() ?? '';
+      if (routeLineId.isEmpty || routeLineId != lineId) continue;
+
+      final rawPoints = route['points'];
+      if (rawPoints is! List || rawPoints.length < 2) continue;
+
+      final points = <RoutePoint>[];
+      for (final raw in rawPoints) {
+        final point = RoutePoint.parse(raw);
+        if (point != null) points.add(point);
+      }
+      if (points.length < 2) continue;
+
+      hasValidAssignment = true;
+      final direction = route['direction']?.toString().trim();
+      final start = direction == 'return' ? points.last : points.first;
+      final distance = _distanceMeters(
+        currentPosition.latitude,
+        currentPosition.longitude,
+        start.latitude,
+        start.longitude,
+      );
+      if (distance < bestDistance) bestDistance = distance;
+    }
+
+    return hasValidAssignment && bestDistance <= _assignedRouteStartMaxMeters;
+  }
+
   @override
   void didUpdateWidget(covariant DriverMapTab oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -576,6 +657,28 @@ class _DriverMapTabState extends State<DriverMapTab>
         return;
       }
       markDriverLocationGatePassed();
+
+      final position = driver.currentPosition;
+      if (position == null) {
+        MapUtils.showSnackBar(
+          context,
+          '⚠️ حدّد موقعك الحالي أولاً قبل الاتصال.',
+          isError: true,
+        );
+        return;
+      }
+
+      final nearAssignedRoute =
+          await _isNearAssignedRouteStart(uid, position);
+      if (!mounted) return;
+      if (!nearAssignedRoute) {
+        MapUtils.showSnackBar(
+          context,
+          '⚠️ لا يمكنك الاتصال وأنت بعيد عن نقطة بداية المسار المخصص لك. يجب أن تكون ضمن 750م من بداية المسار.',
+          isError: true,
+        );
+        return;
+      }
     }
 
     final ok = driver.toggleOnlineStatus(userId: uid);
