@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -68,14 +67,12 @@ class _DriverMapTabState extends State<DriverMapTab>
   bool _completingBoard = false;
   String? _dismissedTripId;
 
-  /// آخر طلب تم تنبيه السائق عليه (اهتزاز + تركيز كاميرا).
+  /// آخر طلب تم تنبيهه للسائق عليه (اهتزاز + تركيز كاميرا).
   String? _lastAlertedPendingId;
 
   PointAnnotation? _pickupAnnotation;
   Uint8List? _pickupPinBytes;
   String? _pickupMarkerTripId;
-
-  static const double _assignedRouteStartMaxMeters = 750.0;
 
   @override
   bool get wantKeepAlive => true;
@@ -418,80 +415,12 @@ class _DriverMapTabState extends State<DriverMapTab>
     return 'الراكب';
   }
 
-  double _distanceMeters(
-    double lat1,
-    double lng1,
-    double lat2,
-    double lng2,
-  ) {
-    const earthRadius = 6371000.0;
-    final dLat = (lat2 - lat1) * math.pi / 180.0;
-    final dLng = (lng2 - lng1) * math.pi / 180.0;
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(lat1 * math.pi / 180.0) *
-            math.cos(lat2 * math.pi / 180.0) *
-            math.sin(dLng / 2) *
-            math.sin(dLng / 2);
-    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    return earthRadius * c;
-  }
-
   Future<bool> _isNearAssignedRouteStart(
     String driverId,
     geo.Position currentPosition,
   ) async {
-    final assignments = await FirebaseFirestore.instance
-        .collection('driverLineAssignments')
-        .where('driverId', isEqualTo: driverId)
-        .limit(200)
-        .get();
-
-    var hasValidAssignment = false;
-    var bestDistance = double.infinity;
-
-    for (final assignmentDoc in assignments.docs) {
-      final data = assignmentDoc.data();
-      if (data['status']?.toString().trim() != 'approved') continue;
-
-      final routeId = data['routeId']?.toString().trim() ?? '';
-      final lineId = data['lineId']?.toString().trim() ?? '';
-      if (routeId.isEmpty || lineId.isEmpty) continue;
-
-      final routeDoc = await FirebaseFirestore.instance
-          .collection('plannedRoutes')
-          .doc(routeId)
-          .get();
-      if (!routeDoc.exists || routeDoc.data() == null) continue;
-
-      final route = routeDoc.data()!;
-      if (route['status']?.toString().trim() != 'approved') continue;
-
-      final routeLineId = route['lineId']?.toString().trim() ?? '';
-      if (routeLineId.isEmpty || routeLineId != lineId) continue;
-
-      final rawPoints = route['points'];
-      if (rawPoints is! List || rawPoints.length < 2) continue;
-
-      final points = <RoutePoint>[];
-      for (final raw in rawPoints) {
-        final point = RoutePoint.parse(raw);
-        if (point != null) points.add(point);
-      }
-      if (points.length < 2) continue;
-
-      hasValidAssignment = true;
-      final direction = route['direction']?.toString().trim();
-      final start = direction == 'return' ? points.last : points.first;
-      final distance = _distanceMeters(
-        currentPosition.latitude,
-        currentPosition.longitude,
-        start.latitude,
-        start.longitude,
-      );
-      if (distance < bestDistance) bestDistance = distance;
-    }
-
-    return hasValidAssignment && bestDistance <= _assignedRouteStartMaxMeters;
+    final resolved = await _resolveAssignedRoute(driverId, currentPosition);
+    return resolved != null;
   }
 
   @override
