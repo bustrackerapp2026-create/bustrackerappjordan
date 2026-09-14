@@ -153,8 +153,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     candidates.sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
 
     final best = candidates.first;
-    if (candidates.length > 1 &&
-        best.distanceMeters > _routeStartMatchMaxMeters) {
+    if (best.distanceMeters > _routeStartMatchMaxMeters) {
       return null;
     }
     return best;
