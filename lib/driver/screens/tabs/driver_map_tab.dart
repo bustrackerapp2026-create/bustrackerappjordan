@@ -333,8 +333,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     } catch (e) {
       debugPrint('accept on map: $e');
       if (!mounted) return;
-      final msg =
-          e is TripServiceException ? e.message : 'تعذر قبول الطلب';
+      final msg = e is TripServiceException ? e.message : 'تعذر قبول الطلب';
       MapUtils.showSnackBar(context, msg, isError: true);
     } finally {
       if (mounted) setState(() => _handlingRequest = false);
@@ -362,8 +361,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     } catch (e) {
       debugPrint('reject on map: $e');
       if (!mounted) return;
-      final msg =
-          e is TripServiceException ? e.message : 'تعذر رفض الطلب';
+      final msg = e is TripServiceException ? e.message : 'تعذر رفض الطلب';
       MapUtils.showSnackBar(context, msg, isError: true);
     } finally {
       if (mounted) setState(() => _handlingRequest = false);
@@ -399,8 +397,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     } catch (e) {
       debugPrint('complete board: $e');
       if (!mounted) return;
-      final msg =
-          e is TripServiceException ? e.message : 'تعذر إكمال الطلب';
+      final msg = e is TripServiceException ? e.message : 'تعذر إكمال الطلب';
       MapUtils.showSnackBar(context, msg, isError: true);
     } finally {
       if (mounted) setState(() => _completingBoard = false);
@@ -669,8 +666,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         return;
       }
 
-      final nearAssignedRoute =
-          await _isNearAssignedRouteStart(uid, position);
+      final nearAssignedRoute = await _isNearAssignedRouteStart(uid, position);
       if (!mounted) return;
       if (!nearAssignedRoute) {
         MapUtils.showSnackBar(
@@ -743,13 +739,25 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   Future<void> _onRouteChanged(String route) async {
     if (!mounted) return;
+
+    final driver = context.read<DriverProvider>();
+    if (driver.isOnline) {
+      MapUtils.showSnackBar(
+        context,
+        '⚠️ لا يمكنك تغيير الخط أثناء الاتصال. اقطع الاتصال أولاً.',
+        isError: true,
+      );
+      return;
+    }
+
     setState(() => _selectedRoute = route);
     MapUtils.lightHaptic();
     listenLinePlannedRoutes(route);
-    final driver = context.read<DriverProvider>();
+
     final auth = context.read<AuthProvider>();
     final uid = auth.userId;
     if (uid == null || !driver.isOnline || driver.boundUserId != uid) return;
+
     final pos = driver.currentPosition;
     try {
       await LiveTrackingService().setDriverOnlineStatus(
