@@ -22,6 +22,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool _isProcessingTrip = false;
   String? _currentTripId;
   String? _currentVehicleTripId;
+  PlannedRoute? _currentOperationalRoute;
   PolylineAnnotationManager? _polylineAnnotationManager;
   PolylineAnnotation? _polylineAnnotation;
   final TripService _tripService = TripService();
@@ -33,24 +34,37 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool get isProcessingTrip => _isProcessingTrip;
   String? get currentTripId => _currentTripId;
   String? get currentVehicleTripId => _currentVehicleTripId;
+  PlannedRoute? get currentOperationalRoute => _currentOperationalRoute;
 
   Future<void> showRouteOnMap(List<RoutePoint> routePoints) async {
-    if (_polylineAnnotationManager == null || routePoints.isEmpty) return;
+    if (routePoints.isEmpty) return;
+    if (mapboxMap == null) return;
+
+    if (_polylineAnnotationManager == null) {
+      _polylineAnnotationManager =
+          await mapboxMap!.annotations.createPolylineAnnotationManager();
+    }
+
     if (_polylineAnnotation != null) {
       await _polylineAnnotationManager?.delete(_polylineAnnotation!);
       _polylineAnnotation = null;
     }
-    if (_polylineAnnotationManager == null) {
-      _polylineAnnotationManager = await mapboxMap?.annotations.createPolylineAnnotationManager();
-      if (_polylineAnnotationManager == null) return;
-    }
-    final positions = routePoints.map((p) => Position(p.longitude, p.latitude)).toList();
+
+    final positions = routePoints
+        .map((p) => Position(p.longitude, p.latitude))
+        .toList();
     final options = PolylineAnnotationOptions(
       geometry: LineString(coordinates: positions),
-      lineColor: Colors.blue.toARGB32(), lineWidth: 4.0, lineOpacity: 0.8,
+      lineColor: Colors.blue.toARGB32(),
+      lineWidth: 4.0,
+      lineOpacity: 0.8,
     );
-    _polylineAnnotation = await _polylineAnnotationManager?.create(options);
-    MapUtils.log('✅ تم رسم المسار - عدد النقاط: ${routePoints.length}', tag: 'TripManager');
+    _polylineAnnotation =
+        await _polylineAnnotationManager?.create(options);
+    MapUtils.log(
+      '✅ تم رسم المسار - عدد النقاط: ${routePoints.length}',
+      tag: 'TripManager',
+    );
   }
 
   Future<PlannedRoute?> _getApprovedRouteForAssignment(
@@ -248,40 +262,25 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           '⚠️ تم إنشاء الرحلة التشغيلية لكن تعذر تفعيل الحالة المحلية.',
           isError: true,
         );
-        setState(() => _currentVehicleTripId = vehicleTrip.id);
+        setState(() {
+          _currentVehicleTripId = vehicleTrip.id;
+          _currentOperationalRoute = route;
+        });
+        await showRouteOnMap(route.points);
         return;
       }
 
-      setState(() => _currentVehicleTripId = vehicleTrip.id);
+      setState(() {
+        _currentVehicleTripId = vehicleTrip.id;
+        _currentOperationalRoute = route;
+      });
 
-      final docRef = FirebaseFirestore.instance.collection('trips').doc();
-      final tripId = docRef.id;
-      final trip = TripModel(
-        id: tripId,
-        passengerId: '',
-        driverId: userId,
-        pickupPoint: 'نقطة البداية',
-        dropoffPoint: 'الوجهة',
-        createdAt: DateTime.now(),
-        status: TripStatus.active,
-        notes: 'رحلة بدأها السائق',
-        route: resolvedLine,
-      );
-
-      try {
-        await _tripService.createTrip(trip);
-        if (mounted) setState(() => _currentTripId = tripId);
-      } catch (e) {
-        MapUtils.log(
-          '⚠️ فشل إنشاء trips القديمة بعد VehicleTrip: $e',
-          tag: 'TripManager',
-        );
-      }
+      await showRouteOnMap(route.points);
 
       if (!mounted) return;
       MapUtils.showSnackBar(
         context,
-        '🚀 تم بدء رحلة ${route.direction.labelAr} على المسار المخصص',
+        '🚀 تم بدء رحلة ${route.direction.labelAr} على المسار المخصص: ${resolvedLine.isEmpty ? '—' : resolvedLine}',
         isError: false,
       );
     } on VehicleTripServiceException catch (e) {
@@ -336,6 +335,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           driverId: driverId,
         );
       }
+
       final route = driverProvider.endTrip(userId: driverId);
       if (tripId != null) {
         if (route.length > 5000) {
@@ -378,10 +378,12 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           isError: false,
         );
       }
+
       if (mounted) {
         setState(() {
           _currentTripId = null;
           _currentVehicleTripId = null;
+          _currentOperationalRoute = null;
         });
       }
     } catch (e) {
@@ -401,6 +403,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   void disposeTripManager() {
     _polylineAnnotationManager = null;
     _polylineAnnotation = null;
+    _currentOperationalRoute = null;
   }
 }
 
