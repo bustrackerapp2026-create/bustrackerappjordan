@@ -321,9 +321,20 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       return;
     }
 
-    final vehicleTripId = _currentVehicleTripId;
     setState(() => _isProcessingTrip = true);
     try {
+      var vehicleTripId = _currentVehicleTripId;
+
+      // بعد إعادة فتح التطبيق/تسجيل الدخول قد تكون الرحلة التشغيلية
+      // مستعادة من Firestore بينما فقدت الشاشة المعرّف المحلي لها.
+      // في هذه الحالة نستعيد المعرّف الحقيقي قبل الإنهاء حتى لا يبقى
+      // VehicleTrip والقفل التشغيلي عالقين في حالة ACTIVE.
+      if (vehicleTripId == null || vehicleTripId.isEmpty) {
+        final activeVehicleTrip =
+            await _vehicleTripService.findActiveTripForDriver(driverId);
+        vehicleTripId = activeVehicleTrip?.id;
+      }
+
       if (vehicleTripId != null && vehicleTripId.isNotEmpty) {
         await _vehicleTripService.completeTrip(
           tripId: vehicleTripId,
