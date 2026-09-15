@@ -391,6 +391,8 @@ service cloud.firestore {
           isDriver()
           && request.resource.data.driverId == request.auth.uid
           && request.resource.data.requestedBy == request.auth.uid
+          && request.resource.data.routeId is string
+          && request.resource.data.routeId.size() > 0
           && request.resource.data.lineId is string
           && request.resource.data.lineId.size() > 0
           && request.resource.data.status == 'pending'
