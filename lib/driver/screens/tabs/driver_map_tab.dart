@@ -575,17 +575,30 @@ class _DriverMapTabState extends State<DriverMapTab>
       }
       markDriverLocationGatePassed();
 
-      final position = driver.currentPosition;
-      if (position == null) {
+      // GPS fix حديث عند الاتصال — لا نعتمد على موقع مخزن في DriverProvider.
+      final geo.Position position;
+      try {
+        position = await geo.Geolocator.getCurrentPosition(
+          locationSettings: const geo.LocationSettings(
+            accuracy: geo.LocationAccuracy.high,
+            timeLimit: const Duration(seconds: 8),
+          ),
+        );
+      } catch (_) {
+        if (!mounted) return;
         MapUtils.showSnackBar(
           context,
-          '⚠️ حدّد موقعك الحالي أولاً قبل الاتصال.',
+          '⚠️ تعذر الحصول على موقع GPS حديث. تأكد من تفعيل الموقع ثم حاول مرة أخرى.',
           isError: true,
         );
         return;
       }
+      if (!mounted) return;
+
+      driver.updatePosition(position, userId: uid);
 
       final nearAssignedRoute = await _isNearAssignedRouteStart(uid, position);
+
       if (!mounted) return;
       if (!nearAssignedRoute) {
         MapUtils.showSnackBar(
