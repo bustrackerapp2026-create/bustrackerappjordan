@@ -13,11 +13,6 @@ import '../../../services/driver_line_assignment_service.dart';
 import '../../../services/route_plan_service.dart';
 
 /// الشاشة المستقلة الخاصة بميزة "خط المسار المعتمد".
-///
-/// المرحلة الحالية:
-/// 1) عرض حالة التعيين الفعلية
-/// 2) البحث في المسارات المعتمدة عبر routeCatalog
-/// مع إمكانية إرسال طلب تعيين عبر requestAssignment.
 class ApprovedRouteLineScreen extends StatefulWidget {
   const ApprovedRouteLineScreen({super.key});
 
@@ -35,10 +30,14 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
 
   bool _loading = true;
   String? _error;
+
   DriverLineAssignment? _approved;
+  TransitLine? _approvedLine;
+  PlannedRoute? _approvedRoute;
+
   DriverLineAssignment? _pending;
-  TransitLine? _line;
-  PlannedRoute? _route;
+  TransitLine? _pendingLine;
+  PlannedRoute? _pendingRoute;
 
   bool _searching = false;
   String? _searchError;
@@ -76,7 +75,6 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
       });
       return;
     }
-    // بحث مباشر بعد حرفين على الأقل
     if (query.length < 2) {
       setState(() {
         _searching = false;
@@ -93,6 +91,24 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
     });
   }
 
+  Future<TransitLine?> _loadLine(String? lineId) async {
+    final id = lineId?.trim() ?? '';
+    if (id.isEmpty) return null;
+    final snap =
+        await FirebaseFirestore.instance.collection('transitLines').doc(id).get();
+    if (!snap.exists || snap.data() == null) return null;
+    return TransitLine.fromDoc(snap.id, snap.data()!);
+  }
+
+  Future<PlannedRoute?> _loadRoute(String routeId) async {
+    final id = routeId.trim();
+    if (id.isEmpty) return null;
+    final snap =
+        await FirebaseFirestore.instance.collection('plannedRoutes').doc(id).get();
+    if (!snap.exists || snap.data() == null) return null;
+    return PlannedRoute.fromDoc(snap.id, snap.data()!);
+  }
+
   Future<void> _load() async {
     final uid = context.read<AuthProvider>().userId?.trim();
     if (uid == null || uid.isEmpty) {
@@ -101,9 +117,11 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
         _loading = false;
         _error = 'تعذر تحديد حساب السائق.';
         _approved = null;
+        _approvedLine = null;
+        _approvedRoute = null;
         _pending = null;
-        _line = null;
-        _route = null;
+        _pendingLine = null;
+        _pendingRoute = null;
       });
       return;
     }
@@ -115,36 +133,32 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
 
     try {
       final approved = await _assignments.getApprovedForDriver(uid);
-      // دائمًا نجلب الطلب المعلّق حتى يظهر «قيد المراجعة» فور الإرسال.
       final pending = await _assignments.getPendingForDriver(uid);
 
-      TransitLine? line;
-      PlannedRoute? route;
-      // للعرض: الطلب المعلّق له الأولوية في تفاصيل المسار الحالي للطلب.
-      final active = pending ?? approved;
-      if (active != null) {
-        if (approved != null && pending == null) {
-          line = await _assignments.getApprovedLineForDriver(uid);
-        }
-        route = await _loadRoute(active.routeId);
-        if (line == null && active.lineId.trim().isNotEmpty) {
-          final snap = await FirebaseFirestore.instance
-              .collection('transitLines')
-              .doc(active.lineId.trim())
-              .get();
-          if (snap.exists && snap.data() != null) {
-            line = TransitLine.fromDoc(snap.id, snap.data()!);
-          }
-        }
+      TransitLine? approvedLine;
+      PlannedRoute? approvedRoute;
+      if (approved != null) {
+        approvedLine = await _assignments.getApprovedLineForDriver(uid);
+        approvedLine ??= await _loadLine(approved.lineId);
+        approvedRoute = await _loadRoute(approved.routeId);
+      }
+
+      TransitLine? pendingLine;
+      PlannedRoute? pendingRoute;
+      if (pending != null) {
+        pendingLine = await _loadLine(pending.lineId);
+        pendingRoute = await _loadRoute(pending.routeId);
       }
 
       if (!mounted) return;
       setState(() {
         _loading = false;
         _approved = approved;
+        _approvedLine = approvedLine;
+        _approvedRoute = approvedRoute;
         _pending = pending;
-        _line = line;
-        _route = route;
+        _pendingLine = pendingLine;
+        _pendingRoute = pendingRoute;
       });
     } catch (e) {
       if (!mounted) return;
@@ -152,14 +166,15 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
         _loading = false;
         _error = 'تعذر تحميل بيانات المسار المعتمد.';
         _approved = null;
+        _approvedLine = null;
+        _approvedRoute = null;
         _pending = null;
-        _line = null;
-        _route = null;
+        _pendingLine = null;
+        _pendingRoute = null;
       });
     }
   }
 
-  /// مطابقة صارمة على بداية اسم الخط أو أول كلمة فيه فقط.
   bool _strictNamePrefixMatch(PlannedRoute route, String normalizedQuery) {
     if (normalizedQuery.isEmpty) return false;
 
@@ -182,15 +197,6 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
     }
 
     return false;
-  }
-
-  Future<PlannedRoute?> _loadRoute(String routeId) async {
-    final id = routeId.trim();
-    if (id.isEmpty) return null;
-    final snap =
-        await FirebaseFirestore.instance.collection('plannedRoutes').doc(id).get();
-    if (!snap.exists || snap.data() == null) return null;
-    return PlannedRoute.fromDoc(snap.id, snap.data()!);
   }
 
   Future<void> _runSearch({bool fromTyping = false}) async {
@@ -216,8 +222,6 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
     });
 
     try {
-      // جلب من الكتالوج ثم تصفية صارمة: فقط ما يبدأ اسمه (أو أول كلمة) بما كُتب.
-      // مثال: «الكرك» لا يُظهر «الجيزة والكرك».
       final raw = await _routes.searchApprovedRoutes('', limit: 80);
       final qn = ArabicSearch.normalize(query);
       final filtered = raw.where((r) => _strictNamePrefixMatch(r, qn)).toList();
@@ -225,14 +229,12 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
       filtered.sort((a, b) {
         final an = ArabicSearch.normalize(a.lineName);
         final bn = ArabicSearch.normalize(b.lineName);
-        // الأقصر المطابق أولاً ثم أبجديًا
         final byLen = an.length.compareTo(bn.length);
         if (byLen != 0) return byLen;
         return a.lineName.compareTo(b.lineName);
       });
 
       if (!mounted) return;
-      // تجاهل نتيجة قديمة إذا تغيّر النص أثناء الانتظار
       if (_searchController.text.trim() != query) return;
 
       setState(() {
@@ -329,15 +331,14 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
       );
       if (!mounted) return;
 
-      // تحديث فوري للواجهة حتى قبل إعادة التحميل من Firestore.
       setState(() {
-        _pending = assignment.status == DriverLineAssignmentStatus.pending
-            ? assignment
-            : _pending;
-        if (assignment.status == DriverLineAssignmentStatus.approved) {
+        if (assignment.status == DriverLineAssignmentStatus.pending) {
+          _pending = assignment;
+          _pendingRoute = route;
+        } else if (assignment.status == DriverLineAssignmentStatus.approved) {
           _approved = assignment;
+          _approvedRoute = route;
         }
-        _route = route;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -396,21 +397,30 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                       _ErrorCard(message: _error!, onRetry: _load),
                       const SizedBox(height: 14),
                     ],
-                    _StatusCard(
-                      approved: _approved,
-                      pending: _pending,
+                    _AssignmentBlock(
+                      title: 'المسار المعتمد الحالي',
+                      subtitle: _approved == null
+                          ? 'لا يوجد مسار معتمد تعمل عليه حاليًا.'
+                          : 'هذا المسار الذي يُسمح لك بالعمل عليه بعد التحقق من القرب.',
+                      accent: Colors.green,
+                      icon: Icons.check_circle_rounded,
+                      assignment: _approved,
+                      line: _approvedLine,
+                      route: _approvedRoute,
+                      emptyLabel: 'لا يوجد',
                     ),
                     const SizedBox(height: 14),
-                    _RouteDetailsCard(
-                      approved: _approved,
-                      pending: _pending,
-                      line: _line,
-                      route: _route,
-                    ),
-                    const SizedBox(height: 14),
-                    _RequestStatusCard(
-                      approved: _approved,
-                      pending: _pending,
+                    _AssignmentBlock(
+                      title: 'الطلب قيد المراجعة',
+                      subtitle: _pending == null
+                          ? 'لا يوجد طلب تعيين بانتظار موافقة الأدمن.'
+                          : 'طلب مرسل للأدمن ولم يُعتمد بعد. لا يفعّل العمل على هذا المسار حتى الموافقة.',
+                      accent: Colors.orange,
+                      icon: Icons.hourglass_top_rounded,
+                      assignment: _pending,
+                      line: _pendingLine,
+                      route: _pendingRoute,
+                      emptyLabel: 'لا يوجد طلب',
                     ),
                     const SizedBox(height: 18),
                     _SearchSection(
@@ -506,7 +516,7 @@ class _IntroCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  'مكان مخصص لعرض الخط المعتمد والبحث في المسارات المعتمدة.',
+                  'فرّق بين المسار الذي تعمل عليه الآن، والطلب بانتظار موافقة الأدمن.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         height: 1.5,
                         color: scheme.onSurface.withValues(alpha: 0.68),
@@ -548,209 +558,100 @@ class _ErrorCard extends StatelessWidget {
   }
 }
 
-class _StatusCard extends StatelessWidget {
-  const _StatusCard({
-    required this.approved,
-    required this.pending,
-  });
-
-  final DriverLineAssignment? approved;
-  final DriverLineAssignment? pending;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color accent;
-    final IconData icon;
-    final String title;
-    final String subtitle;
-
-    if (pending != null) {
-      accent = Colors.orange;
-      icon = Icons.hourglass_top_rounded;
-      title = 'طلب التعيين قيد المراجعة';
-      subtitle = 'بانتظار موافقة الأدمن على المسار الذي اخترته.';
-    } else if (approved != null) {
-      accent = Colors.green;
-      icon = Icons.check_circle_rounded;
-      title = 'تم تعيين مسار معتمد';
-      subtitle = 'يمكنك العمل على هذا المسار بعد التحقق من القرب عند الاتصال.';
-    } else {
-      accent = Colors.blueGrey;
-      icon = Icons.route_outlined;
-      title = 'لا يوجد مسار معتمد';
-      subtitle = 'ابحث عن مسار معتمد بالأسفل عندما تكون جاهزًا.';
-    }
-
-    return _SectionCard(
-      title: 'الحالة الحالية',
-      icon: Icons.verified_rounded,
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.10),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: accent, size: 28),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 4),
-                Text(subtitle),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RouteDetailsCard extends StatelessWidget {
-  const _RouteDetailsCard({
-    required this.approved,
-    required this.pending,
+/// كتلة عرض منفصلة: إما المسار المعتمد الحالي أو الطلب قيد المراجعة.
+class _AssignmentBlock extends StatelessWidget {
+  const _AssignmentBlock({
+    required this.title,
+    required this.subtitle,
+    required this.accent,
+    required this.icon,
+    required this.assignment,
     required this.line,
     required this.route,
+    required this.emptyLabel,
   });
 
-  final DriverLineAssignment? approved;
-  final DriverLineAssignment? pending;
+  final String title;
+  final String subtitle;
+  final Color accent;
+  final IconData icon;
+  final DriverLineAssignment? assignment;
   final TransitLine? line;
   final PlannedRoute? route;
+  final String emptyLabel;
 
   @override
   Widget build(BuildContext context) {
-    final active = approved ?? pending;
+    final hasData = assignment != null;
     final lineName = line?.name.trim().isNotEmpty == true
         ? line!.name.trim()
         : (route?.lineName.trim().isNotEmpty == true
             ? route!.lineName.trim()
-            : 'غير محدد');
+            : emptyLabel);
     final startName = line?.startName.trim().isNotEmpty == true
         ? line!.startName.trim()
-        : 'غير محددة';
+        : '—';
     final endName = line?.endName.trim().isNotEmpty == true
         ? line!.endName.trim()
-        : 'غير محددة';
-    final direction = route?.direction.labelAr ?? 'غير محدد';
-    final approvalLabel = pending != null
-        ? 'قيد المراجعة'
-        : (approved != null ? 'معتمد' : '—');
-    final approvalColor = pending != null
-        ? Colors.orange
-        : (approved != null ? Colors.green : null);
+        : '—';
+    final direction = route?.direction.labelAr ?? '—';
 
     return _SectionCard(
-      title: 'معلومات الخط',
-      icon: Icons.alt_route_rounded,
+      title: title,
+      icon: icon,
+      iconColor: accent,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _InfoRow(
-            icon: Icons.drive_file_rename_outline_rounded,
-            label: 'اسم الخط',
-            value: lineName,
-          ),
-          const SizedBox(height: 12),
-          _InfoRow(
-            icon: Icons.trip_origin_rounded,
-            label: 'نقطة البداية',
-            value: startName,
-          ),
-          const SizedBox(height: 12),
-          _InfoRow(
-            icon: Icons.location_on_rounded,
-            label: 'نقطة النهاية',
-            value: endName,
-          ),
-          const SizedBox(height: 12),
-          _InfoRow(
-            icon: Icons.swap_horiz_rounded,
-            label: 'الاتجاه',
-            value: direction,
-          ),
-          const SizedBox(height: 12),
-          _InfoRow(
-            icon: Icons.shield_rounded,
-            label: 'حالة الاعتماد',
-            value: approvalLabel,
-            valueColor: approvalColor,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RequestStatusCard extends StatelessWidget {
-  const _RequestStatusCard({
-    required this.approved,
-    required this.pending,
-  });
-
-  final DriverLineAssignment? approved;
-  final DriverLineAssignment? pending;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    final Color boxColor;
-    final Color iconColor;
-    final String message;
-
-    if (pending != null) {
-      boxColor = Colors.orange.withValues(alpha: 0.08);
-      iconColor = Colors.orange;
-      message =
-          'طلب تعيين المسار قيد المراجعة لدى الأدمن. لن يتم تفعيل المسار قبل الموافقة.';
-    } else if (approved != null) {
-      boxColor = Colors.green.withValues(alpha: 0.08);
-      iconColor = Colors.green;
-      message =
-          'لديك مسار معتمد. طلبات التغيير لاحقًا ستظهر هنا بعد تفعيلها.';
-    } else {
-      boxColor = scheme.surfaceContainerHighest.withValues(alpha: 0.45);
-      iconColor = scheme.onSurface.withValues(alpha: 0.55);
-      message =
-          'لا يوجد طلب تعيين حالي. يمكنك البحث عن مسار معتمد بالأسفل.';
-    }
-
-    return _SectionCard(
-      title: 'حالة الطلب',
-      icon: Icons.pending_actions_rounded,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: boxColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: iconColor.withValues(alpha: 0.18)),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.info_outline_rounded, color: iconColor, size: 24),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                message,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      height: 1.55,
-                      color: scheme.onSurface.withValues(alpha: 0.76),
-                    ),
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: accent, size: 24),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        height: 1.45,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          if (hasData) ...[
+            const SizedBox(height: 14),
+            _InfoRow(
+              icon: Icons.drive_file_rename_outline_rounded,
+              label: 'اسم الخط',
+              value: lineName,
+            ),
+            const SizedBox(height: 10),
+            _InfoRow(
+              icon: Icons.trip_origin_rounded,
+              label: 'نقطة البداية',
+              value: startName,
+            ),
+            const SizedBox(height: 10),
+            _InfoRow(
+              icon: Icons.location_on_rounded,
+              label: 'نقطة النهاية',
+              value: endName,
+            ),
+            const SizedBox(height: 10),
+            _InfoRow(
+              icon: Icons.swap_horiz_rounded,
+              label: 'الاتجاه',
+              value: direction,
             ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -910,15 +811,18 @@ class _SectionCard extends StatelessWidget {
     required this.title,
     required this.icon,
     required this.child,
+    this.iconColor,
   });
 
   final String title;
   final IconData icon;
   final Widget child;
+  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final color = iconColor ?? AppTheme.primaryColor;
 
     return Card(
       elevation: 0,
@@ -936,11 +840,7 @@ class _SectionCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  icon,
-                  size: 21,
-                  color: AppTheme.primaryColor,
-                ),
+                Icon(icon, size: 21, color: color),
                 const SizedBox(width: 8),
                 Text(
                   title,
@@ -964,13 +864,11 @@ class _InfoRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
-    this.valueColor,
   });
 
   final IconData icon;
   final String label;
   final String value;
-  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
@@ -979,17 +877,13 @@ class _InfoRow extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width: 38,
-          height: 38,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
             color: AppTheme.primaryColor.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(
-            icon,
-            size: 20,
-            color: AppTheme.primaryColor,
-          ),
+          child: Icon(icon, size: 18, color: AppTheme.primaryColor),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -1005,10 +899,7 @@ class _InfoRow extends StatelessWidget {
           child: Text(
             value,
             textAlign: TextAlign.end,
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              color: valueColor,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w800),
           ),
         ),
       ],
