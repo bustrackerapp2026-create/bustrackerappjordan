@@ -17,7 +17,7 @@ import '../../../services/route_plan_service.dart';
 /// المرحلة الحالية:
 /// 1) عرض حالة التعيين الفعلية
 /// 2) البحث في المسارات المعتمدة عبر routeCatalog
-/// دون إنشاء طلب تعيين بعد.
+/// مع إمكانية إرسال طلب تعيين عبر requestAssignment.
 class ApprovedRouteLineScreen extends StatefulWidget {
   const ApprovedRouteLineScreen({super.key});
 
@@ -44,6 +44,7 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
   String? _searchError;
   List<PlannedRoute> _searchResults = const [];
   PlannedRoute? _selectedResult;
+  bool _requesting = false;
 
   @override
   void initState() {
@@ -252,16 +253,102 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
     }
   }
 
-  void _onSelectResult(PlannedRoute route) {
-    setState(() => _selectedResult = route);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'تم اختيار: ${route.lineName} (${route.direction.labelAr}). '
-          'طلب التعيين سيُربط في المرحلة التالية.',
+  Future<void> _onSelectResult(PlannedRoute route) async {
+    if (_requesting) return;
+
+    final uid = context.read<AuthProvider>().userId?.trim();
+    if (uid == null || uid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحديد حساب السائق.')),
+      );
+      return;
+    }
+
+    if (_pending != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'لديك طلب تعيين قيد المراجعة بالفعل. انتظر قرار الأدمن قبل طلب مسار آخر.',
+          ),
         ),
+      );
+      return;
+    }
+
+    if (_approved != null && _approved!.routeId.trim() == route.id.trim()) {
+      setState(() => _selectedResult = route);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('هذا المسار معيّن لك بالفعل.')),
+      );
+      return;
+    }
+
+    final lineId = route.lineId?.trim() ?? '';
+    if (lineId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'هذا المسار غير مرتبط بخط معتمد مكتمل، ولا يمكن طلب تعيينه حاليًا.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _selectedResult = route);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تأكيد طلب التعيين'),
+        content: Text(
+          'هل تريد طلب تعيين المسار:\n'
+          '«${route.lineName}» (${route.direction.labelAr})؟\n\n'
+          'سيُرسل الطلب للأدمن للموافقة.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('إرسال الطلب'),
+          ),
+        ],
       ),
     );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _requesting = true);
+    try {
+      await _assignments.requestAssignment(
+        driverId: uid,
+        routeId: route.id,
+        lineId: lineId,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'تم إرسال طلب تعيين «${route.lineName}» (${route.direction.labelAr}).',
+          ),
+        ),
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString().trim().isEmpty
+          ? 'تعذر إرسال طلب التعيين.'
+          : e.toString();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg)),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _requesting = false);
+      }
+    }
   }
 
   @override
@@ -339,6 +426,7 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                           child: _SearchResultTile(
                             route: route,
                             selected: selected,
+                            enabled: !_requesting,
                             onTap: () => _onSelectResult(route),
                           ),
                         );
@@ -727,10 +815,12 @@ class _SearchResultTile extends StatelessWidget {
     required this.route,
     required this.selected,
     required this.onTap,
+    this.enabled = true,
   });
 
   final PlannedRoute route;
   final bool selected;
+  final bool enabled;
   final VoidCallback onTap;
 
   @override
@@ -746,7 +836,7 @@ class _SearchResultTile extends StatelessWidget {
           : scheme.surface,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.all(14),
