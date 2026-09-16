@@ -8,11 +8,14 @@ import '../../../models/driver_line_assignment.dart';
 import '../../../models/planned_route.dart';
 import '../../../models/transit_line.dart';
 import '../../../services/driver_line_assignment_service.dart';
+import '../../../services/route_plan_service.dart';
 
 /// الشاشة المستقلة الخاصة بميزة "خط المسار المعتمد".
 ///
-/// هذه المرحلة تربط واجهة العرض ببيانات التعيين الفعلية فقط،
-/// دون فتح البحث أو إنشاء طلبات جديدة.
+/// المرحلة الحالية:
+/// 1) عرض حالة التعيين الفعلية
+/// 2) البحث في المسارات المعتمدة عبر routeCatalog
+/// دون إنشاء طلب تعيين بعد.
 class ApprovedRouteLineScreen extends StatefulWidget {
   const ApprovedRouteLineScreen({super.key});
 
@@ -24,6 +27,8 @@ class ApprovedRouteLineScreen extends StatefulWidget {
 class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
   final DriverLineAssignmentService _assignments =
       DriverLineAssignmentService();
+  final RoutePlanService _routes = RoutePlanService();
+  final TextEditingController _searchController = TextEditingController();
 
   bool _loading = true;
   String? _error;
@@ -32,10 +37,21 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
   TransitLine? _line;
   PlannedRoute? _route;
 
+  bool _searching = false;
+  String? _searchError;
+  List<PlannedRoute> _searchResults = const [];
+  PlannedRoute? _selectedResult;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -113,6 +129,50 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
     return PlannedRoute.fromDoc(snap.id, snap.data()!);
   }
 
+  Future<void> _runSearch() async {
+    final query = _searchController.text.trim();
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      _searching = true;
+      _searchError = null;
+      _selectedResult = null;
+    });
+
+    try {
+      final results = await _routes.searchApprovedRoutes(query, limit: 40);
+      if (!mounted) return;
+      setState(() {
+        _searching = false;
+        _searchResults = results;
+        if (results.isEmpty) {
+          _searchError = query.isEmpty
+              ? 'لا توجد مسارات معتمدة متاحة حاليًا.'
+              : 'لا توجد نتائج مطابقة لبحثك.';
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _searching = false;
+        _searchResults = const [];
+        _searchError = 'تعذر البحث في المسارات المعتمدة.';
+      });
+    }
+  }
+
+  void _onSelectResult(PlannedRoute route) {
+    setState(() => _selectedResult = route);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'تم اختيار: ${route.lineName} (${route.direction.labelAr}). '
+          'طلب التعيين سيُربط في المرحلة التالية.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -160,34 +220,39 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                       approved: _approved,
                       pending: _pending,
                     ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'البحث عن الخطوط المعتمدة سيتم ربطه في المرحلة التالية.',
-                              ),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.search_rounded),
-                        label: const Text(
-                          'البحث عن خط معتمد',
-                          style: TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(54),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                    const SizedBox(height: 18),
+                    _SearchSection(
+                      controller: _searchController,
+                      searching: _searching,
+                      onSearch: _runSearch,
+                    ),
+                    if (_searchError != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _searchError!,
+                        style: TextStyle(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.7),
                         ),
                       ),
-                    ),
+                    ],
+                    if (_searchResults.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      ..._searchResults.map((route) {
+                        final selected = _selectedResult?.id == route.id &&
+                            _selectedResult?.direction == route.direction;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _SearchResultTile(
+                            route: route,
+                            selected: selected,
+                            onTap: () => _onSelectResult(route),
+                          ),
+                        );
+                      }),
+                    ],
                   ],
                 ),
               ),
@@ -248,7 +313,7 @@ class _IntroCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  'مكان مخصص لعرض الخط المعتمد ومتابعة طلب تعيين المسار للسائق.',
+                  'مكان مخصص لعرض الخط المعتمد والبحث في المسارات المعتمدة.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         height: 1.5,
                         color: scheme.onSurface.withValues(alpha: 0.68),
@@ -320,7 +385,7 @@ class _StatusCard extends StatelessWidget {
       accent = Colors.blueGrey;
       icon = Icons.route_outlined;
       title = 'لا يوجد مسار معتمد';
-      subtitle = 'اختر مسارًا معتمدًا من البحث عندما يصبح متاحًا في المرحلة التالية.';
+      subtitle = 'ابحث عن مسار معتمد بالأسفل عندما تكون جاهزًا.';
     }
 
     return _SectionCard(
@@ -466,7 +531,7 @@ class _RequestStatusCard extends StatelessWidget {
       boxColor = scheme.surfaceContainerHighest.withValues(alpha: 0.45);
       iconColor = scheme.onSurface.withValues(alpha: 0.55);
       message =
-          'لا يوجد طلب تعيين حالي. البحث وطلب مسار معتمد سيُربطان في المرحلة التالية.';
+          'لا يوجد طلب تعيين حالي. يمكنك البحث عن مسار معتمد بالأسفل.';
     }
 
     return _SectionCard(
@@ -494,6 +559,153 @@ class _RequestStatusCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchSection extends StatelessWidget {
+  const _SearchSection({
+    required this.controller,
+    required this.searching,
+    required this.onSearch,
+  });
+
+  final TextEditingController controller;
+  final bool searching;
+  final VoidCallback onSearch;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      title: 'البحث عن خط معتمد',
+      icon: Icons.search_rounded,
+      child: Column(
+        children: [
+          TextField(
+            controller: controller,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => onSearch(),
+            decoration: InputDecoration(
+              hintText: 'مثال: الزرقاء، عمان، جبل الحسين…',
+              prefixIcon: const Icon(Icons.route_rounded),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: searching ? null : onSearch,
+              icon: searching
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.search_rounded),
+              label: Text(
+                searching ? 'جاري البحث…' : 'بحث',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchResultTile extends StatelessWidget {
+  const _SearchResultTile({
+    required this.route,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final PlannedRoute route;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final borderColor = selected
+        ? AppTheme.primaryColor
+        : scheme.outline.withValues(alpha: 0.14);
+
+    return Material(
+      color: selected
+          ? AppTheme.primaryColor.withValues(alpha: 0.08)
+          : scheme.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor, width: selected ? 1.6 : 1),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.alt_route_rounded,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      route.lineName,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'الاتجاه: ${route.direction.labelAr}',
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.65),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                selected
+                    ? Icons.check_circle_rounded
+                    : Icons.chevron_left_rounded,
+                color: selected
+                    ? AppTheme.primaryColor
+                    : scheme.onSurface.withValues(alpha: 0.35),
+              ),
+            ],
+          ),
         ),
       ),
     );
