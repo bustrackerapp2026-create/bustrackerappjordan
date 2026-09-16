@@ -115,15 +115,15 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
 
     try {
       final approved = await _assignments.getApprovedForDriver(uid);
-      final pending = approved == null
-          ? await _assignments.getPendingForDriver(uid)
-          : null;
+      // دائمًا نجلب الطلب المعلّق حتى يظهر «قيد المراجعة» فور الإرسال.
+      final pending = await _assignments.getPendingForDriver(uid);
 
       TransitLine? line;
       PlannedRoute? route;
-      final active = approved ?? pending;
+      // للعرض: الطلب المعلّق له الأولوية في تفاصيل المسار الحالي للطلب.
+      final active = pending ?? approved;
       if (active != null) {
-        if (approved != null) {
+        if (approved != null && pending == null) {
           line = await _assignments.getApprovedLineForDriver(uid);
         }
         route = await _loadRoute(active.routeId);
@@ -322,16 +322,30 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
 
     setState(() => _requesting = true);
     try {
-      await _assignments.requestAssignment(
+      final assignment = await _assignments.requestAssignment(
         driverId: uid,
         routeId: route.id,
         lineId: lineId,
       );
       if (!mounted) return;
+
+      // تحديث فوري للواجهة حتى قبل إعادة التحميل من Firestore.
+      setState(() {
+        _pending = assignment.status == DriverLineAssignmentStatus.pending
+            ? assignment
+            : _pending;
+        if (assignment.status == DriverLineAssignmentStatus.approved) {
+          _approved = assignment;
+        }
+        _route = route;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'تم إرسال طلب تعيين «${route.lineName}» (${route.direction.labelAr}).',
+            assignment.status == DriverLineAssignmentStatus.pending
+                ? 'تم إرسال طلب تعيين «${route.lineName}» (${route.direction.labelAr}) وهو قيد المراجعة.'
+                : 'تم تسجيل المسار «${route.lineName}» (${route.direction.labelAr}).',
           ),
         ),
       );
@@ -550,16 +564,16 @@ class _StatusCard extends StatelessWidget {
     final String title;
     final String subtitle;
 
-    if (approved != null) {
-      accent = Colors.green;
-      icon = Icons.check_circle_rounded;
-      title = 'تم تعيين مسار معتمد';
-      subtitle = 'يمكنك العمل على هذا المسار بعد التحقق من القرب عند الاتصال.';
-    } else if (pending != null) {
+    if (pending != null) {
       accent = Colors.orange;
       icon = Icons.hourglass_top_rounded;
       title = 'طلب التعيين قيد المراجعة';
       subtitle = 'بانتظار موافقة الأدمن على المسار الذي اخترته.';
+    } else if (approved != null) {
+      accent = Colors.green;
+      icon = Icons.check_circle_rounded;
+      title = 'تم تعيين مسار معتمد';
+      subtitle = 'يمكنك العمل على هذا المسار بعد التحقق من القرب عند الاتصال.';
     } else {
       accent = Colors.blueGrey;
       icon = Icons.route_outlined;
@@ -629,14 +643,12 @@ class _RouteDetailsCard extends StatelessWidget {
         ? line!.endName.trim()
         : 'غير محددة';
     final direction = route?.direction.labelAr ?? 'غير محدد';
-    final approvalLabel = active == null
-        ? '—'
-        : (approved != null
-            ? 'معتمد'
-            : (pending != null ? 'قيد المراجعة' : '—'));
-    final approvalColor = approved != null
-        ? Colors.green
-        : (pending != null ? Colors.orange : null);
+    final approvalLabel = pending != null
+        ? 'قيد المراجعة'
+        : (approved != null ? 'معتمد' : '—');
+    final approvalColor = pending != null
+        ? Colors.orange
+        : (approved != null ? Colors.green : null);
 
     return _SectionCard(
       title: 'معلومات الخط',
@@ -696,16 +708,16 @@ class _RequestStatusCard extends StatelessWidget {
     final Color iconColor;
     final String message;
 
-    if (approved != null) {
-      boxColor = Colors.green.withValues(alpha: 0.08);
-      iconColor = Colors.green;
-      message =
-          'لديك مسار معتمد. طلبات التغيير لاحقًا ستظهر هنا بعد تفعيلها.';
-    } else if (pending != null) {
+    if (pending != null) {
       boxColor = Colors.orange.withValues(alpha: 0.08);
       iconColor = Colors.orange;
       message =
           'طلب تعيين المسار قيد المراجعة لدى الأدمن. لن يتم تفعيل المسار قبل الموافقة.';
+    } else if (approved != null) {
+      boxColor = Colors.green.withValues(alpha: 0.08);
+      iconColor = Colors.green;
+      message =
+          'لديك مسار معتمد. طلبات التغيير لاحقًا ستظهر هنا بعد تفعيلها.';
     } else {
       boxColor = scheme.surfaceContainerHighest.withValues(alpha: 0.45);
       iconColor = scheme.onSurface.withValues(alpha: 0.55);
