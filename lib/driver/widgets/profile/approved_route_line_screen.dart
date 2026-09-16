@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/arabic_search.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../models/driver_line_assignment.dart';
 import '../../../models/planned_route.dart';
@@ -29,6 +31,7 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
       DriverLineAssignmentService();
   final RoutePlanService _routes = RoutePlanService();
   final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
 
   bool _loading = true;
   String? _error;
@@ -45,13 +48,48 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(_onSearchTextChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.removeListener(_onSearchTextChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchTextChanged() {
+    _searchDebounce?.cancel();
+    final query = _searchController.text.trim();
+    if (query.isEmpty) {
+      if (_searchResults.isEmpty && _searchError == null && !_searching) {
+        return;
+      }
+      setState(() {
+        _searching = false;
+        _searchError = null;
+        _searchResults = const [];
+        _selectedResult = null;
+      });
+      return;
+    }
+    // بحث مباشر بعد حرفين على الأقل
+    if (query.length < 2) {
+      setState(() {
+        _searching = false;
+        _searchError = null;
+        _searchResults = const [];
+        _selectedResult = null;
+      });
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 280), () {
+      if (!mounted) return;
+      if (_searchController.text.trim() != query) return;
+      unawaited(_runSearch(fromTyping: true));
+    });
   }
 
   Future<void> _load() async {
@@ -129,30 +167,80 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
     return PlannedRoute.fromDoc(snap.id, snap.data()!);
   }
 
-  Future<void> _runSearch() async {
+  Future<void> _runSearch({bool fromTyping = false}) async {
     final query = _searchController.text.trim();
-    FocusScope.of(context).unfocus();
+    if (!fromTyping) {
+      FocusScope.of(context).unfocus();
+    }
+
+    if (query.isEmpty) {
+      setState(() {
+        _searching = false;
+        _searchError = null;
+        _searchResults = const [];
+        _selectedResult = null;
+      });
+      return;
+    }
 
     setState(() {
       _searching = true;
       _searchError = null;
-      _selectedResult = null;
+      if (!fromTyping) _selectedResult = null;
     });
 
     try {
-      final results = await _routes.searchApprovedRoutes(query, limit: 40);
+      // جلب مرشحين من الكتالوج ثم ترتيبهم حسب قوة التطابق.
+      final raw = await _routes.searchApprovedRoutes(query, limit: 80);
+      final ranked = ArabicSearch.rankByScore(
+        query: query,
+        items: raw,
+        lineNameOf: (r) => r.lineName,
+        searchKeysOf: (r) => r.searchKeys,
+        aliasesOf: (r) => r.aliases,
+      );
+
+      // تفضيل ما يبدأ بنفس الأحرف المكتوبة (مثل: الك → الكرك).
+      final qn = ArabicSearch.normalize(query);
+      ranked.sort((a, b) {
+        final an = ArabicSearch.normalize(a.lineName);
+        final bn = ArabicSearch.normalize(b.lineName);
+        final aPrefix = an.startsWith(qn) ||
+            ArabicSearch.tokens(a.lineName).any((t) => t.startsWith(qn));
+        final bPrefix = bn.startsWith(qn) ||
+            ArabicSearch.tokens(b.lineName).any((t) => t.startsWith(qn));
+        if (aPrefix != bPrefix) return aPrefix ? -1 : 1;
+        final as_ = ArabicSearch.score(
+          query: query,
+          lineName: a.lineName,
+          searchKeys: a.searchKeys,
+          aliases: a.aliases,
+        );
+        final bs_ = ArabicSearch.score(
+          query: query,
+          lineName: b.lineName,
+          searchKeys: b.searchKeys,
+          aliases: b.aliases,
+        );
+        final byScore = bs_.compareTo(as_);
+        if (byScore != 0) return byScore;
+        return a.lineName.compareTo(b.lineName);
+      });
+
       if (!mounted) return;
+      // تجاهل نتيجة قديمة إذا تغيّر النص أثناء الانتظار
+      if (_searchController.text.trim() != query) return;
+
       setState(() {
         _searching = false;
-        _searchResults = results;
-        if (results.isEmpty) {
-          _searchError = query.isEmpty
-              ? 'لا توجد مسارات معتمدة متاحة حاليًا.'
-              : 'لا توجد نتائج مطابقة لبحثك.';
+        _searchResults = ranked.take(40).toList();
+        if (ranked.isEmpty) {
+          _searchError = 'لا توجد نتائج مطابقة لبحثك.';
         }
       });
     } catch (e) {
       if (!mounted) return;
+      if (_searchController.text.trim() != query) return;
       setState(() {
         _searching = false;
         _searchResults = const [];
@@ -224,7 +312,7 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                     _SearchSection(
                       controller: _searchController,
                       searching: _searching,
-                      onSearch: _runSearch,
+                      onSearch: () => _runSearch(fromTyping: false),
                     ),
                     if (_searchError != null) ...[
                       const SizedBox(height: 12),
