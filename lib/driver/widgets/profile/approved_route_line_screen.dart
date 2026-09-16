@@ -389,9 +389,12 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                 onRefresh: _load,
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
                   children: [
-                    const _IntroCard(),
+                    _StatusSummary(
+                      hasApproved: _approved != null,
+                      hasPending: _pending != null,
+                    ),
                     const SizedBox(height: 14),
                     if (_error != null) ...[
                       _ErrorCard(message: _error!, onRetry: _load),
@@ -399,28 +402,24 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                     ],
                     _AssignmentBlock(
                       title: 'المسار المعتمد الحالي',
-                      subtitle: _approved == null
-                          ? 'لا يوجد مسار معتمد تعمل عليه حاليًا.'
-                          : 'هذا المسار الذي يُسمح لك بالعمل عليه بعد التحقق من القرب.',
-                      accent: Colors.green,
+                      badge: 'نشط',
+                      emptyText: 'لا يوجد مسار معتمد للعمل عليه.',
+                      accent: const Color(0xFF2E7D32),
                       icon: Icons.check_circle_rounded,
                       assignment: _approved,
                       line: _approvedLine,
                       route: _approvedRoute,
-                      emptyLabel: 'لا يوجد',
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     _AssignmentBlock(
                       title: 'الطلب قيد المراجعة',
-                      subtitle: _pending == null
-                          ? 'لا يوجد طلب تعيين بانتظار موافقة الأدمن.'
-                          : 'طلب مرسل للأدمن ولم يُعتمد بعد. لا يفعّل العمل على هذا المسار حتى الموافقة.',
-                      accent: Colors.orange,
+                      badge: 'بانتظار الأدمن',
+                      emptyText: 'لا يوجد طلب بانتظار الموافقة.',
+                      accent: const Color(0xFFEF6C00),
                       icon: Icons.hourglass_top_rounded,
                       assignment: _pending,
                       line: _pendingLine,
                       route: _pendingRoute,
-                      emptyLabel: 'لا يوجد طلب',
                     ),
                     const SizedBox(height: 18),
                     _SearchSection(
@@ -442,6 +441,13 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                     ],
                     if (_searchResults.isNotEmpty) ...[
                       const SizedBox(height: 12),
+                      Text(
+                        'النتائج (${_searchResults.length})',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
                       ..._searchResults.map((route) {
                         final selected = _selectedResult?.id == route.id &&
                             _selectedResult?.direction == route.direction;
@@ -464,65 +470,71 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
   }
 }
 
-class _IntroCard extends StatelessWidget {
-  const _IntroCard();
+class _StatusSummary extends StatelessWidget {
+  const _StatusSummary({
+    required this.hasApproved,
+    required this.hasPending,
+  });
+
+  final bool hasApproved;
+  final bool hasPending;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _Chip(
+          label: hasApproved ? 'مسار نشط' : 'بلا مسار نشط',
+          color: hasApproved ? const Color(0xFF2E7D32) : Colors.blueGrey,
+          icon: hasApproved
+              ? Icons.check_circle_rounded
+              : Icons.radio_button_unchecked,
+        ),
+        _Chip(
+          label: hasPending ? 'طلب معلّق' : 'بلا طلب معلّق',
+          color: hasPending ? const Color(0xFFEF6C00) : Colors.blueGrey,
+          icon: hasPending
+              ? Icons.hourglass_top_rounded
+              : Icons.radio_button_unchecked,
+        ),
+      ],
+    );
+  }
+}
 
+class _Chip extends StatelessWidget {
+  const _Chip({
+    required this.label,
+    required this.color,
+    required this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: AppTheme.primaryColor.withValues(alpha: 0.12),
-        ),
-        gradient: LinearGradient(
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-          colors: [
-            AppTheme.primaryColor.withValues(alpha: 0.11),
-            scheme.surface,
-          ],
-        ),
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.route_rounded,
-              color: AppTheme.primaryColor,
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'خط المسار المعتمد',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  'فرّق بين المسار الذي تعمل عليه الآن، والطلب بانتظار موافقة الأدمن.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        height: 1.5,
-                        color: scheme.onSurface.withValues(alpha: 0.68),
-                      ),
-                ),
-              ],
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
             ),
           ),
         ],
@@ -558,36 +570,36 @@ class _ErrorCard extends StatelessWidget {
   }
 }
 
-/// كتلة عرض منفصلة: إما المسار المعتمد الحالي أو الطلب قيد المراجعة.
 class _AssignmentBlock extends StatelessWidget {
   const _AssignmentBlock({
     required this.title,
-    required this.subtitle,
+    required this.badge,
+    required this.emptyText,
     required this.accent,
     required this.icon,
     required this.assignment,
     required this.line,
     required this.route,
-    required this.emptyLabel,
   });
 
   final String title;
-  final String subtitle;
+  final String badge;
+  final String emptyText;
   final Color accent;
   final IconData icon;
   final DriverLineAssignment? assignment;
   final TransitLine? line;
   final PlannedRoute? route;
-  final String emptyLabel;
 
   @override
   Widget build(BuildContext context) {
     final hasData = assignment != null;
+    final scheme = Theme.of(context).colorScheme;
     final lineName = line?.name.trim().isNotEmpty == true
         ? line!.name.trim()
         : (route?.lineName.trim().isNotEmpty == true
             ? route!.lineName.trim()
-            : emptyLabel);
+            : '—');
     final startName = line?.startName.trim().isNotEmpty == true
         ? line!.startName.trim()
         : '—';
@@ -596,61 +608,111 @@ class _AssignmentBlock extends StatelessWidget {
         : '—';
     final direction = route?.direction.labelAr ?? '—';
 
-    return _SectionCard(
-      title: title,
-      icon: icon,
-      iconColor: accent,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: accent, size: 24),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        height: 1.45,
-                      ),
-                ),
-              ),
-            ],
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withValues(alpha: 0.22)),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
-          if (hasData) ...[
-            const SizedBox(height: 14),
-            _InfoRow(
-              icon: Icons.drive_file_rename_outline_rounded,
-              label: 'اسم الخط',
-              value: lineName,
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.08),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
             ),
-            const SizedBox(height: 10),
-            _InfoRow(
-              icon: Icons.trip_origin_rounded,
-              label: 'نقطة البداية',
-              value: startName,
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: accent, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+                if (hasData)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: accent,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      badge,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(height: 10),
-            _InfoRow(
-              icon: Icons.location_on_rounded,
-              label: 'نقطة النهاية',
-              value: endName,
-            ),
-            const SizedBox(height: 10),
-            _InfoRow(
-              icon: Icons.swap_horiz_rounded,
-              label: 'الاتجاه',
-              value: direction,
-            ),
-          ],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: hasData
+                ? Column(
+                    children: [
+                      _InfoRow(
+                        icon: Icons.drive_file_rename_outline_rounded,
+                        label: 'اسم الخط',
+                        value: lineName,
+                      ),
+                      const SizedBox(height: 10),
+                      _InfoRow(
+                        icon: Icons.trip_origin_rounded,
+                        label: 'البداية',
+                        value: startName,
+                      ),
+                      const SizedBox(height: 10),
+                      _InfoRow(
+                        icon: Icons.location_on_rounded,
+                        label: 'النهاية',
+                        value: endName,
+                      ),
+                      const SizedBox(height: 10),
+                      _InfoRow(
+                        icon: Icons.swap_horiz_rounded,
+                        label: 'الاتجاه',
+                        value: direction,
+                      ),
+                    ],
+                  )
+                : Text(
+                    emptyText,
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: 0.62),
+                      height: 1.45,
+                    ),
+                  ),
+          ),
         ],
       ),
     );
@@ -680,7 +742,7 @@ class _SearchSection extends StatelessWidget {
             textInputAction: TextInputAction.search,
             onSubmitted: (_) => onSearch(),
             decoration: InputDecoration(
-              hintText: 'مثال: الزرقاء، عمان، جبل الحسين…',
+              hintText: 'اكتب اسم الخط…',
               prefixIcon: const Icon(Icons.route_rounded),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
@@ -710,7 +772,7 @@ class _SearchSection extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,
                 foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(50),
+                minimumSize: const Size.fromHeight(48),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -741,11 +803,11 @@ class _SearchResultTile extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final borderColor = selected
         ? AppTheme.primaryColor
-        : scheme.outline.withValues(alpha: 0.14);
+        : scheme.outline.withValues(alpha: 0.12);
 
     return Material(
       color: selected
-          ? AppTheme.primaryColor.withValues(alpha: 0.08)
+          ? AppTheme.primaryColor.withValues(alpha: 0.07)
           : scheme.surface,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
@@ -780,11 +842,24 @@ class _SearchResultTile extends StatelessWidget {
                       route.lineName,
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'الاتجاه: ${route.direction.labelAr}',
-                      style: TextStyle(
-                        color: scheme.onSurface.withValues(alpha: 0.65),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest
+                            .withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        route.direction.labelAr,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurface.withValues(alpha: 0.72),
+                        ),
                       ),
                     ),
                   ],
@@ -811,18 +886,15 @@ class _SectionCard extends StatelessWidget {
     required this.title,
     required this.icon,
     required this.child,
-    this.iconColor,
   });
 
   final String title;
   final IconData icon;
   final Widget child;
-  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = iconColor ?? AppTheme.primaryColor;
 
     return Card(
       elevation: 0,
@@ -834,13 +906,13 @@ class _SectionCard extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(icon, size: 21, color: color),
+                Icon(icon, size: 20, color: AppTheme.primaryColor),
                 const SizedBox(width: 8),
                 Text(
                   title,
@@ -850,7 +922,7 @@ class _SectionCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 15),
+            const SizedBox(height: 14),
             child,
           ],
         ),
@@ -876,30 +948,22 @@ class _InfoRow extends StatelessWidget {
 
     return Row(
       children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: AppTheme.primaryColor.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, size: 18, color: AppTheme.primaryColor),
-        ),
-        const SizedBox(width: 12),
+        Icon(icon, size: 18, color: AppTheme.primaryColor.withValues(alpha: 0.85)),
+        const SizedBox(width: 10),
         Expanded(
           child: Text(
             label,
             style: TextStyle(
-              color: scheme.onSurface.withValues(alpha: 0.65),
+              color: scheme.onSurface.withValues(alpha: 0.62),
+              fontSize: 13,
             ),
           ),
         ),
-        const SizedBox(width: 12),
         Flexible(
           child: Text(
             value,
             textAlign: TextAlign.end,
-            style: const TextStyle(fontWeight: FontWeight.w800),
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
           ),
         ),
       ],
