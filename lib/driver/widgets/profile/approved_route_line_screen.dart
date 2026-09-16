@@ -158,6 +158,31 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
     }
   }
 
+  /// مطابقة صارمة على بداية اسم الخط أو أول كلمة فيه فقط.
+  bool _strictNamePrefixMatch(PlannedRoute route, String normalizedQuery) {
+    if (normalizedQuery.isEmpty) return false;
+
+    final name = ArabicSearch.normalize(route.lineName);
+    if (name.startsWith(normalizedQuery)) return true;
+
+    final nameTokens = ArabicSearch.tokens(route.lineName);
+    if (nameTokens.isNotEmpty && nameTokens.first.startsWith(normalizedQuery)) {
+      return true;
+    }
+
+    for (final alias in route.aliases) {
+      final an = ArabicSearch.normalize(alias);
+      if (an.startsWith(normalizedQuery)) return true;
+      final aliasTokens = ArabicSearch.tokens(alias);
+      if (aliasTokens.isNotEmpty &&
+          aliasTokens.first.startsWith(normalizedQuery)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   Future<PlannedRoute?> _loadRoute(String routeId) async {
     final id = routeId.trim();
     if (id.isEmpty) return null;
@@ -190,40 +215,18 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
     });
 
     try {
-      // جلب مرشحين من الكتالوج ثم ترتيبهم حسب قوة التطابق.
-      final raw = await _routes.searchApprovedRoutes(query, limit: 80);
-      final ranked = ArabicSearch.rankByScore(
-        query: query,
-        items: raw,
-        lineNameOf: (r) => r.lineName,
-        searchKeysOf: (r) => r.searchKeys,
-        aliasesOf: (r) => r.aliases,
-      );
-
-      // تفضيل ما يبدأ بنفس الأحرف المكتوبة (مثل: الك → الكرك).
+      // جلب من الكتالوج ثم تصفية صارمة: فقط ما يبدأ اسمه (أو أول كلمة) بما كُتب.
+      // مثال: «الكرك» لا يُظهر «الجيزة والكرك».
+      final raw = await _routes.searchApprovedRoutes('', limit: 80);
       final qn = ArabicSearch.normalize(query);
-      ranked.sort((a, b) {
+      final filtered = raw.where((r) => _strictNamePrefixMatch(r, qn)).toList();
+
+      filtered.sort((a, b) {
         final an = ArabicSearch.normalize(a.lineName);
         final bn = ArabicSearch.normalize(b.lineName);
-        final aPrefix = an.startsWith(qn) ||
-            ArabicSearch.tokens(a.lineName).any((t) => t.startsWith(qn));
-        final bPrefix = bn.startsWith(qn) ||
-            ArabicSearch.tokens(b.lineName).any((t) => t.startsWith(qn));
-        if (aPrefix != bPrefix) return aPrefix ? -1 : 1;
-        final as_ = ArabicSearch.score(
-          query: query,
-          lineName: a.lineName,
-          searchKeys: a.searchKeys,
-          aliases: a.aliases,
-        );
-        final bs_ = ArabicSearch.score(
-          query: query,
-          lineName: b.lineName,
-          searchKeys: b.searchKeys,
-          aliases: b.aliases,
-        );
-        final byScore = bs_.compareTo(as_);
-        if (byScore != 0) return byScore;
+        // الأقصر المطابق أولاً ثم أبجديًا
+        final byLen = an.length.compareTo(bn.length);
+        if (byLen != 0) return byLen;
         return a.lineName.compareTo(b.lineName);
       });
 
@@ -233,8 +236,8 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
 
       setState(() {
         _searching = false;
-        _searchResults = ranked.take(40).toList();
-        if (ranked.isEmpty) {
+        _searchResults = filtered.take(40).toList();
+        if (filtered.isEmpty) {
           _searchError = 'لا توجد نتائج مطابقة لبحثك.';
         }
       });
