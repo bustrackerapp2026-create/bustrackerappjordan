@@ -595,7 +595,7 @@ class _LoginScreenState extends State<LoginScreen>
             padding: const EdgeInsets.symmetric(horizontal: 6),
           ),
           child: Text(
-            l10n.register,
+            l10n.createAccount,
             style: const TextStyle(
               fontWeight: FontWeight.w800,
               fontSize: 14.5,
