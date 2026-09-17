@@ -1,4 +1,8 @@
+import 'dart:io';
+
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import 'package:jordan_bus_tracker_new/core/constants/bus_capacity.dart';
@@ -9,10 +13,7 @@ import 'package:jordan_bus_tracker_new/features/auth/providers/auth_provider.dar
 import 'package:jordan_bus_tracker_new/l10n/app_localizations.dart';
 
 /// تسجيل حساب سائق — الأساس فقط:
-/// الاسم، التواصل، رقم الباص، السعة.
-///
-/// اختيار المسار المعتمد أُخرج من هذه المرحلة عمدًا:
-/// المسار سيُربط لاحقًا برقم الباص وليس بالسائق.
+/// الاسم، التواصل، رقم اللوحة (ترميز + رقم)، السعة، والإثباتات.
 class DriverRegisterScreen extends StatefulWidget {
   const DriverRegisterScreen({super.key});
 
@@ -27,12 +28,18 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _busNumberController = TextEditingController();
+  final _plateCodeController = TextEditingController();
+  final _plateNumberController = TextEditingController();
+  final _imagePicker = ImagePicker();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   int? _selectedCapacity = BusCapacity.medium;
+
+  XFile? _driverLicenseFile;
+  XFile? _vehicleLicenseFile;
+  XFile? _routeLicenseFile;
 
   @override
   void dispose() {
@@ -41,7 +48,8 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _phoneController.dispose();
-    _busNumberController.dispose();
+    _plateCodeController.dispose();
+    _plateNumberController.dispose();
     super.dispose();
   }
 
@@ -134,6 +142,104 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
     );
   }
 
+  Future<void> _pickDocument({
+    required void Function(XFile file) onPicked,
+  }) async {
+    final file = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (file == null) return;
+    setState(() => onPicked(file));
+  }
+
+  Widget _documentTile({
+    required String title,
+    required String subtitle,
+    required XFile? file,
+    required VoidCallback onPick,
+    required VoidCallback onClear,
+  }) {
+    final hasFile = file != null;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: hasFile
+            ? AppTheme.primaryColor.withValues(alpha: 0.06)
+            : const Color(0xFFF5F8FC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: hasFile
+              ? AppTheme.primaryColor.withValues(alpha: 0.25)
+              : Colors.grey.shade200,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            hasFile ? Icons.check_circle_rounded : Icons.upload_file_rounded,
+            color: hasFile ? AppTheme.primaryColor : Colors.grey.shade500,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasFile ? (file.name) : subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onPick,
+            child: Text(hasFile ? 'تغيير' : 'رفع'),
+          ),
+          if (hasFile)
+            IconButton(
+              onPressed: onClear,
+              icon: Icon(Icons.close_rounded, color: Colors.grey.shade600),
+              tooltip: 'إزالة',
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _composeBusNumber() {
+    final code = _plateCodeController.text.trim();
+    final number = _plateNumberController.text.trim();
+    if (code.isEmpty || number.isEmpty) return '';
+    return '$code-$number';
+  }
+
+  Future<void> _uploadProofs(String uid) async {
+    final storage = FirebaseStorage.instance;
+    final base = 'driver_proofs/$uid';
+
+    Future<void> putOne(String name, XFile? file) async {
+      if (file == null) return;
+      final ref = storage.ref('$base/$name');
+      await ref.putFile(File(file.path));
+    }
+
+    await putOne('driver_license', _driverLicenseFile);
+    await putOne('vehicle_license', _vehicleLicenseFile);
+    await putOne('route_license', _routeLicenseFile);
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -153,11 +259,11 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
       return;
     }
 
-    final busNumber = _busNumberController.text.trim();
+    final busNumber = _composeBusNumber();
     if (busNumber.isEmpty) {
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('أدخل رقم الباص / السرفيس'),
+          content: Text('أدخل ترميز اللوحة ورقمها (مثال: 14 و 3569)'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -174,18 +280,51 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
       return;
     }
 
+    if (_driverLicenseFile == null ||
+        _vehicleLicenseFile == null ||
+        _routeLicenseFile == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('ارفع رخصة السائق ورخصة المركبة ورخصة الخط'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
       final phone = _phoneController.text.trim();
-      await context.read<AuthProvider>().signUp(
-            email: AppValidators.sanitizeEmail(_emailController.text),
-            password: password,
-            fullName: _nameController.text.trim(),
-            phoneNumber: phone.isEmpty ? null : phone,
-            userType: UserRoles.driver,
-            busNumber: busNumber,
-            capacity: _selectedCapacity,
-          );
+      final auth = context.read<AuthProvider>();
+      await auth.signUp(
+        email: AppValidators.sanitizeEmail(_emailController.text),
+        password: password,
+        fullName: _nameController.text.trim(),
+        phoneNumber: phone.isEmpty ? null : phone,
+        userType: UserRoles.driver,
+        busNumber: busNumber,
+        capacity: _selectedCapacity,
+      );
+
+      final uid = auth.userId?.trim();
+      if (uid != null && uid.isNotEmpty) {
+        try {
+          await _uploadProofs(uid);
+        } catch (_) {
+          // الحساب أُنشئ؛ فشل رفع الملفات لا يلغي التسجيل.
+          if (mounted) {
+            messenger.showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'تم إنشاء الحساب، لكن تعذر رفع بعض الإثباتات. يمكنك إكمالها لاحقًا.',
+                ),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+      }
+
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
@@ -255,7 +394,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'أدخل بياناتك ورقم الباص لإنشاء الحساب.\n'
+                        'أدخل بياناتك ورقم اللوحة والإثباتات لإنشاء الحساب.\n'
                         'المسار المعتمد سيُربط برقم الباص لاحقًا.',
                         style: TextStyle(
                           height: 1.45,
@@ -271,14 +410,14 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                 children: [
                   _sectionTitle('البيانات الشخصية', Icons.person_outline_rounded),
                   const SizedBox(height: 14),
-                  _fieldLabel(l10n.fullName),
+                  _fieldLabel('الاسم'),
                   TextFormField(
                     controller: _nameController,
                     textInputAction: TextInputAction.next,
                     validator: (v) =>
                         (v == null || v.trim().isEmpty) ? 'أدخل الاسم' : null,
                     decoration: _decoration(
-                      hint: l10n.fullName,
+                      hint: 'الاسم',
                       icon: Icons.person_outline,
                     ),
                   ),
@@ -367,16 +506,59 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                 children: [
                   _sectionTitle('بيانات الباص', Icons.directions_bus_rounded),
                   const SizedBox(height: 14),
-                  _fieldLabel('رقم الباص / السرفيس'),
-                  TextFormField(
-                    controller: _busNumberController,
-                    textInputAction: TextInputAction.next,
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'أدخل رقم الباص'
-                        : null,
-                    decoration: _decoration(
-                      hint: 'مثال: 12 أو سرفيس 45',
-                      icon: Icons.confirmation_number_outlined,
+                  _fieldLabel('رقم اللوحة'),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: _plateCodeController,
+                          keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.next,
+                          textDirection: TextDirection.ltr,
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'الترميز'
+                              : null,
+                          decoration: _decoration(
+                            hint: '14',
+                            icon: Icons.tag_rounded,
+                          ),
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          '—',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: TextFormField(
+                          controller: _plateNumberController,
+                          keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.next,
+                          textDirection: TextDirection.ltr,
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'الرقم'
+                              : null,
+                          decoration: _decoration(
+                            hint: '3569',
+                            icon: Icons.confirmation_number_outlined,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'مثال: 14 — 3569',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -396,6 +578,48 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                         )
                         .toList(),
                     onChanged: (v) => setState(() => _selectedCapacity = v),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _sectionCard(
+                children: [
+                  _sectionTitle('الإثباتات', Icons.folder_open_rounded),
+                  const SizedBox(height: 6),
+                  Text(
+                    'ارفع صورة واضحة لكل مستند مطلوب.',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _documentTile(
+                    title: 'رخصة السائق',
+                    subtitle: 'اضغط لرفع صورة الرخصة',
+                    file: _driverLicenseFile,
+                    onPick: () => _pickDocument(
+                      onPicked: (f) => _driverLicenseFile = f,
+                    ),
+                    onClear: () => setState(() => _driverLicenseFile = null),
+                  ),
+                  _documentTile(
+                    title: 'رخصة المركبة',
+                    subtitle: 'اضغط لرفع صورة رخصة المركبة',
+                    file: _vehicleLicenseFile,
+                    onPick: () => _pickDocument(
+                      onPicked: (f) => _vehicleLicenseFile = f,
+                    ),
+                    onClear: () => setState(() => _vehicleLicenseFile = null),
+                  ),
+                  _documentTile(
+                    title: 'رخصة الخط',
+                    subtitle: 'اضغط لرفع صورة رخصة الخط',
+                    file: _routeLicenseFile,
+                    onPick: () => _pickDocument(
+                      onPicked: (f) => _routeLicenseFile = f,
+                    ),
+                    onClear: () => setState(() => _routeLicenseFile = null),
                   ),
                 ],
               ),
