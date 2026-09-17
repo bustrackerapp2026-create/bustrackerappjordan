@@ -113,7 +113,6 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
             userType: UserRoles.driver,
             busNumber: busNumber,
             capacity: _selectedCapacity,
-            // المسار غير مطلوب في هذه المرحلة — سيُربط بالباص لاحقًا.
           );
       if (!mounted) return;
       messenger.showSnackBar(
@@ -320,7 +319,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                           ),
                         )
                       : Text(
-                          l10n.register,
+                          l10n.createAccountBtn,
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                 ),

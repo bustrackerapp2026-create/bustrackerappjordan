@@ -243,7 +243,7 @@ class _PassengerRegisterScreenState extends State<PassengerRegisterScreen> {
                           ),
                         )
                       : Text(
-                          l10n.register,
+                          l10n.createAccountBtn,
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                 ),
