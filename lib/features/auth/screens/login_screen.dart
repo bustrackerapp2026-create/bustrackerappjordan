@@ -196,7 +196,7 @@ class _LoginScreenState extends State<LoginScreen>
                 Color(0xFF123A6B),
                 _sky,
               ],
-              stops: [0.0, 0.45, 1.0],
+              stops: [0.0, 0.42, 1.0],
             ),
           ),
           child: SafeArea(
@@ -205,29 +205,29 @@ class _LoginScreenState extends State<LoginScreen>
               child: Stack(
                 children: [
                   Positioned(
-                    top: -40,
-                    right: -30,
-                    child: _decorCircle(140, Colors.white.withValues(alpha: 0.06)),
+                    top: -36,
+                    right: -24,
+                    child: _decorCircle(130, Colors.white.withValues(alpha: 0.07)),
                   ),
                   Positioned(
-                    top: 80,
-                    left: -50,
-                    child: _decorCircle(110, Colors.white.withValues(alpha: 0.05)),
+                    top: 90,
+                    left: -48,
+                    child: _decorCircle(100, Colors.white.withValues(alpha: 0.05)),
                   ),
                   Positioned(
-                    bottom: size.height * 0.35,
-                    right: -20,
-                    child: _decorCircle(80, _softBlue.withValues(alpha: 0.12)),
+                    bottom: size.height * 0.32,
+                    right: -16,
+                    child: _decorCircle(72, _softBlue.withValues(alpha: 0.14)),
                   ),
                   Positioned(
-                    top: 8,
+                    top: 6,
                     left: localeProvider.isArabic ? 12 : null,
                     right: localeProvider.isArabic ? null : 12,
                     child: Material(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(20),
+                      color: Colors.white.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(22),
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(22),
                         onTap: () => localeProvider.toggle(),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
@@ -238,7 +238,7 @@ class _LoginScreenState extends State<LoginScreen>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               const Icon(
-                                Icons.language,
+                                Icons.language_rounded,
                                 color: Colors.white,
                                 size: 18,
                               ),
@@ -258,29 +258,35 @@ class _LoginScreenState extends State<LoginScreen>
                     ),
                   ),
                   SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset * 0.1),
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      8,
+                      20,
+                      20 + bottomInset * 0.08,
+                    ),
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
                         minHeight: size.height -
                             MediaQuery.of(context).padding.top -
                             MediaQuery.of(context).padding.bottom -
-                            36,
+                            28,
                       ),
                       child: Column(
                         children: [
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 10),
                           _buildHeader(l10n),
-                          const SizedBox(height: 28),
+                          const SizedBox(height: 24),
                           _buildLoginCard(l10n),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 18),
                           _buildRegisterRow(l10n),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 14),
                           Text(
                             l10n.appTagline,
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.55),
                               fontSize: 12,
-                              letterSpacing: 0.3,
+                              letterSpacing: 0.2,
                             ),
                           ),
                         ],
@@ -311,69 +317,70 @@ class _LoginScreenState extends State<LoginScreen>
     return Column(
       children: [
         Container(
-          width: 88,
-          height: 88,
+          width: 84,
+          height: 84,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withValues(alpha: 0.22),
+                Colors.white.withValues(alpha: 0.24),
                 Colors.white.withValues(alpha: 0.08),
               ],
             ),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.28),
+              color: Colors.white.withValues(alpha: 0.30),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 20,
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 18,
                 offset: const Offset(0, 8),
               ),
             ],
           ),
           child: const Icon(
             Icons.directions_bus_filled_rounded,
-            size: 44,
+            size: 40,
             color: Colors.white,
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
         Text(
           l10n.appName,
+          textAlign: TextAlign.center,
           style: const TextStyle(
-            fontSize: 26,
+            fontSize: 25,
             fontWeight: FontWeight.w800,
             color: Colors.white,
-            height: 1.2,
+            height: 1.25,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
           l10n.appNameEn,
           style: TextStyle(
-            fontSize: 14,
+            fontSize: 13.5,
             fontWeight: FontWeight.w500,
-            color: Colors.white.withValues(alpha: 0.75),
-            letterSpacing: 0.8,
+            color: Colors.white.withValues(alpha: 0.78),
+            letterSpacing: 0.6,
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
           ),
           child: Text(
             l10n.welcomeLogin,
             style: TextStyle(
               fontSize: 12.5,
-              color: Colors.white.withValues(alpha: 0.9),
+              color: Colors.white.withValues(alpha: 0.92),
             ),
           ),
         ),
@@ -385,15 +392,15 @@ class _LoginScreenState extends State<LoginScreen>
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxWidth: 420),
-      padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 32,
-            offset: const Offset(0, 18),
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
@@ -411,16 +418,17 @@ class _LoginScreenState extends State<LoginScreen>
                 color: Color(0xFF0F172A),
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(
               l10n.loginSubtitle,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
                 color: Colors.grey.shade600,
+                height: 1.35,
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 22),
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: Text(
@@ -444,7 +452,7 @@ class _LoginScreenState extends State<LoginScreen>
                 icon: Icons.email_outlined,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: Text(
@@ -483,12 +491,12 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Row(
               children: [
                 SizedBox(
-                  height: 36,
-                  width: 36,
+                  height: 34,
+                  width: 34,
                   child: Checkbox(
                     value: _rememberMe,
                     onChanged: (v) => setState(() => _rememberMe = v ?? true),
@@ -525,9 +533,9 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
             SizedBox(
-              height: 54,
+              height: 52,
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _login,
                 style: ElevatedButton.styleFrom(
@@ -536,7 +544,6 @@ class _LoginScreenState extends State<LoginScreen>
                   disabledBackgroundColor:
                       AppTheme.primaryColor.withValues(alpha: 0.6),
                   elevation: 0,
-                  shadowColor: AppTheme.primaryColor.withValues(alpha: 0.4),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -573,38 +580,52 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildRegisterRow(AppLocalizations l10n) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          l10n.noAccount,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.85),
-            fontSize: 14,
-          ),
-        ),
-        TextButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const RegisterRoleScreen()),
-            );
-          },
-          style: TextButton.styleFrom(
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-          ),
-          child: Text(
-            l10n.createAccount,
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 14.5,
-              decoration: TextDecoration.underline,
-              decorationColor: Colors.white70,
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 420),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Flexible(
+            child: Text(
+              l10n.noAccount,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.88),
+                fontSize: 13.5,
+              ),
             ),
           ),
-        ),
-      ],
+          TextButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const RegisterRoleScreen()),
+              );
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              l10n.createAccount,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+                decoration: TextDecoration.underline,
+                decorationColor: Colors.white70,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
