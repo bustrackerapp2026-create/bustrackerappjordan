@@ -263,7 +263,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
     if (busNumber.isEmpty) {
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('أدخل ترميز اللوحة ورقمها (مثال: 14 و 3569)'),
+          content: Text('أدخل رقم اللوحة والترميز (مثال: 3569 و 14)'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -311,7 +311,6 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
         try {
           await _uploadProofs(uid);
         } catch (_) {
-          // الحساب أُنشئ؛ فشل رفع الملفات لا يلغي التسجيل.
           if (mounted) {
             messenger.showSnackBar(
               const SnackBar(
@@ -506,56 +505,61 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                 children: [
                   _sectionTitle('بيانات الباص', Icons.directions_bus_rounded),
                   const SizedBox(height: 14),
-                  _fieldLabel('رقم اللوحة'),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        flex: 2,
-                        child: TextFormField(
-                          controller: _plateCodeController,
-                          keyboardType: TextInputType.number,
-                          textInputAction: TextInputAction.next,
-                          textDirection: TextDirection.ltr,
-                          validator: (v) => (v == null || v.trim().isEmpty)
-                              ? 'الترميز'
-                              : null,
-                          decoration: _decoration(
-                            hint: '14',
-                            icon: Icons.tag_rounded,
-                          ),
-                        ),
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text(
-                          '—',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 18,
-                          ),
-                        ),
-                      ),
-                      Expanded(
                         flex: 3,
-                        child: TextFormField(
-                          controller: _plateNumberController,
-                          keyboardType: TextInputType.number,
-                          textInputAction: TextInputAction.next,
-                          textDirection: TextDirection.ltr,
-                          validator: (v) => (v == null || v.trim().isEmpty)
-                              ? 'الرقم'
-                              : null,
-                          decoration: _decoration(
-                            hint: '3569',
-                            icon: Icons.confirmation_number_outlined,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _fieldLabel('رقم اللوحة'),
+                            TextFormField(
+                              controller: _plateNumberController,
+                              keyboardType: TextInputType.number,
+                              textInputAction: TextInputAction.next,
+                              textDirection: TextDirection.ltr,
+                              validator: (v) =>
+                                  (v == null || v.trim().isEmpty)
+                                      ? 'أدخل رقم اللوحة'
+                                      : null,
+                              decoration: _decoration(
+                                hint: '3569',
+                                icon: Icons.confirmation_number_outlined,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _fieldLabel('الترميز'),
+                            TextFormField(
+                              controller: _plateCodeController,
+                              keyboardType: TextInputType.number,
+                              textInputAction: TextInputAction.next,
+                              textDirection: TextDirection.ltr,
+                              validator: (v) =>
+                                  (v == null || v.trim().isEmpty)
+                                      ? 'أدخل الترميز'
+                                      : null,
+                              decoration: _decoration(
+                                hint: '14',
+                                icon: Icons.tag_rounded,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'مثال: 14 — 3569',
+                    'مثال: رقم اللوحة 3569 — الترميز 14',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey.shade600,
