@@ -82,10 +82,10 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   Widget _supportSection() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.grey.shade200),
       ),
       child: Column(
@@ -94,21 +94,21 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
           const Row(
             children: [
               Icon(Icons.support_agent_rounded,
-                  color: AppTheme.primaryColor, size: 22),
+                  color: AppTheme.primaryColor, size: 20),
               SizedBox(width: 8),
               Text(
                 'المساعدة والدعم',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             'إذا واجهت صعوبة في التسجيل، تواصل معنا:',
             style: TextStyle(
-                fontSize: 13, color: Colors.grey.shade700, height: 1.4),
+                fontSize: 12.5, color: Colors.grey.shade700, height: 1.35),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Material(
             color: const Color(0xFFF5F8FC),
             borderRadius: BorderRadius.circular(12),
@@ -117,10 +117,11 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
               onTap: _openSupportEmail,
               child: Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 child: Row(
                   children: [
-                    Icon(Icons.email_outlined, color: Colors.grey.shade700),
+                    Icon(Icons.email_outlined,
+                        color: Colors.grey.shade700, size: 20),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -129,29 +130,29 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                           Text(
                             'البريد الإلكتروني',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11.5,
                               color: Colors.grey.shade600,
                             ),
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 1),
                           const Text(
                             _supportEmail,
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              fontSize: 13.5,
+                              fontSize: 13,
                             ),
                           ),
                         ],
                       ),
                     ),
                     Icon(Icons.open_in_new_rounded,
-                        size: 18, color: Colors.grey.shade500),
+                        size: 16, color: Colors.grey.shade500),
                   ],
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Material(
             color: const Color(0xFFF0FDF4),
             borderRadius: BorderRadius.circular(12),
@@ -160,10 +161,11 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
               onTap: _openSupportWhatsApp,
               child: Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 child: Row(
                   children: [
-                    Icon(Icons.chat_rounded, color: Colors.green.shade700),
+                    Icon(Icons.chat_rounded,
+                        color: Colors.green.shade700, size: 20),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -172,16 +174,16 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                           Text(
                             'واتساب',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11.5,
                               color: Colors.grey.shade600,
                             ),
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 1),
                           Text(
                             _supportWhatsAppDisplay,
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              fontSize: 13.5,
+                              fontSize: 13,
                               color: Colors.green.shade800,
                             ),
                           ),
@@ -189,16 +191,16 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                       ),
                     ),
                     Icon(Icons.open_in_new_rounded,
-                        size: 18, color: Colors.grey.shade500),
+                        size: 16, color: Colors.grey.shade500),
                   ],
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             'ملاحظة: بيانات التواصل أعلاه مؤقتة للتجربة.',
-            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
           ),
         ],
       ),
@@ -212,33 +214,34 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
       prefixIcon: icon == null
           ? null
-          : Icon(icon, color: AppTheme.primaryColor, size: 22),
+          : Icon(icon, color: AppTheme.primaryColor, size: 20),
       suffixIcon: suffix,
+      isDense: true,
       filled: true,
       fillColor: const Color(0xFFF5F8FC),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: Colors.grey.shade200),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: AppTheme.primaryColor, width: 1.6),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppTheme.primaryColor, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: Colors.red.shade300),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.red.shade400, width: 1.4),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.red.shade400, width: 1.3),
       ),
     );
   }
@@ -246,13 +249,13 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   Widget _sectionTitle(String title, IconData icon) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: AppTheme.primaryColor),
-        const SizedBox(width: 8),
+        Icon(icon, size: 18, color: AppTheme.primaryColor),
+        const SizedBox(width: 6),
         Text(
           title,
           style: const TextStyle(
             fontWeight: FontWeight.w800,
-            fontSize: 15,
+            fontSize: 14,
           ),
         ),
       ],
@@ -261,12 +264,12 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
 
   Widget _fieldLabel(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 5),
       child: Text(
         text,
         style: TextStyle(
           fontWeight: FontWeight.w700,
-          fontSize: 13.5,
+          fontSize: 12.5,
           color: Colors.grey.shade800,
         ),
       ),
@@ -276,16 +279,16 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   Widget _sectionCard({required List<Widget> children}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -316,13 +319,13 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   }) {
     final hasFile = file != null;
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: hasFile
             ? AppTheme.primaryColor.withValues(alpha: 0.06)
             : const Color(0xFFF5F8FC),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: hasFile
               ? AppTheme.primaryColor.withValues(alpha: 0.25)
@@ -333,24 +336,28 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
         children: [
           Icon(
             hasFile ? Icons.check_circle_rounded : Icons.upload_file_rounded,
+            size: 22,
             color: hasFile ? AppTheme.primaryColor : Colors.grey.shade500,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13.5,
+                  ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 1),
                 Text(
                   hasFile ? (file.name) : subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 12,
                     color: Colors.grey.shade600,
                   ),
                 ),
@@ -359,13 +366,20 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
           ),
           TextButton(
             onPressed: onPick,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             child: Text(hasFile ? 'تغيير' : 'رفع'),
           ),
           if (hasFile)
             IconButton(
               onPressed: onClear,
-              icon: Icon(Icons.close_rounded, color: Colors.grey.shade600),
+              icon: Icon(Icons.close_rounded,
+                  color: Colors.grey.shade600, size: 20),
               tooltip: 'إزالة',
+              visualDensity: VisualDensity.compact,
             ),
         ],
       ),
@@ -518,13 +532,13 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
         child: Form(
           key: _formKey,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
             children: [
               Container(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: AppTheme.primaryColor.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(
                     color: AppTheme.primaryColor.withValues(alpha: 0.16),
                   ),
@@ -533,24 +547,26 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 40,
-                      height: 40,
+                      width: 34,
+                      height: 34,
                       decoration: BoxDecoration(
                         color: AppTheme.primaryColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
                         Icons.drive_eta_rounded,
                         color: AppTheme.primaryColor,
+                        size: 20,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         'أدخل بياناتك ورقم اللوحة والإثباتات لإنشاء الحساب.\n'
                         'المسار المعتمد سيُربط برقم الباص لاحقًا.',
                         style: TextStyle(
-                          height: 1.45,
+                          height: 1.35,
+                          fontSize: 13,
                           color: scheme.onSurface.withValues(alpha: 0.78),
                         ),
                       ),
@@ -558,11 +574,11 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
               _sectionCard(
                 children: [
                   _sectionTitle('البيانات الشخصية', Icons.person_outline_rounded),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   _fieldLabel('الاسم'),
                   TextFormField(
                     controller: _nameController,
@@ -574,7 +590,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                       icon: Icons.person_outline,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   _fieldLabel(l10n.phone),
                   TextFormField(
                     controller: _phoneController,
@@ -587,11 +603,11 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               _sectionCard(
                 children: [
                   _sectionTitle('بيانات الحساب', Icons.lock_outline_rounded),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   _fieldLabel(l10n.email),
                   TextFormField(
                     controller: _emailController,
@@ -604,7 +620,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                       icon: Icons.email_outlined,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   _fieldLabel(l10n.password),
                   TextFormField(
                     controller: _passwordController,
@@ -624,11 +640,12 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                               ? Icons.visibility_off_rounded
                               : Icons.visibility_rounded,
                           color: Colors.grey.shade500,
+                          size: 20,
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   _fieldLabel(l10n.confirmPassword),
                   TextFormField(
                     controller: _confirmPasswordController,
@@ -648,17 +665,18 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                               ? Icons.visibility_off_rounded
                               : Icons.visibility_rounded,
                           color: Colors.grey.shade500,
+                          size: 20,
                         ),
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               _sectionCard(
                 children: [
                   _sectionTitle('بيانات الباص', Icons.directions_bus_rounded),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -684,7 +702,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Expanded(
                         flex: 2,
                         child: Column(
@@ -709,15 +727,15 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     'مثال: رقم اللوحة 3569 — الترميز 14',
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 11.5,
                       color: Colors.grey.shade600,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   _fieldLabel('سعة الباص'),
                   DropdownButtonFormField<int>(
                     value: _selectedCapacity,
@@ -737,19 +755,19 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               _sectionCard(
                 children: [
                   _sectionTitle('الإثباتات', Icons.folder_open_rounded),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     'ارفع صورة واضحة لكل مستند مطلوب.',
                     style: TextStyle(
-                      fontSize: 12.5,
+                      fontSize: 12,
                       color: Colors.grey.shade600,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   _documentTile(
                     title: 'رخصة السائق',
                     subtitle: 'اضغط لرفع صورة الرخصة',
@@ -779,16 +797,16 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 14),
               SizedBox(
-                height: 52,
+                height: 48,
                 child: FilledButton(
                   onPressed: _isLoading ? null : _submit,
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.primaryColor,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                   child: _isLoading
@@ -806,7 +824,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                         ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               _supportSection(),
             ],
           ),
