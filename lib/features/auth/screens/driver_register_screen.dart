@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
@@ -400,6 +401,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   }
 
   Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
 
     final l10n = AppLocalizations.of(context);
@@ -520,7 +522,8 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
         ),
       ),
       body: SafeArea(
-        child: Form(
+        child: AutofillGroup(
+          child: Form(
           key: _formKey,
           child: ListView(
             padding: const EdgeInsets.fromLTRB(10, 6, 10, 16),
@@ -574,6 +577,8 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                   TextFormField(
                     controller: _nameController,
                     textInputAction: TextInputAction.next,
+                    textCapitalization: TextCapitalization.words,
+                    autofillHints: const [AutofillHints.name],
                     validator: (v) =>
                         (v == null || v.trim().isEmpty) ? 'أدخل الاسم' : null,
                     decoration: _decoration(
@@ -587,6 +592,10 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,
                     textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.telephoneNumber],
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s-]')),
+                    ],
                     decoration: _decoration(
                       hint: '079 0000 000',
                       icon: Icons.phone_outlined,
@@ -605,6 +614,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
                     textDirection: TextDirection.ltr,
+                    autofillHints: const [AutofillHints.email],
                     validator: AppValidators.validateEmail,
                     decoration: _decoration(
                       hint: 'example@gmail.com',
@@ -618,6 +628,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                     obscureText: _obscurePassword,
                     textInputAction: TextInputAction.next,
                     textDirection: TextDirection.ltr,
+                    autofillHints: const [AutofillHints.newPassword],
                     validator: AppValidators.validatePassword,
                     decoration: _decoration(
                       hint: '••••••••',
@@ -643,6 +654,16 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                     obscureText: _obscureConfirmPassword,
                     textInputAction: TextInputAction.next,
                     textDirection: TextDirection.ltr,
+                    autofillHints: const [AutofillHints.newPassword],
+                    validator: (v) {
+                      if (v == null || v.isEmpty) {
+                        return 'أعد إدخال كلمة المرور';
+                      }
+                      if (v != _passwordController.text) {
+                        return 'كلمة المرور غير متطابقة';
+                      }
+                      return null;
+                    },
                     decoration: _decoration(
                       hint: '••••••••',
                       icon: Icons.lock_outline,
@@ -682,6 +703,10 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                               keyboardType: TextInputType.number,
                               textInputAction: TextInputAction.next,
                               textDirection: TextDirection.ltr,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(6),
+                              ],
                               validator: (v) =>
                                   (v == null || v.trim().isEmpty)
                                       ? 'أدخل رقم اللوحة'
@@ -701,8 +726,14 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                             TextFormField(
                               controller: _plateCodeController,
                               keyboardType: TextInputType.number,
-                              textInputAction: TextInputAction.next,
+                              textInputAction: TextInputAction.done,
                               textDirection: TextDirection.ltr,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(3),
+                              ],
+                              onFieldSubmitted: (_) =>
+                                  FocusScope.of(context).unfocus(),
                               validator: (v) =>
                                   (v == null || v.trim().isEmpty)
                                       ? 'أدخل الترميز'
@@ -815,6 +846,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
               _supportSection(),
             ],
           ),
+        ),
         ),
       ),
     );
