@@ -55,13 +55,15 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
 
   InputDecoration _decoration({
     required String hint,
-    required IconData icon,
+    IconData? icon,
     Widget? suffix,
   }) {
     return InputDecoration(
       hintText: hint,
       hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-      prefixIcon: Icon(icon, color: AppTheme.primaryColor, size: 22),
+      prefixIcon: icon == null
+          ? null
+          : Icon(icon, color: AppTheme.primaryColor, size: 22),
       suffixIcon: suffix,
       filled: true,
       fillColor: const Color(0xFFF5F8FC),
@@ -525,7 +527,6 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                                       : null,
                               decoration: _decoration(
                                 hint: '3569',
-                                icon: Icons.confirmation_number_outlined,
                               ),
                             ),
                           ],
@@ -549,7 +550,6 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                                       : null,
                               decoration: _decoration(
                                 hint: '14',
-                                icon: Icons.tag_rounded,
                               ),
                             ),
                           ],
