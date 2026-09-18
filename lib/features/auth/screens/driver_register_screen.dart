@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
 
 import 'package:jordan_bus_tracker_new/core/constants/bus_capacity.dart';
@@ -32,6 +33,11 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   final _plateNumberController = TextEditingController();
   final _imagePicker = ImagePicker();
 
+  /// بيانات دعم مؤقتة — يمكن استبدالها لاحقًا بالقيم الحقيقية.
+  static const String _supportEmail = 'support.drivers@bustracker.demo';
+  static const String _supportWhatsAppDisplay = '+962 7 9000 0000';
+  static const String _supportWhatsAppE164 = '962790000000';
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -51,6 +57,152 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
     _plateCodeController.dispose();
     _plateNumberController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openSupportEmail() async {
+    final uri = Uri(
+      scheme: 'mailto',
+      path: _supportEmail,
+      queryParameters: {
+        'subject': 'مساعدة تسجيل سائق',
+      },
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  Future<void> _openSupportWhatsApp() async {
+    final uri = Uri.parse('https://wa.me/$_supportWhatsAppE164');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Widget _supportSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.support_agent_rounded,
+                  color: AppTheme.primaryColor, size: 22),
+              SizedBox(width: 8),
+              Text(
+                'المساعدة والدعم',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'إذا واجهت صعوبة في التسجيل، تواصل معنا:',
+            style: TextStyle(
+                fontSize: 13, color: Colors.grey.shade700, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          Material(
+            color: const Color(0xFFF5F8FC),
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: _openSupportEmail,
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.email_outlined, color: Colors.grey.shade700),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'البريد الإلكتروني',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            _supportEmail,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.open_in_new_rounded,
+                        size: 18, color: Colors.grey.shade500),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Material(
+            color: const Color(0xFFF0FDF4),
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: _openSupportWhatsApp,
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.chat_rounded, color: Colors.green.shade700),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'واتساب',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _supportWhatsAppDisplay,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13.5,
+                              color: Colors.green.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.open_in_new_rounded,
+                        size: 18, color: Colors.grey.shade500),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'ملاحظة: بيانات التواصل أعلاه مؤقتة للتجربة.',
+            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+          ),
+        ],
+      ),
+    );
   }
 
   InputDecoration _decoration({
@@ -654,6 +806,8 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                         ),
                 ),
               ),
+              const SizedBox(height: 16),
+              _supportSection(),
             ],
           ),
         ),
