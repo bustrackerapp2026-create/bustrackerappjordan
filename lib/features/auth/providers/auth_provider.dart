@@ -179,6 +179,7 @@ class AuthProvider extends ChangeNotifier {
 
           await _driverLineAssignmentService.requestAssignment(
             driverId: credential.user!.uid,
+            busNumber: busNumber ?? '',
             routeId: routeId,
             lineId: resolvedLineId,
           );
