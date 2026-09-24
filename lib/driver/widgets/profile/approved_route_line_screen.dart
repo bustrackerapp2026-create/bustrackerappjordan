@@ -231,6 +231,8 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                         route: _approvedRoute,
                         driverName: userData?.displayName ?? 'غير متوفر',
                         driverPhone: userData?.displayPhone ?? 'غير محدد',
+                        vehicleNumber: userData?.busNumber?.trim() ?? '',
+                        vehicleNumber: userData?.busNumber?.trim() ?? '',
                       )
                     else if (hasPending)
                       _AssignmentCard(
@@ -243,6 +245,7 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                         route: _pendingRoute,
                         driverName: userData?.displayName ?? 'غير متوفر',
                         driverPhone: userData?.displayPhone ?? 'غير محدد',
+                        vehicleNumber: userData?.busNumber?.trim() ?? '',
                       )
                     else
                       const _EmptyState(),
@@ -259,6 +262,7 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                         route: _pendingRoute,
                         driverName: userData?.displayName ?? 'غير متوفر',
                         driverPhone: userData?.displayPhone ?? 'غير محدد',
+                        vehicleNumber: userData?.busNumber?.trim() ?? '',
                       ),
                     ],
 
@@ -283,6 +287,7 @@ class _AssignmentCard extends StatelessWidget {
     required this.route,
     required this.driverName,
     required this.driverPhone,
+    required this.vehicleNumber,
   });
 
   final String title;
@@ -294,6 +299,7 @@ class _AssignmentCard extends StatelessWidget {
   final PlannedRoute? route;
   final String driverName;
   final String driverPhone;
+  final String vehicleNumber;
 
   @override
   Widget build(BuildContext context) {
@@ -372,11 +378,12 @@ class _AssignmentCard extends StatelessWidget {
               value: endName,
             ),
           ],
+          const SizedBox(height: 18),
           _InfoRow(
             icon: Icons.directions_bus_outlined,
             label: 'رقم المركبة',
-            value: assignment.busNumber.trim().isNotEmpty
-                ? assignment.busNumber.trim()
+            value: displayedVehicleNumber.isNotEmpty
+                ? displayedVehicleNumber
                 : 'غير محدد',
           ),
           const SizedBox(height: 10),
