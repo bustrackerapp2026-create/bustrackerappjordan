@@ -11,6 +11,7 @@ import '../../driver/providers/driver_provider.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import '../../services/vehicle_trip_service.dart';
 import '../../services/driver_line_assignment_service.dart';
+import '../../services/vehicle_operational_session_service.dart';
 import '../../models/route_point.dart';
 import '../../models/planned_route.dart';
 import '../../models/driver_line_assignment.dart';
@@ -23,7 +24,10 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PolylineAnnotationManager? _polylineAnnotationManager;
   PolylineAnnotation? _polylineAnnotation;
   final VehicleTripService _vehicleTripService = VehicleTripService();
-  final DriverLineAssignmentService _driverLineAssignmentService = DriverLineAssignmentService();
+  final DriverLineAssignmentService _driverLineAssignmentService =
+      DriverLineAssignmentService();
+  final VehicleOperationalSessionService _vehicleSession =
+      VehicleOperationalSessionService();
 
   static const double _routeStartMatchMaxMeters = 750.0;
 
@@ -303,6 +307,14 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         return;
       }
 
+      // إعادة التحقق من ملكية المركبة قبل إنشاء الرحلة التشغيلية.
+      await _vehicleSession.claimOrRefresh(
+        driverId: userId,
+        busNumber: busNumber,
+        latitude: currentPosition.latitude,
+        longitude: currentPosition.longitude,
+      );
+
       final vehicleTrip = await _vehicleTripService.startTrip(
         driverId: userId,
         busNumber: busNumber,
@@ -315,6 +327,35 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         speed: currentPosition.speed,
         heading: currentPosition.heading,
       );
+
+      try {
+        final sessionOwned = await _vehicleSession.setTripActive(
+          driverId: userId,
+          busNumber: busNumber,
+          isTripActive: true,
+          tripId: vehicleTrip.id,
+        );
+        if (!sessionOwned) {
+          throw const VehicleOperationalSessionException(
+            'فقد حسابك ملكية المركبة قبل تفعيل الرحلة. لم يتم اعتماد الرحلة.',
+            code: 'vehicle-session-lost',
+          );
+        }
+      } catch (_) {
+        try {
+          await _vehicleTripService.cancelTrip(
+            tripId: vehicleTrip.id,
+            driverId: userId,
+          );
+        } catch (rollbackError) {
+          MapUtils.log(
+            '❌ فشل إلغاء VehicleTrip بعد فقد جلسة المركبة: $rollbackError',
+            tag: 'TripManager',
+          );
+        }
+        rethrow;
+      }
+
       if (!mounted) return;
 
       final started = driverProvider.startTrip(userId: userId);
@@ -419,6 +460,22 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           tripId: vehicleTripId,
           driverId: driverId,
         );
+      }
+
+      final busNumber =
+          context.read<AuthProvider>().userData?.busNumber?.trim() ?? '';
+      if (busNumber.isNotEmpty) {
+        final sessionOwned = await _vehicleSession.setTripActive(
+          driverId: driverId,
+          busNumber: busNumber,
+          isTripActive: false,
+        );
+        if (!sessionOwned) {
+          throw const VehicleOperationalSessionException(
+            'تم إنهاء الرحلة لكن تعذر تحرير حالة الرحلة داخل جلسة المركبة. أعد المحاولة لتأكيد تحرير المركبة.',
+            code: 'vehicle-session-sync-failed',
+          );
+        }
       }
 
       driverProvider.endTrip(userId: driverId);
