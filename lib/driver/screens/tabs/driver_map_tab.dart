@@ -552,7 +552,7 @@ class _DriverMapTabState extends State<DriverMapTab>
           (driver.isOnline || driver.isTripActive)) {
         await ensureDriverTrackingRunning();
       }
-      await _restoreActiveVehicleTripRoute();
+      await restoreActiveVehicleTripRoute(auth.userId ?? '');
       await _syncPickupMarker(_activeBoardTrip);
       if (mounted) setState(() => isMapReady = true);
     } catch (e, st) {
