@@ -399,6 +399,15 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         '🚀 تم بدء رحلة ${route.direction.labelAr} على المسار المخصص: ${resolvedLine.isEmpty ? '—' : resolvedLine}',
         isError: false,
       );
+    } on VehicleOperationalSessionException catch (e) {
+      MapUtils.log('❌ VehicleSession: $e', tag: 'TripManager');
+      if (mounted) {
+        MapUtils.showSnackBar(
+          context,
+          e.message,
+          isError: true,
+        );
+      }
     } on VehicleTripServiceException catch (e) {
       MapUtils.log('❌ VehicleTrip: $e', tag: 'TripManager');
       if (mounted) {
@@ -496,6 +505,15 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           context,
           '🏁 تم إنهاء الرحلة التشغيلية.',
           isError: false,
+        );
+      }
+    } on VehicleOperationalSessionException catch (e) {
+      MapUtils.log('❌ VehicleSession endTrip: $e', tag: 'TripManager');
+      if (mounted) {
+        MapUtils.showSnackBar(
+          context,
+          e.message,
+          isError: true,
         );
       }
     } catch (e) {
