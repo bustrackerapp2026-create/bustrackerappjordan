@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:provider/provider.dart';
@@ -640,6 +641,21 @@ class _DriverMapTabState extends State<DriverMapTab>
         );
       } on VehicleOperationalSessionException catch (e) {
         MapUtils.showSnackBar(context, e.message, isError: true);
+        return;
+      } on FirebaseException catch (e) {
+        debugPrint('vehicle session claim failed: $e');
+        final message = e.code == 'permission-denied'
+            ? '❌ صلاحيات جلسة المركبة غير مفعّلة بعد. يجب نشر firestore.rules ثم المحاولة مرة أخرى.'
+            : '❌ تعذر الاتصال بالمركبة: ' + (e.message ?? e.code);
+        MapUtils.showSnackBar(context, message, isError: true);
+        return;
+      } catch (e, st) {
+        debugPrint('vehicle session claim failed: $e\n$st');
+        MapUtils.showSnackBar(
+          context,
+          '❌ تعذر إنشاء جلسة تشغيل المركبة. حاول مرة أخرى.',
+          isError: true,
+        );
         return;
       }
     }
