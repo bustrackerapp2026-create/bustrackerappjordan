@@ -19,6 +19,7 @@ import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../map/utils/map_helpers.dart';
 import '../../../../services/location_service.dart';
 import '../../../../services/driver_public_location_service.dart';
+import '../../../../services/vehicle_operational_session_service.dart';
 
 mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PointAnnotation? _driverUserAnnotation;
@@ -26,6 +27,10 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final LocationService _driverLocationService = LocationService();
   final LocationPredictor _predictor = LocationPredictor();
   final DriverTrackingHub _hub = DriverTrackingHub.instance;
+  final VehicleOperationalSessionService _vehicleSession =
+      VehicleOperationalSessionService();
+
+  bool _vehicleSessionLost = false;
 
   Timer? _predictionTimer;
   bool _didPromptBackground = false;
@@ -461,6 +466,8 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     final profile = _activeProfile;
     final now = DateTime.now();
+
+    if (_vehicleSessionLost) return;
 
     if (!force && _lastFirestoreLocationWrite != null) {
       if (now.difference(_lastFirestoreLocationWrite!) <
