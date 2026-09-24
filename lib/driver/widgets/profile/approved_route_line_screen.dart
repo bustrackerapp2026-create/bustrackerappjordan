@@ -90,49 +90,58 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
     });
 
     try {
-      // Firestore allows the driver to query assignments by driverId.
-      // We then enforce the operational vehicle match locally using busNumber.
-      // This avoids a driver-side collection query that Firestore rules cannot
-      // reliably authorize when its only constraint is busNumber.
-      final driverApproved =
-          await _assignments.getApprovedAssignmentsForDriver(uid, limit: 200);
+      // التعيين التشغيلي مرتبط بالمركبة، وليس بالسائق الذي أنشأ الطلب.
+      // لذلك يجب أن يرى أي سائق مسجل على نفس المركبة المسار المعتمد نفسه.
       DriverLineAssignment? approved;
 
       if (busNumber.isNotEmpty) {
-        for (final item in driverApproved) {
-          if (item.busNumber.trim() == busNumber) {
-            approved = item;
-            break;
-          }
+        final vehicleApproved =
+            await _assignments.getApprovedAssignmentsForVehicle(
+          busNumber,
+          limit: 200,
+        );
+        if (vehicleApproved.isNotEmpty) {
+          approved = vehicleApproved.first;
         }
+      }
 
-        // Backward compatibility for assignments created before busNumber
-        // became mandatory. Such a legacy assignment is accepted only when
-        // no vehicle-specific assignment exists for this driver.
-        if (approved == null) {
+      // توافق رجعي مع السجلات القديمة التي لا تحتوي busNumber.
+      // نستخدم بحث السائق فقط عندما لا يتوفر تعيين تشغيلي على المركبة.
+      if (approved == null) {
+        final driverApproved =
+            await _assignments.getApprovedAssignmentsForDriver(uid, limit: 200);
+        if (busNumber.isNotEmpty) {
           for (final item in driverApproved) {
             if (item.busNumber.trim().isEmpty) {
               approved = item;
               break;
             }
           }
+        } else if (driverApproved.isNotEmpty) {
+          approved = driverApproved.first;
         }
-      } else if (driverApproved.isNotEmpty) {
-        approved = driverApproved.first;
       }
 
-      final driverPending = await _assignments.getPendingForDriver(uid);
       DriverLineAssignment? pending;
-
       if (busNumber.isNotEmpty) {
-        if (driverPending?.busNumber.trim() == busNumber) {
-          pending = driverPending;
-        } else if (driverPending?.busNumber.trim().isEmpty == true) {
-          // Backward compatibility for a legacy pending assignment.
+        final vehiclePending =
+            await _assignments.getPendingForVehicle(busNumber, limit: 200);
+        if (vehiclePending != null) {
+          pending = vehiclePending;
+        }
+      }
+
+      // إذا لم يوجد طلب على المركبة، نحاول طلب السائق نفسه فقط للتوافق
+      // مع البيانات القديمة.
+      if (pending == null) {
+        final driverPending = await _assignments.getPendingForDriver(uid);
+        if (busNumber.isNotEmpty) {
+          if (driverPending?.busNumber.trim().isEmpty == true) {
+            pending = driverPending;
+          }
+        } else {
           pending = driverPending;
         }
-      } else {
-        pending = driverPending;
       }
 
       TransitLine? approvedLine;
