@@ -24,6 +24,7 @@ import '../../../models/trip_model.dart';
 import '../../../models/trip_status.dart';
 import '../../../services/live_tracking_service.dart';
 import '../../../services/map_camera_prefs_service.dart';
+import '../../../services/vehicle_operational_session_service.dart';
 import '../../../services/trip_service.dart';
 import '../../../services/trip_service_exception.dart';
 import '../../../l10n/app_localizations.dart';
@@ -56,6 +57,8 @@ class _DriverMapTabState extends State<DriverMapTab>
   Timer? _staleCheckTimer;
 
   final TripService _tripService = TripService();
+  final VehicleOperationalSessionService _vehicleSession =
+      VehicleOperationalSessionService();
   StreamSubscription<List<TripModel>>? _pendingSub;
   StreamSubscription<List<TripModel>>? _activeSub;
 
@@ -561,6 +564,15 @@ class _DriverMapTabState extends State<DriverMapTab>
 
     final goingOnline = !driver.isOnline;
 
+    if (!goingOnline && driver.isTripActive) {
+      MapUtils.showSnackBar(
+        context,
+        '⚠️ أنهِ الرحلة الحالية أولًا قبل قطع الاتصال عن المركبة.',
+        isError: true,
+      );
+      return;
+    }
+
     if (goingOnline) {
       final ready =
           await LocationPermissionSheet.ensureDriverBackgroundAccess(context);
@@ -608,6 +620,28 @@ class _DriverMapTabState extends State<DriverMapTab>
         );
         return;
       }
+
+      final busNumber = auth.userData?.busNumber?.trim() ?? '';
+      if (busNumber.isEmpty) {
+        MapUtils.showSnackBar(
+          context,
+          '⚠️ لا يوجد رقم مركبة صالح لهذا الحساب.',
+          isError: true,
+        );
+        return;
+      }
+
+      try {
+        await _vehicleSession.claimOrRefresh(
+          driverId: uid,
+          busNumber: busNumber,
+          latitude: position.latitude,
+          longitude: position.longitude,
+        );
+      } on VehicleOperationalSessionException catch (e) {
+        MapUtils.showSnackBar(context, e.message, isError: true);
+        return;
+      }
     }
 
     final ok = driver.toggleOnlineStatus(userId: uid);
@@ -630,9 +664,39 @@ class _DriverMapTabState extends State<DriverMapTab>
       );
     } catch (_) {
       if (mounted) driver.toggleOnlineStatus(userId: uid);
+      if (goingOnline) {
+        try {
+          final busNumber = auth.userData?.busNumber?.trim() ?? '';
+          if (busNumber.isNotEmpty) {
+            await _vehicleSession.release(
+              driverId: uid,
+              busNumber: busNumber,
+            );
+          }
+        } catch (releaseError) {
+          debugPrint('vehicle session rollback failed: $releaseError');
+        }
+      }
       if (!mounted) return;
       MapUtils.showSnackBar(context, l10n.onlineStatusFailed, isError: true);
     }
+
+    if (!goingOnline) {
+      try {
+        final busNumber = auth.userData?.busNumber?.trim() ?? '';
+        if (busNumber.isNotEmpty) {
+          await _vehicleSession.release(
+            driverId: uid,
+            busNumber: busNumber,
+          );
+        }
+      } on VehicleOperationalSessionException catch (e) {
+        debugPrint('vehicle session release warning: $e');
+      } catch (e) {
+        debugPrint('vehicle session release failed: $e');
+      }
+    }
+
     if (mounted) await refreshDriverTrackingProfile();
   }
 
