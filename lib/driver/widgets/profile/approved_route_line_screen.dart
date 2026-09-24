@@ -92,18 +92,12 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
     try {
       final approved = busNumber.isEmpty
           ? await _assignments.getApprovedForDriver(uid)
-          : (await _assignments.getApprovedForVehicle(
-                driverId: uid,
-                busNumber: busNumber,
-              ) ??
+          : (await _assignments.getApprovedForVehicle(busNumber) ??
               await _assignments.getApprovedForDriver(uid));
 
       final pending = busNumber.isEmpty
           ? await _assignments.getPendingForDriver(uid)
-          : (await _assignments.getPendingForVehicle(
-                driverId: uid,
-                busNumber: busNumber,
-              ) ??
+          : (await _assignments.getPendingForVehicle(busNumber) ??
               await _assignments.getPendingForDriver(uid));
 
       TransitLine? approvedLine;
