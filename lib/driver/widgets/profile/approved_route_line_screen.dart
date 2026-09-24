@@ -184,8 +184,7 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
   Widget build(BuildContext context) {
     final hasApproved = _approved != null;
     final hasPending = _pending != null;
-    final busNumber =
-        context.read<AuthProvider>().userData?.busNumber?.trim() ?? '';
+    final userData = context.read<AuthProvider>().userData;
 
     return Scaffold(
       appBar: AppBar(
@@ -210,11 +209,6 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
                   children: [
-                    _StateHeader(
-                      hasApproved: hasApproved,
-                      hasPending: hasPending,
-                      busNumber: busNumber,
-                    ),
                     if (_error != null) ...[
                       const SizedBox(height: 14),
                       _MessageCard(
@@ -235,6 +229,8 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                         assignment: _approved!,
                         line: _approvedLine,
                         route: _approvedRoute,
+                        driverName: userData?.displayName ?? 'غير متوفر',
+                        driverPhone: userData?.displayPhone ?? 'غير محدد',
                       )
                     else if (hasPending)
                       _AssignmentCard(
@@ -245,6 +241,8 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                         assignment: _pending!,
                         line: _pendingLine,
                         route: _pendingRoute,
+                        driverName: userData?.displayName ?? 'غير متوفر',
+                        driverPhone: userData?.displayPhone ?? 'غير محدد',
                       )
                     else
                       const _EmptyState(),
@@ -259,6 +257,8 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                         assignment: _pending!,
                         line: _pendingLine,
                         route: _pendingRoute,
+                        driverName: userData?.displayName ?? 'غير متوفر',
+                        driverPhone: userData?.displayPhone ?? 'غير محدد',
                       ),
                     ],
 
@@ -267,97 +267,6 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                   ],
                 ),
               ),
-      ),
-    );
-  }
-}
-
-class _StateHeader extends StatelessWidget {
-  const _StateHeader({
-    required this.hasApproved,
-    required this.hasPending,
-    required this.busNumber,
-  });
-
-  final bool hasApproved;
-  final bool hasPending;
-  final String busNumber;
-
-  @override
-  Widget build(BuildContext context) {
-    final String title;
-    final String subtitle;
-    final IconData icon;
-    final Color color;
-
-    if (hasApproved) {
-      title = 'المسار معتمد';
-      subtitle = busNumber.isEmpty
-          ? 'يوجد تعيين معتمد مرتبط بحساب السائق الحالي.'
-          : 'يوجد تعيين معتمد لرقم الباص/السرفيس: $busNumber.';
-      icon = Icons.check_circle_rounded;
-      color = const Color(0xFF2E7D32);
-    } else if (hasPending) {
-      title = 'الطلب قيد المراجعة';
-      subtitle = busNumber.isEmpty
-          ? 'يوجد طلب تعيين بانتظار قرار الأدمن.'
-          : 'يوجد طلب تعيين لرقم الباص/السرفيس: $busNumber بانتظار قرار الأدمن.';
-      icon = Icons.hourglass_top_rounded;
-      color = const Color(0xFFEF6C00);
-    } else {
-      title = 'لا يوجد مسار معتمد';
-      subtitle = busNumber.isEmpty
-          ? 'لا يوجد تعيين مسار معتمد حاليًا لهذا السائق.'
-          : 'لا يوجد تعيين مسار معتمد حاليًا لرقم الباص/السرفيس: $busNumber.';
-      icon = Icons.route_outlined;
-      color = Colors.blueGrey;
-    }
-
-    final scheme = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withValues(alpha: 0.22)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: scheme.onSurface.withValues(alpha: 0.72),
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -372,6 +281,8 @@ class _AssignmentCard extends StatelessWidget {
     required this.assignment,
     required this.line,
     required this.route,
+    required this.driverName,
+    required this.driverPhone,
   });
 
   final String title;
@@ -381,6 +292,8 @@ class _AssignmentCard extends StatelessWidget {
   final DriverLineAssignment assignment;
   final TransitLine? line;
   final PlannedRoute? route;
+  final String driverName;
+  final String driverPhone;
 
   @override
   Widget build(BuildContext context) {
@@ -459,14 +372,25 @@ class _AssignmentCard extends StatelessWidget {
               value: endName,
             ),
           ],
-          if (assignment.busNumber.trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
-            _InfoRow(
-              icon: Icons.directions_bus_outlined,
-              label: 'الباص / السرفيس',
-              value: assignment.busNumber.trim(),
-            ),
-          ],
+          _InfoRow(
+            icon: Icons.directions_bus_outlined,
+            label: 'رقم المركبة',
+            value: assignment.busNumber.trim().isNotEmpty
+                ? assignment.busNumber.trim()
+                : 'غير محدد',
+          ),
+          const SizedBox(height: 10),
+          _InfoRow(
+            icon: Icons.person_outline_rounded,
+            label: 'اسم السائق',
+            value: driverName,
+          ),
+          const SizedBox(height: 10),
+          _InfoRow(
+            icon: Icons.phone_outlined,
+            label: 'رقم الهاتف',
+            value: driverPhone,
+          ),
           if (route != null) ...[
             const SizedBox(height: 10),
             _InfoRow(
@@ -679,7 +603,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'لم يتم اعتماد أي تعيين مسار لهذا السائق بعد.',
+            'لم يتم اعتماد أي مسار لهذه المركبة حتى الآن.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: scheme.onSurface.withValues(alpha: 0.68),
