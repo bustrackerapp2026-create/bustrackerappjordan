@@ -355,6 +355,12 @@ service cloud.firestore {
         || (
           isSignedIn()
           && resource.data.activeDriverId == request.auth.uid
+        )
+        // يحتاج السائق إلى قراءة وثيقة مركبته قبل claimOrRefresh،
+        // حتى عندما لا تكون الوثيقة موجودة بعد (قراءة transaction).
+        || (
+          isDriver()
+          && sessionId == userDoc().data.get('busNumber', '')
         );
 
       allow create: if isDriver()
