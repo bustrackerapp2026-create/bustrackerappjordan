@@ -22,7 +22,6 @@ import '../../../driver/widgets/driver_active_trip_banner.dart';
 import '../../../driver/widgets/driver_pending_request_banner.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../models/trip_model.dart';
-import '../../../models/driver_line_assignment.dart';
 import '../../../models/planned_route.dart';
 import '../../../models/trip_status.dart';
 import '../../../services/live_tracking_service.dart';
