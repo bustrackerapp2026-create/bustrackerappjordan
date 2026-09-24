@@ -121,7 +121,19 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
         approved = driverApproved.first;
       }
 
-      final pending = await _assignments.getPendingForDriver(uid);
+      final driverPending = await _assignments.getPendingForDriver(uid);
+      DriverLineAssignment? pending;
+
+      if (busNumber.isNotEmpty) {
+        if (driverPending?.busNumber.trim() == busNumber) {
+          pending = driverPending;
+        } else if (driverPending?.busNumber.trim().isEmpty == true) {
+          // Backward compatibility for a legacy pending assignment.
+          pending = driverPending;
+        }
+      } else {
+        pending = driverPending;
+      }
 
       TransitLine? approvedLine;
       PlannedRoute? approvedRoute;
