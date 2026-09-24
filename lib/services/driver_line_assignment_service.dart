@@ -127,14 +127,10 @@ class DriverLineAssignmentService {
     return line;
   }
 
-  Future<TransitLine?> getApprovedLineForVehicle({
-    required String driverId,
-    required String busNumber,
-  }) async {
-    final assignment = await getApprovedForVehicle(
-      driverId: driverId,
-      busNumber: busNumber,
-    );
+  Future<TransitLine?> getApprovedLineForVehicle(
+    String busNumber,
+  ) async {
+    final assignment = await getApprovedForVehicle(busNumber);
     if (assignment == null) return null;
     final line = await _lines.getById(assignment.lineId);
     if (line == null || !line.isApproved) return null;
