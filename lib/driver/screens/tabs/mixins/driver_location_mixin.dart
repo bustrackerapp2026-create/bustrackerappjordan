@@ -31,6 +31,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       VehicleOperationalSessionService();
 
   bool _vehicleSessionLost = false;
+  DateTime? _lastVehicleHeartbeatAt;
 
   Timer? _predictionTimer;
   bool _didPromptBackground = false;
@@ -296,6 +297,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     attachDriverTrackingUi();
     _vehicleSessionLost = false;
+    _lastVehicleHeartbeatAt = null;
 
     await _hub.requestStart(
       uid: uid,
@@ -470,41 +472,57 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     if (_vehicleSessionLost) return;
 
-    if (!force && _lastFirestoreLocationWrite != null) {
-      if (now.difference(_lastFirestoreLocationWrite!) <
-          profile.firestoreMinInterval) {
-        return;
-      }
+    var shouldUploadLocation = force;
+
+    if (!shouldUploadLocation && _lastFirestoreLocationWrite != null) {
+      shouldUploadLocation =
+          now.difference(_lastFirestoreLocationWrite!) >=
+              profile.firestoreMinInterval;
     }
 
-    if (!force && _lastUploadedLat != null && _lastUploadedLng != null) {
+    if (!shouldUploadLocation &&
+        _lastUploadedLat != null &&
+        _lastUploadedLng != null) {
       final moved = _distanceMeters(
         _lastUploadedLat!,
         _lastUploadedLng!,
         position.latitude,
         position.longitude,
       );
-      if (moved < profile.firestoreMinDistanceMeters) return;
+      shouldUploadLocation = moved >= profile.firestoreMinDistanceMeters;
     }
+
+    final heartbeatDue = force ||
+        _lastVehicleHeartbeatAt == null ||
+        now.difference(_lastVehicleHeartbeatAt!) >=
+            const Duration(seconds: 60);
+
+    if (!heartbeatDue && !shouldUploadLocation) return;
 
     _isWritingLocation = true;
     try {
       final busNumber = auth.userData?.busNumber?.trim() ?? '';
       if (busNumber.isEmpty) return;
 
-      final sessionOwned = await _vehicleSession.heartbeat(
-        driverId: uid,
-        busNumber: busNumber,
-        latitude: position.latitude,
-        longitude: position.longitude,
-        isTripActive: driver.isTripActive,
-      );
+      if (heartbeatDue) {
+        final sessionOwned = await _vehicleSession.heartbeat(
+          driverId: uid,
+          busNumber: busNumber,
+          latitude: position.latitude,
+          longitude: position.longitude,
+          isTripActive: driver.isTripActive,
+        );
 
-      if (!sessionOwned) {
-        _vehicleSessionLost = true;
-        await _handleVehicleSessionLost(uid);
-        return;
+        if (!sessionOwned) {
+          _vehicleSessionLost = true;
+          await _handleVehicleSessionLost(uid);
+          return;
+        }
+
+        _lastVehicleHeartbeatAt = now;
       }
+
+      if (!shouldUploadLocation) return;
 
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'currentLatitude': position.latitude,
