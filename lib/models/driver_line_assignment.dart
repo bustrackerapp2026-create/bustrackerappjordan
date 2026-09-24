@@ -42,7 +42,13 @@ extension DriverLineAssignmentStatusX on DriverLineAssignmentStatus {
 /// يحدد الخط الأب الذي ينتمي إليه المسار.
 class DriverLineAssignment {
   final String id;
+  /// الهوية الأمنية/التدقيقية للسائق الذي أنشأ الطلب.
+  /// ليست الهوية التشغيلية للمسار.
   final String driverId;
+
+  /// الهوية التشغيلية: رقم الباص/السرفيس المرتبط بالمسار.
+  final String busNumber;
+
   final String routeId;
   final String lineId;
   final DriverLineAssignmentStatus status;
@@ -57,6 +63,7 @@ class DriverLineAssignment {
   const DriverLineAssignment({
     required this.id,
     required this.driverId,
+    required this.busNumber,
     required this.routeId,
     required this.lineId,
     required this.requestedBy,
@@ -74,6 +81,7 @@ class DriverLineAssignment {
   Map<String, dynamic> toMap() {
     return {
       'driverId': driverId,
+      'busNumber': busNumber,
       'routeId': routeId,
       'lineId': lineId,
       'status': status.firestoreValue,
@@ -98,6 +106,7 @@ class DriverLineAssignment {
     return DriverLineAssignment(
       id: id,
       driverId: data['driverId']?.toString() ?? '',
+      busNumber: data['busNumber']?.toString() ?? '',
       routeId: data['routeId']?.toString() ?? '',
       lineId: data['lineId']?.toString() ?? '',
       status: DriverLineAssignmentStatusX.fromString(
