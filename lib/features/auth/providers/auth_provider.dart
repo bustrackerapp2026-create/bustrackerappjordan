@@ -11,6 +11,7 @@ import 'package:jordan_bus_tracker_new/services/driver_route_request_service.dar
 import 'package:jordan_bus_tracker_new/services/firestore_service.dart';
 import 'package:jordan_bus_tracker_new/services/live_tracking_service.dart';
 import 'package:jordan_bus_tracker_new/services/transit_line_service.dart';
+import 'package:jordan_bus_tracker_new/services/vehicle_trip_service.dart';
 import 'package:jordan_bus_tracker_new/services/vehicle_operational_session_service.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -290,6 +291,20 @@ class AuthProvider extends ChangeNotifier {
     if (uid == null || uid.isEmpty) return;
 
     if (!UserRoles.isDriverLike(_userData?.userType)) return;
+
+    // إذا كانت هناك رحلة تشغيلية نشطة، فالحالة التشغيلية يجب أن تبقى محفوظة
+    // حتى بعد تسجيل الخروج، لأن الرحلة نفسها لا تُنهى بتسجيل الخروج.
+    // إطفاء isOnline هنا كان يجعل السائق يعود بعد الدخول ويرى «اتصال»
+    // رغم أن الرحلة ما زالت ACTIVE على VehicleTrip والمركبة ما زالت مقفلة.
+    final activeVehicleTrip =
+        await VehicleTripService().findActiveTripForDriver(uid);
+    if (activeVehicleTrip != null) {
+      debugPrint(
+        'الإبقاء على الحالة التشغيلية عند تسجيل الخروج: '
+        'VehicleTrip=' + activeVehicleTrip.id,
+      );
+      return;
+    }
 
     try {
       await _liveTracking.setDriverOnlineStatus(
