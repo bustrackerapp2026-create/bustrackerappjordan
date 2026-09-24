@@ -90,15 +90,38 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
     });
 
     try {
-      final approved = busNumber.isEmpty
-          ? await _assignments.getApprovedForDriver(uid)
-          : (await _assignments.getApprovedForVehicle(busNumber) ??
-              await _assignments.getApprovedForDriver(uid));
+      // Firestore allows the driver to query assignments by driverId.
+      // We then enforce the operational vehicle match locally using busNumber.
+      // This avoids a driver-side collection query that Firestore rules cannot
+      // reliably authorize when its only constraint is busNumber.
+      final driverApproved =
+          await _assignments.getApprovedAssignmentsForDriver(uid, limit: 200);
+      DriverLineAssignment? approved;
 
-      final pending = busNumber.isEmpty
-          ? await _assignments.getPendingForDriver(uid)
-          : (await _assignments.getPendingForVehicle(busNumber) ??
-              await _assignments.getPendingForDriver(uid));
+      if (busNumber.isNotEmpty) {
+        for (final item in driverApproved) {
+          if (item.busNumber.trim() == busNumber) {
+            approved = item;
+            break;
+          }
+        }
+
+        // Backward compatibility for assignments created before busNumber
+        // became mandatory. Such a legacy assignment is accepted only when
+        // no vehicle-specific assignment exists for this driver.
+        if (approved == null) {
+          for (final item in driverApproved) {
+            if (item.busNumber.trim().isEmpty) {
+              approved = item;
+              break;
+            }
+          }
+        }
+      } else if (driverApproved.isNotEmpty) {
+        approved = driverApproved.first;
+      }
+
+      final pending = await _assignments.getPendingForDriver(uid);
 
       TransitLine? approvedLine;
       PlannedRoute? approvedRoute;
@@ -127,7 +150,9 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
         _pendingLine = pendingLine;
         _pendingRoute = pendingRoute;
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('ApprovedRouteLineScreen load error: $e');
+      debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
 
       setState(() {
