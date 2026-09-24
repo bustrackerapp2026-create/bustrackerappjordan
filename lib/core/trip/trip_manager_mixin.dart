@@ -67,6 +67,62 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     );
   }
 
+  /// يستعيد الرحلة التشغيلية والمسار المعتمد عند إعادة فتح الشاشة.
+  /// تحفظ الحالة داخل هذا الـmixin لأن معرف الرحلة والمسار حقول خاصة به.
+  Future<void> restoreActiveVehicleTripRoute(String driverId) async {
+    final uid = driverId.trim();
+    if (!mounted || uid.isEmpty) return;
+
+    try {
+      final activeTrip = await _vehicleTripService.findActiveTripForDriver(uid);
+      if (activeTrip == null || !activeTrip.isActive) return;
+
+      final routeId = activeTrip.routeId.trim();
+      if (routeId.isEmpty) return;
+
+      final snap = await FirebaseFirestore.instance
+          .collection('plannedRoutes')
+          .doc(routeId)
+          .get();
+
+      if (!snap.exists || snap.data() == null) {
+        MapUtils.log(
+          '⚠️ المسار التشغيلي غير موجود: ' + routeId,
+          tag: 'TripManager',
+        );
+        return;
+      }
+
+      final route = PlannedRoute.fromDoc(snap.id, snap.data()!);
+      if (!route.isApproved || route.points.length < 2) {
+        MapUtils.log(
+          '⚠️ المسار التشغيلي غير صالح أو غير معتمد: ' + route.id,
+          tag: 'TripManager',
+        );
+        return;
+      }
+
+      if (route.direction.firestoreValue != activeTrip.direction) {
+        MapUtils.log(
+          '⚠️ اتجاه الرحلة لا يطابق اتجاه المسار: ' + route.id,
+          tag: 'TripManager',
+        );
+        return;
+      }
+
+      if (!mounted) return;
+      _currentVehicleTripId = activeTrip.id;
+      _currentOperationalRoute = route;
+
+      await showRouteOnMap(route.points);
+    } catch (e, st) {
+      MapUtils.log(
+        '❌ فشل استعادة المسار التشغيلي بعد إعادة الدخول: ' + e.toString(),
+        tag: 'TripManager',
+      );
+      debugPrint(st.toString());
+    }
+  }
   Future<PlannedRoute?> _getApprovedRouteForAssignment(
     String routeId,
     String lineId,
