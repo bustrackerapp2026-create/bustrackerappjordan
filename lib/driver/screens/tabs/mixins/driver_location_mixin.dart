@@ -582,7 +582,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
 
     try {
-      await _public.markOffline(uid);
+      await DriverPublicLocationService().markOffline(uid);
     } catch (e) {
       debugPrint('vehicle session lost: failed to mark public driver offline: $e');
     }
