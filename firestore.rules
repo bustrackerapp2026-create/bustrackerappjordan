@@ -325,6 +325,88 @@ service cloud.firestore {
       allow delete: if isDriver() && isOwner(driverId) || isAdmin();
     }
 
+    // جلسة تشغيلية واحدة لكل مركبة.
+    // تعدد السائقين مسموح في الحسابات، لكن مركبة واحدة لا تملك
+    // أكثر من سائق تشغيلي فعال في اللحظة نفسها.
+    match /vehicleOperationalSessions/{sessionId} {
+      allow read: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.activeDriverId == request.auth.uid
+        );
+
+      allow create: if isDriver()
+        && request.resource.data.busNumber is string
+        && request.resource.data.busNumber.size() > 0
+        && request.resource.data.busNumber == userDoc().data.busNumber
+        && request.resource.data.activeDriverId == request.auth.uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.isTripActive == false
+        && request.resource.data.tripId == '';
+
+      allow update: if isAdmin()
+        || (
+          isDriver()
+          && request.resource.data.busNumber is string
+          && request.resource.data.busNumber.size() > 0
+          && request.resource.data.busNumber == userDoc().data.busNumber
+          && (
+            (
+              resource.data.activeDriverId == request.auth.uid
+              && request.resource.data.activeDriverId == request.auth.uid
+              && request.resource.data.status == 'active'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'busNumber',
+                'activeDriverId',
+                'status',
+                'isTripActive',
+                'tripId',
+                'lastLatitude',
+                'lastLongitude',
+                'lastHeartbeatAt',
+                'updatedAt'
+              ])
+            )
+            ||
+            (
+              resource.data.busNumber == userDoc().data.busNumber
+              && resource.data.status != 'active'
+              && request.resource.data.activeDriverId == request.auth.uid
+              && request.resource.data.status == 'active'
+              && request.resource.data.isTripActive == false
+              && request.resource.data.tripId == ''
+            )
+            ||
+            (
+              resource.data.busNumber == userDoc().data.busNumber
+              && resource.data.status == 'active'
+              && resource.data.isTripActive == false
+              && request.resource.data.activeDriverId == request.auth.uid
+              && request.resource.data.status == 'active'
+              && request.resource.data.isTripActive == false
+              && request.resource.data.tripId == ''
+              && request.resource.data.handoverReason == 'stale-session-and-location-check'
+              && request.resource.data.handedOverAt == request.time
+              && request.resource.data.lastHeartbeatAt == request.time
+            )
+            ||
+            (
+              resource.data.activeDriverId == request.auth.uid
+              && request.resource.data.activeDriverId == request.auth.uid
+              && request.resource.data.status == 'released'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'status',
+                'releasedAt',
+                'updatedAt'
+              ])
+              && request.resource.data.releasedAt == request.time
+            )
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
     // الخط التشغيلي الرسمي المستقل عن المسار الجغرافي.
     match /transitLines/{lineId} {
       allow read: if isSignedIn();
