@@ -51,6 +51,35 @@ class DriverLineAssignmentService {
     return approved.isEmpty ? null : approved.first;
   }
 
+  /// التعيين التشغيلي المرتبط برقم الباص/السرفيس.
+  /// يبقى driverId موجودًا فقط لتقييد قراءة السائق حسب صلاحيات Firestore.
+  Future<DriverLineAssignment?> getApprovedForVehicle({
+    required String driverId,
+    required String busNumber,
+  }) async {
+    final driver = driverId.trim();
+    final bus = busNumber.trim();
+    if (driver.isEmpty || bus.isEmpty) return null;
+
+    final snap = await _col
+        .where('driverId', isEqualTo: driver)
+        .where('busNumber', isEqualTo: bus)
+        .limit(50)
+        .get();
+
+    DriverLineAssignment? approved;
+    for (final doc in snap.docs) {
+      final assignment = DriverLineAssignment.fromDoc(doc.id, doc.data());
+      if (assignment.status != DriverLineAssignmentStatus.approved) continue;
+      if (assignment.routeId.trim().isEmpty) continue;
+      if (approved == null ||
+          _timestampOf(assignment).isAfter(_timestampOf(approved))) {
+        approved = assignment;
+      }
+    }
+    return approved;
+  }
+
   Future<DriverLineAssignment?> getPendingForDriver(String driverId) async {
     final id = driverId.trim();
     if (id.isEmpty) return null;
@@ -69,8 +98,49 @@ class DriverLineAssignmentService {
     return pending;
   }
 
+  Future<DriverLineAssignment?> getPendingForVehicle({
+    required String driverId,
+    required String busNumber,
+  }) async {
+    final driver = driverId.trim();
+    final bus = busNumber.trim();
+    if (driver.isEmpty || bus.isEmpty) return null;
+
+    final snap = await _col
+        .where('driverId', isEqualTo: driver)
+        .where('busNumber', isEqualTo: bus)
+        .limit(200)
+        .get();
+
+    DriverLineAssignment? pending;
+    for (final doc in snap.docs) {
+      final assignment = DriverLineAssignment.fromDoc(doc.id, doc.data());
+      if (assignment.status != DriverLineAssignmentStatus.pending) continue;
+      if (assignment.routeId.trim().isEmpty) continue;
+      if (pending == null ||
+          _timestampOf(assignment).isAfter(_timestampOf(pending))) {
+        pending = assignment;
+      }
+    }
+    return pending;
+  }
+
   Future<TransitLine?> getApprovedLineForDriver(String driverId) async {
     final assignment = await getApprovedForDriver(driverId);
+    if (assignment == null) return null;
+    final line = await _lines.getById(assignment.lineId);
+    if (line == null || !line.isApproved) return null;
+    return line;
+  }
+
+  Future<TransitLine?> getApprovedLineForVehicle({
+    required String driverId,
+    required String busNumber,
+  }) async {
+    final assignment = await getApprovedForVehicle(
+      driverId: driverId,
+      busNumber: busNumber,
+    );
     if (assignment == null) return null;
     final line = await _lines.getById(assignment.lineId);
     if (line == null || !line.isApproved) return null;
@@ -134,15 +204,17 @@ class DriverLineAssignmentService {
 
   Future<DriverLineAssignment> requestAssignment({
     required String driverId,
+    required String busNumber,
     required String routeId,
     required String lineId,
   }) async {
     final driver = driverId.trim();
+    final bus = busNumber.trim();
     final route = routeId.trim();
     final line = lineId.trim();
-    if (driver.isEmpty || route.isEmpty || line.isEmpty) {
+    if (driver.isEmpty || bus.isEmpty || route.isEmpty || line.isEmpty) {
       throw const TransitLineServiceException(
-        'بيانات طلب التعيين غير مكتملة.',
+        'بيانات طلب التعيين غير مكتملة، ويجب تحديد رقم الباص/السرفيس.',
         code: 'invalid-request',
       );
     }
@@ -199,6 +271,7 @@ class DriverLineAssignmentService {
     final ref = _col.doc();
     await ref.set({
       'driverId': driver,
+      'busNumber': bus,
       'routeId': route,
       'lineId': line,
       'status': DriverLineAssignmentStatus.pending.firestoreValue,
@@ -211,6 +284,7 @@ class DriverLineAssignmentService {
     return DriverLineAssignment(
       id: ref.id,
       driverId: driver,
+      busNumber: bus,
       routeId: route,
       lineId: line,
       requestedBy: driver,
