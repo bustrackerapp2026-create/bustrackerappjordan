@@ -11,11 +11,14 @@ import 'package:jordan_bus_tracker_new/services/driver_route_request_service.dar
 import 'package:jordan_bus_tracker_new/services/firestore_service.dart';
 import 'package:jordan_bus_tracker_new/services/live_tracking_service.dart';
 import 'package:jordan_bus_tracker_new/services/transit_line_service.dart';
+import 'package:jordan_bus_tracker_new/services/vehicle_operational_session_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
   final LiveTrackingService _liveTracking = LiveTrackingService();
+  final VehicleOperationalSessionService _vehicleSession =
+      VehicleOperationalSessionService();
   final DriverLineAssignmentService _driverLineAssignmentService =
       DriverLineAssignmentService();
   final DriverRouteRequestService _driverRouteRequestService =
@@ -296,6 +299,21 @@ class AuthProvider extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint('تعذر إطفاء حالة السائق عند الخروج: $e');
+    }
+
+    final busNumber = _userData?.busNumber?.trim() ?? '';
+    if (busNumber.isEmpty) return;
+
+    try {
+      await _vehicleSession.release(
+        driverId: uid,
+        busNumber: busNumber,
+      );
+    } on VehicleOperationalSessionException catch (e) {
+      // أثناء رحلة نشطة نُبقي القفل عمدًا لحماية المركبة من الاستحواذ.
+      debugPrint('لم يتم تحرير جلسة المركبة عند الخروج: $e');
+    } catch (e) {
+      debugPrint('تعذر تحرير جلسة المركبة عند الخروج: $e');
     }
   }
 
