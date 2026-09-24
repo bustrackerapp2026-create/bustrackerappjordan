@@ -37,10 +37,7 @@ class VehicleOperationalSessionService {
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection('vehicleOperationalSessions');
 
-  String _docId(String busNumber) {
-    // نحتاج معرفًا ثابتًا لا يحتوي على "/" لأن رقم المركبة هو مفتاح الجلسة.
-    return 'vehicle_${busNumber.trim().replaceAll('/', '%2F')}';
-  }
+  String _docId(String busNumber) => busNumber.trim();
 
   DateTime? _readTimestamp(dynamic value) {
     if (value is Timestamp) return value.toDate();
