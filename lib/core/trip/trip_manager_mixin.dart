@@ -124,16 +124,24 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   Future<AssignedRouteChoice?> _resolveAssignedRoute(
     String driverId,
-    geo.Position currentPosition,
-  ) async {
+    geo.Position currentPosition, {
+    String? busNumber,
+  }) async {
     final assignments =
         await _driverLineAssignmentService.getApprovedAssignmentsForDriver(
       driverId,
       limit: 50,
     );
 
+    final operationalBus = busNumber?.trim() ?? '';
     final candidates = <AssignedRouteChoice>[];
     for (final assignment in assignments) {
+      if (operationalBus.isNotEmpty &&
+          assignment.busNumber.trim().isNotEmpty &&
+          assignment.busNumber.trim() != operationalBus) {
+        continue;
+      }
+
       final route = await _getApprovedRouteForAssignment(
         assignment.routeId,
         assignment.lineId,
@@ -294,11 +302,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         }
         return;
       }
-
-      final busNumber =
-          authProvider.userData?.busNumber?.trim().isNotEmpty == true
-              ? authProvider.userData!.busNumber!.trim()
-              : '—';
 
       final vehicleTrip = await _vehicleTripService.startTrip(
         driverId: userId,
