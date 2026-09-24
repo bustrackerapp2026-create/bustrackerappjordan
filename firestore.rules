@@ -120,6 +120,27 @@ service cloud.firestore {
         && userDoc().data.get('routeId', '') == routeId;
     }
 
+    function isVehicleSessionOwnedByCurrentUser(busNumber) {
+      return isDriver()
+        && busNumber is string
+        && busNumber.size() > 0
+        && busNumber == userDoc().data.get('busNumber', '')
+        && exists(/databases/$(database)/documents/vehicleOperationalSessions/$(busNumber))
+        && get(/databases/$(database)/documents/vehicleOperationalSessions/$(busNumber)).data.status == 'active'
+        && get(/databases/$(database)/documents/vehicleOperationalSessions/$(busNumber)).data.activeDriverId == request.auth.uid;
+    }
+
+    function hasMatchingActiveVehicleTrip(tripId, busNumber) {
+      return tripId is string
+        && tripId.size() > 0
+        && busNumber is string
+        && busNumber.size() > 0
+        && exists(/databases/$(database)/documents/vehicleTrips/$(tripId))
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.status == 'active'
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.driverId == request.auth.uid
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.busNumber == busNumber;
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
 
@@ -268,6 +289,7 @@ service cloud.firestore {
       allow read: if isSignedIn();
 
       allow create: if isVerifiedDriverAssignedToRoute(request.resource.data.routeId)
+        && isVehicleSessionOwnedByCurrentUser(request.resource.data.busNumber)
         && request.resource.data.driverId == request.auth.uid
         && request.resource.data.routeId is string
         && request.resource.data.routeId.size() > 0
@@ -355,6 +377,13 @@ service cloud.firestore {
               resource.data.activeDriverId == request.auth.uid
               && request.resource.data.activeDriverId == request.auth.uid
               && request.resource.data.status == 'active'
+              && (
+                request.resource.data.isTripActive == false
+                || hasMatchingActiveVehicleTrip(
+                  request.resource.data.tripId,
+                  request.resource.data.busNumber
+                )
+              )
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                 'busNumber',
                 'activeDriverId',
