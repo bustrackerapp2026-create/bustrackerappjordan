@@ -552,6 +552,7 @@ class _DriverMapTabState extends State<DriverMapTab>
           (driver.isOnline || driver.isTripActive)) {
         await ensureDriverTrackingRunning();
       }
+      await _restoreActiveVehicleTripRoute();
       await _syncPickupMarker(_activeBoardTrip);
       if (mounted) setState(() => isMapReady = true);
     } catch (e, st) {
@@ -560,6 +561,64 @@ class _DriverMapTabState extends State<DriverMapTab>
     }
   }
 
+  /// استعادة المسار التشغيلي بعد إعادة فتح الشاشة إذا كانت هناك VehicleTrip نشطة.
+  /// المصدر هنا هو الرحلة التشغيلية نفسها، وليس حالة الشاشة المحلية السابقة.
+  Future<void> _restoreActiveVehicleTripRoute() async {
+    if (!mounted) return;
+
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userId;
+    if (uid == null || uid.isEmpty) return;
+
+    try {
+      final vehicleTripService = VehicleTripService();
+      final activeTrip =
+          await vehicleTripService.findActiveTripForDriver(uid);
+      if (activeTrip == null || !activeTrip.isActive) return;
+
+      final snap = await FirebaseFirestore.instance
+          .collection('plannedRoutes')
+          .doc(activeTrip.routeId.trim())
+          .get();
+
+      if (!snap.exists || snap.data() == null) {
+        debugPrint(
+          'restore active vehicle route: route not found ' +
+          activeTrip.routeId,
+        );
+        return;
+      }
+
+      final route = PlannedRoute.fromDoc(snap.id, snap.data()!);
+      if (!route.isApproved || route.points.length < 2) {
+        debugPrint(
+          'restore active vehicle route: route is not approved/complete ' +
+          route.id,
+        );
+        return;
+      }
+
+      if (route.direction.firestoreValue != activeTrip.direction) {
+        debugPrint(
+          'restore active vehicle route: direction mismatch for ' +
+          route.id,
+        );
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _currentVehicleTripId = activeTrip.id;
+        _currentOperationalRoute = route;
+        final lineName = route.lineName.trim();
+        if (lineName.isNotEmpty) _operationalLineName = lineName;
+      });
+
+      await showRouteOnMap(route.points);
+    } catch (e, st) {
+      debugPrint('restore active vehicle route failed: $e\n$st');
+    }
+  }
   Future<String?> _resolveOperationalLineName(String busNumber) async {
     final bus = busNumber.trim();
     if (bus.isEmpty) return null;
