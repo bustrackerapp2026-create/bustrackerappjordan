@@ -295,6 +295,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _cachedTripActive = driver.isTripActive;
 
     attachDriverTrackingUi();
+    _vehicleSessionLost = false;
 
     await _hub.requestStart(
       uid: uid,
