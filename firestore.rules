@@ -31,6 +31,15 @@ service cloud.firestore {
       return userExists() && userType() == 'driver';
     }
 
+    function isAssignedVehicleToCurrentUser() {
+      return isSignedIn()
+        && userExists()
+        && request.auth.uid == request.auth.uid
+        && resource.data.busNumber is string
+        && resource.data.busNumber.size() > 0
+        && resource.data.busNumber == userDoc().data.busNumber;
+    }
+
     function isPassenger() {
       return userExists() && userType() == 'passenger';
     }
@@ -372,7 +381,10 @@ service cloud.firestore {
     // طلب تعيين خط رسمي للسائق — الاعتماد النهائي بيد الأدمن.
     match /driverLineAssignments/{assignmentId} {
       allow read: if isAdmin()
-        || (isSignedIn() && resource.data.driverId == request.auth.uid);
+        || (isSignedIn() && (
+          resource.data.driverId == request.auth.uid
+          || isAssignedVehicleToCurrentUser()
+        ));
 
       allow create: if (
           isAdmin()
