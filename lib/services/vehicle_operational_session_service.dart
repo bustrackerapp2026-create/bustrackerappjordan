@@ -208,9 +208,8 @@ class VehicleOperationalSessionService {
             (remaining.inSeconds % 60 == 0 ? 0 : 1);
 
         throw VehicleOperationalSessionException(
-          'المركبة مرتبطة حاليًا بسائق آخر. توجد مهلة حماية متبقية قدرها ' +
-              minutes.toString() +
-              ' دقيقة قبل السماح بنقل التشغيل.',
+          'المركبة مرتبطة حاليًا بسائق آخر. توجد مهلة حماية متبقية قدرها '
+          '$minutes دقيقة قبل السماح بنقل التشغيل.',
           code: 'vehicle-busy',
         );
       }
