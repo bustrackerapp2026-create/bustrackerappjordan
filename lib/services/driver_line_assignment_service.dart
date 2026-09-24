@@ -51,33 +51,33 @@ class DriverLineAssignmentService {
     return approved.isEmpty ? null : approved.first;
   }
 
-  /// التعيين التشغيلي المرتبط برقم الباص/السرفيس.
-  /// يبقى driverId موجودًا فقط لتقييد قراءة السائق حسب صلاحيات Firestore.
-  Future<DriverLineAssignment?> getApprovedForVehicle({
-    required String driverId,
-    required String busNumber,
+  /// التعيين التشغيلي مرتبط بالمركبة نفسها: رقم الباص/السرفيس.
+  /// driverId محفوظ كسجل أمني لمن طلب/استخدم التعيين، وليس كهوية المركبة.
+  Future<List<DriverLineAssignment>> getApprovedAssignmentsForVehicle(
+    String busNumber, {
+    int limit = 50,
   }) async {
-    final driver = driverId.trim();
     final bus = busNumber.trim();
-    if (driver.isEmpty || bus.isEmpty) return null;
+    if (bus.isEmpty) return const [];
 
-    final snap = await _col
-        .where('driverId', isEqualTo: driver)
-        .where('busNumber', isEqualTo: bus)
-        .limit(50)
-        .get();
+    final snap = await _col.where('busNumber', isEqualTo: bus).limit(200).get();
+    final approved = snap.docs
+        .map((doc) => DriverLineAssignment.fromDoc(doc.id, doc.data()))
+        .where((item) =>
+            item.status == DriverLineAssignmentStatus.approved &&
+            item.routeId.trim().isNotEmpty)
+        .toList();
+    approved.sort((a, b) => _timestampOf(b).compareTo(_timestampOf(a)));
+    return approved.take(limit.clamp(1, 200)).toList();
+  }
 
-    DriverLineAssignment? approved;
-    for (final doc in snap.docs) {
-      final assignment = DriverLineAssignment.fromDoc(doc.id, doc.data());
-      if (assignment.status != DriverLineAssignmentStatus.approved) continue;
-      if (assignment.routeId.trim().isEmpty) continue;
-      if (approved == null ||
-          _timestampOf(assignment).isAfter(_timestampOf(approved))) {
-        approved = assignment;
-      }
-    }
-    return approved;
+  Future<DriverLineAssignment?> getApprovedForVehicle(
+    String busNumber, {
+    int limit = 50,
+  }) async {
+    final approved =
+        await getApprovedAssignmentsForVehicle(busNumber, limit: limit);
+    return approved.isEmpty ? null : approved.first;
   }
 
   Future<DriverLineAssignment?> getPendingForDriver(String driverId) async {
@@ -98,20 +98,14 @@ class DriverLineAssignmentService {
     return pending;
   }
 
-  Future<DriverLineAssignment?> getPendingForVehicle({
-    required String driverId,
-    required String busNumber,
+  Future<DriverLineAssignment?> getPendingForVehicle(
+    String busNumber, {
+    int limit = 50,
   }) async {
-    final driver = driverId.trim();
     final bus = busNumber.trim();
-    if (driver.isEmpty || bus.isEmpty) return null;
+    if (bus.isEmpty) return null;
 
-    final snap = await _col
-        .where('driverId', isEqualTo: driver)
-        .where('busNumber', isEqualTo: bus)
-        .limit(200)
-        .get();
-
+    final snap = await _col.where('busNumber', isEqualTo: bus).limit(200).get();
     DriverLineAssignment? pending;
     for (final doc in snap.docs) {
       final assignment = DriverLineAssignment.fromDoc(doc.id, doc.data());
@@ -145,6 +139,21 @@ class DriverLineAssignmentService {
     final line = await _lines.getById(assignment.lineId);
     if (line == null || !line.isApproved) return null;
     return line;
+  }
+
+  Future<List<DriverLineAssignment>> listForVehicle(
+    String busNumber, {
+    int limit = 50,
+  }) async {
+    final bus = busNumber.trim();
+    if (bus.isEmpty) return const [];
+
+    final snap = await _col.where('busNumber', isEqualTo: bus).limit(200).get();
+    final result = snap.docs
+        .map((doc) => DriverLineAssignment.fromDoc(doc.id, doc.data()))
+        .toList();
+    result.sort((a, b) => _timestampOf(b).compareTo(_timestampOf(a)));
+    return result.take(limit.clamp(1, 200)).toList();
   }
 
   Stream<List<DriverLineAssignment>> watchDriverAssignments(
@@ -257,7 +266,7 @@ class DriverLineAssignmentService {
       );
     }
 
-    final existing = await listForDriver(driver, limit: 200);
+    final existing = await listForVehicle(bus, limit: 200);
     final activeOrPending = existing.where(
       (item) =>
           item.routeId == route &&
@@ -330,8 +339,8 @@ class DriverLineAssignmentService {
       );
     }
 
-    final approved = await getApprovedAssignmentsForDriver(
-      assignment.driverId,
+    final approved = await getApprovedAssignmentsForVehicle(
+      assignment.busNumber,
       limit: 200,
     );
     final duplicateRoute = approved.any(
@@ -445,7 +454,7 @@ class DriverLineAssignmentService {
       }
 
       final existingApproved = await _col
-          .where('driverId', isEqualTo: driver)
+          .where('busNumber', isEqualTo: assignment.busNumber)
           .where(
             'status',
             isEqualTo: DriverLineAssignmentStatus.approved.firestoreValue,
