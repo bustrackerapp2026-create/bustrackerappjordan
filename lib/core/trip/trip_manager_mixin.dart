@@ -163,7 +163,13 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     String driverId,
     geo.Position currentPosition,
   ) async {
-    final resolved = await _resolveAssignedRoute(driverId, currentPosition);
+    final busNumber =
+        context.read<AuthProvider>().userData?.busNumber?.trim();
+    final resolved = await _resolveAssignedRoute(
+      driverId,
+      currentPosition,
+      busNumber: busNumber,
+    );
     return resolved != null;
   }
 
@@ -204,7 +210,25 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     setState(() => _isProcessingTrip = true);
     try {
-      final resolved = await _resolveAssignedRoute(userId, currentPosition);
+      final busNumber =
+          authProvider.userData?.busNumber?.trim().isNotEmpty == true
+              ? authProvider.userData!.busNumber!.trim()
+              : '';
+
+      if (busNumber.isEmpty) {
+        MapUtils.showSnackBar(
+          context,
+          '⚠️ لا يوجد رقم باص/سرفيس مسجل لهذا الحساب.',
+          isError: true,
+        );
+        return;
+      }
+
+      final resolved = await _resolveAssignedRoute(
+        userId,
+        currentPosition,
+        busNumber: busNumber,
+      );
 
       if (resolved == null) {
         final assignments =
@@ -212,7 +236,12 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           userId,
           limit: 50,
         );
-        if (assignments.isEmpty) {
+        final vehicleAssignments = assignments.where((assignment) {
+          final assignedBus = assignment.busNumber.trim();
+          return assignedBus.isEmpty || assignedBus == busNumber;
+        }).toList();
+
+        if (vehicleAssignments.isEmpty) {
           if (mounted) {
             MapUtils.showSnackBar(
               context,
@@ -222,7 +251,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           }
         } else {
           final validAssignments = <DriverLineAssignment>[];
-          for (final assignment in assignments) {
+          for (final assignment in vehicleAssignments) {
             final route = await _getApprovedRouteForAssignment(
               assignment.routeId,
               assignment.lineId,
