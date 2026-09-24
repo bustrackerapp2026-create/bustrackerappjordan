@@ -488,6 +488,23 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     _isWritingLocation = true;
     try {
+      final busNumber = auth.userData?.busNumber?.trim() ?? '';
+      if (busNumber.isEmpty) return;
+
+      final sessionOwned = await _vehicleSession.heartbeat(
+        driverId: uid,
+        busNumber: busNumber,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        isTripActive: driver.isTripActive,
+      );
+
+      if (!sessionOwned) {
+        _vehicleSessionLost = true;
+        await _handleVehicleSessionLost(uid);
+        return;
+      }
+
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'currentLatitude': position.latitude,
         'currentLongitude': position.longitude,
@@ -522,6 +539,41 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       MapUtils.log('⚠️ رفع الموقع: $e', tag: 'DriverLocation');
     } finally {
       _isWritingLocation = false;
+    }
+  }
+
+  Future<void> _handleVehicleSessionLost(String uid) async {
+    if (!mounted) return;
+
+    final driver = context.read<DriverProvider>();
+    driver.setOnline(false, userId: uid);
+    _cachedOnline = false;
+    _cachedTripActive = driver.isTripActive;
+
+    await stopDriverTracking();
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'isOnline': false,
+        'isTripActive': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('vehicle session lost: failed to mark user offline: $e');
+    }
+
+    try {
+      await _public.markOffline(uid);
+    } catch (e) {
+      debugPrint('vehicle session lost: failed to mark public driver offline: $e');
+    }
+
+    if (mounted) {
+      MapUtils.showSnackBar(
+        context,
+        '⚠️ فقد حسابك جلسة المركبة لأن سائقًا آخر استلمها. تم إيقاف حالتك التشغيلية.',
+        isError: true,
+      );
     }
   }
 
