@@ -492,10 +492,16 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       shouldUploadLocation = moved >= profile.firestoreMinDistanceMeters;
     }
 
-    final heartbeatDue = force ||
-        _lastVehicleHeartbeatAt == null ||
-        now.difference(_lastVehicleHeartbeatAt!) >=
-            const Duration(seconds: 60);
+    // جلسة المركبة تخص الحالة التشغيلية فقط.
+    // زر «تحديد موقعي» قد يعمل بينما السائق غير متصل، لذلك لا يجوز
+    // أن يتحول طلب تحديد الموقع إلى heartbeat أو إلى فحص ملكية الجلسة.
+    final shouldMaintainVehicleSession =
+        driver.isOnline || driver.isTripActive;
+    final heartbeatDue = shouldMaintainVehicleSession &&
+        (force ||
+            _lastVehicleHeartbeatAt == null ||
+            now.difference(_lastVehicleHeartbeatAt!) >=
+                const Duration(seconds: 60));
 
     if (!heartbeatDue && !shouldUploadLocation) return;
 
