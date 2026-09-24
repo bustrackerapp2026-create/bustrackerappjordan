@@ -65,7 +65,9 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
   }
 
   Future<void> _load() async {
-    final uid = context.read<AuthProvider>().userId?.trim();
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userId?.trim();
+    final busNumber = auth.userData?.busNumber?.trim() ?? '';
 
     if (uid == null || uid.isEmpty) {
       if (!mounted) return;
@@ -88,8 +90,21 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
     });
 
     try {
-      final approved = await _assignments.getApprovedForDriver(uid);
-      final pending = await _assignments.getPendingForDriver(uid);
+      final approved = busNumber.isEmpty
+          ? await _assignments.getApprovedForDriver(uid)
+          : (await _assignments.getApprovedForVehicle(
+                driverId: uid,
+                busNumber: busNumber,
+              ) ??
+              await _assignments.getApprovedForDriver(uid));
+
+      final pending = busNumber.isEmpty
+          ? await _assignments.getPendingForDriver(uid)
+          : (await _assignments.getPendingForVehicle(
+                driverId: uid,
+                busNumber: busNumber,
+              ) ??
+              await _assignments.getPendingForDriver(uid));
 
       TransitLine? approvedLine;
       PlannedRoute? approvedRoute;
@@ -138,6 +153,8 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
   Widget build(BuildContext context) {
     final hasApproved = _approved != null;
     final hasPending = _pending != null;
+    final busNumber =
+        context.read<AuthProvider>().userData?.busNumber?.trim() ?? '';
 
     return Scaffold(
       appBar: AppBar(
@@ -165,6 +182,7 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                     _StateHeader(
                       hasApproved: hasApproved,
                       hasPending: hasPending,
+                      busNumber: busNumber,
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 14),
@@ -227,10 +245,12 @@ class _StateHeader extends StatelessWidget {
   const _StateHeader({
     required this.hasApproved,
     required this.hasPending,
+    required this.busNumber,
   });
 
   final bool hasApproved;
   final bool hasPending;
+  final String busNumber;
 
   @override
   Widget build(BuildContext context) {
@@ -241,17 +261,23 @@ class _StateHeader extends StatelessWidget {
 
     if (hasApproved) {
       title = 'المسار معتمد';
-      subtitle = 'يوجد تعيين معتمد مرتبط بحساب السائق الحالي.';
+      subtitle = busNumber.isEmpty
+          ? 'يوجد تعيين معتمد مرتبط بحساب السائق الحالي.'
+          : 'يوجد تعيين معتمد لرقم الباص/السرفيس: $busNumber.';
       icon = Icons.check_circle_rounded;
       color = const Color(0xFF2E7D32);
     } else if (hasPending) {
       title = 'الطلب قيد المراجعة';
-      subtitle = 'يوجد طلب تعيين بانتظار قرار الأدمن.';
+      subtitle = busNumber.isEmpty
+          ? 'يوجد طلب تعيين بانتظار قرار الأدمن.'
+          : 'يوجد طلب تعيين لرقم الباص/السرفيس: $busNumber بانتظار قرار الأدمن.';
       icon = Icons.hourglass_top_rounded;
       color = const Color(0xFFEF6C00);
     } else {
       title = 'لا يوجد مسار معتمد';
-      subtitle = 'لا يوجد تعيين مسار معتمد حاليًا لهذا السائق.';
+      subtitle = busNumber.isEmpty
+          ? 'لا يوجد تعيين مسار معتمد حاليًا لهذا السائق.'
+          : 'لا يوجد تعيين مسار معتمد حاليًا لرقم الباص/السرفيس: $busNumber.';
       icon = Icons.route_outlined;
       color = Colors.blueGrey;
     }
@@ -402,21 +428,15 @@ class _AssignmentCard extends StatelessWidget {
               value: endName,
             ),
           ],
-          const SizedBox(height: 10),
-          _InfoRow(
-            icon: Icons.fingerprint_rounded,
-            label: 'معرّف المسار',
-            value: assignment.routeId.trim().isEmpty
-                ? 'غير متوفر'
-                : assignment.routeId.trim(),
-          ),
-          if (route != null) ...[
+          if (assignment.busNumber.trim().isNotEmpty) ...[
             const SizedBox(height: 10),
             _InfoRow(
-              icon: Icons.alt_route_rounded,
-              label: 'عدد النقاط',
-              value: route!.points.length.toString(),
+              icon: Icons.directions_bus_outlined,
+              label: 'الباص / السرفيس',
+              value: assignment.busNumber.trim(),
             ),
+          ],
+          if (route != null) ...[
             const SizedBox(height: 10),
             _InfoRow(
               icon: Icons.straighten_rounded,
