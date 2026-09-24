@@ -378,6 +378,8 @@ service cloud.firestore {
           isAdmin()
           && request.resource.data.driverId is string
           && request.resource.data.driverId.size() > 0
+          && request.resource.data.busNumber is string
+          && request.resource.data.busNumber.size() > 0
           && request.resource.data.requestedBy is string
           && request.resource.data.requestedBy.size() > 0
           && request.resource.data.routeId is string
@@ -391,6 +393,8 @@ service cloud.firestore {
           isDriver()
           && request.resource.data.driverId == request.auth.uid
           && request.resource.data.requestedBy == request.auth.uid
+          && request.resource.data.busNumber is string
+          && request.resource.data.busNumber.size() > 0
           && request.resource.data.routeId is string
           && request.resource.data.routeId.size() > 0
           && request.resource.data.lineId is string
