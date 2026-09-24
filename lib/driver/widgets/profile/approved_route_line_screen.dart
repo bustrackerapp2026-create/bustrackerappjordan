@@ -232,7 +232,6 @@ class _ApprovedRouteLineScreenState extends State<ApprovedRouteLineScreen> {
                         driverName: userData?.displayName ?? 'غير متوفر',
                         driverPhone: userData?.displayPhone ?? 'غير محدد',
                         vehicleNumber: userData?.busNumber?.trim() ?? '',
-                        vehicleNumber: userData?.busNumber?.trim() ?? '',
                       )
                     else if (hasPending)
                       _AssignmentCard(
@@ -318,6 +317,9 @@ class _AssignmentCard extends StatelessWidget {
     final endName = line?.endName.trim().isNotEmpty == true
         ? line!.endName.trim()
         : null;
+
+    final displayedVehicleNumber =
+        vehicleNumber.isNotEmpty ? vehicleNumber : assignment.busNumber.trim();
 
     return Container(
       padding: const EdgeInsets.all(16),
