@@ -22,11 +22,15 @@ import '../../../driver/widgets/driver_active_trip_banner.dart';
 import '../../../driver/widgets/driver_pending_request_banner.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../models/trip_model.dart';
+import '../../../models/driver_line_assignment.dart';
+import '../../../models/planned_route.dart';
 import '../../../models/trip_status.dart';
 import '../../../services/live_tracking_service.dart';
 import '../../../services/map_camera_prefs_service.dart';
 import '../../../services/vehicle_operational_session_service.dart';
 import '../../../services/trip_service.dart';
+import '../../../services/driver_line_assignment_service.dart';
+import '../../../services/transit_line_service.dart';
 import '../../../services/trip_service_exception.dart';
 import '../../../l10n/app_localizations.dart';
 import 'mixins/driver_location_mixin.dart';
@@ -53,11 +57,15 @@ class _DriverMapTabState extends State<DriverMapTab>
         RoutePlanRecordingMixin<DriverMapTab>,
         MapLandmarksDisplayMixin<DriverMapTab> {
   String _selectedRoute = AppConstants.jordanRoutes.first;
+  String? _operationalLineName;
   bool _mapInitialized = false;
   bool _showMap = false;
   Timer? _staleCheckTimer;
 
   final TripService _tripService = TripService();
+  final DriverLineAssignmentService _driverLineAssignmentService =
+      DriverLineAssignmentService();
+  final TransitLineService _transitLineService = TransitLineService();
   final VehicleOperationalSessionService _vehicleSession =
       VehicleOperationalSessionService();
   StreamSubscription<List<TripModel>>? _pendingSub;
@@ -553,6 +561,37 @@ class _DriverMapTabState extends State<DriverMapTab>
     }
   }
 
+  Future<String?> _resolveOperationalLineName(String busNumber) async {
+    final bus = busNumber.trim();
+    if (bus.isEmpty) return null;
+
+    try {
+      final assignment =
+          await _driverLineAssignmentService.getApprovedForVehicle(bus);
+      if (assignment == null) return null;
+
+      final line = await _transitLineService.getById(assignment.lineId);
+      final lineName = line?.name.trim() ?? '';
+      if (lineName.isNotEmpty) return lineName;
+
+      final routeSnap = await FirebaseFirestore.instance
+          .collection('plannedRoutes')
+          .doc(assignment.routeId)
+          .get();
+      if (!routeSnap.exists || routeSnap.data() == null) return null;
+
+      final route = PlannedRoute.fromDoc(
+        routeSnap.id,
+        routeSnap.data()!,
+      );
+      final routeLineName = route.lineName.trim();
+      return routeLineName.isEmpty ? null : routeLineName;
+    } catch (e, st) {
+      debugPrint('resolve operational line name failed: $e\n$st');
+      return null;
+    }
+  }
+
   Future<void> _onToggleOnline() async {
     if (!mounted) return;
     final driver = context.read<DriverProvider>();
@@ -630,6 +669,12 @@ class _DriverMapTabState extends State<DriverMapTab>
           isError: true,
         );
         return;
+      }
+
+      final operationalLineName =
+          await _resolveOperationalLineName(busNumber);
+      if (operationalLineName != null && mounted) {
+        setState(() => _operationalLineName = operationalLineName);
       }
 
       try {
@@ -970,7 +1015,9 @@ class _DriverMapTabState extends State<DriverMapTab>
                         state.isTripActive
                             ? l10n.activeTrip
                             : (state.isOnline
-                                ? l10n.onlineWithRoute(_selectedRoute)
+                                ? l10n.onlineWithRoute(
+                                    _operationalLineName ?? _selectedRoute,
+                                  )
                                 : l10n.offlineStatus),
                         style: TextStyle(
                           color: state.isOnline
