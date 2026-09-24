@@ -131,13 +131,37 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     geo.Position currentPosition, {
     String? busNumber,
   }) async {
-    final assignments =
-        await _driverLineAssignmentService.getApprovedAssignmentsForDriver(
-      driverId,
-      limit: 50,
-    );
-
     final operationalBus = busNumber?.trim() ?? '';
+
+    // المصدر التشغيلي للمسار هو المركبة. هذا يسمح لعدة سائقين مسجلين
+    // على نفس الباص باستخدام نفس التعيين المعتمد.
+    List<DriverLineAssignment> assignments;
+    if (operationalBus.isNotEmpty) {
+      assignments = await _driverLineAssignmentService
+          .getApprovedAssignmentsForVehicle(
+        operationalBus,
+        limit: 50,
+      );
+
+      // توافق رجعي مع السجلات القديمة التي لا تحتوي busNumber.
+      if (assignments.isEmpty) {
+        final driverAssignments =
+            await _driverLineAssignmentService.getApprovedAssignmentsForDriver(
+          driverId,
+          limit: 50,
+        );
+        assignments = driverAssignments
+            .where((assignment) => assignment.busNumber.trim().isEmpty)
+            .toList();
+      }
+    } else {
+      assignments = await _driverLineAssignmentService
+          .getApprovedAssignmentsForDriver(
+        driverId,
+        limit: 50,
+      );
+    }
+
     final candidates = <AssignedRouteChoice>[];
     for (final assignment in assignments) {
       if (operationalBus.isNotEmpty &&
@@ -243,15 +267,22 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       );
 
       if (resolved == null) {
-        final assignments =
-            await _driverLineAssignmentService.getApprovedAssignmentsForDriver(
-          userId,
+        List<DriverLineAssignment> vehicleAssignments =
+            await _driverLineAssignmentService.getApprovedAssignmentsForVehicle(
+          busNumber,
           limit: 50,
         );
-        final vehicleAssignments = assignments.where((assignment) {
-          final assignedBus = assignment.busNumber.trim();
-          return assignedBus.isEmpty || assignedBus == busNumber;
-        }).toList();
+
+        if (vehicleAssignments.isEmpty) {
+          final driverAssignments =
+              await _driverLineAssignmentService.getApprovedAssignmentsForDriver(
+            userId,
+            limit: 50,
+          );
+          vehicleAssignments = driverAssignments
+              .where((assignment) => assignment.busNumber.trim().isEmpty)
+              .toList();
+        }
 
         if (vehicleAssignments.isEmpty) {
           if (mounted) {
