@@ -693,6 +693,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         final message = e.code == 'permission-denied'
             ? '❌ صلاحيات جلسة المركبة غير مفعّلة بعد. يجب نشر firestore.rules ثم المحاولة مرة أخرى.'
             : '❌ تعذر الاتصال بالمركبة: ${e.message ?? e.code}';
+        if (!mounted) return;
         MapUtils.showSnackBar(context, message, isError: true);
         return;
       } catch (e, st) {
