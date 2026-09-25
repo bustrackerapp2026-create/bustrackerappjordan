@@ -40,10 +40,8 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (routePoints.isEmpty) return;
     if (mapboxMap == null) return;
 
-    if (_polylineAnnotationManager == null) {
-      _polylineAnnotationManager =
-          await mapboxMap!.annotations.createPolylineAnnotationManager();
-    }
+    _polylineAnnotationManager ??=
+        await mapboxMap!.annotations.createPolylineAnnotationManager();
 
     if (_polylineAnnotation != null) {
       await _polylineAnnotationManager?.delete(_polylineAnnotation!);
