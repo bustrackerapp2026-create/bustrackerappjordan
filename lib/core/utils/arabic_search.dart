@@ -243,7 +243,7 @@ class ArabicSearch {
             matched = true;
             break;
           }
-          if (_fuzzyTokenMatch(eq, c)) {
+          if (qTokens.length > 1 && _fuzzyTokenMatch(eq, c)) {
             fuzzy = true;
           }
         }
