@@ -199,12 +199,36 @@ class DriverTrackingLifecycle {
       if (last == null) return;
       if (DateTime.now().difference(last) < timeout) return;
 
-      debugPrint('🛰️ heartbeat: stream stale → restart');
       final uid = _boundUid;
       final profile = _activeProfile;
       if (uid == null || profile == null) return;
+
       unawaited(
-        _enqueue(() => _startInternal(uid: uid, profile: profile)),
+        _enqueue(() async {
+          if (_disposed || !_wantRunning || _boundUid != uid) return;
+
+          try {
+            // عدم وصول event لا يعني بالضرورة تعطل stream؛ فـdistanceFilter
+            // قد يمنع event عندما تكون المركبة ثابتة. افحص الموقع فعليًا أولاً.
+            final position = await _location.getCurrentPosition(
+              preferHighAccuracy: profile ==
+                  LocationTrackingProfile.driverTrip,
+              timeout: const Duration(seconds: 8),
+            );
+            if (_disposed || !_wantRunning || _boundUid != uid) return;
+
+            lastPosition = position;
+            lastPositionAt = DateTime.now();
+            onPosition?.call(position);
+            debugPrint('🛰️ heartbeat: location probe healthy');
+          } catch (e) {
+            debugPrint(
+              '🛰️ heartbeat: location probe failed → restart ($e)',
+            );
+            if (_disposed || !_wantRunning || _boundUid != uid) return;
+            await _startInternal(uid: uid, profile: profile);
+          }
+        }),
       );
     });
   }
