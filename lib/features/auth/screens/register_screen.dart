@@ -43,7 +43,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   PlannedRoute? _selectedPlannedRoute;
 
   String _selectedUserType = UserRoles.passenger;
-  int? _selectedCapacity = BusCapacity.medium;
+  final int? _selectedCapacity = BusCapacity.medium;
   RouteDirection _manualDirection = RouteDirection.outbound;
 
   bool get _showDriverFields => UserRoles.isDriverLike(_selectedUserType);
