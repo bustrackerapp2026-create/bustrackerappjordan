@@ -158,6 +158,7 @@ class DriverTrackingLifecycle {
         cancelOnError: false,
       );
 
+      lastPositionAt = DateTime.now();
       _setState(DriverTrackingState.running);
       _armHeartbeat();
     } catch (e) {
