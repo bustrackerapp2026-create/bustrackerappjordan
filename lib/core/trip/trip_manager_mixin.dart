@@ -584,8 +584,8 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             await _polylineAnnotationManager?.delete(_polylineAnnotation!);
           } catch (_) {}
           _polylineAnnotation = null;
-          if (!mounted) return;
         }
+        if (!mounted) return;
         MapUtils.showSnackBar(
           context,
           '🏁 تم إنهاء الرحلة التشغيلية.',
