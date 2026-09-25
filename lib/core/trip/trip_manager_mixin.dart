@@ -102,7 +102,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       if (route.direction.firestoreValue != activeTrip.direction) {
         MapUtils.log(
-          '⚠️ اتجاه الرحلة لا يطابق اتجاه المسار: ' + route.id,
+          '⚠️ اتجاه الرحلة لا يطابق اتجاه المسار: ${route.id}',
           tag: 'TripManager',
         );
         return;
