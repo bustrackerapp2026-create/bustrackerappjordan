@@ -558,8 +558,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         );
       }
 
-      final busNumber =
-          context.read<AuthProvider>().userData?.busNumber?.trim() ?? '';
+      final busNumber = authProvider.userData?.busNumber?.trim() ?? '';
       if (busNumber.isNotEmpty) {
         final sessionOwned = await _vehicleSession.setTripActive(
           driverId: driverId,
