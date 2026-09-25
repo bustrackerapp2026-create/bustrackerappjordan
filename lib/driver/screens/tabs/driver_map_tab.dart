@@ -698,6 +698,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         return;
       } catch (e, st) {
         debugPrint('vehicle session claim failed: $e\n$st');
+        if (!mounted) return;
         MapUtils.showSnackBar(
           context,
           '❌ تعذر إنشاء جلسة تشغيل المركبة. حاول مرة أخرى.',
