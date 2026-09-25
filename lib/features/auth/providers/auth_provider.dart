@@ -104,10 +104,18 @@ class AuthProvider extends ChangeNotifier {
     if (id.isEmpty) return null;
 
     final catalogRef = FirebaseFirestore.instance.collection('routeCatalog');
+    String? catalogLineName;
+
     final byId = await catalogRef.doc(id).get();
     if (byId.exists && byId.data() != null) {
-      final lineId = byId.data()!['lineId']?.toString().trim();
+      final data = byId.data()!;
+      final lineId = data['lineId']?.toString().trim();
       if (lineId != null && lineId.isNotEmpty) return lineId;
+
+      final lineName = data['lineName']?.toString().trim();
+      if (lineName != null && lineName.isNotEmpty) {
+        catalogLineName = lineName;
+      }
     }
 
     final snap = await catalogRef
@@ -115,10 +123,25 @@ class AuthProvider extends ChangeNotifier {
         .where('status', isEqualTo: 'approved')
         .limit(1)
         .get();
-    if (snap.docs.isEmpty) return null;
+    if (snap.docs.isNotEmpty) {
+      final data = snap.docs.first.data();
+      final lineId = data['lineId']?.toString().trim();
+      if (lineId != null && lineId.isNotEmpty) return lineId;
 
-    final lineId = snap.docs.first.data()['lineId']?.toString().trim();
-    return lineId == null || lineId.isEmpty ? null : lineId;
+      final lineName = data['lineName']?.toString().trim();
+      if (lineName != null && lineName.isNotEmpty) {
+        catalogLineName ??= lineName;
+      }
+    }
+
+    // توافق رجعي مع routeCatalog القديم الذي لا يحتوي lineId.
+    final fallbackName = catalogLineName;
+    if (fallbackName == null || fallbackName.isEmpty) return null;
+
+    final line = await TransitLineService().findByNormalizedName(fallbackName);
+    if (line == null || !line.isApproved) return null;
+
+    return line.id;
   }
 
   Future<void> signUp({
