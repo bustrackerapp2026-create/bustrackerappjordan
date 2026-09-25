@@ -216,6 +216,9 @@ class DriverTrackingLifecycle {
               timeout: const Duration(seconds: 8),
             );
             if (_disposed || !_wantRunning || _boundUid != uid) return;
+            if (position == null) {
+              throw StateError('لم يتم الحصول على موقع من فحص الـheartbeat.');
+            }
 
             lastPosition = position;
             lastPositionAt = DateTime.now();
