@@ -111,6 +111,56 @@ class VehicleTripService {
   /// - [routeId] ┘è╪¼╪¿ ╪ú┘å ┘è╪┤┘è╪▒ ╪Ñ┘ä┘ë PlannedRoute ┘à╪╣╪¬┘à╪» (╪º┘ä╪¬╪¡┘é┘é ┘è╪¬┘à ┘é╪¿┘ä ╪º┘ä╪º╪│╪¬╪»╪╣╪º╪í).
   /// - [direction] ┘é┘è┘à╪¬┘ç outbound ╪ú┘ê return.
   /// - ┘ä╪º ┘è┘Å┘ü╪╣┘æ┘Ä┘ä DriverProvider ┘é╪¿┘ä ┘å╪¼╪º╪¡ ┘ç╪░┘ç ╪º┘ä╪╣┘à┘ä┘è╪⌐.
+  /// يحدّث آخر حالة حية لرحلة تشغيلية نشطة.
+  ///
+  /// يستخدم آخر موقع GPS فقط ولا يسجل التاريخ الكامل للرحلة؛
+  /// التسجيل التاريخي سيُدار لاحقًا عبر TripPing/Buffer.
+  Future<void> updateLiveLocation({
+    required String tripId,
+    required GeoPoint currentLocation,
+    double? speed,
+    double? heading,
+  }) async {
+    final id = tripId.trim();
+    if (id.isEmpty) {
+      throw const VehicleTripServiceException(
+        'معرف الرحلة التشغيلية مطلوب.',
+        code: 'invalid-trip-id',
+      );
+    }
+
+    final latitude = currentLocation.latitude;
+    final longitude = currentLocation.longitude;
+    if (!latitude.isFinite ||
+        !longitude.isFinite ||
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180) {
+      throw const VehicleTripServiceException(
+        'موقع الرحلة التشغيلية غير صالح.',
+        code: 'invalid-location',
+      );
+    }
+
+    final normalizedSpeed =
+        speed != null && speed.isFinite && speed >= 0 ? speed : null;
+    final normalizedHeading =
+        heading != null && heading.isFinite && heading >= 0 ? heading : null;
+
+    await _withRetryAndTimeout(() async {
+      await _col.doc(id).update({
+        // إرسال active يمنع تحديث رحلة أنهِيت بالتزامن مع هذا الـGPS.
+        'status': VehicleTripStatus.active.firestoreValue,
+        'currentLocation': currentLocation,
+        'speed': normalizedSpeed,
+        'heading': normalizedHeading,
+        'lastLocationAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
   Future<VehicleTrip> startTrip({
     required String driverId,
     required String busNumber,

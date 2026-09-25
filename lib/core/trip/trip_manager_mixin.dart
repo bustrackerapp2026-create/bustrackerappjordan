@@ -12,6 +12,7 @@ import '../../features/auth/providers/auth_provider.dart';
 import '../../services/vehicle_trip_service.dart';
 import '../../services/driver_line_assignment_service.dart';
 import '../../services/vehicle_operational_session_service.dart';
+import '../../driver/services/driver_tracking_hub.dart';
 import '../../models/route_point.dart';
 import '../../models/planned_route.dart';
 import '../../models/driver_line_assignment.dart';
@@ -28,6 +29,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       DriverLineAssignmentService();
   final VehicleOperationalSessionService _vehicleSession =
       VehicleOperationalSessionService();
+  final DriverTrackingHub _trackingHub = DriverTrackingHub.instance;
 
   static const double _routeStartMatchMaxMeters = 750.0;
 
@@ -111,6 +113,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (!mounted) return;
       _currentVehicleTripId = activeTrip.id;
       _currentOperationalRoute = route;
+      _trackingHub.setActiveVehicleTrip(activeTrip.id);
 
       await showRouteOnMap(route.points);
     } catch (e, st) {
@@ -475,6 +478,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         _currentVehicleTripId = vehicleTrip.id;
         _currentOperationalRoute = route;
       });
+      _trackingHub.setActiveVehicleTrip(vehicleTrip.id);
 
       await showRouteOnMap(route.points);
 
@@ -555,6 +559,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           driverId: driverId,
         );
       }
+      _trackingHub.clearActiveVehicleTrip();
 
       final busNumber = authProvider.userData?.busNumber?.trim() ?? '';
       if (busNumber.isNotEmpty) {
