@@ -157,15 +157,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    if (isDriver && _selectedCapacity == null) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ اختر نوع الباص / عدد الركاب'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
 
     if (isDriver && !_routeNotPresentSelected && selectedRoute == null) {
       messenger.showSnackBar(
