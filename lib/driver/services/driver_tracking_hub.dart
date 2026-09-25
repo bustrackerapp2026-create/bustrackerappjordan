@@ -139,22 +139,20 @@ class DriverTrackingHub {
       }
     } finally {
       _vehicleTripWriteInFlight = false;
-      if (_activeVehicleTripId != tripId ||
-          _pendingVehicleTripPosition == null) {
-        return;
-      }
-
-      final latest = _lastVehicleTripLocationWriteAt;
-      if (latest == null) {
-        unawaited(_flushActiveVehicleTripPosition());
-      } else {
-        final elapsed = DateTime.now().difference(latest);
-        if (elapsed >= _vehicleTripLocationInterval) {
+      if (_activeVehicleTripId == tripId &&
+          _pendingVehicleTripPosition != null) {
+        final latest = _lastVehicleTripLocationWriteAt;
+        if (latest == null) {
           unawaited(_flushActiveVehicleTripPosition());
         } else {
-          _scheduleVehicleTripFlush(
-            _vehicleTripLocationInterval - elapsed,
-          );
+          final elapsed = DateTime.now().difference(latest);
+          if (elapsed >= _vehicleTripLocationInterval) {
+            unawaited(_flushActiveVehicleTripPosition());
+          } else {
+            _scheduleVehicleTripFlush(
+              _vehicleTripLocationInterval - elapsed,
+            );
+          }
         }
       }
     }
