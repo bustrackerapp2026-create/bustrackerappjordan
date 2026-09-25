@@ -588,18 +588,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   : Column(
                                       children: [
                                         for (final route in _routeSuggestions)
-                                          ListTile(
-                                            dense: true,
-                                            leading: const Icon(Icons.route,
-                                                color: AppTheme.primaryColor),
-                                            title: Text(
-                                              route.lineName,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
+                                          Material(
+                                            type: MaterialType.transparency,
+                                            child: ListTile(
+                                              dense: true,
+                                              leading: const Icon(Icons.route,
+                                                  color: AppTheme.primaryColor),
+                                              title: Text(
+                                                route.lineName,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              subtitle: Text(route.direction.labelAr),
+                                              trailing: const Icon(Icons.chevron_left),
+                                              onTap: () => _selectApprovedRoute(route),
                                             ),
-                                            subtitle: Text(route.direction.labelAr),
-                                            trailing: const Icon(Icons.chevron_left),
-                                            onTap: () => _selectApprovedRoute(route),
                                           ),
                                         Padding(
                                           padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
