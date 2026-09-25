@@ -633,7 +633,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         position = await geo.Geolocator.getCurrentPosition(
           locationSettings: const geo.LocationSettings(
             accuracy: geo.LocationAccuracy.high,
-            timeLimit: const Duration(seconds: 8),
+            timeLimit: Duration(seconds: 8),
           ),
         );
       } catch (_) {
