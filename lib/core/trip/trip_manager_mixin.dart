@@ -115,7 +115,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       await showRouteOnMap(route.points);
     } catch (e, st) {
       MapUtils.log(
-        '❌ فشل استعادة المسار التشغيلي بعد إعادة الدخول: ' + e.toString(),
+        '❌ فشل استعادة المسار التشغيلي بعد إعادة الدخول: $e',
         tag: 'TripManager',
       );
       debugPrint(st.toString());
