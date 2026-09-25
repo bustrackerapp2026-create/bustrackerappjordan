@@ -52,7 +52,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (out.isEmpty) { out.addAll(seg); } else {
         final join = seg.first; final prev = out.last;
         final d = _haversineMeters(prev.latitude, prev.longitude, join.latitude, join.longitude);
-        if (d <= 3.0) out.addAll(seg.skip(1)); else out.addAll(seg);
+        if (d <= 3.0) { out.addAll(seg.skip(1)); } else out.addAll(seg);
       }
     }
     return out;
