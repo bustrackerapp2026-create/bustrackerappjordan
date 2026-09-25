@@ -358,10 +358,7 @@ class MapLayerController {
         ),
       );
 
-      final geometry = RenderedQueryGeometry(
-        type: Type.SCREEN_BOX,
-        value: jsonEncode(box.encode()),
-      );
+      final geometry = RenderedQueryGeometry.fromScreenBox(box);
 
       final poiLayers = _layerCache[_lastStyleKey]?.poiIds;
       final layerIds = (poiLayers != null && poiLayers.isNotEmpty)
