@@ -94,7 +94,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       final route = PlannedRoute.fromDoc(snap.id, snap.data()!);
       if (!route.isApproved || route.points.length < 2) {
         MapUtils.log(
-          '⚠️ المسار التشغيلي غير صالح أو غير معتمد: ' + route.id,
+          '⚠️ المسار التشغيلي غير صالح أو غير معتمد: ${route.id}',
           tag: 'TripManager',
         );
         return;
