@@ -685,6 +685,7 @@ class _DriverMapTabState extends State<DriverMapTab>
           longitude: position.longitude,
         );
       } on VehicleOperationalSessionException catch (e) {
+        if (!mounted) return;
         MapUtils.showSnackBar(context, e.message, isError: true);
         return;
       } on FirebaseException catch (e) {
