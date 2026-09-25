@@ -85,7 +85,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       if (!snap.exists || snap.data() == null) {
         MapUtils.log(
-          '⚠️ المسار التشغيلي غير موجود: ' + routeId,
+          '⚠️ المسار التشغيلي غير موجود: $routeId',
           tag: 'TripManager',
         );
         return;
