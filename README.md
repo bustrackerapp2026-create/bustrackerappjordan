@@ -443,6 +443,17 @@ firebase deploy --only storage
 5. اختبار دورة طلب التعيين من السائق حتى مراجعة الأدمن.
 6. بعد إغلاق بوابة Phase 1 فقط نبدأ Phase 2: Live GPS + Historical Capture.
 
+### تثبيت Phase 1 كمرجع استقرار — 2026-09-25
+
+تم تثبيت الحالة التشغيلية المختبرة لـ **Phase 1 — VehicleTrip + StartTrip** في فرع استقرار مستقل:
+
+- **فرع الاستقرار:** `stable/vehicle-trip-phase1-v1`
+- **الـcommit المثبت:** `4a18526104ffc893e9963865aa95a0a18cd3f6de`
+- **الهدف:** حفظ نسخة موثوقة ومختبرة من Phase 1 كنقطة رجوع قبل بدء Phase 2، مع إبقاء فروع الاستقرار الأقدم دون تغيير.
+- **ما تم إثباته:** StartTrip/EndTrip، منع الرحلات المتعارضة، Vehicle Session، التحقق من التعيين والمسار، حد القرب 750م، استعادة الرحلة والمسار بعد إعادة فتح التطبيق، GPS/heartbeat، ونجاح `flutter analyze` و`flutter test` بنتيجة 50/50.
+- **قاعدة العمل التالية:** نواصل التطوير على `stage/approved-route-line-vehicle-link-v1`، ولا نغيّر فرع الاستقرار الجديد إلا عند وجود سبب موثق.
+- **المرحلة التالية المخططة:** Phase 2 — **Live GPS + Historical Capture**، بعد فحص الموجود حاليًا وعدم إعادة بناء أجزاء مستقرة بلا Regression واضح.
+
 ### لقطة التحقق الحالية — 2026-09-25
 
 - `flutter analyze` → **No issues found!**
