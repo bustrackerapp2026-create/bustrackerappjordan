@@ -300,8 +300,7 @@ class AuthProvider extends ChangeNotifier {
         await VehicleTripService().findActiveTripForDriver(uid);
     if (activeVehicleTrip != null) {
       debugPrint(
-        'الإبقاء على الحالة التشغيلية عند تسجيل الخروج: '
-        'VehicleTrip=' + activeVehicleTrip.id,
+        'الإبقاء على الحالة التشغيلية عند تسجيل الخروج: VehicleTrip=${activeVehicleTrip.id}',
       );
       return;
     }
