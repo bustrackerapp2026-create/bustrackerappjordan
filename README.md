@@ -304,7 +304,7 @@ firebase deploy --only storage
 ### الفرع والحالة المرجعية
 
 - **الفرع التطويري الحالي:** `stage/approved-route-line-vehicle-link-v1`
-- **HEAD الحالي لفرع التطوير:** `5e820c8da9dbf171ddbaca156dba52d95e56e25c`
+- **آخر commit تقني مُثبت قبل توثيق هذا checkpoint:** `5e820c8da9dbf171ddbaca156dba52d95e56e25c`
 - **آخر commit تقني لـ Buffer Isolation:** `c058b26ccdf62ed9abc2ad325522f8403a7fa81e`
 - **نسخة الاستقرار السابقة لرسم المسار:** `stable/route-drawing-baseline` عند `46c3ac430b193434eb886eaedee2ad2dd0e05183`
 - **نسخة الاستقرار المستقلة لمرحلة Vehicle Session:** `stable/vehicle-session-route-persistence-v1` عند `054a8feaf58e6b41400dbde4a55da3bfe853e625`
