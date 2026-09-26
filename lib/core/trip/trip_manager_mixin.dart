@@ -113,7 +113,11 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (!mounted) return;
       _currentVehicleTripId = activeTrip.id;
       _currentOperationalRoute = route;
-      _trackingHub.setActiveVehicleTrip(activeTrip.id);
+      _trackingHub.setActiveVehicleTrip(
+        activeTrip.id,
+        routeId: activeTrip.routeId,
+        direction: activeTrip.direction,
+      );
 
       await showRouteOnMap(route.points);
     } catch (e, st) {
@@ -478,7 +482,11 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         _currentVehicleTripId = vehicleTrip.id;
         _currentOperationalRoute = route;
       });
-      _trackingHub.setActiveVehicleTrip(vehicleTrip.id);
+      _trackingHub.setActiveVehicleTrip(
+        vehicleTrip.id,
+        routeId: vehicleTrip.routeId,
+        direction: vehicleTrip.direction,
+      );
 
       await showRouteOnMap(route.points);
 
