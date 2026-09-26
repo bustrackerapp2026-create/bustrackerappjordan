@@ -18,6 +18,8 @@ class TripPingService {
   /// يبقى أقل بكثير من حد Firestore حتى لا نقترب من سقف العمليات
   /// عند إضافة عمليات أخرى إلى نفس الدفعة مستقبلًا.
   static const int maxBatchSize = 20;
+  static const int _maxRetries = 3;
+  static const Duration _timeout = Duration(seconds: 12);
 
   /// معرف ثابت للنقطة حتى تكون إعادة المحاولة idempotent.
   ///
@@ -48,6 +50,19 @@ class TripPingService {
       batch.set(ref, ping.toFirestoreMap());
     }
 
-    await batch.commit();
+    var attempt = 0;
+    Duration delay = const Duration(milliseconds: 500);
+
+    while (true) {
+      try {
+        await batch.commit().timeout(_timeout);
+        return;
+      } catch (e) {
+        attempt++;
+        if (attempt >= _maxRetries) rethrow;
+        await Future<void>.delayed(delay);
+        delay = Duration(milliseconds: delay.inMilliseconds * 2);
+      }
+    }
   }
 }
