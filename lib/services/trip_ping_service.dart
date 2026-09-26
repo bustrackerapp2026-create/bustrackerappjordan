@@ -39,21 +39,25 @@ class TripPingService {
       );
     }
 
-    final batch = _db.batch();
-
     for (final ping in pings) {
       if (!ping.isValid) {
         throw const FormatException('Cannot upload invalid TripPing.');
       }
-
-      final ref = _col.doc(docIdFor(ping));
-      batch.set(ref, ping.toFirestoreMap());
     }
 
     var attempt = 0;
     Duration delay = const Duration(milliseconds: 500);
 
     while (true) {
+      // Firestore WriteBatch cannot be reused after commit() is attempted.
+      // Build a fresh batch for every retry while keeping deterministic IDs
+      // so an uncertain first result remains idempotent.
+      final batch = _db.batch();
+      for (final ping in pings) {
+        final ref = _col.doc(docIdFor(ping));
+        batch.set(ref, ping.toFirestoreMap());
+      }
+
       try {
         await batch.commit().timeout(_timeout);
         return;
