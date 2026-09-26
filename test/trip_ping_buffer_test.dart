@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/models/trip_ping.dart';
-import '../lib/services/trip_ping_buffer.dart';
+import 'package:jordan_bus_tracker_new/models/trip_ping.dart';
+import 'package:jordan_bus_tracker_new/services/trip_ping_buffer.dart';
 
 TripPing _ping(int second) {
   return TripPing(
