@@ -13,7 +13,7 @@ TripPing _ping(int second) {
     location: GeoPoint(31.95 + second / 10000, 35.91),
     speed: 10 + second.toDouble(),
     heading: 90,
-    timestamp: DateTime(2026, 9, 26, 13, 0, second),
+    timestamp: DateTime.utc(2026, 9, 26, 13, 0, second),
   );
 }
 
@@ -106,7 +106,7 @@ void main() {
       );
       expect(
         TripPingService.docIdFor(ping),
-        'trip-1_1758891616000000',
+        'trip-1_1790427607000000',
       );
     });
 
