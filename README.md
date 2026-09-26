@@ -515,6 +515,41 @@ firebase deploy --only storage
 
 **حالة Phase 2 بعد هذا الإغلاق:** مسارات Live GPS، Buffer، Batch Upload، Failure أثناء الرفع، وFailure أثناء End Trip أصبحت مثبتة ميدانيًا. لا يبدأ Phase 3 بعد؛ الخطوة التالية هي **Phase 2 Checkpoint + مراجعة Sampling Policy (LIVE/STALE/LOST) وأي Failure Paths متبقية** قبل إدخال `routeProgress`.
 
+### سياسة Sampling — LIVE / STALE / LOST — 2026-09-26
+
+تم تثبيت سياسة Sampling مبدئية لمرحلة Phase 2 قبل إدخال `routeProgress`. هذه الخطوة توثيقية فقط ولا تغيّر سلوك التطبيق التنفيذي.
+
+#### 1. الفصل بين GPS Health وFirestore Health
+- **GPS Health:** تُحدد من زمن آخر GPS fix مقبول (`Position.timestamp`) وليس من وقت آخر نجاح لكتابة Firestore.
+- **Firestore Health:** فشل الكتابة (`UNAVAILABLE`/`TimeoutException`) لا يعني أن GPS مفقود؛ وقد يستمر التقاط الـGPS والـbuffer أثناء انقطاع الشبكة.
+- **GPS LOST:** لا يعني إنهاء `VehicleTrip` ولا تحويلها تلقائيًا إلى `completed` أو `cancelled`.
+
+#### 2. الحالات التشغيلية المقترحة
+- **LIVE:** آخر GPS fix مقبول حديث، بحيث يكون عمره **≤ 45 ثانية** أثناء `driverTrip`. هذا يتماشى مع حد heartbeat الحالي الذي يبدأ عند 45 ثانية.
+- **STALE:** لا يوجد GPS fix حديث ضمن 45 ثانية، لكن آخر fix لا يزال ضمن نافذة احتفاظ قصيرة **>45 إلى ≤90 ثانية**؛ تتم محاولة probe/استعادة ولا يُنهى `VehicleTrip`.
+- **LOST:** لم يصل GPS fix مقبول خلال **>90 ثانية**، أو لا يوجد fix صالح يمكن الاعتماد عليه. تستمر الرحلة كحالة تشغيلية ما لم يطلب المستخدم/المنطق التشغيلي إنهاءها.
+
+> هذه الحدود هي سياسة تشغيلية للمشروع وليست معيارًا عالميًا. يجب مراجعتها بعد القياس الميداني، خصوصًا للمركبة المتوقفة أو عند قيود Android/البطارية.
+
+#### 3. Sampling Historical TripPing
+- لا نرفع كل GPS event إلى Firestore.
+- المعدل التاريخي الحالي يبقى **حوالي نقطة كل 5 ثوانٍ** حتى يثبت البديل بالقياس.
+- الرفع الدفعي الحالي: **5 نقاط** أو مؤقت **20 ثانية**.
+- عند فشل الرفع تبقى النقاط في الـBuffer.
+- لا يتم إنشاء TripPing اصطناعية من موقع cached قديم فقط لملء الفجوة.
+- أي Position تُستخدم لتسجيل Historical يجب أن تمر ببوابة freshness تعتمد على `Position.timestamp`.
+
+#### 4. مبدأ التعافي
+`LIVE → STALE → محاولة probe → LIVE` عند عودة GPS.
+
+`LIVE/STALE/LOST` مستقلة عن:
+`Firestore reachable/unreachable`.
+
+ولا يجوز أن يؤدي فقد الاتصال بالخادم وحده إلى إنهاء `VehicleTrip`.
+
+#### 5. قاعدة التنفيذ المرحلي
+في الخطوة البرمجية التالية سنضيف **freshness gate صغيرًا** عند إدخال `TripPing` إلى الـBuffer، ثم نختبره مستقلًا. لن نضيف حاليًا حقلاً جديدًا إلى `vehicleTrips` باسم `LIVE/STALE/LOST`، ولن نخلط هذه الخطوة مع `routeProgress`.
+
 ### حادثة الاستعادة التي يجب تذكرها
 
 حدثت سابقًا عملية فساد لملف:
