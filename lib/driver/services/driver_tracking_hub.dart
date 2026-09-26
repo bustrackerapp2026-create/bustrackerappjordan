@@ -160,15 +160,15 @@ class DriverTrackingHub {
   Future<void> flushHistoricalTripPings({bool force = false}) async {
     if (_activeVehicleTripId == null || _activeVehicleTripId!.isEmpty) return;
 
-    if (_tripPingUploadFuture != null) {
-      await _tripPingUploadFuture;
-    }
-
-    if (force) {
-      _historicalCapturePaused = true;
-    }
-
     try {
+      if (_tripPingUploadFuture != null) {
+        await _tripPingUploadFuture;
+      }
+
+      if (force) {
+        _historicalCapturePaused = true;
+      }
+
       while (!_tripPingBuffer.isEmpty) {
         await _runHistoricalTripPingUpload(force: true);
       }
