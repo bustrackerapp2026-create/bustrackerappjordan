@@ -304,7 +304,7 @@ firebase deploy --only storage
 ### الفرع والحالة المرجعية
 
 - **الفرع التطويري الحالي:** `stage/approved-route-line-vehicle-link-v1`
-- **HEAD الحالي لفرع التطوير:** `3d84bd30e31ba119a0a66b326882e38b144c6c17`
+- **HEAD الحالي لفرع التطوير:** `a9eb4c4aa96173963c9ab8f426980f0504b4886b`
 - **نسخة الاستقرار السابقة لرسم المسار:** `stable/route-drawing-baseline` عند `46c3ac430b193434eb886eaedee2ad2dd0e05183`
 - **نسخة الاستقرار المستقلة لمرحلة Vehicle Session:** `stable/vehicle-session-route-persistence-v1` عند `054a8feaf58e6b41400dbde4a55da3bfe853e625`
 - **لم يتم دمج فرع التطوير الحالي في أي من فروع الاستقرار أعلاه.**
@@ -415,6 +415,26 @@ firebase deploy --only storage
     - التحقق البرمجي على نسخة الجهاز بعد التحديث: `flutter analyze` → **No issues found!** و`flutter test` → **50/50 All tests passed!**
     - **الاختبار الميداني على الهاتف لم يُنفذ بعد**: يجب التأكد أثناء رحلة فعلية من تغير `vehicleTrips/{tripId}` في Firestore، خصوصًا `currentLocation` و`lastLocationAt` وبيانات السرعة/الاتجاه، ثم التأكد من توقف التحديث بعد `End Trip`.
     - **الحالة:** التنفيذ البرمجي ✅ — اختبار الهاتف ⏳ — لا ننتقل إلى التسجيل التاريخي `TripPing + Buffer` قبل إتمام الاختبار الميداني.
+### إغلاق Phase 2.4 — Batch Upload → Firestore — 2026-09-26
+
+تم إغلاق بوابة **Phase 2.4** رسميًا بعد نجاح الاختبار الميداني وتأكيد مستند Firestore الفعلي للرحلة التجريبية.
+
+- **الرحلة التجريبية:** `OCSPvGY2EiYsp9hf8N6s`
+- **المستند:** `vehicleTrips/OCSPvGY2EiYsp9hf8N6s`
+- **الحالة المؤكدة:** `status = "completed"`
+- **بدأت الرحلة:** 8:20:01 PM (UTC+3)
+- **انتهت الرحلة:** 8:22:24 PM (UTC+3)
+- **آخر تحديث GPS:** `lastLocationAt = 8:22:07 PM` (UTC+3)
+- **المسار:** `Z7aCAGVFjJlOpfktUSdE`
+- **الاتجاه:** `outbound`
+- **عدد نقاط TripPing التي ظهرت أثناء الاختبار:** 6 نقاط، مع استمرار ظهور بيانات الرحلة بعد الرفع الدفعي ثم توقف النقاط الجديدة بعد `End Trip`.
+- **`routeProgress`:** `null` حاليًا، وهو متعمد ومؤجل إلى **Phase 3**.
+- **HEAD المثبت وقت الإغلاق:** `a9eb4c4aa96173963c9ab8f426980f0504b4886b`.
+
+**نتيجة البوابة:** Phase 2.4 مكتملة: GPS → Buffer → Batch Upload → Final Flush → End Trip → `VehicleTrip.status=completed`.
+
+**الخطوة التالية بعد هذا checkpoint:** قبل بدء Phase 3، نفحص **عزل TripPingBuffer بين الرحلات** للتأكد من عدم انتقال نقاط رحلة قديمة إلى رحلة جديدة، ثم نضيف Failure Paths بصورة تدريجية. لا نعيد بناء GPS ولا نغيّر الفروع المستقرة.
+
 ### حادثة الاستعادة التي يجب تذكرها
 
 حدثت سابقًا عملية فساد لملف:
