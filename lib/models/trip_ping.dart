@@ -55,10 +55,7 @@ class TripPing {
     };
   }
 
-  factory TripPing.fromMap(
-    Map<String, dynamic> map, {
-    required String fallbackId,
-  }) {
+  factory TripPing.fromMap(Map<String, dynamic> map) {
     final rawTimestamp = map['timestamp'];
     final timestamp = rawTimestamp is Timestamp
         ? rawTimestamp.toDate()
