@@ -304,7 +304,9 @@ firebase deploy --only storage
 ### الفرع والحالة المرجعية
 
 - **الفرع التطويري الحالي:** `stage/approved-route-line-vehicle-link-v1`
-- **آخر commit تقني مُثبت قبل توثيق هذا checkpoint:** `5e820c8da9dbf171ddbaca156dba52d95e56e25c`
+- **آخر commit تقني مُثبت حاليًا:** `d1ae474fc1fc1a5a36c565dc7aeef359773f8d47` — `fix(phase2): catch concurrent TripPing flush failures`
+- **آخر commit تقني سابق لمسار Failure Path 1:** `5e820c8da9dbf171ddbaca156dba52d95e56e25c`
+- **آخر commit توثيقي سابق لـFailure Path 1:** `311a0aafb5bc88493757f4501e5c5a838779546c`
 - **آخر commit تقني لـ Buffer Isolation:** `c058b26ccdf62ed9abc2ad325522f8403a7fa81e`
 - **نسخة الاستقرار السابقة لرسم المسار:** `stable/route-drawing-baseline` عند `46c3ac430b193434eb886eaedee2ad2dd0e05183`
 - **نسخة الاستقرار المستقلة لمرحلة Vehicle Session:** `stable/vehicle-session-route-persistence-v1` عند `054a8feaf58e6b41400dbde4a55da3bfe853e625`
@@ -479,6 +481,40 @@ firebase deploy --only storage
 **نتيجة البوابة:** مسار الفشل والاستعادة لا يفقد نقاط TripPing عند انقطاع الشبكة، وإعادة المحاولة تستخدم دفعة Firestore جديدة مع نفس المعرّفات deterministic. الاختبار الميداني للحالة الحالية ناجح ✅.
 
 **الخطوة التالية:** الانتقال إلى Failure Path مستقل آخر أو إلى تضييق مصدر المسار التشغيلي ليكون معتمدًا على المركبة فقط، دون خلط التغييرات في نفس checkpoint.
+### إغلاق Failure Path 2 — End Trip أثناء انقطاع الإنترنت ثم Recovery — 2026-09-26
+
+تم اختبار مسار الفشل الخاص بإنهاء الرحلة أثناء انقطاع الإنترنت ميدانيًا بعد تثبيت الإصلاح `d1ae474fc1fc1a5a36c565dc7aeef359773f8d47`.
+
+- **الرحلة التجريبية:** `SoObQxt2lXYpYgtlSvFV`
+- أثناء الرحلة تم تسجيل عدة `TripPing` في الـbuffer.
+- تم قطع الإنترنت، وظهر فعليًا في Logcat/Firestore:
+  - `UNAVAILABLE`
+  - `UnknownHostException: Unable to resolve host firestore.googleapis.com`
+  - `TimeoutException after 0:00:12.000000`
+- عند محاولة `End Trip` أثناء الانقطاع ظهر:
+  - `🧭 Historical TripPing batch upload failed: TimeoutException...`
+  - `📌 [TripManager] ❌ فشل إنهاء الرحلة...`
+- لم يظهر في السجل المرسل أي `Unhandled Exception` أو `FATAL EXCEPTION` أو علامة واضحة على `App isn't responding`/ANR.
+- استمر تسجيل `TripPing buffered` بعد فشل الإنهاء، ما ينسجم مع عدم اعتبار المحاولة الأولى ناجحة.
+- بعد إعادة الإنترنت وإعادة محاولة `End Trip` أصبحت وثيقة:
+  `vehicleTrips/SoObQxt2lXYpYgtlSvFV`
+  بالحالة:
+  - `status = "completed"`
+  - `endedAt != null`
+  - `routeProgress = null`
+- **قيم الرحلة المؤكدة:** `routeId = Z7aCAGVFjJlOpfktUSdE`، `busNumber = 5638524`، `driverId = mQHUS84ReQVxzxv7DbNuNZrpBZ33`.
+- بعد الاسترداد ظهرت **20 وثيقة** مرتبطة بالرحلة `SoObQxt2lXYpYgtlSvFV` داخل مجموعة `tripPings`. هذا يثبت وجود التسجيل التاريخي النهائي في Firestore؛ ولا يُستخدم وحده كإثبات عددي بأن كل نقطة كانت موجودة تحديدًا قبل لحظة قطع الإنترنت.
+
+**نتيجة البوابة:** Failure Path 2 — **End Trip مع انقطاع الشبكة + Recovery بعد عودة الشبكة** — مغلق وناجح ميدانيًا ✅ من حيث:
+1. فشل الـflush عند انقطاع الشبكة.
+2. عدم إغلاق الرحلة عبر محاولة End Trip الفاشلة.
+3. عدم ظهور Unhandled Exception/ANR في السجل المرسل.
+4. نجاح إعادة المحاولة بعد عودة الشبكة.
+5. وصول الرحلة إلى `completed` مع `endedAt`.
+6. وجود Historical TripPings في Firestore بعد الاسترداد.
+
+**حالة Phase 2 بعد هذا الإغلاق:** مسارات Live GPS، Buffer، Batch Upload، Failure أثناء الرفع، وFailure أثناء End Trip أصبحت مثبتة ميدانيًا. لا يبدأ Phase 3 بعد؛ الخطوة التالية هي **Phase 2 Checkpoint + مراجعة Sampling Policy (LIVE/STALE/LOST) وأي Failure Paths متبقية** قبل إدخال `routeProgress`.
+
 ### حادثة الاستعادة التي يجب تذكرها
 
 حدثت سابقًا عملية فساد لملف:
