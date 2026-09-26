@@ -130,6 +130,25 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/vehicleOperationalSessions/$(busNumber)).data.activeDriverId == request.auth.uid;
     }
 
+
+    function isOwnActiveVehicleTrip(
+      tripId,
+      routeId,
+      direction
+    ) {
+      return isDriver()
+        && tripId is string
+        && tripId.size() > 0
+        && routeId is string
+        && routeId.size() > 0
+        && direction in ['outbound', 'return']
+        && exists(/databases/$(database)/documents/vehicleTrips/$(tripId))
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.status == 'active'
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.driverId == request.auth.uid
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.routeId == routeId
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.direction == direction;
+    }
+
     function hasMatchingActiveVehicleTrip(tripId, busNumber) {
       return tripId is string
         && tripId.size() > 0
@@ -285,6 +304,45 @@ service cloud.firestore {
     }
 
     // Smart Bus / VehicleTrip — الرحلة التشغيلية للحافلة
+
+    // Historical telemetry for active VehicleTrips.
+    match /tripPings/{pingId} {
+      allow read: if isAdmin();
+
+      allow create: if isOwnActiveVehicleTrip(
+          request.resource.data.tripId,
+          request.resource.data.routeId,
+          request.resource.data.direction
+        )
+        && request.resource.data.keys().hasOnly([
+          'tripId',
+          'routeId',
+          'direction',
+          'location',
+          'speed',
+          'heading',
+          'timestamp'
+        ])
+        && request.resource.data.location is latlng
+        && request.resource.data.timestamp is timestamp
+        && request.resource.data.timestamp <= request.time
+        && (request.resource.data.speed == null
+          || request.resource.data.speed is number)
+        && (request.resource.data.heading == null
+          || request.resource.data.heading is number);
+
+      // Required for an idempotent retry of the same deterministic ping ID.
+      // Existing historical samples are immutable.
+      allow update: if isOwnActiveVehicleTrip(
+          resource.data.tripId,
+          resource.data.routeId,
+          resource.data.direction
+        )
+        && request.resource.data == resource.data;
+
+      allow delete: if isAdmin();
+    }
+
     match /vehicleTrips/{tripId} {
       allow read: if isSignedIn();
 
