@@ -562,6 +562,10 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       if (vehicleTripId != null && vehicleTripId.isNotEmpty) {
+        // يجب رفع أي TripPings متبقية قبل تحويل VehicleTrip إلى حالة نهائية،
+        // لأن Rules تسمح بالكتابة التاريخية أثناء الرحلة النشطة فقط.
+        await _trackingHub.flushHistoricalTripPings(force: true);
+
         await _vehicleTripService.completeTrip(
           tripId: vehicleTripId,
           driverId: driverId,
