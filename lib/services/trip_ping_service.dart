@@ -26,7 +26,7 @@ class TripPingService {
   /// نفس TripPing ينتج نفس المستند، لذلك إعادة الرفع لا تنشئ سجلًا
   /// تاريخيًا مكررًا إذا كانت نتيجة الشبكة غير مؤكدة بعد commit.
   static String docIdFor(TripPing ping) {
-    return '\${ping.tripId}_\${ping.timestamp.microsecondsSinceEpoch}';
+    return '${ping.tripId}_${ping.timestamp.microsecondsSinceEpoch}';
   }
 
   Future<void> uploadBatch(List<TripPing> pings) async {
