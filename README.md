@@ -304,7 +304,7 @@ firebase deploy --only storage
 ### الفرع والحالة المرجعية
 
 - **الفرع التطويري الحالي:** `stage/approved-route-line-vehicle-link-v1`
-- **HEAD الحالي لفرع التطوير:** `a9eb4c4aa96173963c9ab8f426980f0504b4886b`
+- **HEAD الحالي لفرع التطوير:** `c058b26ccdf62ed9abc2ad325522f8403a7fa81e`
 - **نسخة الاستقرار السابقة لرسم المسار:** `stable/route-drawing-baseline` عند `46c3ac430b193434eb886eaedee2ad2dd0e05183`
 - **نسخة الاستقرار المستقلة لمرحلة Vehicle Session:** `stable/vehicle-session-route-persistence-v1` عند `054a8feaf58e6b41400dbde4a55da3bfe853e625`
 - **لم يتم دمج فرع التطوير الحالي في أي من فروع الاستقرار أعلاه.**
@@ -434,6 +434,22 @@ firebase deploy --only storage
 **نتيجة البوابة:** Phase 2.4 مكتملة: GPS → Buffer → Batch Upload → Final Flush → End Trip → `VehicleTrip.status=completed`.
 
 **الخطوة التالية بعد هذا checkpoint:** قبل بدء Phase 3، نفحص **عزل TripPingBuffer بين الرحلات** للتأكد من عدم انتقال نقاط رحلة قديمة إلى رحلة جديدة، ثم نضيف Failure Paths بصورة تدريجية. لا نعيد بناء GPS ولا نغيّر الفروع المستقرة.
+
+### إغلاق عزل TripPingBuffer بين الرحلات — 2026-09-26
+
+تم إغلاق خطوة **Buffer Isolation** بعد تطبيق حماية أحادية الرحلة على `TripPingBuffer` والتحقق منها على جهاز التطوير.
+
+- **السلوك المثبت:** لا يقبل الـBuffer `TripPing` من `tripId` مختلف طالما يحتوي نقاطًا من رحلة أخرى.
+- **الاستثناء المقصود:** بعد إفراغ الـBuffer بالكامل يمكن استقبال نقاط رحلة جديدة.
+- **الكود:** `lib/services/trip_ping_buffer.dart`
+- **الاختبارات:** `test/trip_ping_buffer_test.dart`
+- **اختبارات المستخدم على الجهاز:** `flutter test test/trip_ping_buffer_test.dart` → **8/8 All tests passed!**
+- **التحليل:** `flutter analyze` → **No issues found!**
+- **commit التنفيذ:** `c058b26ccdf62ed9abc2ad325522f8403a7fa81e`
+
+**نتيجة البوابة:** عزل نقاط الرحلات داخل الـBuffer مثبت ✅. لم يتم لمس أي فرع `stable`، ولم يتم تغيير منظومة GPS أو واجهة الخريطة.
+
+**الخطوة التالية:** فحص **Failure Path — فشل رفع دفعة TripPing**: التأكد من أن النقاط تبقى في الـBuffer عند فشل `batch.commit()`/الرفع وعدم فقدانها، مع الحفاظ على نفس قاعدة التغيير الصغير → اختبار → تحليل → تثبيت.
 
 ### حادثة الاستعادة التي يجب تذكرها
 
