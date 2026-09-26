@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 
 import '../../models/trip_ping.dart';
+import '../../services/historical_sampling_policy.dart';
 import '../../services/location_service.dart';
 import '../../services/trip_ping_buffer.dart';
 import '../../services/trip_ping_service.dart';
@@ -201,6 +202,16 @@ class DriverTrackingHub {
     if (direction == null || direction.isEmpty) return;
 
     final now = DateTime.now();
+    if (!HistoricalSamplingPolicy.isFresh(position, now: now)) {
+      if (kDebugMode) {
+        final age = now.difference(position.timestamp);
+        debugPrint(
+          '🧭 TripPing rejected: stale GPS fix age=${age.inSeconds}s',
+        );
+      }
+      return;
+    }
+
     final last = _lastHistoricalPingAt;
     if (last != null &&
         now.difference(last) < _historicalPingInterval) {
