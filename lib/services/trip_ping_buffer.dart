@@ -35,6 +35,21 @@ class TripPingBuffer {
   /// يعرض نسخة للقراءة فقط دون السماح بتعديل الذاكرة الداخلية.
   List<TripPing> get items => List<TripPing>.unmodifiable(_items);
 
+  /// يعرض أول مجموعة من النقاط بترتيب وصولها دون حذفها.
+  List<TripPing> peekBatch(int maxItems) {
+    if (maxItems <= 0 || _items.isEmpty) return const <TripPing>[];
+
+    final count = maxItems > _items.length ? _items.length : maxItems;
+    return List<TripPing>.of(_items.take(count));
+  }
+
+  /// يحذف أول [count] نقاط بعد نجاح الرفع إلى التخزين الدائم.
+  void removeFirst(int count) {
+    if (count <= 0 || _items.isEmpty) return;
+    final actual = count > _items.length ? _items.length : count;
+    _items.removeRange(0, actual);
+  }
+
   /// يسحب أول مجموعة من النقاط بترتيب وصولها.
   List<TripPing> takeBatch(int maxItems) {
     if (maxItems <= 0 || _items.isEmpty) return const <TripPing>[];
