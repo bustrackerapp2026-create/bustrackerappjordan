@@ -39,7 +39,7 @@ class TripPingBuffer {
   List<TripPing> takeBatch(int maxItems) {
     if (maxItems <= 0 || _items.isEmpty) return const <TripPing>[];
 
-    final count = maxItems.clamp(0, _items.length);
+    final count = maxItems > _items.length ? _items.length : maxItems;
     final batch = List<TripPing>.of(_items.take(count));
     _items.removeRange(0, count);
     return batch;
