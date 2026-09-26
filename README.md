@@ -304,7 +304,7 @@ firebase deploy --only storage
 ### الفرع والحالة المرجعية
 
 - **الفرع التطويري الحالي:** `stage/approved-route-line-vehicle-link-v1`
-- **HEAD الحالي لفرع التطوير:** `46f51d3c6a530711c84a1e66cb3410bc373622fe`
+- **HEAD الحالي لفرع التطوير:** `5e820c8da9dbf171ddbaca156dba52d95e56e25c`
 - **آخر commit تقني لـ Buffer Isolation:** `c058b26ccdf62ed9abc2ad325522f8403a7fa81e`
 - **نسخة الاستقرار السابقة لرسم المسار:** `stable/route-drawing-baseline` عند `46c3ac430b193434eb886eaedee2ad2dd0e05183`
 - **نسخة الاستقرار المستقلة لمرحلة Vehicle Session:** `stable/vehicle-session-route-persistence-v1` عند `054a8feaf58e6b41400dbde4a55da3bfe853e625`
@@ -462,6 +462,23 @@ firebase deploy --only storage
 
 **الخطوة التالية:** فحص **Failure Path — فشل رفع دفعة TripPing**: التأكد من أن النقاط تبقى في الـBuffer عند فشل `batch.commit()`/الرفع وعدم فقدانها، مع الحفاظ على نفس قاعدة التغيير الصغير → اختبار → تحليل → تثبيت.
 
+### إغلاق Failure Path — فشل رفع دفعة TripPing وإعادة المحاولة — 2026-09-26
+
+تم اختبار إصلاح إعادة استخدام Firestore WriteBatch ميدانيًا على الهاتف بعد تثبيت commit:
+
+- **commit الإصلاح:** `5e820c8da9dbf171ddbaca156dba52d95e56e25c`
+- **الرحلة التجريبية:** `PLXYEbRfBR9mhXkjcUe1`
+- **سيناريو الاختبار:** تم قطع الإنترنت أثناء رحلة نشطة، ثم الانتظار، ثم إعادة الإنترنت مع إبقاء الرحلة فعالة.
+- أثناء الانقطاع ظهرت أخطاء الشبكة/Firestore من نوع `ERR_INTERNET_DISCONNECTED` و`UNAVAILABLE` و`UnknownHostException`.
+- استمر التقاط GPS وإضافة `TripPing` إلى الـbuffer أثناء الانقطاع.
+- لم يظهر الخطأ السابق: `This batch has already been committed and can no longer be changed.`
+- بعد إعادة الإنترنت ظهرت مستندات الرحلة `PLXY...` داخل مجموعة `tripPings` في Firestore، ما يثبت وصول التسجيل التاريخي بعد استعادة الاتصال.
+- بعد ذلك تم إنهاء الرحلة، وأصبح `vehicleTrips/PLXYEbRfBR9mhXkjcUe1` بالحالة `completed`.
+- `routeProgress = null` بقي كما هو متوقع، لأنه مؤجل إلى **Phase 3**.
+
+**نتيجة البوابة:** مسار الفشل والاستعادة لا يفقد نقاط TripPing عند انقطاع الشبكة، وإعادة المحاولة تستخدم دفعة Firestore جديدة مع نفس المعرّفات deterministic. الاختبار الميداني للحالة الحالية ناجح ✅.
+
+**الخطوة التالية:** الانتقال إلى Failure Path مستقل آخر أو إلى تضييق مصدر المسار التشغيلي ليكون معتمدًا على المركبة فقط، دون خلط التغييرات في نفس checkpoint.
 ### حادثة الاستعادة التي يجب تذكرها
 
 حدثت سابقًا عملية فساد لملف:
