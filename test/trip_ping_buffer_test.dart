@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jordan_bus_tracker_new/models/trip_ping.dart';
+import 'package:jordan_bus_tracker_new/services/trip_ping_service.dart';
 import 'package:jordan_bus_tracker_new/services/trip_ping_buffer.dart';
 
 TripPing _ping(int second) {
@@ -59,6 +60,30 @@ void main() {
       expect(buffer.items.map((p) => p.timestamp.second), [1, 2]);
     });
 
+    test('peekBatch does not remove items', () {
+      final buffer = TripPingBuffer(maxSize: 5);
+      buffer
+        ..tryAdd(_ping(1))
+        ..tryAdd(_ping(2));
+
+      final batch = buffer.peekBatch(2);
+
+      expect(batch.map((p) => p.timestamp.second), [1, 2]);
+      expect(buffer.items.map((p) => p.timestamp.second), [1, 2]);
+    });
+
+    test('removeFirst removes only confirmed items', () {
+      final buffer = TripPingBuffer(maxSize: 5);
+      buffer
+        ..tryAdd(_ping(1))
+        ..tryAdd(_ping(2))
+        ..tryAdd(_ping(3));
+
+      buffer.removeFirst(2);
+
+      expect(buffer.items.map((p) => p.timestamp.second), [3]);
+    });
+
     test('takeBatch removes only the returned items', () {
       final buffer = TripPingBuffer(maxSize: 5);
       buffer
@@ -70,6 +95,19 @@ void main() {
 
       expect(batch.map((p) => p.timestamp.second), [1, 2]);
       expect(buffer.items.map((p) => p.timestamp.second), [3]);
+    });
+
+    test('deterministic TripPing ids stay stable for retries', () {
+      final ping = _ping(7);
+
+      expect(
+        TripPingService.docIdFor(ping),
+        TripPingService.docIdFor(ping),
+      );
+      expect(
+        TripPingService.docIdFor(ping),
+        'trip-1_1758891616000000',
+      );
     });
 
     test('drain returns all items and empties the buffer', () {
