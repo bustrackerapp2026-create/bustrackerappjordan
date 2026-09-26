@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart' as geo;
 import '../../models/trip_ping.dart';
 import '../../services/location_service.dart';
 import '../../services/trip_ping_buffer.dart';
+import '../../services/trip_ping_service.dart';
 import '../../services/vehicle_trip_service.dart';
 import 'driver_tracking_lifecycle.dart';
 
@@ -45,6 +46,10 @@ class DriverTrackingHub {
   geo.Position? _pendingVehicleTripPosition;
 
   final TripPingBuffer _tripPingBuffer = TripPingBuffer();
+  final TripPingService _tripPingService = TripPingService();
+  Future<void>? _tripPingUploadFuture;
+  Timer? _tripPingUploadTimer;
+  bool _historicalCapturePaused = false;
   String? _activeVehicleTripRouteId;
   String? _activeVehicleTripDirection;
   DateTime? _lastHistoricalPingAt;
@@ -54,6 +59,8 @@ class DriverTrackingHub {
   // المرحلة الأولى تستخدم نفس cadence الحالة الحية حتى لا ننشئ
   // معدل GPS مستقلًا قبل تثبيت سياسة Historical Sampling النهائية.
   static const Duration _historicalPingInterval = Duration(seconds: 5);
+  static const Duration _historicalUploadInterval = Duration(seconds: 20);
+  static const int _historicalBatchSize = 5;
 
   DriverTrackingState get state => _lifecycle.state;
   bool get isRunning => _lifecycle.isRunning;
@@ -76,6 +83,9 @@ class DriverTrackingHub {
     final normalized = tripId?.trim();
     _vehicleTripFlushTimer?.cancel();
     _vehicleTripFlushTimer = null;
+    _tripPingUploadTimer?.cancel();
+    _tripPingUploadTimer = null;
+    _historicalCapturePaused = false;
 
     if (normalized == null || normalized.isEmpty) {
       _activeVehicleTripId = null;
@@ -108,13 +118,80 @@ class DriverTrackingHub {
     _lastVehicleTripLocationWriteAt = null;
     _lastHistoricalPingAt = null;
     _pendingVehicleTripPosition = null;
+    _scheduleHistoricalTripPingUpload();
   }
 
   void clearActiveVehicleTrip() {
     setActiveVehicleTrip(null);
   }
 
+  void _scheduleHistoricalTripPingUpload() {
+    if (_activeVehicleTripId == null || _activeVehicleTripId!.isEmpty) {
+      return;
+    }
+    _tripPingUploadTimer?.cancel();
+    _tripPingUploadTimer = Timer(
+      _historicalUploadInterval,
+      () => unawaited(
+        flushHistoricalTripPings(),
+      ),
+    );
+  }
+
+  Future<void> _runHistoricalTripPingUpload({required bool force}) async {
+    if (_historicalCapturePaused && !force) return;
+    final batch = _tripPingBuffer.peekBatch(TripPingService.maxBatchSize);
+    if (batch.isEmpty) return;
+    if (!force && batch.length < _historicalBatchSize) return;
+
+    _tripPingUploadFuture = Future<void>(() async {
+      await _tripPingService.uploadBatch(batch);
+      _tripPingBuffer.removeFirst(batch.length);
+    });
+
+    try {
+      await _tripPingUploadFuture!;
+    } finally {
+      _tripPingUploadFuture = null;
+    }
+  }
+
+  Future<void> flushHistoricalTripPings({bool force = false}) async {
+    if (_activeVehicleTripId == null || _activeVehicleTripId!.isEmpty) return;
+
+    if (_tripPingUploadFuture != null) {
+      await _tripPingUploadFuture;
+    }
+
+    if (force) {
+      _historicalCapturePaused = true;
+    }
+
+    try {
+      while (!_tripPingBuffer.isEmpty) {
+        await _runHistoricalTripPingUpload(force: true);
+      }
+    } catch (e) {
+      if (force) {
+        _historicalCapturePaused = false;
+        rethrow;
+      }
+      debugPrint('🧭 Historical TripPing batch upload failed: $e');
+    } finally {
+      _tripPingUploadTimer?.cancel();
+      _tripPingUploadTimer = null;
+      if (!force &&
+          _activeVehicleTripId != null &&
+          _activeVehicleTripId!.isNotEmpty &&
+          !_tripPingBuffer.isEmpty) {
+        _scheduleHistoricalTripPingUpload();
+      }
+    }
+  }
+
   void _captureHistoricalTripPing(geo.Position position) {
+    if (_historicalCapturePaused) return;
+
     final tripId = _activeVehicleTripId;
     final routeId = _activeVehicleTripRouteId;
     final direction = _activeVehicleTripDirection;
@@ -141,6 +218,10 @@ class DriverTrackingHub {
 
     if (_tripPingBuffer.tryAdd(ping)) {
       _lastHistoricalPingAt = now;
+      if (_tripPingBuffer.length >= _historicalBatchSize) {
+        unawaited(flushHistoricalTripPings());
+      }
+      _scheduleHistoricalTripPingUpload();
       if (kDebugMode) {
         debugPrint(
           '🧭 TripPing buffered: trip=$tripId count=${_tripPingBuffer.length}',
