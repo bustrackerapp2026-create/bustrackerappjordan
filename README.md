@@ -304,7 +304,8 @@ firebase deploy --only storage
 ### الفرع والحالة المرجعية
 
 - **الفرع التطويري الحالي:** `stage/approved-route-line-vehicle-link-v1`
-- **HEAD الحالي لفرع التطوير:** `c058b26ccdf62ed9abc2ad325522f8403a7fa81e`
+- **HEAD الحالي لفرع التطوير:** `46f51d3c6a530711c84a1e66cb3410bc373622fe`
+- **آخر commit تقني لـ Buffer Isolation:** `c058b26ccdf62ed9abc2ad325522f8403a7fa81e`
 - **نسخة الاستقرار السابقة لرسم المسار:** `stable/route-drawing-baseline` عند `46c3ac430b193434eb886eaedee2ad2dd0e05183`
 - **نسخة الاستقرار المستقلة لمرحلة Vehicle Session:** `stable/vehicle-session-route-persistence-v1` عند `054a8feaf58e6b41400dbde4a55da3bfe853e625`
 - **لم يتم دمج فرع التطوير الحالي في أي من فروع الاستقرار أعلاه.**
@@ -413,8 +414,8 @@ firebase deploy --only storage
     - تم تثبيت التنفيذ في commit: `dec2aea9a9e034cff81deef23815c90c17cc1401`.
     - تم إصلاح ملاحظة `control_flow_in_finally` في commit مستقل: `3d84bd30e31ba119a0a66b326882e38b144c6c17`.
     - التحقق البرمجي على نسخة الجهاز بعد التحديث: `flutter analyze` → **No issues found!** و`flutter test` → **50/50 All tests passed!**
-    - **الاختبار الميداني على الهاتف لم يُنفذ بعد**: يجب التأكد أثناء رحلة فعلية من تغير `vehicleTrips/{tripId}` في Firestore، خصوصًا `currentLocation` و`lastLocationAt` وبيانات السرعة/الاتجاه، ثم التأكد من توقف التحديث بعد `End Trip`.
-    - **الحالة:** التنفيذ البرمجي ✅ — اختبار الهاتف ⏳ — لا ننتقل إلى التسجيل التاريخي `TripPing + Buffer` قبل إتمام الاختبار الميداني.
+    - **الاختبار الميداني مكتمل:** أثناء رحلة فعلية تم التأكد من تغير `vehicleTrips/{tripId}` في Firestore (`currentLocation` و`lastLocationAt` وبيانات السرعة/الاتجاه)، ثم توقف التحديث بعد `End Trip`.
+    - **الحالة:** التنفيذ البرمجي ✅ — اختبار الهاتف ✅ — تم اعتماد الانتقال إلى التسجيل التاريخي `TripPing + Buffer`.
 ### إغلاق Phase 2.4 — Batch Upload → Firestore — 2026-09-26
 
 تم إغلاق بوابة **Phase 2.4** رسميًا بعد نجاح الاختبار الميداني وتأكيد مستند Firestore الفعلي للرحلة التجريبية.
