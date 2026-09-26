@@ -22,12 +22,16 @@ class TripPingBuffer {
   bool get isEmpty => _items.isEmpty;
   bool get isFull => _items.length >= maxSize;
 
-  /// يضيف نقطة إذا كان هناك مكان.
+  /// يضيف نقطة إذا كان هناك مكان، ويمنع خلط نقاط رحلتين في نفس الـBuffer.
   ///
   /// عند الامتلاء لا تُحذف نقاط قديمة تلقائيًا؛ تعاد false
   /// حتى تحدد طبقة الرفع لاحقًا سياسة التعامل مع الامتلاء.
+  /// بعد إفراغ الـBuffer يمكنه استقبال TripPing لرحلة جديدة.
   bool tryAdd(TripPing ping) {
     if (!ping.isValid || isFull) return false;
+    if (_items.isNotEmpty && _items.first.tripId != ping.tripId) {
+      return false;
+    }
     _items.add(ping);
     return true;
   }

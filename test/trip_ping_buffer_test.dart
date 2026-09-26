@@ -5,9 +5,9 @@ import 'package:jordan_bus_tracker_new/models/trip_ping.dart';
 import 'package:jordan_bus_tracker_new/services/trip_ping_service.dart';
 import 'package:jordan_bus_tracker_new/services/trip_ping_buffer.dart';
 
-TripPing _ping(int second) {
+TripPing _ping(int second, {String tripId = 'trip-1'}) {
   return TripPing(
-    tripId: 'trip-1',
+    tripId: tripId,
     routeId: 'route-1',
     direction: 'outbound',
     location: GeoPoint(31.95 + second / 10000, 35.91),
@@ -58,6 +58,34 @@ void main() {
       expect(buffer.tryAdd(_ping(3)), isFalse);
 
       expect(buffer.items.map((p) => p.timestamp.second), [1, 2]);
+    });
+
+    test('does not mix points from different trips', () {
+      final buffer = TripPingBuffer(maxSize: 5);
+
+      expect(buffer.tryAdd(_ping(1, tripId: 'trip-1')), isTrue);
+      expect(buffer.tryAdd(_ping(2, tripId: 'trip-2')), isFalse);
+      expect(
+        buffer.items.map((p) => p.tripId),
+        ['trip-1'],
+      );
+
+      expect(buffer.tryAdd(_ping(3, tripId: 'trip-1')), isTrue);
+      expect(
+        buffer.items.map((p) => p.tripId),
+        ['trip-1', 'trip-1'],
+      );
+    });
+
+    test('allows a new trip after the previous buffer is emptied', () {
+      final buffer = TripPingBuffer(maxSize: 5);
+
+      expect(buffer.tryAdd(_ping(1, tripId: 'trip-1')), isTrue);
+      buffer.drain();
+
+      expect(buffer.isEmpty, isTrue);
+      expect(buffer.tryAdd(_ping(2, tripId: 'trip-2')), isTrue);
+      expect(buffer.items.single.tripId, 'trip-2');
     });
 
     test('peekBatch does not remove items', () {
