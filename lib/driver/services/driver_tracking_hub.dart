@@ -70,8 +70,8 @@ class DriverTrackingHub {
 
   /// يربط الـHub بمعرف VehicleTrip النشطة وبياناتها اللازمة للتسجيل التاريخي.
   ///
-  /// لا يقوم هذا الربط بأي رفع إلى Firestore؛ نقاط Historical تبقى في الـBuffer
-  /// حتى تُبنى طبقة Batch Upload في الخطوة التالية.
+  /// بيانات Historical تبقى أولًا في الـBuffer، ثم تُرفع على دفعات أثناء
+  /// الرحلة، مع Flush نهائي قبل إنهاء VehicleTrip.
   ///
   /// يربط الـHub بمعرف VehicleTrip النشطة حتى يستمر التحديث
   /// حتى لو أُغلقت واجهة الخريطة أو تغيرت الشاشة.
@@ -107,6 +107,7 @@ class DriverTrackingHub {
       if (normalizedDirection != null && normalizedDirection.isNotEmpty) {
         _activeVehicleTripDirection = normalizedDirection;
       }
+      _scheduleHistoricalTripPingUpload();
       return;
     }
 
