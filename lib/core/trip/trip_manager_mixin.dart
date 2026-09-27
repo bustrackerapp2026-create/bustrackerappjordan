@@ -245,7 +245,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
   /// مصدر الحقيقة للمسار التشغيلي هو التعيين المعتمد للمركبة.
   /// عند وجود ذهاب + إياب، يحدد الموقع الحالي أي تعيين يبدأ منه السائق:
-  /// ذهاب = أول نقطة، إياب = آخر نقطة في PlannedRoute.
+  /// نقطة البداية التشغيلية = points.first في الذهاب والإياب.
   Future<void> startTrip({String? lineName}) async {
     if (_isProcessingTrip || !mounted) return;
 
