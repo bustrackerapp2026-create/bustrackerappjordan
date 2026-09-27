@@ -439,6 +439,47 @@ firebase deploy --only storage
 
 **الخطوة التالية:** بعد إغلاق Failure Paths الخاصة بـPhase 1، نراجع الأدلة النهائية لبوابة Phase 1 وPhase 2 معًا ونثبت الحالة الحالية قبل أي انتقال إلى Phase 3. لا نبدأ `routeProgress` تلقائيًا.
 
+### Final Checkpoint — Phase 1 + Phase 2 — 2026-09-27
+
+هذا القسم هو **المرجع التشغيلي الحالي** بعد اكتمال اختبارات Failure Paths على الجهاز. السجلات الأقدم في هذا الملف تبقى كتاريخ للتنفيذ، لكن حالة هذا القسم هي المعتمدة عند تحديد ما إذا كان العمل قد أُغلق.
+
+#### Phase 1 — الحالة النهائية
+- **Active VehicleTrip موجودة مسبقًا:** مغلق ✅
+- **PlannedRoute مفقودة / غير موجودة:** مغلق ✅
+- **PlannedRoute موجودة ولكن غير معتمدة/غير صالحة:** مغلق ✅
+- **Firestore failure أثناء StartTrip:** مغلق ✅
+- **حماية Start من الضغط المتكرر (`isProcessingTrip`):** مغلق ✅
+
+#### Phase 2 — الحالة النهائية الحالية
+- **Live GPS → VehicleTrip:** مغلق ✅
+- **Historical TripPing → Buffer → Batch Upload:** مغلق ✅
+- **TripPingBuffer Isolation:** مغلق ✅
+- **Batch Retry باستخدام WriteBatch جديد لكل محاولة:** مغلق ✅
+- **عدم حذف Buffer قبل نجاح الرفع:** مغلق ✅
+- **Final Flush قبل `completeTrip`:** مغلق ✅
+- **Recovery بعد انقطاع الشبكة:** مغلق ✅
+- **Historical GPS freshness gate:** مغلق ✅
+- **Live GPS freshness gate — stream + heartbeat:** مغلق ✅
+
+#### التحقق المحلي النهائي — جهاز التطوير
+- `flutter analyze` → **No issues found!** ✅
+- `flutter test` → **66/66 All tests passed!** ✅
+- `git status` → **working tree clean** ✅
+- الفرع المحلي `stage/approved-route-line-vehicle-link-v1` متزامن مع `origin` ✅
+
+#### ما لم يبدأ بعد
+- `routeProgress` لا يزال `null` عند إنشاء `VehicleTrip`، ولم يبدأ حساب التقدم على المسار. ⏸️
+- ETA وML وأي منطق متقدم مبني على التقدم مؤجل إلى ما بعد Phase 3.
+- لا توجد إضافة `LIVE/STALE/LOST` إلى Firestore.
+
+#### قواعد عدم العودة إلى ما أُغلق
+- لا تعاد اختبارات Failure Paths المغلقة إلا عند ظهور Regression أو تغيير معماري يمسها.
+- لا يعاد بناء GPS أو `DriverTrackingLifecycle` أو Mapbox بلا دليل تقني جديد.
+- لا يُستخدم `driver_map_tab.dart` للتعديلات الجانبية بسبب حادثة الاستعادة السابقة.
+- لا يبدأ Phase 3 تلقائيًا؛ فتحها يكون بتغيير مستقل مع Preflight واختبار قبل التنفيذ.
+
+**الحالة المعتمدة:** Phase 1 Failure Paths وPhase 2 Checkpoint الحاليان مغلقان بحسب الأدلة المتاحة، والخطوة التالية الوحيدة المسموح بفتحها من الخطة هي **Phase 3 Preflight لتصميم `routeProgress`**.
+
 ### إغلاق Failure Path 4 — حماية Start من الضغط المتكرر / isProcessingTrip — 2026-09-27
 
 تم إغلاق التحقق من حماية Start Trip من التشغيل المتزامن أو الضغط المتكرر بعد مراجعة الكود واختبار ميداني على جهاز الاختبار.
@@ -659,7 +700,7 @@ firebase deploy --only storage
 
 **حدود هذه النقطة:** لم تتم إضافة مراقبة مستقلة لـ`LIVE/STALE/LOST` إلى Firestore، ولم يتم تغيير سياسة lifecycle أو إعادة بناء منظومة GPS. أي توسيع لحالات الصحة أو تغيير عتبات 45/90 ثانية يُعامل كتغيير مستقل بعد توفر قياس ميداني إضافي.
 
-**الحالة التالية:** نكمل مراجعة/إغلاق ما تبقى من **Phase 2 Failure Paths وPhase 2 Checkpoint** قبل بدء **Phase 3 (`routeProgress`)**.
+**الحالة الحالية:** Phase 1 Failure Paths وPhase 2 Checkpoint مغلقان وفق القسم المرجعي النهائي أعلاه. `routeProgress` مؤجل إلى Phase 3.
 
 ### حادثة الاستعادة التي يجب تذكرها
 
@@ -695,8 +736,7 @@ firebase deploy --only storage
 
 ### الحالة الحالية: ما هو مؤجل
 
-1. مراجعة نهائية لبوابة Phase 1 بعد إغلاق Failure Paths واستخراج قائمة الأدلة المثبتة.
-2. إجراء مراجعة نهائية لبوابة Phase 2 قبل بدء أي جزء من Phase 3.
+1. فتح **Phase 3 Preflight** لتصميم `routeProgress` فقط، دون تنفيذ الكود قبل اعتماد التصميم والاختبار.
 3. تصميم وتنفيذ واجهة مستقلة بعد تسجيل الدخول لطلبات/تعيين المسارات للسائق.
 4. فصل واجهة تعيين المسار بصريًا ووظيفيًا عن قسم طلبات الركاب.
 5. اختبار دورة طلب التعيين من السائق حتى مراجعة الأدمن.
@@ -721,7 +761,7 @@ firebase deploy --only storage
 - الـcommit الحالي الذي ثبّت حلّ الاعتماديات هو `43e3545`، ويغيّر `pubspec.lock` فقط.
 - التحقق الوظيفي اليدوي غطّى: تسجيل السائق، موافقة الأدمن، تسجيل الدخول، GPS/Online، StartTrip، ظهور المسار، EndTrip، إغلاق/إعادة فتح التطبيق واستعادة الرحلة والمسار، واستمرار heartbeat، ثم بدء/إنهاء رحلة لاحقة.
 - بحث المسار أثناء التسجيل أصبح يمر عبر `RoutePlanService.searchApprovedRoutes()` ويقرأ من `routeCatalog`، بينما قراءة `plannedRoutes` تبقى للبيانات التشغيلية بعد تسجيل الدخول.
-- **Phase 1:** التنفيذ الأساسي مختبر وموثّق، بينما تبقى اختبارات Failure Path وتوثيق أدلتها كبند إغلاق رسمي مستقل.
+- **Phase 1:** جميع Failure Paths المطلوبة ضمن بوابة Phase 1 أُغلقت ووُثقت في الأقسام اللاحقة من هذا المرجع ✅.
 - **Sampling freshness gate:** التنفيذ `0126459fcd8b6f910c586f42fe978d728775672d` + اختبار ميداني للرحلة `4oaA3NdEm5vq5Gj10qep` — **مغلق ✅**.
 - **توثيق freshness gate:** مثبت في هذا الـREADME بعد اكتمال التنفيذ والاختبار الميداني.
 
