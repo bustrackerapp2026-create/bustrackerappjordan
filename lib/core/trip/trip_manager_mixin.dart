@@ -196,32 +196,13 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     // المصدر التشغيلي للمسار هو المركبة. هذا يسمح لعدة سائقين مسجلين
     // على نفس الباص باستخدام نفس التعيين المعتمد.
-    List<DriverLineAssignment> assignments;
-    if (operationalBus.isNotEmpty) {
-      assignments = await _driverLineAssignmentService
-          .getApprovedAssignmentsForVehicle(
-        operationalBus,
-        limit: 50,
-      );
+    if (operationalBus.isEmpty) return null;
 
-      // توافق رجعي مع السجلات القديمة التي لا تحتوي busNumber.
-      if (assignments.isEmpty) {
-        final driverAssignments =
-            await _driverLineAssignmentService.getApprovedAssignmentsForDriver(
-          driverId,
-          limit: 50,
-        );
-        assignments = driverAssignments
-            .where((assignment) => assignment.busNumber.trim().isEmpty)
-            .toList();
-      }
-    } else {
-      assignments = await _driverLineAssignmentService
-          .getApprovedAssignmentsForDriver(
-        driverId,
-        limit: 50,
-      );
-    }
+    final assignments = await _driverLineAssignmentService
+        .getApprovedAssignmentsForVehicle(
+      operationalBus,
+      limit: 50,
+    );
 
     final candidates = <AssignedRouteChoice>[];
     for (final assignment in assignments) {
@@ -270,7 +251,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return resolved != null;
   }
 
-  /// مصدر الحقيقة للمسار هو التعيين المعتمد للسائق.
+  /// مصدر الحقيقة للمسار التشغيلي هو التعيين المعتمد للمركبة.
   /// عند وجود ذهاب + إياب، يحدد الموقع الحالي أي تعيين يبدأ منه السائق:
   /// ذهاب = أول نقطة، إياب = آخر نقطة في PlannedRoute.
   Future<void> startTrip({String? lineName}) async {
@@ -333,17 +314,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           busNumber,
           limit: 50,
         );
-
-        if (vehicleAssignments.isEmpty) {
-          final driverAssignments =
-              await _driverLineAssignmentService.getApprovedAssignmentsForDriver(
-            userId,
-            limit: 50,
-          );
-          vehicleAssignments = driverAssignments
-              .where((assignment) => assignment.busNumber.trim().isEmpty)
-              .toList();
-        }
 
         if (vehicleAssignments.isEmpty) {
           if (mounted) {
