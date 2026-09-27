@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 
 import '../../services/driver_public_location_service.dart';
+import '../../services/historical_sampling_policy.dart';
 import '../../services/location_service.dart';
 
 enum DriverTrackingState {
@@ -119,6 +120,15 @@ class DriverTrackingLifecycle {
     try {
       _sub = _location.getPositionStreamForProfile(profile).listen(
         (pos) {
+          if (_activeProfile == LocationTrackingProfile.driverTrip &&
+              !HistoricalSamplingPolicy.isFresh(pos)) {
+            debugPrint(
+              '🛰️ ignored stale driverTrip position '
+              'timestamp=${pos.timestamp.toIso8601String()}',
+            );
+            return;
+          }
+
           lastPosition = pos;
           lastPositionAt = DateTime.now();
           onPosition?.call(pos);
