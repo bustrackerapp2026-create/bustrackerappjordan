@@ -655,7 +655,7 @@ firebase deploy --only storage
 - بحث المسار أثناء التسجيل أصبح يمر عبر `RoutePlanService.searchApprovedRoutes()` ويقرأ من `routeCatalog`، بينما قراءة `plannedRoutes` تبقى للبيانات التشغيلية بعد تسجيل الدخول.
 - **Phase 1:** التنفيذ الأساسي مختبر وموثّق، بينما تبقى اختبارات Failure Path وتوثيق أدلتها كبند إغلاق رسمي مستقل.
 - **Sampling freshness gate:** التنفيذ `0126459fcd8b6f910c586f42fe978d728775672d` + اختبار ميداني للرحلة `4oaA3NdEm5vq5Gj10qep` — **مغلق ✅**.
-- **آخر commit توثيقي بعد إغلاق freshness gate:** سيتم تثبيته مباشرة بعد هذا التحديث.
+- **توثيق freshness gate:** مثبت في هذا الـREADME بعد اكتمال التنفيذ والاختبار الميداني.
 
 ### ملاحظات تشغيلية
 
