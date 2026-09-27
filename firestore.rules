@@ -355,7 +355,18 @@ service cloud.firestore {
         && request.resource.data.status == 'active'
         && request.resource.data.busNumber is string;
 
-      allow update: if isAdmin()
+      // أي تعيين يبقى قابلاً للتشغيل يجب أن يحمل هوية المركبة.
+      // السجلات القديمة غير الصالحة يمكن تحويلها فقط إلى rejected/revoked للتدقيق.
+      allow update: if (
+          isAdmin()
+          && (
+            (
+              request.resource.data.busNumber is string
+              && request.resource.data.busNumber.size() > 0
+            )
+            || request.resource.data.status in ['rejected', 'revoked']
+          )
+        )
         || (
           isDriver()
           && resource.data.driverId == request.auth.uid
