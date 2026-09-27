@@ -223,6 +223,7 @@ storage.rules               # قواعد الملفات
 - `user_model_test.dart` — تحليل `UserModel` ودوال العرض
 - `user_roles_test.dart` — ثوابت الأدوار والمساعدات
 - `pickup_point_model_test.dart` — ملاحظات مراجعة نقاط التجمع
+- `historical_sampling_policy_test.dart` — اختبار حداثة Position التاريخية ورفض المواقع القديمة
 
 تشغيل كل الاختبارات:
 
@@ -304,7 +305,7 @@ firebase deploy --only storage
 ### الفرع والحالة المرجعية
 
 - **الفرع التطويري الحالي:** `stage/approved-route-line-vehicle-link-v1`
-- **آخر commit تقني مُثبت حاليًا:** `d1ae474fc1fc1a5a36c565dc7aeef359773f8d47` — `fix(phase2): catch concurrent TripPing flush failures`
+- **آخر commit تقني مُثبت حاليًا:** `0126459fcd8b6f910c586f42fe978d728775672d` — `feat(phase2): reject stale historical GPS fixes`
 - **آخر commit تقني سابق لمسار Failure Path 1:** `5e820c8da9dbf171ddbaca156dba52d95e56e25c`
 - **آخر commit توثيقي سابق لـFailure Path 1:** `311a0aafb5bc88493757f4501e5c5a838779546c`
 - **آخر commit تقني لـ Buffer Isolation:** `c058b26ccdf62ed9abc2ad325522f8403a7fa81e`
@@ -548,7 +549,49 @@ firebase deploy --only storage
 ولا يجوز أن يؤدي فقد الاتصال بالخادم وحده إلى إنهاء `VehicleTrip`.
 
 #### 5. قاعدة التنفيذ المرحلي
-في الخطوة البرمجية التالية سنضيف **freshness gate صغيرًا** عند إدخال `TripPing` إلى الـBuffer، ثم نختبره مستقلًا. لن نضيف حاليًا حقلاً جديدًا إلى `vehicleTrips` باسم `LIVE/STALE/LOST`، ولن نخلط هذه الخطوة مع `routeProgress`.
+تم تنفيذ **freshness gate صغير** عند إدخال `TripPing` إلى الـBuffer، مع الإبقاء على سياسة المرحلة محدودة النطاق:
+- لا يوجد حاليًا حقل Firestore جديد باسم `LIVE/STALE/LOST`.
+- لا يتم إنشاء `TripPing` من Position قديم لمجرد وصول callback جديد.
+- لا يوجد أي استخدام لـ`routeProgress` في هذه الخطوة؛ يبقى مؤجلًا إلى **Phase 3**.
+- يعتمد gate على `Position.timestamp` وليس على وقت وصول الـcallback.
+
+### إغلاق freshness gate للتسجيل التاريخي — 2026-09-27
+
+تم إغلاق نقطة **Sampling freshness gate** رسميًا بعد اكتمال التنفيذ البرمجي والاختبار الميداني على الهاتف.
+
+#### التنفيذ المثبت
+- **الملف الجديد:** `lib/services/historical_sampling_policy.dart`
+- **التكامل:** `lib/driver/services/driver_tracking_hub.dart`
+- **اختبار الوحدة:** `test/historical_sampling_policy_test.dart`
+- يعتمد التحقق على `Position.timestamp`.
+- الحد التشغيلي الحالي لقبول Historical GPS أثناء `driverTrip` هو **≤ 45 ثانية**.
+- Position الأقدم من 45 ثانية تُرفض ولا تدخل `TripPingBuffer`.
+- Position المستقبلية تُرفض كذلك.
+- لم يتم تغيير مخطط `vehicleTrips`، ولم تتم إضافة حقل `LIVE/STALE/LOST`.
+- `routeProgress` بقي `null` ولم يبدأ Phase 3.
+
+#### التحقق البرمجي
+على نسخة المشروع المحلية بعد سحب commit التنفيذ:
+- `flutter analyze` → **No issues found!**
+- `flutter test` → **64/64 All tests passed!**
+- الـcommit البرمجي: `0126459fcd8b6f910c586f42fe978d728775672d`
+
+#### الاختبار الميداني
+- **الرحلة التجريبية:** `4oaA3NdEm5vq5Gj10qep`
+- تم تشغيل رحلة فعلية لمدة تقارب 5 دقائق دون قطع الإنترنت أو إدخال Failure Path مقصود.
+- ظهر `TripPing buffered` بشكل طبيعي واستمر التسجيل خلال الرحلة.
+- ظهر التسلسل `count=1 → 2 → 3 → 4` ثم استمر buffering في الدفعة التالية.
+- **لم يظهر** `🧭 TripPing rejected: stale GPS fix` أثناء التشغيل الطبيعي.
+- عند إنهاء الرحلة توقفت تحديثات Geolocator وعادت المنظومة إلى `driverIdle` كما هو متوقع.
+- لم يظهر في السجل المرسل `Unhandled Exception` أو `FATAL EXCEPTION` متعلق بهذه النقطة.
+
+> عدم ظهور `stale GPS fix` أثناء الاختبار الطبيعي لا يعني أن حالة GPS القديم حُقنت عمدًا؛ منطق الرفض نفسه مغطى باختبارات الوحدة، بينما الاختبار الميداني أثبت عدم منع النقاط الحديثة وعدم إحداث regression في التسجيل الطبيعي.
+
+**نتيجة البوابة:** **Sampling freshness gate مغلق وناجح ✅** من حيث التنفيذ، اختبارات الوحدة، والتحقق الميداني للحالة الطبيعية.
+
+**حدود هذه النقطة:** لم تتم إضافة مراقبة مستقلة لـ`LIVE/STALE/LOST` إلى Firestore، ولم يتم تغيير سياسة lifecycle أو إعادة بناء منظومة GPS. أي توسيع لحالات الصحة أو تغيير عتبات 45/90 ثانية يُعامل كتغيير مستقل بعد توفر قياس ميداني إضافي.
+
+**الحالة التالية:** نكمل مراجعة/إغلاق ما تبقى من **Phase 2 Failure Paths وPhase 2 Checkpoint** قبل بدء **Phase 3 (`routeProgress`)**.
 
 ### حادثة الاستعادة التي يجب تذكرها
 
@@ -589,7 +632,7 @@ firebase deploy --only storage
 3. تصميم وتنفيذ واجهة مستقلة بعد تسجيل الدخول لطلبات/تعيين المسارات للسائق.
 4. فصل واجهة تعيين المسار بصريًا ووظيفيًا عن قسم طلبات الركاب.
 5. اختبار دورة طلب التعيين من السائق حتى مراجعة الأدمن.
-6. بعد تثبيت بوابة Phase 1 الأساسية بدأنا التنفيذ المرحلي لـ Phase 2؛ الخطوة الثانية منفذة برمجيًا، بينما الاختبار الميداني على الهاتف ما زال مؤجلًا.
+6. بعد تثبيت بوابة Phase 1 الأساسية بدأنا التنفيذ المرحلي لـ Phase 2؛ تم تنفيذ واختبار مكونات Phase 2 الحالية ميدانيًا حتى إغلاق freshness gate في 2026-09-27.
 
 ### تثبيت Phase 1 كمرجع استقرار — 2026-09-25
 
@@ -602,15 +645,17 @@ firebase deploy --only storage
 - **قاعدة العمل التالية:** نواصل التطوير على `stage/approved-route-line-vehicle-link-v1`، ولا نغيّر فرع الاستقرار الجديد إلا عند وجود سبب موثق.
 - **المرحلة التالية المخططة:** Phase 2 — **Live GPS + Historical Capture**، بعد فحص الموجود حاليًا وعدم إعادة بناء أجزاء مستقرة بلا Regression واضح.
 
-### لقطة التحقق الحالية — 2026-09-26
+### لقطة التحقق الحالية — 2026-09-27
 
 - `flutter analyze` → **No issues found!**
-- `flutter test` → **50/50 All tests passed!**
+- `flutter test` → **64/64 All tests passed!**
 - `git diff --check` → **نظيف** قبل تثبيت `pubspec.lock`.
 - الـcommit الحالي الذي ثبّت حلّ الاعتماديات هو `43e3545`، ويغيّر `pubspec.lock` فقط.
 - التحقق الوظيفي اليدوي غطّى: تسجيل السائق، موافقة الأدمن، تسجيل الدخول، GPS/Online، StartTrip، ظهور المسار، EndTrip، إغلاق/إعادة فتح التطبيق واستعادة الرحلة والمسار، واستمرار heartbeat، ثم بدء/إنهاء رحلة لاحقة.
 - بحث المسار أثناء التسجيل أصبح يمر عبر `RoutePlanService.searchApprovedRoutes()` ويقرأ من `routeCatalog`، بينما قراءة `plannedRoutes` تبقى للبيانات التشغيلية بعد تسجيل الدخول.
 - **Phase 1:** التنفيذ الأساسي مختبر وموثّق، بينما تبقى اختبارات Failure Path وتوثيق أدلتها كبند إغلاق رسمي مستقل.
+- **Sampling freshness gate:** التنفيذ `0126459fcd8b6f910c586f42fe978d728775672d` + اختبار ميداني للرحلة `4oaA3NdEm5vq5Gj10qep` — **مغلق ✅**.
+- **آخر commit توثيقي بعد إغلاق freshness gate:** سيتم تثبيته مباشرة بعد هذا التحديث.
 
 ### ملاحظات تشغيلية
 
