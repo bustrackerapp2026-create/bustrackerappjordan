@@ -96,7 +96,7 @@ class RouteProgressCalculator {
 
       // The GPS position is the local origin (0, 0).
       final t = ((-ax) * dx + (-ay) * dy) / segmentLengthSquared;
-      final clampedT = t.clamp(0.0, 1.0);
+      final clampedT = t.clamp(0.0, 1.0).toDouble();
 
       final projectedX = ax + clampedT * dx;
       final projectedY = ay + clampedT * dy;
@@ -106,7 +106,8 @@ class RouteProgressCalculator {
       if (distanceSquared < bestDistanceSquared) {
         final alongMeters =
             cumulativeBefore + (segmentLength * clampedT);
-        final progress = (alongMeters / totalRouteMeters).clamp(0.0, 1.0);
+        final progress =
+            (alongMeters / totalRouteMeters).clamp(0.0, 1.0).toDouble();
 
         bestDistanceSquared = distanceSquared;
         best = RouteProgressProjection(
