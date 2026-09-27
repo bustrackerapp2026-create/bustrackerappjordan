@@ -205,12 +205,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
     final candidates = <AssignedRouteChoice>[];
     for (final assignment in assignments) {
-      if (operationalBus.isNotEmpty &&
-          assignment.busNumber.trim().isNotEmpty &&
-          assignment.busNumber.trim() != operationalBus) {
-        continue;
-      }
-
       final route = await _getApprovedRouteForAssignment(
         assignment.routeId,
         assignment.lineId,
@@ -301,7 +295,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       }
 
       final resolved = await _resolveAssignedRoute(
-        userId,
         currentPosition,
         busNumber: busNumber,
       );
