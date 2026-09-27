@@ -120,18 +120,7 @@ class DriverTrackingLifecycle {
     try {
       _sub = _location.getPositionStreamForProfile(profile).listen(
         (pos) {
-          if (_activeProfile == LocationTrackingProfile.driverTrip &&
-              !HistoricalSamplingPolicy.isFresh(pos)) {
-            debugPrint(
-              '🛰️ ignored stale driverTrip position '
-              'timestamp=${pos.timestamp.toIso8601String()}',
-            );
-            return;
-          }
-
-          lastPosition = pos;
-          lastPositionAt = DateTime.now();
-          onPosition?.call(pos);
+          _acceptPosition(pos);
         },
         onError: (e) {
           debugPrint('🛰️ stream error: $e');
@@ -176,6 +165,22 @@ class DriverTrackingLifecycle {
       await _cancelStreamOnly();
       _setState(DriverTrackingState.stopped);
     }
+  }
+
+  bool _acceptPosition(geo.Position position) {
+    if (_activeProfile == LocationTrackingProfile.driverTrip &&
+        !HistoricalSamplingPolicy.isFresh(position)) {
+      debugPrint(
+        '🛰️ ignored stale driverTrip position '
+        'timestamp=${position.timestamp.toIso8601String()}',
+      );
+      return false;
+    }
+
+    lastPosition = position;
+    lastPositionAt = DateTime.now();
+    onPosition?.call(position);
+    return true;
   }
 
   Future<void> _stopInternal() async {
@@ -230,10 +235,11 @@ class DriverTrackingLifecycle {
               throw StateError('لم يتم الحصول على موقع من فحص الـheartbeat.');
             }
 
-            lastPosition = position;
-            lastPositionAt = DateTime.now();
-            onPosition?.call(position);
-            debugPrint('🛰️ heartbeat: location probe healthy');
+            if (_acceptPosition(position)) {
+              debugPrint('🛰️ heartbeat: location probe healthy');
+            } else {
+              debugPrint('🛰️ heartbeat: stale location probe ignored');
+            }
           } catch (e) {
             debugPrint(
               '🛰️ heartbeat: location probe failed → restart ($e)',
