@@ -16,6 +16,7 @@ import '../../driver/services/driver_tracking_hub.dart';
 import '../../models/route_point.dart';
 import '../../models/planned_route.dart';
 import '../../models/driver_line_assignment.dart';
+import '../../services/route_start_resolver.dart';
 
 mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool _isProcessingTrip = false;
@@ -176,9 +177,8 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     PlannedRoute route,
     geo.Position current,
   ) {
-    final start = route.direction == RouteDirection.outbound
-        ? route.points.first
-        : route.points.last;
+    final start = RouteStartResolver.resolve(route);
+    if (start == null) return double.infinity;
     return _distanceMeters(
       current.latitude,
       current.longitude,
