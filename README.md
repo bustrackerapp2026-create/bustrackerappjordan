@@ -648,7 +648,7 @@ firebase deploy --only storage
 ### لقطة التحقق الحالية — 2026-09-27
 
 - `flutter analyze` → **No issues found!**
-- `flutter test` → **64/64 All tests passed!**
+- `flutter test` → **66/66 All tests passed!**
 - `git diff --check` → **نظيف** قبل تثبيت `pubspec.lock`.
 - الـcommit الحالي الذي ثبّت حلّ الاعتماديات هو `43e3545`، ويغيّر `pubspec.lock` فقط.
 - التحقق الوظيفي اليدوي غطّى: تسجيل السائق، موافقة الأدمن، تسجيل الدخول، GPS/Online، StartTrip، ظهور المسار، EndTrip، إغلاق/إعادة فتح التطبيق واستعادة الرحلة والمسار، واستمرار heartbeat، ثم بدء/إنهاء رحلة لاحقة.
@@ -657,17 +657,36 @@ firebase deploy --only storage
 - **Sampling freshness gate:** التنفيذ `0126459fcd8b6f910c586f42fe978d728775672d` + اختبار ميداني للرحلة `4oaA3NdEm5vq5Gj10qep` — **مغلق ✅**.
 - **توثيق freshness gate:** مثبت في هذا الـREADME بعد اكتمال التنفيذ والاختبار الميداني.
 
-### Live GPS stale-position guard — 2026-09-27
+### Live GPS freshness gate — stream + heartbeat — 2026-09-27
 
-تم إغلاق مسار إعادة استخدام Position قديم كموقع حي بعد خطأ في GPS stream داخل DriverTrackingLifecycle:
+تم إغلاق بوابة حداثة GPS الحي داخل DriverTrackingLifecycle بعد إثبات مسارين مستقلين كان يمكن أن يعيدا Position قديمة كموقع حي:
+
+1. GPS stream بعد خطأ: كان LocationService يعيد آخر Position مخزنة، وكان lifecycle يعاملها كحدث جديد.
+2. Heartbeat probe: كان getCurrentPosition() قد يعيد Position قديمة عبر fallback، وكان heartbeat يحدّث lastPositionAt ويمررها إلى onPosition.
+
+### الإصلاح المثبت
 
 - عند LocationTrackingProfile.driverTrip يتم فحص Position.timestamp قبل تحديث lastPosition وlastPositionAt وقبل استدعاء onPosition.
-- الموقع الأقدم من 45 ثانية يُرفض ولا ينعش heartbeat أو مسار التتبع الحي.
-- تم اختبار سيناريو إعادة الـcached position بعد stream error، ثم التحقق من استمرار قبول Position حديثة.
-- الاختبار الجديد: test/driver_tracking_stale_position_test.dart.
-- الـcommit: 60531ea904c3fbe3457dcca06d5e0cd0db070fe8.
-- التحقق المحلي على فرع التطوير: flutter analyze → No issues found!، flutter test → 65/65 All tests passed!، وgit diff --check → نظيف.
-- لم يتم تعديل LocationService أو driver_map_tab.dart ضمن هذا الإصلاح.
+- الموقع الأقدم من 45 ثانية يُرفض في مسار stream وفي مسار heartbeat.
+- تم توحيد قبول Position الحية عبر نقطة واحدة داخل DriverTrackingLifecycle.
+- لم يتم تعديل LocationService أو driver_map_tab.dart في إصلاح بوابة freshness.
+- لا يتم تغيير مخطط vehicleTrips ولا إضافة LIVE/STALE/LOST إلى Firestore.
+
+### الاختبارات
+
+- test/driver_tracking_stale_position_test.dart — يثبت رفض cached Position القديمة بعد stream error وقبول Position حديثة.
+- test/driver_tracking_heartbeat_stale_probe_test.dart — يثبت رفض Position القديمة القادمة من heartbeat probe.
+- على فرع التطوير نفسه:
+  - flutter analyze → **No issues found!**
+  - flutter test → **66/66 All tests passed!**
+  - git diff --check → **نظيف**
+- commits التنفيذ:
+  - 60531ea904c3fbe3457dcca06d5e0cd0db070fe8 — stream stale-position guard + الاختبار الأول.
+  - 0bc29617057f91c7eb26a93aa5d686f825081090 — توحيد بوابة freshness مع heartbeat.
+  - 921e4f1d4b955e16633df185dfcacddbc8c23041 — اختبار heartbeat.
+- تم التحقق محليًا من الإصلاحين قبل تثبيتهما على فرع التطوير.
+
+**نتيجة البوابة:** **Live GPS freshness gate مغلق وناجح ✅** من حيث stream + heartbeat، مع اختبار regression كامل دون تغيير منظومة GPS أو بدء Phase 3.
 
 ### ملاحظات تشغيلية
 
