@@ -20,7 +20,7 @@ class DriverTrackingLifecycle {
   }) : _location = locationService ?? LocationService();
 
   final LocationService _location;
-  final DriverPublicLocationService _public = DriverPublicLocationService();
+  DriverPublicLocationService? _public;
 
   StreamSubscription<geo.Position>? _sub;
   Timer? _heartbeat;
@@ -262,7 +262,8 @@ class DriverTrackingLifecycle {
         'isTripActive': isTripActive,
       });
 
-      await _public.publishLocation(
+      final publicService = _public ??= DriverPublicLocationService();
+      await publicService.publishLocation(
         uid: uid,
         latitude: position.latitude,
         longitude: position.longitude,
