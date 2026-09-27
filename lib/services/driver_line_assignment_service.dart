@@ -314,6 +314,12 @@ class DriverLineAssignmentService {
         code: 'not-pending',
       );
     }
+    if (assignment.busNumber.trim().isEmpty) {
+      throw const TransitLineServiceException(
+        'لا يمكن اعتماد تعيين لا يحتوي على رقم باص/سرفيس.',
+        code: 'missing-bus-number',
+      );
+    }
 
     final route = await _getRouteById(assignment.routeId);
     if (route == null ||
@@ -410,6 +416,12 @@ class DriverLineAssignmentService {
         throw const TransitLineServiceException(
           'طلب التعيين ليس بانتظار المراجعة.',
           code: 'not-pending',
+        );
+      }
+      if (assignment.busNumber.trim().isEmpty) {
+        throw const TransitLineServiceException(
+          'لا يمكن اعتماد تعيين لا يحتوي على رقم باص/سرفيس.',
+          code: 'missing-bus-number',
         );
       }
 
