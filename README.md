@@ -439,6 +439,22 @@ firebase deploy --only storage
 
 **الخطوة التالية:** استكمال **بوابة Phase 1** بالحالات المتبقية: فشل Firestore أثناء StartTrip، والتأكد من عدم بقاء زر Start في Loading، ثم توثيق الأدلة. لا نبدأ Phase 3 قبل إغلاق هذه البوابة، ولا نعيد بناء GPS ولا نغيّر الفروع المستقرة.
 
+### إغلاق Failure Path 3 — فشل Firestore أثناء StartTrip — 2026-09-27
+
+تم إغلاق حالة فشل Firestore أثناء محاولة Start Trip بعد اختبار ميداني على جهاز الاختبار، دون تعديل برمجي.
+
+- تم إبقاء السائق Online مع وجود تعيين ومسار صالحين.
+- تم قطع الاتصال بالشبكة ثم تنفيذ محاولة Start Trip واحدة.
+- ظهر في Logcat فشل Firestore من نوع `UNAVAILABLE` مع `UnknownHostException`.
+- سجّل التطبيق في `TripManager`: `فشل بدء الرحلة` بسبب `cloud_firestore/unavailable`.
+- لم يتم إنشاء `VehicleTrip` جديدة في Firestore.
+- زر Start لم يدخل حالة Loading أصلًا، وبقي في حالته الطبيعية.
+- لم يظهر في السجل المرسل `FATAL EXCEPTION` أو `Unhandled Exception` أو مؤشر على Crash متعلق بهذه المحاولة.
+- بعد إعادة الإنترنت ظهرت إشارات لاستعادة عمل فحص الموقع (`heartbeat: location probe healthy`) مع استمرار LocationService في تقديم موقع صالح.
+- لم يتم إجراء أي Patch على الكود؛ معالجة الاستثناء الحالية نجحت في منع إنشاء الرحلة عند فشل Firestore.
+
+**نتيجة البوابة:** Failure Path — **Firestore failure أثناء StartTrip** — مغلق وناجح ✅. لا توجد حاجة لإعادة فتحه ما لم يظهر Regression جديد.
+
 ### إغلاق Failure Path 2 — PlannedRoute مفقودة / غير صالحة — 2026-09-27
 
 تم إغلاق حالة PlannedRoute مفقودة أو غير صالحة/غير معتمدة بعد اختبارها على جهاز الاختبار دون تعديل برمجي.
