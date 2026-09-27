@@ -573,7 +573,7 @@ firebase deploy --only storage
 #### التحقق البرمجي
 على نسخة المشروع المحلية بعد سحب commit التنفيذ:
 - `flutter analyze` → **No issues found!**
-- `flutter test` → **64/64 All tests passed!**
+- `flutter test` → **65/65 All tests passed!**
 - الـcommit البرمجي: `0126459fcd8b6f910c586f42fe978d728775672d`
 
 #### الاختبار الميداني
@@ -632,7 +632,7 @@ firebase deploy --only storage
 3. تصميم وتنفيذ واجهة مستقلة بعد تسجيل الدخول لطلبات/تعيين المسارات للسائق.
 4. فصل واجهة تعيين المسار بصريًا ووظيفيًا عن قسم طلبات الركاب.
 5. اختبار دورة طلب التعيين من السائق حتى مراجعة الأدمن.
-6. بعد تثبيت بوابة Phase 1 الأساسية بدأنا التنفيذ المرحلي لـ Phase 2؛ تم تنفيذ واختبار مكونات Phase 2 الحالية ميدانيًا حتى إغلاق freshness gate في 2026-09-27.
+6. بعد تثبيت بوابة Phase 1 الأساسية بدأنا التنفيذ المرحلي لـ Phase 2؛ تم تنفيذ واختبار مكونات Phase 2 الحالية ميدانيًا حتى إغلاق freshness gates في 2026-09-27.
 
 ### تثبيت Phase 1 كمرجع استقرار — 2026-09-25
 
@@ -656,6 +656,18 @@ firebase deploy --only storage
 - **Phase 1:** التنفيذ الأساسي مختبر وموثّق، بينما تبقى اختبارات Failure Path وتوثيق أدلتها كبند إغلاق رسمي مستقل.
 - **Sampling freshness gate:** التنفيذ `0126459fcd8b6f910c586f42fe978d728775672d` + اختبار ميداني للرحلة `4oaA3NdEm5vq5Gj10qep` — **مغلق ✅**.
 - **توثيق freshness gate:** مثبت في هذا الـREADME بعد اكتمال التنفيذ والاختبار الميداني.
+
+### Live GPS stale-position guard — 2026-09-27
+
+تم إغلاق مسار إعادة استخدام Position قديم كموقع حي بعد خطأ في GPS stream داخل DriverTrackingLifecycle:
+
+- عند LocationTrackingProfile.driverTrip يتم فحص Position.timestamp قبل تحديث lastPosition وlastPositionAt وقبل استدعاء onPosition.
+- الموقع الأقدم من 45 ثانية يُرفض ولا ينعش heartbeat أو مسار التتبع الحي.
+- تم اختبار سيناريو إعادة الـcached position بعد stream error، ثم التحقق من استمرار قبول Position حديثة.
+- الاختبار الجديد: test/driver_tracking_stale_position_test.dart.
+- الـcommit: 60531ea904c3fbe3457dcca06d5e0cd0db070fe8.
+- التحقق المحلي على فرع التطوير: flutter analyze → No issues found!، flutter test → 65/65 All tests passed!، وgit diff --check → نظيف.
+- لم يتم تعديل LocationService أو driver_map_tab.dart ضمن هذا الإصلاح.
 
 ### ملاحظات تشغيلية
 
