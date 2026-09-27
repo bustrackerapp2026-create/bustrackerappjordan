@@ -755,6 +755,35 @@ firebase deploy --only storage
 
 
 
+### إغلاق أول وحدة هندسية لـRouteProgress — 2026-09-27
+
+تم تنفيذ أول وحدة مستقلة من **Phase 3 — RouteProgress** دون ربطها بعد بـDriverTrackingHub أو Firestore.
+
+- الملف: `lib/services/route_progress_calculator.dart`
+- الاختبار: `test/route_progress_calculator_test.dart`
+- الحساب يعتمد على Projection على polyline والمسافة التراكمية على طول المسار.
+- يدعم start/midpoint/end.
+- يعالج الانحراف الجانبي ضمن tolerance.
+- يرفض الموقع البعيد جدًا عن المسار.
+- يرفض الإحداثيات غير الصالحة والمسار ذي الطول الصفري.
+- حد الإسقاط يتأثر بدقة GPS مع سقف ثابت للحماية.
+- لا توجد أي قراءة شبكة لكل GPS event.
+- لم يتم تعديل `DriverTrackingHub` أو `DriverTrackingLifecycle` أو `driver_map_tab.dart`.
+
+#### Evidence
+
+على الجهاز المحلي بعد سحب التحديث:
+
+- `flutter test test/route_progress_calculator_test.dart` → **8/8 All tests passed!**
+- `flutter analyze` → **No issues found!**
+- `flutter test` → **77/77 All tests passed!**
+- `git status` → **working tree clean**
+- الفرع متزامن مع `origin`.
+
+**نتيجة البوابة:** أول وحدة Projection لـRouteProgress — **مغلقة وناجحة ✅**
+
+**الخطوة التالية:** إضافة طبقة حماية مستقلة لـ**Continuity + Monotonic Progress** واختبارها كحالة stateful قبل ربط النتيجة بالـDriverTrackingHub.
+
 ### إغلاق Route Start Consistency Gate — 2026-09-27
 
 تم إغلاق بوابة اتساق **بداية PlannedRoute** قبل بدء Phase 3.
