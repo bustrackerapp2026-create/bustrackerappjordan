@@ -188,7 +188,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   Future<AssignedRouteChoice?> _resolveAssignedRoute(
-    String driverId,
     geo.Position currentPosition, {
     String? busNumber,
   }) async {
@@ -244,7 +243,6 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final busNumber =
         context.read<AuthProvider>().userData?.busNumber?.trim();
     final resolved = await _resolveAssignedRoute(
-      driverId,
       currentPosition,
       busNumber: busNumber,
     );
