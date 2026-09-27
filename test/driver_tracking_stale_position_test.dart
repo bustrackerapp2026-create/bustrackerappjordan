@@ -102,6 +102,17 @@ void main() {
         expect(received, isEmpty);
         expect(lifecycle.lastPosition, isNull);
         expect(lifecycle.lastPositionAt, equals(baselineLastPositionAt));
+
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+
+        final freshPosition = _positionAt(DateTime.now());
+        fakePlatform.emit(freshPosition);
+
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        expect(received, hasLength(1));
+        expect(received.single.timestamp, equals(freshPosition.timestamp));
+        expect(lifecycle.lastPosition, equals(freshPosition));
       } finally {
         await primingSubscription?.cancel();
         await lifecycle.dispose();
