@@ -437,7 +437,7 @@ firebase deploy --only storage
 
 **نتيجة البوابة:** Phase 2.4 مكتملة: GPS → Buffer → Batch Upload → Final Flush → End Trip → `VehicleTrip.status=completed`.
 
-**الخطوة التالية بعد هذا checkpoint:** قبل بدء Phase 3، نفحص **عزل TripPingBuffer بين الرحلات** للتأكد من عدم انتقال نقاط رحلة قديمة إلى رحلة جديدة، ثم نضيف Failure Paths بصورة تدريجية. لا نعيد بناء GPS ولا نغيّر الفروع المستقرة.
+**الخطوة التالية:** استكمال **بوابة Phase 1** بالحالات المتبقية: فشل Firestore أثناء StartTrip، والتأكد من عدم بقاء زر Start في Loading، ثم توثيق الأدلة. لا نبدأ Phase 3 قبل إغلاق هذه البوابة، ولا نعيد بناء GPS ولا نغيّر الفروع المستقرة.
 
 ### إغلاق Failure Path 2 — PlannedRoute مفقودة / غير صالحة — 2026-09-27
 
