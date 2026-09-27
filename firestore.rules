@@ -353,7 +353,8 @@ service cloud.firestore {
         && request.resource.data.routeId.size() > 0
         && request.resource.data.direction in ['outbound', 'return']
         && request.resource.data.status == 'active'
-        && request.resource.data.busNumber is string;
+        && request.resource.data.busNumber is string
+        && request.resource.data.busNumber.size() > 0;
 
       // أي تعيين يبقى قابلاً للتشغيل يجب أن يحمل هوية المركبة.
       // السجلات القديمة غير الصالحة يمكن تحويلها فقط إلى rejected/revoked للتدقيق.
