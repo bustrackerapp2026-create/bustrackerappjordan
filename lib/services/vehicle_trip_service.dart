@@ -170,8 +170,13 @@ class VehicleTripService {
     double? speed,
     double? heading,
   }) async {
-    if (driverId.isEmpty) {
-      throw const VehicleTripServiceException('┘à╪╣╪▒┘ü ╪º┘ä╪│╪º╪ª┘é ┘à╪╖┘ä┘ê╪¿.');
+    if (driverId.trim().isEmpty) {
+      throw const VehicleTripServiceException('معرف السائق مطلوب.');
+    }
+    if (busNumber.trim().isEmpty) {
+      throw const VehicleTripServiceException(
+        'رقم الباص/السرفيس مطلوب للرحلة التشغيلية.',
+      );
     }
     if (routeId.isEmpty) {
       throw const VehicleTripServiceException('┘à╪╣╪▒┘ü ╪º┘ä┘à╪│╪º╪▒ ┘à╪╖┘ä┘ê╪¿.');
@@ -183,7 +188,7 @@ class VehicleTripService {
     final trip = VehicleTrip(
       id: docRef.id,
       driverId: driverId,
-      busNumber: busNumber.trim().isEmpty ? 'ΓÇö' : busNumber.trim(),
+      busNumber: busNumber.trim(),
       routeId: routeId,
       direction: normalizedDirection,
       status: VehicleTripStatus.active,
