@@ -753,6 +753,32 @@ firebase deploy --only storage
 - **قاعدة العمل التالية:** نواصل التطوير على `stage/approved-route-line-vehicle-link-v1`، ولا نغيّر فرع الاستقرار الجديد إلا عند وجود سبب موثق.
 - **المرحلة التالية المخططة:** Phase 2 — **Live GPS + Historical Capture**، بعد فحص الموجود حاليًا وعدم إعادة بناء أجزاء مستقرة بلا Regression واضح.
 
+
+
+### إغلاق Route Start Consistency Gate — 2026-09-27
+
+تم إغلاق بوابة اتساق **بداية PlannedRoute** قبل بدء Phase 3.
+
+- تم تثبيت قاعدة أن بداية كل مسار اتجاهي هي `PlannedRoute.points.first`.
+- تم إصلاح `TripManagerMixin._distanceToRouteStart()` بحيث لا يعكس قائمة نقاط مسار الإياب.
+- تم فصل القرار في `RouteStartResolver` ليكون صغيرًا وقابلًا لاختبار وحدة مستقل.
+- أضيف `test/route_start_resolver_test.dart` ويغطي outbound وreturn والمسار الفارغ.
+- لم يتم تعديل `driver_map_tab.dart` أو DriverTrackingLifecycle أو Mapbox.
+
+#### Evidence
+
+على الجهاز المحلي بعد سحب commit الإصلاح:
+
+- `flutter test test/route_start_resolver_test.dart` → **3/3 All tests passed!**
+- `flutter analyze` → **No issues found!**
+- `flutter test` → **69/69 All tests passed!**
+- `git status` → **working tree clean**
+- الفرع `stage/approved-route-line-vehicle-link-v1` متزامن مع `origin`.
+
+**نتيجة البوابة:** Route Start Consistency — **مغلقة وناجحة ✅**
+
+**الخطوة التالية المسموح بها:** أول Patch هندسي صغير لـ **RouteProgress** وفق `docs/SMART_BUS_PHASE3_PREFLIGHT.md`، مع إبقاء الحساب مستقلًا عن UI وGPS/Lifecycle.
+
 ### لقطة التحقق الحالية — 2026-09-27
 
 - `flutter analyze` → **No issues found!**
