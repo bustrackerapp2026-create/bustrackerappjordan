@@ -1273,7 +1273,7 @@ EtaResult
 - إضافة Firestore reads/writes لمسار ETA.
 - تثبيت `maxAge` رقمي جديد.
 
-هذه الخطوة مغلقة كعقد تصميم فقط. الخطوة التنفيذية اللاحقة، بعد تجميد العقد، هي إنشاء Runtime invocation component صغير واختبار الفصل بين `Builder == null` و`EtaResult.unavailable` دون تغيير محرك ETA أو مصادره.
+هذه الخطوة مغلقة كعقد تصميم فقط. الخطوة التنفيذية اللاحقة هي إنشاء `EtaRuntimeInvocation` واختبار عقد المخرج `EtaResult?`، مع إثبات أن `null` لا يستدعي المحرك وأن `EtaInput` يمرر إلى `EtaEngine.calculate()` وتُعاد نتيجة المحرك دون تعديل.
 
 ---
 
@@ -1714,6 +1714,9 @@ Firestore / Hub Integration
 - المستهلك المقصود Integration Runtime مستقل، وليس `DriverTrackingHub` أو Passenger/UI.
 - التقييم يحدث عند تغيّر accepted observation أو stop snapshot/NextStop، مع إمكانية طلب evaluation صراحةً من أحدث state.
 - `evaluatedAt` يُمرر صراحةً من المستدعي ولا يوجد clock مخفي.
+- `Eta Runtime Invocation` يعيد `EtaResult?`.
+- إذا أعاد `EtaInputBuilder` قيمة `null`، يعيد Runtime قيمة `null` ولا يستدعي `EtaEngine`.
+- إذا أعاد الـBuilder `EtaInput`، يستدعي Runtime `EtaEngine.calculate()` ويعيد نفس `EtaResult` كما هو، بما في ذلك `available` أو `unavailable`.
 - `Builder == null` و`EtaResult.unavailable` حالتان منفصلتان في عقد runtime.
 - لا إعادة استخدام ETA عند تغيّر NextStop، ولا استدعاء Engine عند غياب observation أو NextStop أو عند فشل freshness.
 - لا Production Code في 5.2-D.
