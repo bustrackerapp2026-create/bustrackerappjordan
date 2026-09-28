@@ -885,6 +885,36 @@ firebase deploy --only storage
 
 **الخطوة التالية:** ربط الـtracker تدريجيًا مع `DriverTrackingHub` لحساب `routeProgress` من GPS الحي على الرحلة النشطة، مع إبقاء الكتابة إلى Firestore في طبقة منفصلة واختبار التكامل قبل تفعيلها ميدانيًا.
 
+### إغلاق RouteProgress Hub Integration — 2026-09-28
+
+تم ربط RouteProgressTracker مع DriverTrackingHub تدريجيًا، مع إبقاء الحساب محليًا وفصل الكتابة إلى Firestore عن هذه الوحدة.
+
+#### التنفيذ المثبت
+
+- DriverTrackingHub يستقبل routePoints وrouteId وdirection وsavedRouteProgress عند ربط VehicleTrip.
+- الرحلة الجديدة: reset ثم bind للمسار ثم seed اختياري ثم استقبال GPS.
+- Restore: reset ثم bind ثم seed من VehicleTrip.routeProgress المحفوظ إن وُجد.
+- إعادة الربط لنفس tripId + routeId تحافظ على حالة الـtracker؛ وجود routePoints جديدة لا يسبب reset تلقائيًا.
+- إذا تغيّر routeId مع بقاء tripId نفسه، تتم إعادة تهيئة الـtracker وربط هندسة المسار الجديدة.
+- clearActiveVehicleTrip() يمسح معرف الرحلة، هندسة المسار، ويعمل reset() للـtracker لمنع انتقال الحالة إلى رحلة لاحقة.
+- _dispatchPosition() يمرر GPS إلى نقطة الربط المحلية updateRouteProgress() قبل مسارات التسجيل التاريخي والتحديث الحي.
+- تم تأخير إنشاء خدمات Firestore داخل الـHub (VehicleTripService وTripPingService) إلى وقت استخدامها حتى يبقى اختبار RouteProgress المحلي مستقلًا عن Firebase.initializeApp()، دون تغيير واجهات هذه الخدمات أو مخطط Firestore.
+- بقي guard القفزة الأمامية 300 متر كما هو دون تغيير.
+- لم تتم إضافة أي كتابة لـrouteProgress إلى Firestore في هذه الوحدة.
+
+#### الاختبار
+
+- الاختبار: test/driver_tracking_hub_route_progress_test.dart
+- يغطي: أول projection، التقدم الأمامي الأحادي، GPS jitter، عزل الرحلة الجديدة، Restore مع saved progress، إعادة الربط لنفس الرحلة، تغيير routeId، وclear/reset.
+- على الجهاز المحلي:
+  - flutter analyze → No issues found!
+  - flutter test test/driver_tracking_hub_route_progress_test.dart → 8/8 All tests passed!
+  - flutter test → 93/93 All tests passed!
+
+**نتيجة البوابة:** **RouteProgress Hub Integration — مغلقة وناجحة ✅**
+
+**الخطوة التالية:** إبقاء كتابة routeProgress إلى Firestore كـPatch مستقل لاحق، ثم معالجة physical plausibility بشكل مستقل دون تغيير هذا الـguard أو إعادة فتح منظومة GPS.
+
 ### ملاحظات تشغيلية
 
 - لا نحذف الملفات الناتجة محليًا أو ملفات lock/generated دون سبب موثق.
