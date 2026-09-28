@@ -70,14 +70,6 @@ void main() {
     );
   }
 
-  StopRuntimeSnapshot snapshotWithoutNextStop() {
-    return StopRuntimeSnapshot(
-      eligibleProjectedStops: const [],
-      nextStop: null,
-      statesByStopId: const {},
-    );
-  }
-
   test('returns null when observation is absent', () {
     final result = EtaRuntimeInvocation.evaluate(
       observation: null,
@@ -143,31 +135,40 @@ void main() {
     expect(result.observedAt, observedAt);
   });
 
-  test('preserves engine unavailable when EtaInput exists but speed is invalid', () {
-    final result = EtaRuntimeInvocation.evaluate(
-      observation: observation(speedMps: 0),
-      stopRuntimeSnapshot: snapshotWithNextStop(640),
-      freshnessPolicy: freshnessPolicy,
-      evaluatedAt: evaluatedAt,
-    );
+  test(
+    'preserves engine unavailable when EtaInput exists but speed is invalid',
+    () {
+      final result = EtaRuntimeInvocation.evaluate(
+        observation: observation(speedMps: 0),
+        stopRuntimeSnapshot: snapshotWithNextStop(640),
+        freshnessPolicy: freshnessPolicy,
+        evaluatedAt: evaluatedAt,
+      );
 
-    expect(result, isNotNull);
-    expect(result!.status, EtaStatus.unavailable);
-    expect(result.unavailableReason, EtaUnavailableReason.nonPositiveSpeed);
-  });
+      expect(result, isNotNull);
+      expect(result!.status, EtaStatus.unavailable);
+      expect(
+        result.unavailableReason,
+        EtaUnavailableReason.nonPositiveSpeed,
+      );
+    },
+  );
 
-  test('passes targetNotAhead through to the engine instead of filtering it', () {
-    final result = EtaRuntimeInvocation.evaluate(
-      observation: observation(alongMeters: 700),
-      stopRuntimeSnapshot: snapshotWithNextStop(640),
-      freshnessPolicy: freshnessPolicy,
-      evaluatedAt: evaluatedAt,
-    );
+  test(
+    'passes targetNotAhead through to the engine instead of filtering it',
+    () {
+      final result = EtaRuntimeInvocation.evaluate(
+        observation: observation(alongMeters: 700),
+        stopRuntimeSnapshot: snapshotWithNextStop(640),
+        freshnessPolicy: freshnessPolicy,
+        evaluatedAt: evaluatedAt,
+      );
 
-    expect(result, isNotNull);
-    expect(result!.status, EtaStatus.unavailable);
-    expect(result.unavailableReason, EtaUnavailableReason.targetNotAhead);
-  });
+      expect(result, isNotNull);
+      expect(result!.status, EtaStatus.unavailable);
+      expect(result.unavailableReason, EtaUnavailableReason.targetNotAhead);
+    },
+  );
 
   test('uses the current next stop on each evaluation', () {
     final sourceObservation = observation();
