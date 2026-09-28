@@ -17,6 +17,7 @@ import '../../services/route_progress_tracker.dart';
 import '../../services/next_stop_resolver.dart';
 import '../../services/stop_runtime_snapshot_resolver.dart';
 import '../../services/stop_state_resolver.dart';
+import '../../services/stop_runtime_policy.dart';
 import 'driver_tracking_lifecycle.dart';
 
 /// نقطة مركزية لتتبع السائق — تبقى حية حتى لو أُغلقت شاشة الخريطة.
@@ -67,6 +68,7 @@ class DriverTrackingHub {
   String? _activeVehicleTripDirection;
   List<RoutePoint>? _activeVehicleTripRoutePoints;
   List<PlannedRouteStopModel>? _activeVehicleTripStops;
+  StopRuntimePolicy? _activeStopRuntimePolicy;
   StopRuntimeSnapshot? _activeStopRuntimeSnapshot;
   DateTime? _lastHistoricalPingAt;
 
@@ -98,6 +100,9 @@ class DriverTrackingHub {
   StopRuntimeSnapshot? get activeStopRuntimeSnapshot =>
       _activeStopRuntimeSnapshot;
 
+  /// Policy explicitly bound to the active operational VehicleTrip.
+  StopRuntimePolicy? get activeStopRuntimePolicy => _activeStopRuntimePolicy;
+
   /// يربط الـHub بمعرف VehicleTrip النشطة وبياناتها اللازمة للتسجيل التاريخي.
   ///
   /// بيانات Historical تبقى أولًا في الـBuffer، ثم تُرفع على دفعات أثناء
@@ -111,6 +116,7 @@ class DriverTrackingHub {
     String? direction,
     List<RoutePoint>? routePoints,
     double? savedRouteProgress,
+    StopRuntimePolicy? stopRuntimePolicy,
   }) {
     final normalized = tripId?.trim();
     _vehicleTripFlushTimer?.cancel();
@@ -125,6 +131,7 @@ class DriverTrackingHub {
       _activeVehicleTripDirection = null;
       _activeVehicleTripRoutePoints = null;
       _activeVehicleTripStops = null;
+      _activeStopRuntimePolicy = null;
       _activeStopRuntimeSnapshot = null;
       _routeProgressTracker.reset();
       _lastVehicleTripLocationWriteAt = null;
@@ -145,6 +152,7 @@ class DriverTrackingHub {
         _routeProgressTracker.reset();
         _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
         _activeVehicleTripStops = null;
+        _activeStopRuntimePolicy = stopRuntimePolicy;
         _activeStopRuntimeSnapshot = null;
       } else if (routePoints != null &&
           !_sameRoutePoints(_activeVehicleTripRoutePoints, routePoints)) {
@@ -156,6 +164,9 @@ class DriverTrackingHub {
       }
       if (normalizedDirection != null && normalizedDirection.isNotEmpty) {
         _activeVehicleTripDirection = normalizedDirection;
+      }
+      if (stopRuntimePolicy != null) {
+        _activeStopRuntimePolicy = stopRuntimePolicy;
       }
 
       if (_routeProgressTracker.lastAccepted == null &&
@@ -175,6 +186,7 @@ class DriverTrackingHub {
         normalizedDirection?.isNotEmpty == true ? normalizedDirection : null;
     _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
     _activeVehicleTripStops = null;
+    _activeStopRuntimePolicy = stopRuntimePolicy;
     _activeStopRuntimeSnapshot = null;
     _seedRouteProgress(savedRouteProgress);
     _lastVehicleTripLocationWriteAt = null;
@@ -203,23 +215,25 @@ class DriverTrackingHub {
 
     _activeVehicleTripStops =
         List<PlannedRouteStopModel>.unmodifiable(stops);
+    refreshActiveStopRuntimeSnapshot();
   }
 
   /// Refreshes the derived Stop runtime snapshot from the latest
   /// accepted RouteProgress and already loaded Stops.
   ///
-  /// State and Eligibility policies are supplied explicitly by the caller.
-  /// No Firestore access occurs here.
-  StopRuntimeSnapshot? refreshActiveStopRuntimeSnapshot({
-    required PlannedRouteStopEligibility isEligible,
-    required StopStatePolicy statePolicy,
-  }) {
+  /// The policy was explicitly bound when the active VehicleTrip was
+  /// established. No Firestore access occurs here.
+  StopRuntimeSnapshot? refreshActiveStopRuntimeSnapshot() {
     final routePoints = _activeVehicleTripRoutePoints;
     final stops = _activeVehicleTripStops;
+    final policy = _activeStopRuntimePolicy;
     final vehicleAlongMeters =
         _routeProgressTracker.lastAccepted?.alongMeters;
 
-    if (routePoints == null || routePoints.length < 2 || stops == null) {
+    if (routePoints == null ||
+        routePoints.length < 2 ||
+        stops == null ||
+        policy == null) {
       _activeStopRuntimeSnapshot = null;
       return null;
     }
@@ -233,8 +247,8 @@ class DriverTrackingHub {
       routePoints: routePoints,
       vehicleAlongMeters: vehicleAlongMeters,
       stops: stops,
-      isEligible: isEligible,
-      statePolicy: statePolicy,
+      isEligible: policy.eligibility,
+      statePolicy: policy.statePolicy,
     );
 
     _activeStopRuntimeSnapshot = snapshot;
@@ -275,7 +289,7 @@ class DriverTrackingHub {
     final routePoints = _activeVehicleTripRoutePoints;
     if (routePoints == null || routePoints.length < 2) return null;
 
-    return _routeProgressTracker.update(
+    final result = _routeProgressTracker.update(
       routePoints: routePoints,
       latitude: position.latitude,
       longitude: position.longitude,
@@ -283,6 +297,12 @@ class DriverTrackingHub {
       timestamp: position.timestamp,
       speedMetersPerSecond: position.speed,
     );
+
+    if (result != null) {
+      refreshActiveStopRuntimeSnapshot();
+    }
+
+    return result;
   }
 
   void clearActiveVehicleTrip() {
