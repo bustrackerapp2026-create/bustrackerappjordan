@@ -117,8 +117,10 @@ class RouteProgressTracker {
     required double? speedMetersPerSecond,
   }) {
     _lastAcceptedTimestamp = timestamp;
-    _lastAcceptedValidSpeedMetersPerSecond =
-        _validSpeedOrNull(speedMetersPerSecond);
+    final validSpeed = _validSpeedOrNull(speedMetersPerSecond);
+    if (validSpeed != null) {
+      _lastAcceptedValidSpeedMetersPerSecond = validSpeed;
+    }
   }
 
   double? _validSpeedOrNull(double? speedMetersPerSecond) {
