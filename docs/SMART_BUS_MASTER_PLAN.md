@@ -14,7 +14,9 @@
 >
 > **Phase 4.1-B.2-C:** `PlannedRouteStopProjection` مغلق بعد نجاح `flutter analyze` و`flutter test` بنتيجة **142/142**، مع focused projection tests بنتيجة **8/8**. تمت إعادة استخدام `RoutePolylineProjection` دون تعديل الـprimitive أو الـModel أو الـReader.
 >
-> **الخطوة التالية:** Phase 4.2 — `NextStop Resolver`.
+> **Phase 4.2:** `NextStopResolver` مغلق بعد نجاح `flutter analyze` و`flutter test` بنتيجة **151/151**، مع focused tests بنتيجة **9/9**. تم فصل Stop Eligibility عن قرار NextStop، دون threshold مسافة مثبت داخل الـResolver.
+>
+> **الخطوة التالية:** Phase 4.3 — `Stop State`.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -334,7 +336,7 @@ RouteProgress
 
 ## الحالة الحالية
 
-**قيد التنفيذ — تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B و4.1-B.2-C، والخطوة التالية هي 4.2.**
+**قيد التنفيذ — تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B و4.1-B.2-C و4.2، والخطوة التالية هي 4.3.**
 
 ### 4.1-A — RoutePolylineProjection ✅
 
@@ -570,6 +572,39 @@ NextStop Resolver
 - أي تعديل على `RoutePolylineProjection` أو `PlannedRouteStopModel` أو `PlannedRouteStopService`.
 
 هذه الخطوة تثبت العقد فقط؛ تنفيذ `NextStop Resolver` يأتي بعد تثبيت هذا العقد واختباره كـdomain policy مستقلة.
+
+#### 4.2 — NextStop Resolver ✅
+
+تم تنفيذ Resolver domain صغير يستهلك Stops projected الجاهزة مع `vehicleAlongMeters` القادم من RouteProgress، ويترك Stop Eligibility كسياسة صريحة يمررها المستهلك.
+
+الحدود:
+- لا يعيد الـResolver حساب GPS projection.
+- لا يدخل إلى Firestore أو VehicleTrip أو DriverTrackingHub.
+- لا يثبت threshold رقميًا لـ`distanceToRouteMeters` داخل الـResolver.
+- المرشح يجب أن يكون Eligible وأن يحقق `vehicleAlongMeters < stopAlongMeters`.
+- يتم اختيار أصغر `stopAlongMeters - vehicleAlongMeters`.
+- `order` يستخدم فقط كـadministrative tie-breaker عند تعادل `alongMeters`.
+- لا توجد Stop State أو ETA أو persistence في هذه الخطوة.
+- لا توجد سياسة self-intersection ambiguity.
+
+العقد المثبت:
+```text
+Projected Stops
+      +
+vehicleAlongMeters
+      +
+Stop Eligibility Policy
+      ↓
+NextStop?
+```
+
+التحقق:
+- `flutter analyze` → **No issues found!**
+- اختبار NextStop المخصص → **9/9**
+- `flutter test` الكامل → **151/151**
+- PR **#27** → merged إلى `stage/approved-route-line-vehicle-link-v1`.
+
+هذه الخطوة تغلق NextStop Resolver domain logic فقط.
 
 ### الهدف النهائي للمرحلة
 
@@ -940,19 +975,15 @@ Stop State
 Firestore / Hub Integration
 ```
 
-**عقد 4.2 المثبت قبل التنفيذ:**
-- يبدأ من `vehicleAlongMeters`/RouteProgress المقبولة ومن Stops التي تم إسقاطها هندسيًا.
-- Projection وStop Eligibility طبقتان منفصلتان.
-- `projection != null` وحده لا يكفي؛ Eligibility تتطلب نجاح سياسة مستقلة على `distanceToRouteMeters`.
-- لم يتم تثبيت threshold عددي لـ`distanceToRouteMeters` بعد.
-- بعد Eligibility، المرشح NextStop يجب أن يحقق `vehicleAlongMeters < stopAlongMeters`، ثم يُختار الأقرب إلى الأمام على محور المسار.
-- `stopAlongMeters` هو المرجع المكاني؛ `order` ترتيب إداري وtie-breaker عند تعادل `alongMeters`.
-- Stop عند `vehicleAlongMeters` ليست NextStop في هذه الخطوة.
-- عند عدم وجود Stop مؤهلة إلى الأمام تكون النتيجة `null`.
-- لا NextStop state machine، ولا `approaching`/`atStop`/`passed`، ولا ETA.
-- لا Firestore persistence، ولا Hub/VehicleTrip/Mapbox integration.
-- لا self-intersection ambiguity resolution.
-- الخطوة الحالية تصميم عقد فقط؛ التنفيذ البرمجي للـResolver لم يبدأ بعد.
+**4.2 مغلقة ✅.**
+- Resolver domain logic ينشأ من Stops projected الجاهزة + `vehicleAlongMeters` + Eligibility policy صريحة.
+- Projection وEligibility وResolution مسؤوليات منفصلة.
+- لا يوجد threshold رقمي لـ`distanceToRouteMeters` داخل Resolver.
+- NextStop يتطلب `vehicleAlongMeters < stopAlongMeters`، ثم أصغر مسافة أمامية على محور المسار.
+- `order` ترتيب إداري وtie-breaker فقط عند تعادل `alongMeters`.
+- Stop عند نفس `alongMeters` ليست NextStop.
+- عند عدم وجود مرشح صالح إلى الأمام تكون النتيجة `null`.
+- الخطوة التالية هي 4.3 — Stop State.
 
 **المسارات الحالية لا تتطلب Stops ثابتة حتى تستمر في العمل وفق نموذج التشغيل الحالي القائم على صعود الركاب عند طلب التوقف.**
 
