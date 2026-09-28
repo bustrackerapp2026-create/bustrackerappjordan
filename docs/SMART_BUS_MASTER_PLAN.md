@@ -499,6 +499,78 @@ Stop
 
 هذه الخطوة تغلق Stop-to-Route Projection فقط.
 
+#### 4.2 — NextStop Resolver / Stop Eligibility Contract ⏳ DESIGN ONLY
+
+هذه الخطوة تبدأ بعقد `Stop Eligibility` قبل تنفيذ الـResolver.
+
+التدفق المقصود:
+
+```text
+Fixed Route Stops
+        ↓
+PlannedRouteStopProjection
+        ↓
+Projected Stop
+        ↓
+Stop Eligibility
+        ↓
+NextStop Resolver
+```
+
+### مدخلات العقد
+
+- `PlannedRoute.points` لنفس المسار/الاتجاه.
+- `vehicleAlongMeters` مأخوذة من RouteProgress المقبولة؛ لا يُعاد حسابها من GPS داخل هذه الطبقة.
+- لكل Stop: `PlannedRouteStopModel` مع Projection مشتق يحتوي على `alongMeters` و`distanceToRouteMeters` عند نجاح الإسقاط.
+- `order` يبقى ترتيبًا إداريًا ولا يصبح محورًا مكانيًا.
+
+### عقد Stop Eligibility
+
+الـStop تدخل نطاق candidates فقط إذا تحققت الشروط التالية:
+- يوجد Projection غير `null`.
+- `alongMeters` و`distanceToRouteMeters` قيمتان finite.
+- `alongMeters` يقع ضمن محور المسار الصالح من `0` إلى `totalRouteMeters`.
+- `distanceToRouteMeters` ينجح في سياسة Eligibility مستقلة قابلة للضبط.
+- لا تعتمد Eligibility على `order` ولا على ترتيب Firestore.
+- لا تستخدم Eligibility مسافة GPS مباشرة إلى المحطة بدل مسافة الإسقاط على محور المسار.
+
+**ملاحظة:** قيمة threshold الخاصة بـ`distanceToRouteMeters` لم تُثبت بعد، ولا يتم اختراع رقم داخل هذا العقد أو داخل الـgeometry primitive.
+
+### عقد NextStop بعد Eligibility
+
+بعد اجتياز Eligibility فقط:
+- المرشح يجب أن يحقق:
+  `vehicleAlongMeters < stopAlongMeters`.
+- يتم اختيار المرشح ذي أصغر:
+  `stopAlongMeters - vehicleAlongMeters`
+  أي أقرب Stop إلى الأمام على محور المسار.
+- إذا تساوى أكثر من مرشح في `alongMeters`، يبقى `order` tie-breaker إداريًا.
+- Stop الواقعة تمامًا عند `vehicleAlongMeters` لا تعتبر NextStop في هذه الخطوة؛ هذا يمنع إعادة اختيار المحطة الحالية.
+- إذا لم يوجد مرشح صالح إلى الأمام، تكون النتيجة `null`.
+- PlannedRoute بدون Stops ثابتة حالة صحيحة، والنتيجة `null`.
+
+### حالات الرفض/الغياب
+
+يُعاد `null` دون exception عندما:
+- RouteProgress الحالية غير متاحة أو غير صالحة.
+- `vehicleAlongMeters` غير finite أو خارج محور المسار.
+- المسار غير صالح أو طوله الهندسي صفري.
+- لا توجد Stops.
+- لا توجد Stops اجتازت Eligibility وتوجد أمام المركبة.
+
+### حدود التنفيذ
+
+في تنفيذ 4.2 لا تدخل:
+- `Stop State`: `approaching`, `atStop`, `passed`.
+- ETA أو dwell time.
+- Firestore persistence.
+- VehicleTrip / DriverTrackingHub integration.
+- Mapbox أو `driver_map_tab.dart`.
+- self-intersection / ambiguity resolution.
+- أي تعديل على `RoutePolylineProjection` أو `PlannedRouteStopModel` أو `PlannedRouteStopService`.
+
+هذه الخطوة تثبت العقد فقط؛ تنفيذ `NextStop Resolver` يأتي بعد تثبيت هذا العقد واختباره كـdomain policy مستقلة.
+
 ### الهدف النهائي للمرحلة
 
 ```text
@@ -760,19 +832,35 @@ Foundation / Stable Baseline
         ↓
 PHASE 1
 VehicleTrip + StartTrip
-★ NEXT
+✅
         ↓
 PHASE 2
 Live GPS + Historical Capture
+✅
         ↓
 PHASE 3
 RouteProgress
+✅
         ↓
 PHASE 4
 NextStop / Pickup
+⏳ IN PROGRESS
+        ↓
+4.1-A
+RoutePolylineProjection
+✅
+        ↓
+4.1-B
+Stop-to-Route Projection
+✅
+        ↓
+4.2
+NextStop Resolver
+⏳ NEXT
         ↓
 PHASE 5
 ETA
+⏳
         ↓
 PHASE 6
 BusWatch (Read Only)
@@ -852,16 +940,19 @@ Stop State
 Firestore / Hub Integration
 ```
 
-**حدود 4.2 المثبتة مبدئيًا قبل التنفيذ:**
-- يبدأ من `vehicleAlongMeters`/RouteProgress ومن قائمة Stops projected.
-- يفصل بين Projection وStop Eligibility.
-- لا يكفي أن يكون `projection != null`؛ يجب أن توجد سياسة Eligibility مستقلة تعتمد على `distanceToRouteMeters` قبل إدخال Stop ضمن NextStop candidates.
-- لم يتم تثبيت threshold عددي لـ`distanceToRouteMeters` بعد؛ لا يُخترع رقم دون عقد مستقل/دليل مناسب.
-- بعد اجتياز Eligibility: المرشح التالي يجب أن يحقق `vehicleAlongMeters < stopAlongMeters`، ثم يُختار الأقرب إلى الأمام على محور المسار.
-- `stopAlongMeters` هو المرجع المكاني، بينما `order` ترتيب إداري/عند الحاجة tie-breaker.
-- لا NextStop state machine، ولا `approaching`/`atStop`/`passed`، ولا ETA في هذه الخطوة.
+**عقد 4.2 المثبت قبل التنفيذ:**
+- يبدأ من `vehicleAlongMeters`/RouteProgress المقبولة ومن Stops التي تم إسقاطها هندسيًا.
+- Projection وStop Eligibility طبقتان منفصلتان.
+- `projection != null` وحده لا يكفي؛ Eligibility تتطلب نجاح سياسة مستقلة على `distanceToRouteMeters`.
+- لم يتم تثبيت threshold عددي لـ`distanceToRouteMeters` بعد.
+- بعد Eligibility، المرشح NextStop يجب أن يحقق `vehicleAlongMeters < stopAlongMeters`، ثم يُختار الأقرب إلى الأمام على محور المسار.
+- `stopAlongMeters` هو المرجع المكاني؛ `order` ترتيب إداري وtie-breaker عند تعادل `alongMeters`.
+- Stop عند `vehicleAlongMeters` ليست NextStop في هذه الخطوة.
+- عند عدم وجود Stop مؤهلة إلى الأمام تكون النتيجة `null`.
+- لا NextStop state machine، ولا `approaching`/`atStop`/`passed`، ولا ETA.
 - لا Firestore persistence، ولا Hub/VehicleTrip/Mapbox integration.
-- لا self-intersection ambiguity resolution في هذه الخطوة.
+- لا self-intersection ambiguity resolution.
+- الخطوة الحالية تصميم عقد فقط؛ التنفيذ البرمجي للـResolver لم يبدأ بعد.
 
 **المسارات الحالية لا تتطلب Stops ثابتة حتى تستمر في العمل وفق نموذج التشغيل الحالي القائم على صعود الركاب عند طلب التوقف.**
 
