@@ -1,13 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jordan_bus_tracker_new/models/eta_input.dart';
 import 'package:jordan_bus_tracker_new/models/planned_route_stop_model.dart';
-import 'package:jordan_bus_tracker_new/models/route_point.dart';
 import 'package:jordan_bus_tracker_new/services/accepted_eta_observation.dart';
 import 'package:jordan_bus_tracker_new/services/eta_freshness_policy.dart';
 import 'package:jordan_bus_tracker_new/services/eta_input_builder.dart';
 import 'package:jordan_bus_tracker_new/services/next_stop_resolver.dart';
+import 'package:jordan_bus_tracker_new/services/route_plan/route_polyline_projection.dart';
 import 'package:jordan_bus_tracker_new/services/route_progress_calculator.dart';
 import 'package:jordan_bus_tracker_new/services/stop_runtime_snapshot_resolver.dart';
 
@@ -18,9 +17,18 @@ void main() {
     maxAge: const Duration(minutes: 1),
   );
 
-  RouteProgressProjection projection(double alongMeters) {
+  RouteProgressProjection vehicleProjection(double alongMeters) {
     return RouteProgressProjection(
       progress: 0.5,
+      alongMeters: alongMeters,
+      distanceToRouteMeters: 0,
+      segmentIndex: 0,
+      segmentT: 0.5,
+    );
+  }
+
+  RoutePolylineProjection stopProjection(double alongMeters) {
+    return RoutePolylineProjection(
       alongMeters: alongMeters,
       distanceToRouteMeters: 0,
       segmentIndex: 0,
@@ -34,7 +42,7 @@ void main() {
     DateTime? observedAtOverride,
   }) {
     return AcceptedEtaObservation(
-      acceptedRouteProgress: projection(alongMeters),
+      acceptedRouteProgress: vehicleProjection(alongMeters),
       speedMps: speedMps,
       observedAt: observedAtOverride ?? observedAt,
     );
@@ -50,7 +58,7 @@ void main() {
 
     final nextStop = ProjectedPlannedRouteStop(
       stop: stop,
-      projection: projection(alongMeters),
+      projection: stopProjection(alongMeters),
     );
 
     return StopRuntimeSnapshot(
