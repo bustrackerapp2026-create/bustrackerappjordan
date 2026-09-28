@@ -942,7 +942,35 @@ firebase deploy --only storage
 
 **نتيجة البوابة:** **RouteProgress Firestore Persistence — مغلقة وناجحة ✅**
 
-**الخطوة التالية:** physical plausibility مستقلة، ثم أي نقاط RouteProgress أخرى فقط إذا ظهرت من الاختبارات أو المتطلبات التشغيلية؛ لا نعيد فتح ما أُغلق.
+تم لاحقًا إغلاق وحدة Physical Plausibility Policy كطبقة مستقلة قابلة للاختبار، مع إبقاء دمجها داخل RouteProgressTracker كـPatch مستقل لاحق.
+
+### إغلاق RouteProgress Physical Plausibility Policy — 2026-09-28
+
+تم تثبيت سياسة مستقلة لتقييد القفزات الأمامية في RouteProgress وفق timestamp وسرعة GPS، دون دمجها داخل RouteProgressTracker في هذه الوحدة.
+
+#### Policy
+
+- ناتج السياسة يميز بين `constrained(maxAllowedForwardDistanceMeters)` و`unavailable`.
+- `currentTimestamp == previousTimestamp` ينتج `constrained(0m)`؛ لا توجد حركة أمامية مسموحة عندما لا يوجد زمن فعلي بين العينتين.
+- timestamp المفقود أو غير الصالح، timestamp المتراجع، وفجوة زمنية أكبر من 30 ثانية تجعل القيد الفيزيائي `unavailable`، دون reset ودون fallback permissive إلى 300m.
+- السرعة الحالية الصالحة تُستخدم أولًا، ثم سرعة العينة المقبولة السابقة عند غياب السرعة الحالية الصالحة.
+- سرعة `0 m/s` صالحة وتمثل التوقف؛ الوقت وحده لا يولد RouteProgress.
+- القيم المبدئية للسياسة: `safetyFactor = 1.5` و`safetyMargin = 20m` مع `300m` كـabsolute hard cap.
+- هذه القيم Policy parameters قابلة للمعايرة والاختبار وليست ثوابت فيزيائية مطلقة.
+- لم تدخل `speedAccuracy` في هذه النسخة.
+
+#### الاختبارات
+
+- **الاختبار:** `test/route_progress_physical_plausibility_policy_test.dart`
+- يغطي: الحركة الطبيعية، same timestamp، timestamp regression، timestamps المفقودة، long gap، أولوية السرعة الحالية، fallback للسرعة السابقة، غياب السرعة الصالحة، التوقف بسرعة صفر، 300m hard cap، وحدود 30 ثانية.
+- على الجهاز المحلي:
+  - `flutter analyze` → **No issues found!**
+  - `flutter test test/route_progress_physical_plausibility_policy_test.dart` → **12/12 All tests passed!**
+  - `flutter test` → **111/111 All tests passed!**
+
+**نتيجة البوابة:** **RouteProgress Physical Plausibility Policy — مغلقة وناجحة ✅**
+
+**الخطوة التالية:** دمج الـPolicy داخل `RouteProgressTracker` في Patch مستقل، مع اختبار حالات الحركة الطبيعية والتوقف وفجوات GPS دون إعادة فتح Hub أو Firestore أو Lifecycle.
 
 ### ملاحظات تشغيلية
 
