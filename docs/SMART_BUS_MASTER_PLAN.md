@@ -32,7 +32,7 @@
 
 **Phase 6-B — BusWatch Read Consistency & Refresh Contract:** ✅ DESIGN FROZEN — تم تثبيت عقد الاتساق وتنسيق القراءة، دون refresh/stream implementation.
 
-**Phase 6-C — Passenger BusWatch Consumer Contract:** مثبتة كتصميم ✅ — سياق الرحلة، استبدال النتائج، ومسح snapshot القديم عند عدم التوفر، دون Consumer/UI implementation.
+**Phase 6-C — Passenger BusWatch Consumer Contract:** مكتملة ✅ — تم تنفيذ Consumer مستقل، مع استبدال النتيجة السابقة ومسح snapshot عند أي نتيجة non-available، مع بقاء UI integration خارج نطاق 6-C.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -1605,9 +1605,9 @@ Inconsistent → one explicit non-available result
 
 6-B مجمدة كعقد تصميم مستقل ✅. العقد الحالي يقرر **كيفية تنسيق القراءة والاتساق فقط**؛ ولا يضيف lifecycle أو timing policy إلى BusWatch Operational Read Model. أي تنفيذ لاحق لـrefresh أو consumer behavior يحتاج نقطة تصميم/تنفيذ مستقلة ولا يعيد فتح 6-A.
  
-### 6-C — Passenger BusWatch Consumer Contract 🔍 DESIGN ONLY
+### 6-C — Passenger BusWatch Consumer Contract ✅ IMPLEMENTED & VERIFIED
 
-**الحالة:** DESIGN ONLY — لا Production Consumer/UI implementation في هذه الخطوة.
+**الحالة:** IMPLEMENTED & VERIFIED ✅ — Consumer مستقل مع اختبارات focused، دون UI integration.
 
 ### الهدف
 
@@ -1702,7 +1702,15 @@ Infrastructure Error
 
 ### القرار
 
-6-C تبقى Design-only حتى يتم تثبيت الحاجة الفعلية لأول Consumer implementation. العقد يثبت أن Passenger Trip Context يحدد `tripId`، وأن كل نتيجة قراءة حالية authoritative وتستبدل ما قبلها، وأن أي non-available result يمسح الـoperational snapshot السابق. لا يعاد فتح 6-A أو 6-B لتحقيق ذلك.
+6-C مكتملة ومثبتة ✅. تم تنفيذ `BusWatchOperationalConsumer` مستقل يستهلك `BusWatchOperationalReadResult` كما هو، ويستبدل النتيجة السابقة بالكامل، ويمسح الـoperational snapshot السابق عند أي `non-available` result، دون اختيار Trip أو lookup أو fallback أو cache أو Stream lifecycle. لا تم تعديل 6-A أو 6-B.
+
+### Evidence
+
+- `flutter analyze` — No issues found.
+- `flutter test test/bus_watch_operational_consumer_test.dart` — **6/6 passed**.
+- `flutter test` — **254/254 passed**.
+- `git status` — working tree clean.
+- Consumer/UI integration الفعلية ليست ضمن 6-C، ولا تُعد جزءًا من دليل إغلاق هذه النقطة.
 
 # 10. Phase 7 — JourneyPlanner
 
