@@ -1190,6 +1190,91 @@ EtaEngine
 
 الخطوة التالية: تصميم طريقة استدعاء ETA في Integration Runtime بعد تكوين `EtaInput`، دون تعديل `EtaEngine` نفسه قبل تثبيت عقد الاستدعاء.
 
+### 5.2-D — ETA Runtime Invocation ✅ DESIGN FROZEN
+
+**الحالة:** DESIGN FROZEN ONLY — لا Production Code في هذه الخطوة.
+
+تم تثبيت عقد استدعاء ETA في طبقة Integration Runtime دون إدخال ETA في `DriverTrackingHub` أو Passenger/UI.
+
+### المستهلك المسؤول
+
+- المستهلك المقصود هو مكوّن Integration Runtime مستقل ينسّق بين `AcceptedEtaObservation` و`StopRuntimeSnapshot` و`EtaFreshnessPolicy` و`EtaInputBuilder` و`EtaEngine`.
+- لا يكون `DriverTrackingHub` مكان استدعاء `EtaEngine`؛ يظل الـHub مالكًا للـruntime state (`activeEtaObservation` و`activeStopRuntimeSnapshot`).
+- Passenger/UI ليست المستهلك في هذه الخطوة. شاشة الراكب الحالية ما تزال تحتوي مسار ETA قديمًا يعتمد `EtaUtils`، ولا يتم إدخاله ضمن العقد الجديدة هنا.
+
+### متى يتم التقييم؟
+
+يُطلب تقييم ETA عندما تتغير مدخلات ETA ذات الصلة، وبالأخص:
+- وصول `AcceptedEtaObservation` جديدة فعلًا.
+- توفر/تغيّر `StopRuntimeSnapshot` أو `nextStop`.
+
+العينة المرفوضة التي لا تغيّر observation لا تتطلب إعادة حساب ETA من هذا المسار.
+
+لا يشترط العقد ربطًا مباشرًا بآلية callback واحدة؛ يمكن للمستهلك طلب evaluation صراحةً طالما أنه يستخدم أحدث state المقبول.
+
+### evaluatedAt
+
+- `evaluatedAt` يُوفره مستدعي Integration Runtime صراحةً.
+- يمثل لحظة طلب/تنفيذ تقييم ETA.
+- لا يُستمد من `observedAt`، ولا من وقت Firestore، ولا من callback receipt time.
+- لا يوجد `DateTime.now()` مخفي داخل `EtaInputBuilder` أو `EtaFreshnessPolicy` أو `EtaEngine`.
+
+### التدفق التنفيذي المثبت
+
+```text
+AcceptedEtaObservation
+        +
+StopRuntimeSnapshot
+        +
+EtaFreshnessPolicy
+        +
+evaluatedAt
+        ↓
+EtaInputBuilder
+        ↓
+EtaInput?
+   ├── null → No ETA Input
+   │          └→ لا يُستدعى EtaEngine
+   ↓
+EtaEngine.calculate(EtaInput)
+        ↓
+EtaResult
+   ├── available
+   └── unavailable
+```
+
+### التمييز بين حالات عدم التوفر
+
+- `EtaInputBuilder == null` تعني أنه لم تتكوّن مدخلات ETA صالحة أصلًا؛ يشمل ذلك غياب observation، أو freshness غير صالحة (`stale`/`future`)، أو غياب `nextStop`.
+- `EtaEngine → EtaResult.unavailable` تعني أن `EtaInput` موجودة وتم تمريرها للمحرك، لكن عقد ETA نفسها منعت الحساب مثل `targetNotAhead` أو `invalidSpeed` أو `nonPositiveSpeed`.
+- لا يتم دمج الحالتين في سبب Domain واحد، ولا تضاف `EtaUnavailableReason` جديدة لهذه الخطوة.
+
+### تغيّر NextStop
+
+- عند تغيّر `nextStop` يجب أن يستخدم التقييم التالي الـ`StopRuntimeSnapshot` الحالي وتكوين `EtaInput` جديد.
+- لا يُعاد استخدام ETA قديمة مع target قديم بعد تغيّر NextStop.
+- إذا أصبح `nextStop == null` → `EtaInput == null` ولا يتم استدعاء `EtaEngine`.
+
+### غياب observation
+
+- إذا لم توجد `AcceptedEtaObservation` حديثة/مقبولة، فلا توجد `EtaInput` ولا استدعاء للـEngine.
+- لا ينشئ Runtime قيمة سرعة بديلة، ولا يعيد استخدام observation مرفوضة أو قديمة خارج Freshness Policy.
+
+### حدود 5.2-D
+
+ممنوع في هذه الخطوة:
+- تعديل `EtaEngine`.
+- تعديل `AcceptedEtaObservation`.
+- تعديل `EtaFreshnessPolicy`.
+- تعديل `EtaInputBuilder`.
+- تعديل `DriverTrackingHub`.
+- تعديل `RouteProgressTracker` أو StopRuntime.
+- تعديل Passenger/UI أو `EtaUtils`.
+- إضافة Firestore reads/writes لمسار ETA.
+- تثبيت `maxAge` رقمي جديد.
+
+هذه الخطوة مغلقة كعقد تصميم فقط. الخطوة التنفيذية اللاحقة، بعد تجميد العقد، هي إنشاء Runtime invocation component صغير واختبار الفصل بين `Builder == null` و`EtaResult.unavailable` دون تغيير محرك ETA أو مصادره.
+
 ---
 
 # 9. Phase 6 — BusWatch
@@ -1479,6 +1564,10 @@ ETA Freshness Policy
 5.2-C
 EtaInput Builder Integration
 ✅ CLOSED
+        ↓
+5.2-D
+ETA Runtime Invocation
+✅ DESIGN FROZEN
 
         ↓
 PHASE 6
@@ -1621,7 +1710,15 @@ Firestore / Hub Integration
 - لا يعيد الـBuilder منطق `EtaEngine` ولا يختار `maxAge` ولا يستخدم clock داخليًا.
 - الدليل النهائي: analyze بلا مشاكل، focused **9/9**، full **225/225**.
 
-**الخطوة التالية الموثقة:** تصميم طريقة استدعاء ETA في Integration Runtime بعد تكوين `EtaInput`، مع إبقاء `EtaEngine` وطبقات المصدر دون تعديل قبل تجميد عقد الاستدعاء.
+**Phase 5.2-D — ETA Runtime Invocation مغلقة كعقد تصميم ✅.**
+- المستهلك المقصود Integration Runtime مستقل، وليس `DriverTrackingHub` أو Passenger/UI.
+- التقييم يحدث عند تغيّر accepted observation أو stop snapshot/NextStop، مع إمكانية طلب evaluation صراحةً من أحدث state.
+- `evaluatedAt` يُمرر صراحةً من المستدعي ولا يوجد clock مخفي.
+- `Builder == null` و`EtaResult.unavailable` حالتان منفصلتان في عقد runtime.
+- لا إعادة استخدام ETA عند تغيّر NextStop، ولا استدعاء Engine عند غياب observation أو NextStop أو عند فشل freshness.
+- لا Production Code في 5.2-D.
+
+**الخطوة التالية الموثقة:** تنفيذ Runtime invocation component صغير واختبار عقده بشكل مستقل، دون تعديل `EtaEngine` أو مصادر runtime الحالية.
 
 **Phase 4 Closure Notes:** الكود والتكامل والحدود المعمارية والتحقق الآلي موثقة كمكتملة. لا تعاد فتح Phase 4 إلا عند ظهور Regression أو دليل جديد يستوجب ذلك.
 
