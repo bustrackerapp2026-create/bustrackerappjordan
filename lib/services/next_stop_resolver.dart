@@ -65,7 +65,7 @@ class NextStopResolver {
 
       if (delta < bestDelta ||
           (delta == bestDelta &&
-              (best == null || candidate.stop.order < best!.stop.order))) {
+              (best == null || candidate.stop.order < best.stop.order))) {
         best = candidate;
         bestDelta = delta;
       }
