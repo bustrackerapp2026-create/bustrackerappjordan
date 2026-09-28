@@ -299,7 +299,7 @@ void main() {
       final forward = tracker.update(
         routePoints: straightRoute,
         latitude: 31.0000,
-        longitude: 35.0050,
+        longitude: 35.0052,
         timestamp: t0.add(const Duration(seconds: 10)),
         speedMetersPerSecond: 0.0,
       );
