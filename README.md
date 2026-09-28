@@ -304,8 +304,9 @@ firebase deploy --only storage
 
 ### الفرع والحالة المرجعية
 
-- **الفرع التطويري الحالي:** `stage/approved-route-line-vehicle-link-v1`
-- **آخر commit تقني مُثبت حاليًا:** `dfa67862604c48028c7c085b51a536d1c2d2469f` — `Phase 3: test RouteProgress continuity and monotonicity`
+- **الفرع التطويري المرجعي:** `stage/approved-route-line-vehicle-link-v1`
+- **فرع Patch الحالي:** `stage/route-progress-hub-integration-v1`
+- **آخر commit تقني في Patch الحالي:** `e16dfdb850d4f4a052a01fa47e4ea8d322a5bd99` — `fix(route-progress): defer Firebase service initialization in Hub`
 - **آخر commit تقني سابق لمسار Failure Path 1:** `5e820c8da9dbf171ddbaca156dba52d95e56e25c`
 - **آخر commit توثيقي سابق لـFailure Path 1:** `311a0aafb5bc88493757f4501e5c5a838779546c`
 - **آخر commit تقني لـ Buffer Isolation:** `c058b26ccdf62ed9abc2ad325522f8403a7fa81e`
@@ -883,7 +884,7 @@ firebase deploy --only storage
 
 **نتيجة البوابة:** **Continuity + Monotonic Progress — مغلقة وناجحة ✅**
 
-**الخطوة التالية:** ربط الـtracker تدريجيًا مع `DriverTrackingHub` لحساب `routeProgress` من GPS الحي على الرحلة النشطة، مع إبقاء الكتابة إلى Firestore في طبقة منفصلة واختبار التكامل قبل تفعيلها ميدانيًا.
+تم لاحقًا إغلاق تكامل الـtracker مع `DriverTrackingHub` في الوحدة التالية، مع إبقاء الكتابة إلى Firestore خارج هذا المسار.
 
 ### إغلاق RouteProgress Hub Integration — 2026-09-28
 
