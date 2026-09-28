@@ -230,7 +230,7 @@ void main() {
       );
 
       expect(first, isNotNull);
-      expect(later, isNull);
+      expect(later, same(first));
       expect(tracker.lastAccepted, same(first));
     });
 
