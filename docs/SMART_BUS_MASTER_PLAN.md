@@ -832,19 +832,35 @@ Foundation / Stable Baseline
         ↓
 PHASE 1
 VehicleTrip + StartTrip
-★ NEXT
+✅
         ↓
 PHASE 2
 Live GPS + Historical Capture
+✅
         ↓
 PHASE 3
 RouteProgress
+✅
         ↓
 PHASE 4
 NextStop / Pickup
+⏳ IN PROGRESS
+        ↓
+4.1-A
+RoutePolylineProjection
+✅
+        ↓
+4.1-B
+Stop-to-Route Projection
+✅
+        ↓
+4.2
+NextStop Resolver
+⏳ NEXT
         ↓
 PHASE 5
 ETA
+⏳
         ↓
 PHASE 6
 BusWatch (Read Only)
