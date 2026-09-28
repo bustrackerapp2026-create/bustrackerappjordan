@@ -138,6 +138,33 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       debugPrint(st.toString());
     }
   }
+  /// Loads fixed Stops once after an operational trip is bound/restored.
+  ///
+  /// A Stops read failure must not interrupt VehicleTrip/GPS tracking.
+  Future<void> _loadActiveVehicleTripStops({
+    required String tripId,
+    required String routeId,
+  }) async {
+    final normalizedTripId = tripId.trim();
+    final normalizedRouteId = routeId.trim();
+    if (normalizedTripId.isEmpty || normalizedRouteId.isEmpty) return;
+
+    try {
+      final stops = await _plannedRouteStopService.fetchStops(normalizedRouteId);
+      _trackingHub.setActiveVehicleTripStops(
+        tripId: normalizedTripId,
+        routeId: normalizedRouteId,
+        stops: stops,
+      );
+    } catch (e, st) {
+      MapUtils.log(
+        '⚠️ تعذر تحميل محطات المسار التشغيلي: $normalizedRouteId — $e',
+        tag: 'TripManager',
+      );
+      debugPrint(st.toString());
+    }
+  }
+
   Future<PlannedRoute?> _getApprovedRouteForAssignment(
     String routeId,
     String lineId,
