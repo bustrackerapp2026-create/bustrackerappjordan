@@ -41,7 +41,9 @@ class DriverTrackingHub {
   bool _wantOnline = false;
   bool _wantTrip = false;
 
-  final VehicleTripService _vehicleTripService = VehicleTripService();
+  VehicleTripService? _vehicleTripServiceInstance;
+  VehicleTripService get _vehicleTripService =>
+      _vehicleTripServiceInstance ??= VehicleTripService();
   final RouteProgressTracker _routeProgressTracker = RouteProgressTracker();
 
   String? _activeVehicleTripId;
@@ -51,7 +53,9 @@ class DriverTrackingHub {
   geo.Position? _pendingVehicleTripPosition;
 
   final TripPingBuffer _tripPingBuffer = TripPingBuffer();
-  final TripPingService _tripPingService = TripPingService();
+  TripPingService? _tripPingServiceInstance;
+  TripPingService get _tripPingService =>
+      _tripPingServiceInstance ??= TripPingService();
   Future<void>? _tripPingUploadFuture;
   Timer? _tripPingUploadTimer;
   bool _historicalCapturePaused = false;
