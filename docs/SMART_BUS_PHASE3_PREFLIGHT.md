@@ -1,6 +1,6 @@
 # Smart Bus — Phase 3 Pre-flight Decisions
 
-> مرجع Phase 3 — RouteProgress قبل أي تغيير برمجي. لا يبدأ التنفيذ قبل إغلاق الملاحظة الحرجة في قسم 4.
+> مرجع قرارات وتصميم Phase 3 — RouteProgress. كانت هذه الوثيقة Pre-flight قبل بدء التنفيذ؛ تم إغلاق الملاحظة الحرجة والانتقال لاحقًا إلى التنفيذ التدريجي، لذلك تُقرأ الأقسام التنفيذية مع سجل الحالة الحالي أدناه.
 
 ## 1. الهدف
 
@@ -145,10 +145,14 @@ Phase 3 يحدّث:
 6. لا توجد قراءة Firestore لكل GPS update.
 7. لا يوجد progress تخميني عند غياب هندسة/إشارة صالحة.
 
-## الحالة
+## الحالة الحالية
 
-**Phase 3 Preflight: التصميم مكتمل، والتنفيذ غير مفتوح بعد.**
+**Phase 3 Preflight: مغلق ✅.** تم تنفيذ القرارات الأساسية تدريجيًا عبر وحدات مستقلة، وآخرها دمج `RouteProgressPhysicalPlausibilityPolicy` داخل `RouteProgressTracker`.
 
-**الخطوة الإلزامية التالية:** Patch منفصل لتثبيت نقطة بداية route matching في StartTrip + regression test للـreturn، ثم أول Patch هندسي صغير لـRouteProgress.
+حالة التحقق المحلي على الفرع الأساسي بتاريخ 2026-09-28:
+- `flutter analyze` → **No issues found!**
+- `flutter test` → **119/119 All tests passed!**
+
+لا تزال بنود القبول الميداني في القسم 12 غير مُثبتة داخل هذا السجل؛ لذلك لا يُفهم من إغلاق الـPreflight أن الاختبار الميداني النهائي لـPhase 3 قد أُغلق.
 
 لا يتم تعديل `driver_map_tab.dart` لهذا الغرض.
