@@ -3,8 +3,24 @@ import '../models/route_point.dart';
 import 'next_stop_resolver.dart';
 import 'planned_route_stop_projection.dart';
 import 'route_plan/route_plan_geometry.dart';
-import 'stop_runtime_snapshot.dart';
 import 'stop_state_resolver.dart';
+
+/// Runtime-derived view of fixed route stops for one accepted vehicle position.
+///
+/// This is in-memory only. It is not persisted to Firestore.
+class StopRuntimeSnapshot {
+  final List<ProjectedPlannedRouteStop> eligibleProjectedStops;
+  final ProjectedPlannedRouteStop? nextStop;
+  final Map<String, StopState> statesByStopId;
+
+  StopRuntimeSnapshot({
+    required List<ProjectedPlannedRouteStop> eligibleProjectedStops,
+    required this.nextStop,
+    required Map<String, StopState> statesByStopId,
+  })  : eligibleProjectedStops =
+            List<ProjectedPlannedRouteStop>.unmodifiable(eligibleProjectedStops),
+        statesByStopId = Map<String, StopState>.unmodifiable(statesByStopId);
+}
 
 /// Builds a deterministic runtime snapshot from already available route data.
 ///
