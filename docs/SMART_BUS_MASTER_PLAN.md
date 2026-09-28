@@ -30,7 +30,7 @@
 
 **Phase 6-A — BusWatch Operational Read Model:** مكتملة ✅ — تم تنفيذ الـReader والـResult والاختبارات المركزة، مع بقاء Consumer/UI خارج نطاق 6-A.
 
-**Phase 6-B — BusWatch Read Consistency & Refresh Contract:** مثبتة كتصميم ✅ — تنسيق القراءة والاتساق فقط، دون refresh/stream implementation.
+**Phase 6-B — BusWatch Read Consistency & Refresh Contract:** ✅ DESIGN FROZEN — تم تثبيت عقد الاتساق وتنسيق القراءة، دون refresh/stream implementation.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -1542,9 +1542,9 @@ enum BusWatchOperationalReadStatus {
 - `git status` — working tree clean.
 - UI/Consumer integration ليست ضمن 6-A، ولا تُعد جزءًا من دليل إغلاق هذه المرحلة.
 
-### 6-B — BusWatch Read Consistency & Refresh Contract 🔍 DESIGN ONLY
+### 6-B — BusWatch Read Consistency & Refresh Contract ✅ DESIGN FROZEN
 
-**الحالة:** DESIGN ONLY — لا Production Code أو Reader/Consumer refresh implementation في هذه الخطوة.
+**الحالة:** DESIGN FROZEN — لا Production Code أو Reader/Consumer refresh implementation في هذه الخطوة.
 
 ### الهدف
 
@@ -1601,7 +1601,7 @@ Inconsistent → one explicit non-available result
 
 ### القرار
 
-6-B تبقى Design-only حتى يثبت احتياج تشغيلي لتنفيذ refresh/consumer behavior. العقد الحالي يقرر **كيفية تنسيق القراءة والاتساق فقط**؛ ولا يضيف lifecycle أو timing policy إلى BusWatch Operational Read Model.
+6-B مجمدة كعقد تصميم مستقل ✅. العقد الحالي يقرر **كيفية تنسيق القراءة والاتساق فقط**؛ ولا يضيف lifecycle أو timing policy إلى BusWatch Operational Read Model. أي تنفيذ لاحق لـrefresh أو consumer behavior يحتاج نقطة تصميم/تنفيذ مستقلة ولا يعيد فتح 6-A.
  
 # 10. Phase 7 — JourneyPlanner
 
