@@ -224,6 +224,11 @@ storage.rules               # قواعد الملفات
 - `user_roles_test.dart` — ثوابت الأدوار والمساعدات
 - `pickup_point_model_test.dart` — ملاحظات مراجعة نقاط التجمع
 - `historical_sampling_policy_test.dart` — اختبار حداثة Position التاريخية ورفض المواقع القديمة
+- `route_progress_calculator_test.dart` — اختبار الإسقاط الهندسي لـRouteProgress
+- `route_progress_tracker_test.dart` — اختبار الاستمرارية والتقدم الأحادي والـPhysical Plausibility
+- `driver_tracking_hub_route_progress_test.dart` — اختبار تكامل RouteProgress مع DriverTrackingHub
+- `vehicle_trip_live_location_payload_test.dart` — اختبار حفظ RouteProgress مع تحديث VehicleTrip الحي
+- `route_progress_physical_plausibility_policy_test.dart` — اختبار سياسة الحد الفيزيائي المستقلة
 
 تشغيل كل الاختبارات:
 
@@ -305,8 +310,8 @@ firebase deploy --only storage
 ### الفرع والحالة المرجعية
 
 - **الفرع التطويري المرجعي:** `stage/approved-route-line-vehicle-link-v1`
-- **فرع Patch الحالي:** `stage/route-progress-hub-integration-v1`
-- **آخر commit تقني في Patch الحالي:** `e16dfdb850d4f4a052a01fa47e4ea8d322a5bd99` — `fix(route-progress): defer Firebase service initialization in Hub`
+- **الحالة التقنية الحالية:** وحدات Phase 3 — RouteProgress حتى دمج Physical Plausibility داخل `RouteProgressTracker` مغلقة ومثبتة على الفرع `stage/approved-route-line-vehicle-link-v1`.
+- **آخر commit تقني مغلق:** `283009bcaeb8168b438609f7ba9466e46c8379c7` — `feat(route-progress): integrate physical plausibility into tracker`
 - **آخر commit تقني سابق لمسار Failure Path 1:** `5e820c8da9dbf171ddbaca156dba52d95e56e25c`
 - **آخر commit توثيقي سابق لـFailure Path 1:** `311a0aafb5bc88493757f4501e5c5a838779546c`
 - **آخر commit تقني لـ Buffer Isolation:** `c058b26ccdf62ed9abc2ad325522f8403a7fa81e`
@@ -970,8 +975,34 @@ firebase deploy --only storage
 
 **نتيجة البوابة:** **RouteProgress Physical Plausibility Policy — مغلقة وناجحة ✅**
 
-**الخطوة التالية:** دمج الـPolicy داخل `RouteProgressTracker` في Patch مستقل، مع اختبار حالات الحركة الطبيعية والتوقف وفجوات GPS دون إعادة فتح Hub أو Firestore أو Lifecycle.
+**الخطوة التالية آنذاك:** دمج الـPolicy داخل `RouteProgressTracker` في Patch مستقل. تم تنفيذ هذا الدمج لاحقًا وإغلاقه في القسم التالي.
 
+### إغلاق RouteProgress Physical Plausibility Integration — 2026-09-28
+
+تم دمج `RouteProgressPhysicalPlausibilityPolicy` داخل `RouteProgressTracker` في Patch مستقل، مع تمرير `Position.timestamp` و`Position.speed` من `DriverTrackingHub` عبر نقطة الربط الحالية فقط.
+
+#### التنفيذ المثبت
+
+- يقيّد الـPhysical Plausibility الحركة الأمامية الموجبة فقط.
+- يحتفظ الـTracker بـtimestamp آخر عينة مقبولة، وبآخر سرعة صالحة من عينة مقبولة لاستخدامها كـfallback.
+- السرعة الحالية الصالحة لها الأولوية، وإذا كانت غير صالحة يمكن استخدام آخر سرعة صالحة مقبولة.
+- عند `same timestamp` يكون السماح الفيزيائي `0m`، فتُرفض الحركة الأمامية الموجبة.
+- عند الفجوة الزمنية الأطول من حد الـPolicy يصبح القيد الفيزيائي `unavailable` دون reset أو fallback permissive؛ يبقى guard الـ300m القائم كما هو.
+- العينات المرفوضة لا تقدّم حالة المرجع الفيزيائي.
+- `seedFromProgress()` يمسح metadata الفيزيائي حتى تبدأ الاستعادة بدون مرجع GPS قديم.
+- لم يتم تعديل `DriverTrackingLifecycle` أو `RouteProgressCalculator` أو Mapbox/UI أو مسار Firestore.
+
+#### الاختبارات
+
+- `test/route_progress_tracker_test.dart` — حالات السماح/الرفض، أولوية السرعة، fallback، same timestamp، long gap، backward reference، وعدم تقدم المرجع بعد الرفض.
+- `test/driver_tracking_hub_route_progress_test.dart` — تمرير timestamp/speed واقعيين في سيناريوهات التكامل.
+
+على الجهاز المحلي:
+
+- `flutter analyze` → **No issues found!**
+- `flutter test` → **119/119 All tests passed!**
+
+**نتيجة البوابة:** **RouteProgress Physical Plausibility Integration — مغلقة وناجحة ✅**
 ### ملاحظات تشغيلية
 
 - لا نحذف الملفات الناتجة محليًا أو ملفات lock/generated دون سبب موثق.

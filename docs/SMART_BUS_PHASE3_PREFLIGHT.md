@@ -1,6 +1,6 @@
 # Smart Bus — Phase 3 Pre-flight Decisions
 
-> مرجع Phase 3 — RouteProgress قبل أي تغيير برمجي. لا يبدأ التنفيذ قبل إغلاق الملاحظة الحرجة في قسم 4.
+> مرجع قرارات وتصميم Phase 3 — RouteProgress. كانت هذه الوثيقة Pre-flight قبل بدء التنفيذ؛ تم إغلاق الملاحظة الحرجة والانتقال لاحقًا إلى التنفيذ التدريجي، لذلك تُقرأ الأقسام التنفيذية مع سجل الحالة الحالي أدناه.
 
 ## 1. الهدف
 
@@ -32,15 +32,17 @@
 - لا نقلب القائمة تلقائيًا بسبب `direction`.
 - `direction` جزء من هوية VehicleTrip ويُستخدم للتحقق من الاتساق.
 
-## 4. ملاحظة حرجة قبل Phase 3
+## 4. ملاحظة حرجة قبل Phase 3 — تم إغلاقها
 
-الدالة الحالية `TripManagerMixin._distanceToRouteStart()` تستخدم:
-- outbound → `points.first`
-- return → `points.last`
+في النسخة السابقة من الـPre-flight كان تعريف بداية route matching يحتاج تثبيتًا قبل التنفيذ.
 
-وهذا لا يطابق ترتيب المسارات الاتجاهية الذي تم التحقق منه.
+تم لاحقًا إغلاق هذا الشرط في **Route Start Consistency Gate**:
+- بداية المسار التشغيلي هي `PlannedRoute.points.first` لكل اتجاه.
+- لا يتم عكس قائمة نقاط `return` تلقائيًا داخل StartTrip.
+- أضيف regression test للـreturn.
+- لم يتم تعديل `driver_map_tab.dart` أو إعادة بناء GPS/Mapbox بسبب هذا القرار.
 
-لذلك نحتاج **Patch مستقل صغير** لتثبيت تعريف بداية المسار في StartTrip مع regression test للـreturn، قبل تنفيذ RouteProgress. هذا ليس إعادة بناء لـGPS/Mapbox ولا يحتاج تعديل `driver_map_tab.dart`.
+أصبحت هذه الملاحظة الآن **قرارًا مغلقًا** وليست خطوة تنفيذ مستقبلية.
 
 ## 5. طريقة الحساب
 
@@ -145,10 +147,14 @@ Phase 3 يحدّث:
 6. لا توجد قراءة Firestore لكل GPS update.
 7. لا يوجد progress تخميني عند غياب هندسة/إشارة صالحة.
 
-## الحالة
+## الحالة الحالية
 
-**Phase 3 Preflight: التصميم مكتمل، والتنفيذ غير مفتوح بعد.**
+**Phase 3 Preflight: مغلق ✅.** تم تنفيذ القرارات الأساسية تدريجيًا عبر وحدات مستقلة، وآخرها دمج `RouteProgressPhysicalPlausibilityPolicy` داخل `RouteProgressTracker`.
 
-**الخطوة الإلزامية التالية:** Patch منفصل لتثبيت نقطة بداية route matching في StartTrip + regression test للـreturn، ثم أول Patch هندسي صغير لـRouteProgress.
+حالة التحقق المحلي على الفرع الأساسي بتاريخ 2026-09-28:
+- `flutter analyze` → **No issues found!**
+- `flutter test` → **119/119 All tests passed!**
+
+لا تزال بنود القبول الميداني في القسم 12 غير مُثبتة داخل هذا السجل؛ لذلك لا يُفهم من إغلاق الـPreflight أن الاختبار الميداني النهائي لـPhase 3 قد أُغلق.
 
 لا يتم تعديل `driver_map_tab.dart` لهذا الغرض.
