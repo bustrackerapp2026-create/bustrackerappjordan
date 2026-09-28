@@ -31,6 +31,8 @@
 **Phase 6-A — BusWatch Operational Read Model:** مكتملة ✅ — تم تنفيذ الـReader والـResult والاختبارات المركزة، مع بقاء Consumer/UI خارج نطاق 6-A.
 
 **Phase 6-B — BusWatch Read Consistency & Refresh Contract:** ✅ DESIGN FROZEN — تم تثبيت عقد الاتساق وتنسيق القراءة، دون refresh/stream implementation.
+
+**Phase 6-C — Passenger BusWatch Consumer Contract:** مثبتة كتصميم ✅ — سياق الرحلة، استبدال النتائج، ومسح snapshot القديم عند عدم التوفر، دون Consumer/UI implementation.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -1603,6 +1605,105 @@ Inconsistent → one explicit non-available result
 
 6-B مجمدة كعقد تصميم مستقل ✅. العقد الحالي يقرر **كيفية تنسيق القراءة والاتساق فقط**؛ ولا يضيف lifecycle أو timing policy إلى BusWatch Operational Read Model. أي تنفيذ لاحق لـrefresh أو consumer behavior يحتاج نقطة تصميم/تنفيذ مستقلة ولا يعيد فتح 6-A.
  
+### 6-C — Passenger BusWatch Consumer Contract 🔍 DESIGN ONLY
+
+**الحالة:** DESIGN ONLY — لا Production Consumer/UI implementation في هذه الخطوة.
+
+### الهدف
+
+تحديد عقد استهلاك `BusWatchOperationalReadResult` داخل سياق Passenger محدد، مع الفصل الصريح بين **Passenger Trip Context** وبين **Operational Read Result**، ومنع الاحتفاظ ببيانات تشغيلية قديمة عند تغير النتيجة الحالية.
+
+### مسار الاستهلاك
+
+```text
+Passenger Trip Context
+        ↓
+exact tripId
+        ↓
+BusWatchOperationalReader.read(tripId)
+        ↓
+exactly one BusWatchOperationalReadResult
+        ↓
+Passenger BusWatch Consumer
+```
+
+### قواعد Consumer
+
+1. **رحلة واحدة محددة**
+   - الـConsumer يستقبل `tripId` من Passenger Trip Context الأعلى.
+   - لا يبحث عن Trips من تلقاء نفسه.
+   - لا يستخدم ترتيبًا مثل `list.first`.
+   - لا يبدل `tripId` إلى رحلة بديلة أثناء نفس السياق.
+
+2. **نتيجة واحدة سلطوية**
+   - كل قراءة مكتملة تنتج `BusWatchOperationalReadResult` واحدة.
+   - النتيجة الجديدة تستبدل النتيجة السابقة في حالة الـConsumer.
+   - لا يتم دمج نتائج قراءات مختلفة.
+
+3. **قاعدة منع البيانات القديمة**
+   - **New Result replaces previous Consumer state.**
+   - **A non-available result must clear any previously available operational snapshot.**
+   - لا يجوز استخدام snapshot سابق كـfallback عندما تصبح القراءة الحالية غير متاحة.
+   - الـConsumer لا يتحول إلى cache غير معلن.
+
+4. **عدم إعادة تفسير statuses**
+   - `noActiveVehicleTrip` تعني وجود Passenger Trip ولكن لا توجد VehicleTrip تشغيلية نشطة مقابلة حاليًا.
+   - لا تُفسر هذه الحالة على أنها إلغاء للرحلة، انتهاء الرحلة، أو offline للسائق.
+   - `noLiveLocation` لا تتحول إلى `noActiveVehicleTrip`، ولا يُستخدم `VehicleTrip.currentLocation` كـfallback.
+   - `noApprovedRoute` تعني فشل توفر المسار المرجعي التشغيلي المطلوب، ولا يعاد اختيار Route أخرى.
+   - `available` فقط تسمح باستهلاك snapshot.
+
+5. **available**
+   - `status == available` و`snapshot != null`.
+   - الـConsumer يستهلك الـsnapshot كما هو.
+   - لا يعيد اشتقاق أو تعديل `routeProgress` أو الموقع أو السرعة أو الاتجاه أو هوية المسار.
+
+6. **non-available**
+   - جميع الحالات غير `available` يكون معها `snapshot == null`.
+   - الـConsumer يمسح أي operational snapshot سابق فور اعتماد النتيجة الحالية.
+   - لا يُنشئ snapshot اصطناعيًا ولا يعيد استخدام بيانات قديمة.
+
+### معنى noPassengerContext
+
+`noPassengerContext` هي **حالة سياق أعلى** وليست آلية للبحث عن رحلة.
+
+- تعني عدم وجود Passenger Trip Context صالح لبدء BusWatch.
+- Consumer لا يختار Trip.
+- Consumer لا ينفذ lookup بديل.
+- عند استدعاء `read(tripId)` بمعرف محدد وصالح، لا يكون `noPassengerContext` هو المسار الطبيعي لغياب Vehicle/Live/Route؛ تلك الحالات لها statuses مستقلة.
+
+### أخطاء البنية التحتية
+
+```text
+Domain Result
+   ≠
+Infrastructure Error
+```
+
+- أخطاء Firestore أو الشبكة لا يعاد تفسيرها كـ`noActiveVehicleTrip` أو `noLiveLocation` أو `noApprovedRoute`.
+- الـConsumer لا ينشئ Domain Result بديلًا لإخفاء Infrastructure Error.
+
+### حدود 6-C
+
+ممنوع في هذه الخطوة:
+
+- تنفيذ Consumer أو UI integration.
+- تعديل `BusWatchOperationalReader`.
+- تعديل `BusWatchOperationalReadResult` أو `BusWatchOperationalSnapshot` إلا إذا ثبت تضارب عقدي لاحقًا.
+- اختيار Trips تلقائيًا أو استخدام `list.first`.
+- الاحتفاظ بـsnapshot سابق كـfallback.
+- إضافة cache أو scheduler أو timer.
+- إضافة Stream/listener lifecycle.
+- إضافة freshness policy.
+- إدخال ETA أو `EtaResult`.
+- إدخال NextStop أو `StopRuntimeSnapshot`.
+- تعديل `TripModel` أو `VehicleTrip` أو `driverPublic` schema أو `DriverTrackingHub`.
+- إضافة Firestore writes.
+
+### القرار
+
+6-C تبقى Design-only حتى يتم تثبيت الحاجة الفعلية لأول Consumer implementation. العقد يثبت أن Passenger Trip Context يحدد `tripId`، وأن كل نتيجة قراءة حالية authoritative وتستبدل ما قبلها، وأن أي non-available result يمسح الـoperational snapshot السابق. لا يعاد فتح 6-A أو 6-B لتحقيق ذلك.
+
 # 10. Phase 7 — JourneyPlanner
 
 ## الهدف
