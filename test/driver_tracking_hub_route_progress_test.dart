@@ -282,6 +282,7 @@ void main() {
         routeId: 'route-a',
         direction: 'go',
         routePoints: route,
+        stopRuntimePolicy: StopRuntimePolicy.production(),
       );
       hub.setActiveVehicleTripStops(
         tripId: 'trip-runtime-policy',
@@ -318,6 +319,7 @@ void main() {
         routeId: 'route-a',
         direction: 'go',
         routePoints: route,
+        stopRuntimePolicy: StopRuntimePolicy.production(),
       );
       hub.setActiveVehicleTripStops(
         tripId: 'trip-runtime-no-progress',
@@ -325,13 +327,7 @@ void main() {
         stops: [stop('stop', 35.0040)],
       );
 
-      final snapshot = hub.refreshActiveStopRuntimeSnapshot(
-        isEligible: (_) => true,
-        statePolicy: StopStatePolicy(
-          atStopRadius: 20,
-          approachingDistance: 200,
-        ),
-      );
+      final snapshot = hub.refreshActiveStopRuntimeSnapshot();
 
       expect(snapshot, isNull);
       expect(hub.activeStopRuntimeSnapshot, isNull);
@@ -343,6 +339,7 @@ void main() {
         routeId: 'route-a',
         direction: 'go',
         routePoints: route,
+        stopRuntimePolicy: StopRuntimePolicy.production(),
       );
       hub.setActiveVehicleTripStops(
         tripId: 'trip-runtime-clear',
@@ -393,6 +390,16 @@ void main() {
         routeId: 'route-a',
         direction: 'go',
         routePoints: route,
+        stopRuntimePolicy: StopRuntimePolicy.production(),
+      );
+
+      hub.updateRouteProgress(
+        gps(
+          31.0000,
+          35.0025,
+          timestamp: DateTime.utc(2026, 9, 28, 20, 0, 0),
+          speed: 10.0,
+        ),
       );
 
       final stops = [
