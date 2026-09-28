@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../models/route_point.dart';
 import 'route_plan/route_plan_geometry.dart';
+import 'route_plan/route_polyline_projection.dart';
 
 /// نتيجة إسقاط GPS على هندسة PlannedRoute.
 class RouteProgressProjection {
@@ -51,83 +52,26 @@ class RouteProgressCalculator {
       return null;
     }
 
-    // Local meter projection around the current GPS latitude keeps the
-    // arithmetic numerically stable without requiring a network/geodesic API.
-    final referenceLatitudeRadians = latitude * math.pi / 180.0;
-    final metersPerLongitudeDegree =
-        111320.0 * math.cos(referenceLatitudeRadians);
-    const metersPerLatitudeDegree = 110540.0;
-
-    double x(double pointLongitude) =>
-        (pointLongitude - longitude) * metersPerLongitudeDegree;
-    double y(double pointLatitude) =>
-        (pointLatitude - latitude) * metersPerLatitudeDegree;
-
-    var cumulativeBefore = 0.0;
-    var bestDistanceSquared = double.infinity;
-    RouteProgressProjection? best;
-
-    for (var i = 0; i < routePoints.length - 1; i++) {
-      final a = routePoints[i];
-      final b = routePoints[i + 1];
-
-      final segmentLength = RoutePlanGeometry.distanceMeters(
-        a.latitude,
-        a.longitude,
-        b.latitude,
-        b.longitude,
-      );
-      if (!segmentLength.isFinite || segmentLength <= 0) {
-        continue;
-      }
-
-      final ax = x(a.longitude);
-      final ay = y(a.latitude);
-      final bx = x(b.longitude);
-      final by = y(b.latitude);
-
-      final dx = bx - ax;
-      final dy = by - ay;
-      final segmentLengthSquared = dx * dx + dy * dy;
-      if (!segmentLengthSquared.isFinite || segmentLengthSquared <= 0) {
-        cumulativeBefore += segmentLength;
-        continue;
-      }
-
-      // The GPS position is the local origin (0, 0).
-      final t = ((-ax) * dx + (-ay) * dy) / segmentLengthSquared;
-      final clampedT = t.clamp(0.0, 1.0).toDouble();
-
-      final projectedX = ax + clampedT * dx;
-      final projectedY = ay + clampedT * dy;
-      final distanceSquared =
-          projectedX * projectedX + projectedY * projectedY;
-
-      if (distanceSquared < bestDistanceSquared) {
-        final alongMeters =
-            cumulativeBefore + (segmentLength * clampedT);
-        final progress =
-            (alongMeters / totalRouteMeters).clamp(0.0, 1.0).toDouble();
-
-        bestDistanceSquared = distanceSquared;
-        best = RouteProgressProjection(
-          progress: progress,
-          alongMeters: alongMeters,
-          distanceToRouteMeters: math.sqrt(distanceSquared),
-          segmentIndex: i,
-          segmentT: clampedT,
-        );
-      }
-
-      cumulativeBefore += segmentLength;
-    }
-
-    if (best == null) return null;
+    final projected = RoutePolylineProjection.project(
+      routePoints: routePoints,
+      latitude: latitude,
+      longitude: longitude,
+    );
+    if (projected == null) return null;
 
     final maxDistance = _maxProjectionDistanceMeters(accuracy);
-    if (best.distanceToRouteMeters > maxDistance) return null;
+    if (projected.distanceToRouteMeters > maxDistance) return null;
 
-    return best;
+    final progress =
+        (projected.alongMeters / totalRouteMeters).clamp(0.0, 1.0).toDouble();
+
+    return RouteProgressProjection(
+      progress: progress,
+      alongMeters: projected.alongMeters,
+      distanceToRouteMeters: projected.distanceToRouteMeters,
+      segmentIndex: projected.segmentIndex,
+      segmentT: projected.segmentT,
+    );
   }
 
   static double _maxProjectionDistanceMeters(double? accuracy) {
