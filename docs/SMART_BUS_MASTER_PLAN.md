@@ -12,7 +12,9 @@
 >
 > **Phase 4.1-B.2-B:** `PlannedRouteStopService` (read-only Stop Reader) مغلق بعد نجاح `flutter analyze` و`flutter test` بنتيجة **134/134**، مع Rule قراءة للمسار الحديث `plannedRoutes/{routeId}/stops` ودون أي write API أو Runtime integration.
 >
-> **الخطوة التالية:** Phase 4.1-B.2-C — `Stop-to-Route Projection` باستخدام `RoutePolylineProjection` الموجود أصلًا.
+> **Phase 4.1-B.2-C:** `PlannedRouteStopProjection` مغلق بعد نجاح `flutter analyze` و`flutter test` بنتيجة **142/142**، مع focused projection tests بنتيجة **8/8**. تمت إعادة استخدام `RoutePolylineProjection` دون تعديل الـprimitive أو الـModel أو الـReader.
+>
+> **الخطوة التالية:** Phase 4.2 — `NextStop Resolver`.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -332,7 +334,7 @@ RouteProgress
 
 ## الحالة الحالية
 
-**قيد التنفيذ — تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B، والخطوة التالية هي 4.1-B.2-C.**
+**قيد التنفيذ — تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B و4.1-B.2-C، والخطوة التالية هي 4.2.**
 
 ### 4.1-A — RoutePolylineProjection ✅
 
@@ -474,6 +476,28 @@ Stop
 - PR **#22** → merged إلى `stage/approved-route-line-vehicle-link-v1`.
 
 هذه الخطوة تغلق Reader فقط. لا تعني بدء `Stop-to-Route Projection`.
+
+#### 4.1-B.2-C — PlannedRouteStopProjection ✅
+
+تم تنفيذ طبقة Domain/adapter صغيرة تربط `PlannedRouteStopModel.location` بهندسة `PlannedRoute.points` عبر إعادة استخدام `RoutePolylineProjection.project(...)`.
+
+الحدود:
+- لا معرفة بالمحطات داخل `RoutePolylineProjection`.
+- لا منطق إسقاط هندسي جديد.
+- `projection.alongMeters` هو الموضع المشتق للمحطة على محور المسار (`stopAlongMeters`) في runtime فقط.
+- لا يتم تخزين `stopAlongMeters` في Firestore أو داخل `PlannedRouteStopModel`.
+- Stop خارج الـpolyline قد تعيد projection مع `distanceToRouteMeters > 0`؛ صلاحية المحطة التشغيلية لا تُحسم هنا.
+- route غير صالح (`points.length < 2` أو طول هندسي صفري) يعيد `null` دون exception.
+- لا NextStop أو Stop State أو ETA أو VehicleTrip أو DriverTrackingHub أو Firestore persistence أو Mapbox integration.
+- لا توجد سياسة خاصة لمسارات self-intersecting/ambiguity resolution في هذه الخطوة.
+
+التحقق:
+- `flutter analyze` → **No issues found!**
+- اختبار Projection المخصص → **8/8**
+- `flutter test` الكامل → **142/142**
+- PR **#24** → merged إلى `stage/approved-route-line-vehicle-link-v1`.
+
+هذه الخطوة تغلق Stop-to-Route Projection فقط.
 
 ### الهدف النهائي للمرحلة
 
@@ -788,7 +812,7 @@ ML / Prediction
 
 # 19. نقطة البداية الحالية
 
-**Phase 4.1-B.2-B مغلقة ✅.**
+**Phase 4.1-B.2-C مغلقة ✅.**
 
 الحالة التنفيذية الحالية:
 
@@ -815,10 +839,11 @@ Read-only Stop Reader
         ↓
 4.1-B.2-C
 Stop-to-Route Projection
-⏳ NEXT
+✅
         ↓
 4.2
 NextStop Resolver
+⏳ NEXT
         ↓
 4.3
 Stop State
@@ -827,13 +852,16 @@ Stop State
 Firestore / Hub Integration
 ```
 
-**حدود 4.1-B.2-C المثبتة مسبقًا:**
-- استخدام `PlannedRouteStopModel.location` مع `PlannedRoute.points`.
-- إعادة استخدام `RoutePolylineProjection.project(...)` الموجود أصلًا؛ لا primitive هندسي جديد.
-- `projection.alongMeters` هو `stopAlongMeters` المشتق محليًا.
-- تغطية Stops على المسار، خارج المسار، بداية/نهاية المسار، والنقاط المتكررة `A → A → B`.
-- عدم إدخال NextStop أو Stop State أو ETA أو VehicleTrip أو DriverTrackingHub أو Firestore persistence أو Mapbox.
-- عدم حل ambiguity لمسارات self-intersecting في هذه الخطوة.
+**حدود 4.2 المثبتة مبدئيًا قبل التنفيذ:**
+- يبدأ من `vehicleAlongMeters`/RouteProgress ومن قائمة Stops projected.
+- يفصل بين Projection وStop Eligibility.
+- لا يكفي أن يكون `projection != null`؛ يجب أن توجد سياسة Eligibility مستقلة تعتمد على `distanceToRouteMeters` قبل إدخال Stop ضمن NextStop candidates.
+- لم يتم تثبيت threshold عددي لـ`distanceToRouteMeters` بعد؛ لا يُخترع رقم دون عقد مستقل/دليل مناسب.
+- بعد اجتياز Eligibility: المرشح التالي يجب أن يحقق `vehicleAlongMeters < stopAlongMeters`، ثم يُختار الأقرب إلى الأمام على محور المسار.
+- `stopAlongMeters` هو المرجع المكاني، بينما `order` ترتيب إداري/عند الحاجة tie-breaker.
+- لا NextStop state machine، ولا `approaching`/`atStop`/`passed`، ولا ETA في هذه الخطوة.
+- لا Firestore persistence، ولا Hub/VehicleTrip/Mapbox integration.
+- لا self-intersection ambiguity resolution في هذه الخطوة.
 
 **المسارات الحالية لا تتطلب Stops ثابتة حتى تستمر في العمل وفق نموذج التشغيل الحالي القائم على صعود الركاب عند طلب التوقف.**
 
