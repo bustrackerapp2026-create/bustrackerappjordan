@@ -33,6 +33,8 @@
 **Phase 6-B — BusWatch Read Consistency & Refresh Contract:** ✅ DESIGN FROZEN — تم تثبيت عقد الاتساق وتنسيق القراءة، دون refresh/stream implementation.
 
 **Phase 6-C — Passenger BusWatch Consumer Contract:** مكتملة ✅ — تم تنفيذ Consumer مستقل، مع استبدال النتيجة السابقة ومسح snapshot عند أي نتيجة non-available، مع بقاء UI integration خارج نطاق 6-C.
+
+**Phase 6-D — Passenger BusWatch Read Lifecycle / Context Contract:** ✅ DESIGN FROZEN — ملكية دورة القراءة وحماية Context Generation محسومة، دون Coordinator implementation.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -1712,6 +1714,186 @@ Infrastructure Error
 - `git status` — working tree clean.
 - Consumer/UI integration الفعلية ليست ضمن 6-C، ولا تُعد جزءًا من دليل إغلاق هذه النقطة.
 
+### 6-D — Passenger BusWatch Read Lifecycle / Context Contract ✅ DESIGN FROZEN
+
+**الحالة:** DESIGN FROZEN — تم حسم ملكية دورة القراءة وحماية السياق، دون Production Coordinator implementation.
+
+### المشكلة التي تحلها 6-D
+
+6-C تملك استهلاك `BusWatchOperationalReadResult`، لكن لا يوجد فيها من يقرر:
+
+- متى تبدأ القراءة.
+- متى تتوقف دورة السياق.
+- متى يعاد استدعاء `read(tripId)`.
+- كيف تُرفض نتيجة أو أخطاء قراءة وصلت بعد تغيير سياق Passenger.
+
+6-D تفصل هذه المسؤولية في Coordinator مستقل عن Reader وConsumer.
+
+### العقد
+
+```text
+Passenger Context Owner
+        ↓
+BusWatchReadLifecycleCoordinator
+        ↓
+BusWatchOperationalReader
+        ↓
+BusWatchOperationalConsumer
+```
+
+الـCoordinator يملك **دورة القراءة فقط**، ولا يملك بيانات BusWatch التشغيلية كـsource of truth، ولا يختار Trip.
+
+### واجهة دورة الحياة
+
+```text
+bind(tripId)
+clear()
+refresh()
+```
+
+#### bind(tripId)
+
+- يربط Coordinator برحلة Passenger محددة.
+- يـinvalidate السياق السابق أولًا.
+- يمسح حالة الـConsumer القديمة قبل بدء القراءة الجديدة.
+- يزيد `Context / Read Generation`.
+- ينفذ قراءة أولية واحدة لـ`read(tripId)`.
+- لا يبحث عن Trip بديلة ولا يستخدم `list.first`.
+
+#### refresh()
+
+- يعيد قراءة السياق الحالي نفسه.
+- لا يغير `tripId`.
+- لا يختار رحلة بديلة.
+- لا ينشئ Timer أو polling loop أو Stream.
+
+#### clear()
+
+- يلغي صلاحية السياق الحالي بزيادة `Context / Read Generation`.
+- يمسح حالة الـConsumer.
+- بعد `clear()` لا يجوز تطبيق أي نتيجة أو خطأ من قراءة سابقة.
+
+### Context / Read Generation
+
+الـGeneration هو معرف داخلي صغير لدورة السياق، وليس Cache ولا بيانات تشغيلية.
+
+مثال:
+
+```text
+bind(trip-A)
+generation = 1
+        ↓
+read(A) starts with generation 1
+
+bind(trip-B)
+generation = 2
+        ↓
+read(B) starts with generation 2
+
+A returns late
+generation = 1
+        ↓
+discard
+```
+
+قاعدة الحماية:
+
+> **A read result or read error may be applied only if it belongs to the currently active context generation.**
+
+بالعربي:
+
+> **لا يجوز تطبيق نتيجة أو خطأ من قراءة سابقة على سياق Passenger الحالي.**
+
+وتنطبق الحماية نفسها على **result** وعلى **error**.
+
+### Refresh / Lifecycle Policy
+
+6-D لا تثبت periodic refresh.
+
+المسموح حاليًا فقط:
+
+- Initial bind.
+- Trip context change.
+- Explicit refresh.
+- Lifecycle reactivation عندما يصبح Passenger Context صالحًا.
+
+ولا يتم في 6-D إضافة:
+
+- Timer.
+- Polling loop.
+- Periodic Stream.
+
+أي احتياج لاحق لهذه الآليات يحتاج عقدًا مستقلًا ودليلًا فعليًا.
+
+### ملكية Passenger Context
+
+- Passenger Context Owner الأعلى هو الذي يحدد `tripId`.
+- Coordinator لا يختار رحلة من مجموعة Trips.
+- `MapTab` لا تنقل منطق `list.first` إلى Coordinator.
+- تغيير `tripId` يعني بداية Context Generation جديدة.
+
+### سلوك النتائج والأخطاء المتأخرة
+
+```text
+Context A
+   ↓
+read(A) generation 1
+   ↓
+context changes to B
+   ↓
+generation 2
+
+late A result
+→ discard
+
+late A error
+→ discard
+```
+
+لا يتم:
+- تطبيق snapshot قديم.
+- تحويل الخطأ القديم إلى Domain Result حالي.
+- إعادة استخدام نتيجة سابقة كـfallback.
+
+### حدود 6-D
+
+ممنوع في هذه الخطوة:
+
+- تنفيذ `BusWatchReadLifecycleCoordinator`.
+- تعديل `BusWatchOperationalReader`.
+- تعديل `BusWatchOperationalConsumer`.
+- إدخال UI integration.
+- إدخال `ActiveTripBanner`.
+- إدخال ETA أو `EtaResult`.
+- إدخال NextStop أو `StopRuntimeSnapshot`.
+- إضافة freshness policy.
+- إضافة cache أو persistence.
+- إضافة Timer أو polling أو periodic Stream.
+- تعديل `TripModel` أو `VehicleTrip` أو `driverPublic` schema أو `DriverTrackingHub`.
+- إضافة Firestore writes.
+
+### القرار
+
+6-D مجمدة كعقد تصميم مستقل ✅. الفصل أصبح:
+
+```text
+6-A = ماذا نقرأ
+6-B = كيف ننسق القراءة
+6-C = كيف نستهلك النتيجة
+6-D = من يدير دورة القراءة ويحمي السياق
+```
+
+والتنفيذ التالي، عند الانتقال إليه، هو Patch صغير ومعزول لـ`BusWatchReadLifecycleCoordinator` مع focused tests لـ:
+- bind A → initial read.
+- bind A → explicit refresh.
+- A → B → late A result rejected.
+- A → B → late A error rejected.
+- clear → late result rejected.
+- reactivate → new read.
+- same tripId + explicit refresh → fresh read.
+
+ولا تعيد 6-D فتح 6-A أو 6-B أو 6-C.
+ 
 # 10. Phase 7 — JourneyPlanner
 
 ## الهدف
