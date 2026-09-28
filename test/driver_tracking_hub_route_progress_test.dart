@@ -62,8 +62,8 @@ void main() {
       );
 
       final start = hub.updateRouteProgress(gps(31.0000, 35.0000));
-      final midpoint = hub.updateRouteProgress(gps(31.0000, 35.0050));
-      final later = hub.updateRouteProgress(gps(31.0000, 35.0065));
+      final midpoint = hub.updateRouteProgress(gps(31.0000, 35.0025));
+      final later = hub.updateRouteProgress(gps(31.0000, 35.0040));
 
       expect(start, isNotNull);
       expect(midpoint, isNotNull);
@@ -138,7 +138,7 @@ void main() {
         direction: 'go',
         routePoints: route,
       );
-      hub.updateRouteProgress(gps(31.0000, 35.0100));
+      hub.updateRouteProgress(gps(31.0000, 35.0050));
 
       final reboundRoute = List<RoutePoint>.from(route);
       hub.setActiveVehicleTrip(
@@ -152,7 +152,7 @@ void main() {
       expect(hub.activeRouteProgress!.progress, closeTo(0.5, 0.001));
 
       final later =
-          hub.updateRouteProgress(gps(31.0000, 35.0110));
+          hub.updateRouteProgress(gps(31.0000, 35.0055));
 
       expect(later, isNotNull);
       expect(later!.progress, greaterThan(0.5));
