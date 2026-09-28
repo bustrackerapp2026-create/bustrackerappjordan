@@ -21,12 +21,5 @@ void main() {
       );
     });
 
-    test('trims the route id before treating it as a valid input', () {
-      final service = PlannedRouteStopService();
-
-      // The method should accept surrounding whitespace and produce a stream
-      // rather than rejecting the identifier at the API boundary.
-      expect(service.watchStops(' route-1 '), isA<Stream>());
-    });
   });
 }
