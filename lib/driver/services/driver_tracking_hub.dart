@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 
+import '../../models/planned_route_stop_model.dart';
 import '../../models/route_point.dart';
 import '../../models/trip_ping.dart';
 import '../../services/historical_sampling_policy.dart';
@@ -62,6 +63,7 @@ class DriverTrackingHub {
   String? _activeVehicleTripRouteId;
   String? _activeVehicleTripDirection;
   List<RoutePoint>? _activeVehicleTripRoutePoints;
+  List<PlannedRouteStopModel>? _activeVehicleTripStops;
   DateTime? _lastHistoricalPingAt;
 
   static const Duration _vehicleTripLocationInterval =
@@ -80,6 +82,13 @@ class DriverTrackingHub {
 
   RouteProgressProjection? get activeRouteProgress =>
       _routeProgressTracker.lastAccepted;
+
+  /// Fixed Stops loaded for the currently bound VehicleTrip.
+  ///
+  /// Null means the Stops snapshot is not currently available; an empty
+  /// list is a valid loaded result containing no Stops.
+  List<PlannedRouteStopModel>? get activeVehicleTripStops =>
+      _activeVehicleTripStops;
 
   /// يربط الـHub بمعرف VehicleTrip النشطة وبياناتها اللازمة للتسجيل التاريخي.
   ///
@@ -107,6 +116,7 @@ class DriverTrackingHub {
       _activeVehicleTripRouteId = null;
       _activeVehicleTripDirection = null;
       _activeVehicleTripRoutePoints = null;
+      _activeVehicleTripStops = null;
       _routeProgressTracker.reset();
       _lastVehicleTripLocationWriteAt = null;
       _lastHistoricalPingAt = null;
@@ -125,6 +135,7 @@ class DriverTrackingHub {
       if (routeChanged) {
         _routeProgressTracker.reset();
         _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
+        _activeVehicleTripStops = null;
       } else if (routePoints != null &&
           !_sameRoutePoints(_activeVehicleTripRoutePoints, routePoints)) {
         _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
@@ -153,11 +164,34 @@ class DriverTrackingHub {
     _activeVehicleTripDirection =
         normalizedDirection?.isNotEmpty == true ? normalizedDirection : null;
     _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
+    _activeVehicleTripStops = null;
     _seedRouteProgress(savedRouteProgress);
     _lastVehicleTripLocationWriteAt = null;
     _lastHistoricalPingAt = null;
     _pendingVehicleTripPosition = null;
     _scheduleHistoricalTripPingUpload();
+  }
+
+  /// Stores a Stops snapshot only if it still belongs to the active
+  /// VehicleTrip and its currently bound route.
+  ///
+  /// The Hub does not read Firestore here. Callers load Stops outside the GPS
+  /// hot path and pass the resulting snapshot into this method.
+  void setActiveVehicleTripStops({
+    required String tripId,
+    required String routeId,
+    required List<PlannedRouteStopModel> stops,
+  }) {
+    final normalizedTripId = tripId.trim();
+    final normalizedRouteId = routeId.trim();
+    if (normalizedTripId.isEmpty || normalizedRouteId.isEmpty) return;
+    if (_activeVehicleTripId != normalizedTripId ||
+        _activeVehicleTripRouteId != normalizedRouteId) {
+      return;
+    }
+
+    _activeVehicleTripStops =
+        List<PlannedRouteStopModel>.unmodifiable(stops);
   }
 
   List<RoutePoint>? _copyRoutePoints(List<RoutePoint>? routePoints) {
