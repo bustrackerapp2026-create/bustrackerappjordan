@@ -991,6 +991,69 @@ Validation المثبتة:
 
 هذه الخطوة مغلقة ولا يعاد فتحها إلا عند ظهور Regression أو دليل جديد.
 
+### 5.2-A — Accepted ETA Observation Bridge ✅
+
+**الحالة:** IMPLEMENTED + VERIFIED + CLOSED.
+
+تم تنفيذ أول ربط محدود بين طبقة GPS/RouteProgress وطبقة ETA دون إدخال حساب ETA نفسه في الـHub.
+
+### العقد المثبت
+
+```text
+Accepted GPS sample
+        ↓
+RouteProgressTracker
+        ↓
+Accepted RouteProgress
+        +
+Speed
++
+ObservedAt
+        ↓
+AcceptedEtaObservation
+```
+
+`AcceptedEtaObservation` يحمل فقط:
+- `acceptedRouteProgress`.
+- `speedMps`.
+- `observedAt`.
+
+### قاعدة القبول
+
+التكامل يميز قبول العينة من خلال تغير حالة `RouteProgressTracker.lastAccepted` بالهوية (`beforeAccepted` مقابل `afterAccepted`).
+
+- العينة المرفوضة التي لا تنشئ Projection مقبولًا جديدًا لا تستبدل الملاحظة الحالية.
+- عينة الـbackward jitter التي يقبلها `RouteProgressTracker` رغم تثبيت `alongMeters` عند الموضع المقبول السابق تنشئ Projection جديدًا، ولذلك تستبدل الملاحظة مع الاحتفاظ بـ`speedMps` و`observedAt` من العينة المقبولة الجديدة.
+- عند ربط رحلة جديدة أو تغيير `routeId` أو مسح الرحلة يتم تصفير `activeEtaObservation`.
+
+### حدود الـPatch
+
+لم يتم تعديل:
+- `RouteProgressTracker`.
+- `EtaEngine`.
+- `StopRuntime`.
+- `Passenger`.
+- `Firestore`.
+- `EtaUtils`.
+- `DriverTrackingLifecycle`.
+- أي UI.
+
+ولا توجد Freshness Policy رقمية في هذه الخطوة؛ تحديد freshness يبقى قرار Integration مستقلًا في خطوة لاحقة.
+
+### التحقق
+
+- `flutter analyze` → **No issues found!**.
+- focused `driver_tracking_hub_route_progress_test.dart` → **17/17 passed**.
+- `flutter test` الكامل → **210/210 passed**.
+
+تمت إضافة حالتي اختبار أساسيتين:
+1. العينة المرفوضة لا تستبدل ETA observation السابقة.
+2. backward-jitter المقبول يستبدل observation بالسرعة والطابع الزمني الجديدين مع بقاء `alongMeters` monotonic.
+
+هذه الخطوة مغلقة ولا يعاد فتحها إلا عند ظهور Regression أو دليل جديد.
+
+الخطوة التالية: **تصميم Freshness Policy للـETA ضمن Integration Layer فقط**، دون تعديل `EtaEngine` أو إدخال Passenger/UI قبل تثبيت العقد الجديدة.
+
 ---
 
 # 9. Phase 6 — BusWatch
@@ -1269,7 +1332,12 @@ ETA
 Deterministic ETA Engine
 ✅
         ↓
-Phase 5 Integration
+5.2-A
+Accepted ETA Observation Bridge
+✅
+        ↓
+5.2-B
+ETA Freshness Policy
 ⏳ DESIGN NEXT
         ↓
 PHASE 6
@@ -1390,7 +1458,15 @@ Firestore / Hub Integration
 
 **Phase 5.1 — ETA Contract + Deterministic Engine مغلقة ✅.**
 
-**الخطوة التالية الموثقة:** تصميم طبقة Integration الخاصة بالـETA، دون تنفيذ Production Code أو Passenger/UI قبل تثبيت عقد التكامل كخطوة مستقلة.
+**Phase 5.2-A — Accepted ETA Observation Bridge مغلقة ✅.**
+- `AcceptedEtaObservation` يحمل `acceptedRouteProgress` و`speedMps` و`observedAt` فقط.
+- العينة المرفوضة لا تستبدل observation الحالية.
+- backward-jitter المقبول يحدّث observation دون خرق monotonic route-axis progress.
+- لم يتم تعديل `RouteProgressTracker` أو `EtaEngine` أو StopRuntime أو Passenger/UI أو Firestore.
+- لا توجد Freshness Policy رقمية مثبتة بعد.
+- الدليل النهائي: analyze بلا مشاكل، focused **17/17**، full **210/210**.
+
+**الخطوة التالية الموثقة:** تصميم **ETA Freshness Policy** في Integration Layer فقط، قبل أي حساب ETA حي أو Passenger/UI integration.
 
 **Phase 4 Closure Notes:** الكود والتكامل والحدود المعمارية والتحقق الآلي موثقة كمكتملة. لا تعاد فتح Phase 4 إلا عند ظهور Regression أو دليل جديد يستوجب ذلك.
 
