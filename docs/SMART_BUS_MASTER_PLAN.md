@@ -16,7 +16,9 @@
 >
 > **Phase 4.2:** `NextStopResolver` مغلق بعد نجاح `flutter analyze` و`flutter test` بنتيجة **151/151**، مع focused tests بنتيجة **9/9**. تم فصل Stop Eligibility عن قرار NextStop، دون threshold مسافة مثبت داخل الـResolver.
 >
-> **الخطوة التالية:** Phase 4.3 — `Stop State`.
+> **Phase 4.3-A:** عقد حالات المحطة مغلق كقرار تصميم فقط. تم تثبيت الحالات `upcoming`, `approaching`, `atStop`, `passed`، مع تصنيف حتمي على محور المسار وإبقاء الحدود العددية ضمن Policy غير مثبتة بعد.
+>
+> **الخطوة التالية:** Phase 4.3-B — `Stop State Resolver`.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -336,7 +338,7 @@ RouteProgress
 
 ## الحالة الحالية
 
-**قيد التنفيذ — تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B و4.1-B.2-C و4.2، والخطوة التالية هي 4.3.**
+**قيد التنفيذ — تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B و4.1-B.2-C و4.2، و4.3-A مغلقة كقرار تصميم فقط، والخطوة التالية هي 4.3-B.**
 
 ### 4.1-A — RoutePolylineProjection ✅
 
@@ -605,6 +607,95 @@ NextStop?
 - PR **#27** → merged إلى `stage/approved-route-line-vehicle-link-v1`.
 
 هذه الخطوة تغلق NextStop Resolver domain logic فقط.
+
+#### 4.3-A — Stop State Contract ✅ DESIGN ONLY
+
+تم تثبيت عقد حالات المحطة قبل تنفيذ أي State Resolver.
+
+### المدخلات
+
+- `vehicleAlongMeters`: قيمة `RouteProgressProjection.alongMeters` المقبولة على محور المسار.
+- `stopAlongMeters`: قيمة `PlannedRouteStopProjection` المشتقة للمحطة.
+- Policy للحالة تحتوي على حدود عددية قابلة للضبط، ولم يتم تثبيت قيمها بعد.
+
+لا تدخل في هذا العقد:
+- GPS خام أو أي مسافة جغرافية مباشرة بين المركبة والمحطة.
+- `order` كمحور مكاني.
+- Firestore أو VehicleTrip أو DriverTrackingHub أو Mapbox.
+
+### المتغير المعياري
+
+يُعرَّف:
+
+```text
+delta = stopAlongMeters - vehicleAlongMeters
+```
+
+بحيث:
+- `delta > 0`: المحطة أمام المركبة على محور المسار.
+- `delta = 0`: المركبة والمحطة عند نفس الموضع على محور المسار.
+- `delta < 0`: المركبة تجاوزت موضع المحطة على محور المسار.
+
+### الحالات وحدودها
+
+التصنيف يجب أن يكون حتميًا ومغطيًا كامل محور `delta` دون تداخل أو فجوات، بعد تثبيت Policy العددية:
+
+```text
+delta < -atStopRadius
+        → passed
+
+|delta| <= atStopRadius
+        → atStop
+
+atStopRadius < delta <= approachingDistance
+        → approaching
+
+delta > approachingDistance
+        → upcoming
+```
+
+ويجب أن تحقق الـPolicy:
+- `atStopRadius > 0`.
+- `approachingDistance > atStopRadius`.
+- لا توجد مناطق تداخل أو فجوات بين الحالات الأربع.
+
+المعاني التشغيلية:
+- `upcoming`: المحطة أمام المركبة وبعيدة أكثر من نطاق الاقتراب.
+- `approaching`: المحطة أمام المركبة وداخل نطاق الاقتراب، لكنها خارج نطاق `atStop`.
+- `atStop`: المركبة داخل نطاق المحطة حول موضعها على محور المسار.
+- `passed`: المركبة تجاوزت نطاق المحطة من الجهة الأمامية.
+
+### الانتقالات
+
+لا يحتاج State Contract إلى ذاكرة حالة مستقلة؛ التصنيف حتمي من القيم الحالية. مع افتراض أن RouteProgress يحافظ على monotonicity، يكون المسار الطبيعي:
+
+```text
+upcoming
+   ↓
+approaching
+   ↓
+atStop
+   ↓
+passed
+```
+
+لا يجوز لطبقة Stop State أن تعيد الحالة للخلف بسبب GPS jitter؛ معالجة الرجوع الوهمي تقع في RouteProgress قبل وصول `vehicleAlongMeters` إلى هذه الطبقة.
+
+إذا كان `vehicleAlongMeters` أو `stopAlongMeters` غير finite أو خارج محور المسار، فلا توجد حالة صالحة (`null` / unavailable).
+
+### حدود 4.3-A
+
+- لا يوجد كود إنتاجي.
+- لا State machine تنفيذية.
+- لا hysteresis إضافي قبل وجود حاجة مثبتة.
+- لا threshold رقمي قبل تثبيت Policy مستقلة.
+- لا تعديل على Eligibility أو NextStop Resolver.
+- لا ETA أو dwell time.
+- لا Firestore persistence.
+- لا Hub/VehicleTrip/Mapbox.
+- لا self-intersection ambiguity resolution.
+
+الخطوة البرمجية التالية بعد تثبيت هذا العقد هي 4.3-B — `Stop State Resolver`.
 
 ### الهدف النهائي للمرحلة
 
@@ -891,6 +982,18 @@ Stop-to-Route Projection
         ↓
 4.2
 NextStop Resolver
+✅
+        ↓
+4.3
+Stop State
+⏳ IN PROGRESS
+        ↓
+4.3-A
+State Contract
+✅ DESIGN
+        ↓
+4.3-B
+Stop State Resolver
 ⏳ NEXT
         ↓
 PHASE 5
@@ -935,7 +1038,7 @@ ML / Prediction
 
 # 19. نقطة البداية الحالية
 
-**Phase 4.1-B.2-C مغلقة ✅.**
+**Phase 4.3-A مغلقة كقرار تصميم فقط ✅.**
 
 الحالة التنفيذية الحالية:
 
@@ -983,7 +1086,15 @@ Firestore / Hub Integration
 - `order` ترتيب إداري وtie-breaker فقط عند تعادل `alongMeters`.
 - Stop عند نفس `alongMeters` ليست NextStop.
 - عند عدم وجود مرشح صالح إلى الأمام تكون النتيجة `null`.
-- الخطوة التالية هي 4.3 — Stop State.
+
+**4.3-A — Stop State Contract ✅ DESIGN ONLY.**
+- الحالات: `upcoming`, `approaching`, `atStop`, `passed`.
+- التصنيف يعتمد على `delta = stopAlongMeters - vehicleAlongMeters`.
+- `atStopRadius` و`approachingDistance` قيم Policy قابلة للضبط ولم تُثبت رقميًا بعد.
+- التقسيم يجب أن يكون حتميًا بلا تداخل أو فجوات.
+- الحركة الطبيعية: `upcoming → approaching → atStop → passed`.
+- القيم غير الصالحة لا تنتج State.
+- الخطوة التالية: 4.3-B — `Stop State Resolver`.
 
 **المسارات الحالية لا تتطلب Stops ثابتة حتى تستمر في العمل وفق نموذج التشغيل الحالي القائم على صعود الركاب عند طلب التوقف.**
 
