@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/models/eta_input.dart';
-import '../lib/models/eta_status.dart';
-import '../lib/models/eta_unavailable_reason.dart';
-import '../lib/services/eta_engine.dart';
+import 'package:jordan_bus_tracker_new/models/eta_input.dart';
+import 'package:jordan_bus_tracker_new/models/eta_status.dart';
+import 'package:jordan_bus_tracker_new/models/eta_unavailable_reason.dart';
+import 'package:jordan_bus_tracker_new/services/eta_engine.dart';
 
 void main() {
   final observedAt = DateTime(2026, 9, 28, 20, 30);
