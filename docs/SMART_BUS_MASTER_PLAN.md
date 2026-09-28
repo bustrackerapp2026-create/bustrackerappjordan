@@ -359,6 +359,35 @@ segmentT
 
 ### 4.1-B — Stop-to-Route Projection ⏳
 
+#### 4.1-B.0 — Projection Primitive Contract Hardening ✅
+
+تم تثبيت عقد هندسي صغير على `RoutePolylineProjection` عبر regression test يغطي route بالشكل `A → A → B`.
+
+السلوك المثبت:
+- يتم تجاهل المقطع الصفري الطول `A → A`.
+- يتم اختيار المقطع الحقيقي `A → B` للإسقاط.
+- `segmentIndex`, `segmentT`, `alongMeters`, و`distanceToRouteMeters` تبقى متوافقة مع الإسقاط المتوقع.
+
+حدود التغيير:
+- اختبار فقط؛ لا production code.
+- لا Model جديد.
+- لا Firestore.
+- لا `RoutePlanService`.
+- لا Hub.
+- لا `NextStop`.
+
+التحقق:
+- `flutter analyze` → **No issues found!**
+- الاختبار المخصص → **8/8**
+- `flutter test` الكامل → **127/127**
+- PR **#20** → merged إلى `stage/approved-route-line-vehicle-link-v1`.
+
+هذا hardening مغلق ولا يعيد فتح 4.1-A.
+
+#### 4.1-B.1 — Stop data contract ⏳
+
+قبل أي Model أو Firestore write، يجب تثبيت عقد المحطات الثابتة المستقبلية ومصدرها وربطها بالـ`plannedRoutes/{routeId}`.
+
 المطلوب لاحقًا:
 
 ```text
