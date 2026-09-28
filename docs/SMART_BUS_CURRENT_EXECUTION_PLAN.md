@@ -267,14 +267,50 @@ Runtime snapshot
 
 هذه الخطوة هي أول Patch برمجي لـ4.4، وستقتصر على توصيل البيانات المحملة والنتائج المشتقة بالـHub دون إدخال منطق جديد داخل GPS callback.
 
-### 4.4-B Runtime Status (after the first integration patches)
+### 4.4-B Runtime Integration ✅
 
-تم تنفيذ جزأين برمجيين محدودين من 4.4-B:
-- تحميل Stops مرة واحدة عند bind/restore من `plannedRoutes/{routeId}/stops` عبر `PlannedRouteStopService`.
-- تخزين Stops محليًا في `DriverTrackingHub` مع حماية trip/route binding.
-- توفير اشتقاق محلي لـ`StopRuntimeSnapshot` من آخر `accepted RouteProgress` عبر `refreshActiveStopRuntimeSnapshot()`.
-- الاشتقاق يتطلب صراحةً `StopRuntimeSnapshotResolver` و`StopStatePolicy` وStop Eligibility، ولا يقرأ Firestore.
+تم إغلاق 4.4-B بعد تنفيذ التكامل التشغيلي المحدود والتحقق منه.
 
-**الحالة:** 4.4-B ما زالت مفتوحة. لا توجد حتى الآن سياسة إنتاجية معتمدة لمقادير `atStopRadius` و`approachingDistance`، ولا يجوز اختراع قيم افتراضية داخل الـHub. كما لم يتم ربط refresh تلقائيًا بالـGPS callback.
+#### ما تم تنفيذه
+- تحميل Fixed Stops مرة واحدة عند bind/restore من:
+  `plannedRoutes/{routeId}/stops`
+  عبر `PlannedRouteStopService`.
+- تخزين Stops محليًا في `DriverTrackingHub` مع التحقق من `tripId/routeId`.
+- إضافة `StopRuntimePolicy` كمصدر مركزي للسياسة التشغيلية، دون قيم افتراضية داخل الـResolvers.
+- السياسة الإنتاجية الحالية:
+  - `stopEligibilityDistanceMeters = 75m`.
+  - `atStopRadius = 30m`.
+  - `approachingDistance = 200m`.
+- ربط السياسة صراحةً عند بدء/استعادة `VehicleTrip`.
+- عند قبول `RouteProgress` جديد، يتم تحديث `StopRuntimeSnapshot` تلقائيًا داخل `DriverTrackingHub`.
+- عند اكتمال تحميل Stops، يتم إعادة الاشتقاق تلقائيًا إذا كان هناك `accepted RouteProgress` موجود مسبقًا.
+- لا توجد قراءة Firestore داخل GPS callback؛ البيانات المطلوبة للمحطات محملة محليًا.
+- لا توجد كتابة لـStop State في Firestore.
+- لا توجد fields جديدة في `VehicleTrip`.
 
-**الخطوة الآمنة التالية:** تثبيت مصدر سياسة Stop Runtime واختيار المستهلك التشغيلي الذي يمررها صراحةً، ثم تنفيذ الربط النهائي دون تعديل `driver_map_tab.dart` أو بنية GPS/Lifecycle.
+#### الحدود التي بقيت ثابتة
+- لم يتم تعديل `driver_map_tab.dart`.
+- لم يتم تعديل `DriverTrackingLifecycle`.
+- لم يتم تعديل `RouteProgressTracker` أو `RoutePolylineProjection`.
+- لم يتم تغيير Mapbox أو بنية Firestore الخاصة بالرحلة.
+- ما زال Stop Runtime in-memory derived data فقط.
+
+#### التحقق
+- `flutter analyze` → **No issues found!** على فرع التنظيف الأخير.
+- focused Hub tests → **15/15**.
+- full `flutter test` → **192/192**.
+- PR #37 — تثبيت `StopRuntimePolicy` — merged.
+- PR #38 — ربط السياسة والتحديث التلقائي — merged.
+- PR #39 — إزالة import غير مستخدم — merged.
+
+**الحالة النهائية: 4.4-B ✅ مكتملة.**
+
+### الخطوة التالية
+
+**Phase 4 يمكن اعتبارها مكتملة من ناحية Runtime Stop Integration.**
+
+المرحلة التالية المخطط لها هي:
+
+**Phase 5 — ETA Engine**
+
+ولا يبدأ التنفيذ حتى يظل بناء ETA معتمدًا على البيانات الفعلية المتاحة من Position + RouteProgress + Speed + Remaining Route، مع اعتبار ETA غير متاح أفضل من إنتاج رقم غير موثوق.
