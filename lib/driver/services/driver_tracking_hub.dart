@@ -14,9 +14,7 @@ import '../../services/trip_ping_buffer.dart';
 import '../../services/trip_ping_service.dart';
 import '../../services/vehicle_trip_service.dart';
 import '../../services/route_progress_tracker.dart';
-import '../../services/next_stop_resolver.dart';
 import '../../services/stop_runtime_snapshot_resolver.dart';
-import '../../services/stop_state_resolver.dart';
 import '../../services/stop_runtime_policy.dart';
 import 'driver_tracking_lifecycle.dart';
 
