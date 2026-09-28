@@ -66,6 +66,32 @@ void main() {
       expect(result.distanceToRouteMeters, closeTo(0, 1e-9));
     });
 
+    test('skips a zero-length repeated segment before the real segment', () {
+      final route = <RoutePoint>[
+        const RoutePoint(latitude: 31.0, longitude: 35.0),
+        const RoutePoint(latitude: 31.0, longitude: 35.0),
+        const RoutePoint(latitude: 31.0, longitude: 35.01),
+      ];
+      final realSegmentLength = RoutePlanGeometry.distanceMeters(
+        31.0,
+        35.0,
+        31.0,
+        35.01,
+      );
+
+      final result = RoutePolylineProjection.project(
+        routePoints: route,
+        latitude: 31.0,
+        longitude: 35.005,
+      );
+
+      expect(result, isNotNull);
+      expect(result!.segmentIndex, 1);
+      expect(result.segmentT, closeTo(0.5, 1e-9));
+      expect(result.alongMeters, closeTo(realSegmentLength * 0.5, 0.01));
+      expect(result.distanceToRouteMeters, closeTo(0, 1e-9));
+    });
+
     test('returns endpoint projection with segmentT 0 and 1', () {
       final route = _straightRoute();
 
