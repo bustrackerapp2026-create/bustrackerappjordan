@@ -1054,6 +1054,64 @@ AcceptedEtaObservation
 
 الخطوة التالية: **تصميم Freshness Policy للـETA ضمن Integration Layer فقط**، دون تعديل `EtaEngine` أو إدخال Passenger/UI قبل تثبيت العقد الجديدة.
 
+### 5.2-B — ETA Freshness Policy ✅ DESIGN FROZEN
+
+**الحالة:** DESIGN FROZEN ONLY — لا Production Code في هذه الخطوة.
+
+تم فصل مفهوم ETA freshness عن سياسات freshness الأخرى الموجودة في المشروع. لا تُعاد استخدام `HistoricalSamplingPolicy.maxPositionAge = 45s` تلقائيًا كـETA threshold؛ فهي evidence لسياسة قبول DriverTrip GPS upstream وليست عقد ETA مستقلة. كذلك لا تُعاد استخدام Heartbeat أو LocationService cache أو Public UI freshness كبديل عن ETA policy.
+
+### العقد المثبت
+
+```text
+AcceptedEtaObservation
+        ↓
+EtaFreshnessPolicy
+        ↓
+Fresh / Unavailable
+        ↓
+EtaInput
+        ↓
+EtaEngine
+```
+
+`EtaFreshnessPolicy` مفهوم مستقل وقابل للحقن، ويُلزم المستهلك بتمرير:
+- `observedAt`.
+- `evaluatedAt`.
+- `maxAge`.
+
+ولا توجد قيمة رقمية افتراضية لـ`maxAge` داخل الـPolicy.
+
+### قاعدة الزمن
+
+- `evaluatedAt` هو وقت تقييم صلاحية observation من Integration Layer، وليس وقت وصول callback.
+- لا تستخدم الـPolicy `DateTime.now()` داخليًا.
+- حساب العمر مفاهيميًا: `age = evaluatedAt - observedAt`.
+- `age < 0` → `future` / unavailable.
+- `age >= 0 && age <= maxAge` → `fresh`.
+- `age > maxAge` → `stale`.
+
+### حدود المسؤولية
+
+- Freshness Policy لا تحسب ETA.
+- Freshness Policy لا تنشئ `EtaResult`.
+- Integration Layer هي التي تمنع إنشاء `EtaInput` عندما تكون observation غير صالحة.
+- `EtaEngine` يبقى مستقلًا عن clock وGPS وfreshness.
+- `speedMps` و`acceptedRouteProgress` و`observedAt` تعامل كوحدة observation واحدة؛ لا يوجد فصل مصطنع بين freshness للموقع وfreshness للسرعة.
+
+### اختبارات العقد المخططة قبل التنفيذ
+
+يجب لاحقًا إثبات:
+- `observedAt == evaluatedAt` → `fresh`.
+- العمر قبل `maxAge` → `fresh`.
+- العمر عند `maxAge` → `fresh`.
+- العمر بعد `maxAge` → `stale`.
+- `observedAt > evaluatedAt` → `future` / unavailable.
+- نفس المدخلات → نفس النتيجة.
+
+لا تثبت هذه الخطوة أي رقم لـ`maxAge`، ولا تُدخل 45 ثانية كـimplicit ETA constant.
+
+هذه الخطوة مغلقة كعقد تصميم فقط. الخطوة التنفيذية التالية هي إنشاء `EtaFreshnessPolicy` واختبارها بشكل مستقل، دون تعديل `AcceptedEtaObservation` أو `RouteProgressTracker` أو `DriverTrackingHub` أو `EtaEngine` أو StopRuntime أو Passenger/UI أو Firestore أو `EtaUtils`.
+
 ---
 
 # 9. Phase 6 — BusWatch
@@ -1338,7 +1396,8 @@ Accepted ETA Observation Bridge
         ↓
 5.2-B
 ETA Freshness Policy
-⏳ DESIGN NEXT
+✅ DESIGN FROZEN
+
         ↓
 PHASE 6
 BusWatch (Read Only)
@@ -1466,7 +1525,15 @@ Firestore / Hub Integration
 - لا توجد Freshness Policy رقمية مثبتة بعد.
 - الدليل النهائي: analyze بلا مشاكل، focused **17/17**، full **210/210**.
 
-**الخطوة التالية الموثقة:** تصميم **ETA Freshness Policy** في Integration Layer فقط، قبل أي حساب ETA حي أو Passenger/UI integration.
+**Phase 5.2-B — ETA Freshness Policy مغلقة كعقد تصميم ✅.**
+- `maxAge` إلزامي ومطلوب صراحةً؛ لا توجد قيمة افتراضية أو implicit ETA threshold.
+- `evaluatedAt` يمرره Integration Layer، ولا تستخدم الـPolicy `DateTime.now()`.
+- `age < 0` future/unavailable، `0 <= age <= maxAge` fresh، `age > maxAge` stale.
+- `45s` من `HistoricalSamplingPolicy` لا تُعاد استخدامها تلقائيًا كـETA freshness threshold.
+- Freshness تخص `AcceptedEtaObservation` كاملةً، ولا تفصل صلاحية speed عن route position أو timestamp.
+- لا تعديل Production Code في 5.2-B.
+
+**الخطوة التالية الموثقة:** تنفيذ `EtaFreshnessPolicy` واختبارها بشكل مستقل فقط، ثم تثبيت النتائج قبل أي ربط جديد مع `DriverTrackingHub` أو `EtaEngine`.
 
 **Phase 4 Closure Notes:** الكود والتكامل والحدود المعمارية والتحقق الآلي موثقة كمكتملة. لا تعاد فتح Phase 4 إلا عند ظهور Regression أو دليل جديد يستوجب ذلك.
 
