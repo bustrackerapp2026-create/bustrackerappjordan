@@ -48,7 +48,7 @@ void main() {
   test('projects eligible stops and resolves the nearest forward stop', () {
     final snapshot = StopRuntimeSnapshotResolver.resolve(
       routePoints: route,
-      vehicleAlongMeters: 500,
+      vehicleAlongMeters: 100,
       stops: [
         stop('behind', 35.0020, order: 0),
         stop('near', 35.0050, order: 1),
@@ -67,18 +67,24 @@ void main() {
     expect(snapshot.nextStop!.stop.id, 'near');
   });
 
-  test('classifies the eligible stop state from accepted along-route position', () {
-    final snapshot = StopRuntimeSnapshotResolver.resolve(
-      routePoints: route,
-      vehicleAlongMeters: 700,
-      stops: [stop('approaching', 35.0085)],
-      isEligible: (_) => true,
-      statePolicy: statePolicy,
-    );
+  test(
+    'classifies the eligible stop state from accepted along-route position',
+    () {
+      final snapshot = StopRuntimeSnapshotResolver.resolve(
+        routePoints: route,
+        vehicleAlongMeters: 700,
+        stops: [stop('approaching', 35.0085)],
+        isEligible: (_) => true,
+        statePolicy: statePolicy,
+      );
 
-    expect(snapshot, isNotNull);
-    expect(snapshot!.statesByStopId['approaching'], StopState.approaching);
-  });
+      expect(snapshot, isNotNull);
+      expect(
+        snapshot!.statesByStopId['approaching'],
+        StopState.approaching,
+      );
+    },
+  );
 
   test('excludes ineligible stops from next-stop and state results', () {
     final snapshot = StopRuntimeSnapshotResolver.resolve(
@@ -124,21 +130,24 @@ void main() {
     expect(snapshot, isNull);
   });
 
-  test('uses stop order only as a tie-breaker inherited from NextStopResolver', () {
-    final snapshot = StopRuntimeSnapshotResolver.resolve(
-      routePoints: route,
-      vehicleAlongMeters: 500,
-      stops: [
-        stop('later-order', 35.0050, order: 10),
-        stop('earlier-order', 35.0050, order: 2),
-      ],
-      isEligible: (_) => true,
-      statePolicy: statePolicy,
-    );
+  test(
+    'uses stop order only as a tie-breaker inherited from NextStopResolver',
+    () {
+      final snapshot = StopRuntimeSnapshotResolver.resolve(
+        routePoints: route,
+        vehicleAlongMeters: 100,
+        stops: [
+          stop('later-order', 35.0050, order: 10),
+          stop('earlier-order', 35.0050, order: 2),
+        ],
+        isEligible: (_) => true,
+        statePolicy: statePolicy,
+      );
 
-    expect(snapshot, isNotNull);
-    expect(snapshot!.nextStop!.stop.id, 'earlier-order');
-  });
+      expect(snapshot, isNotNull);
+      expect(snapshot!.nextStop!.stop.id, 'earlier-order');
+    },
+  );
 
   test('does not require Firestore or runtime state to build the snapshot', () {
     final snapshot = StopRuntimeSnapshotResolver.resolve(
