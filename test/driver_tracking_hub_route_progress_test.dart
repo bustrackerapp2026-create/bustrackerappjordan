@@ -16,16 +16,21 @@ void main() {
     point(31.0000, 35.0100),
   ];
 
-  geo.Position gps(double latitude, double longitude) => geo.Position(
+  geo.Position gps(
+    double latitude,
+    double longitude, {
+    DateTime? timestamp,
+    double speed = 0.0,
+  }) => geo.Position(
         latitude: latitude,
         longitude: longitude,
-        timestamp: DateTime.now(),
+        timestamp: timestamp ?? DateTime.now(),
         accuracy: 5.0,
         altitude: 0.0,
         altitudeAccuracy: 1.0,
         heading: 0.0,
         headingAccuracy: 1.0,
-        speed: 0.0,
+        speed: speed,
         speedAccuracy: 1.0,
       );
 
@@ -61,9 +66,25 @@ void main() {
         routePoints: route,
       );
 
-      final start = hub.updateRouteProgress(gps(31.0000, 35.0000));
-      final midpoint = hub.updateRouteProgress(gps(31.0000, 35.0025));
-      final later = hub.updateRouteProgress(gps(31.0000, 35.0040));
+      final start = hub.updateRouteProgress(
+        gps(31.0000, 35.0000, timestamp: DateTime.utc(2026, 1, 1), speed: 40.0),
+      );
+      final midpoint = hub.updateRouteProgress(
+        gps(
+          31.0000,
+          35.0025,
+          timestamp: DateTime.utc(2026, 1, 1, 0, 0, 10),
+          speed: 40.0,
+        ),
+      );
+      final later = hub.updateRouteProgress(
+        gps(
+          31.0000,
+          35.0040,
+          timestamp: DateTime.utc(2026, 1, 1, 0, 0, 15),
+          speed: 40.0,
+        ),
+      );
 
       expect(start, isNotNull);
       expect(midpoint, isNotNull);
@@ -138,7 +159,9 @@ void main() {
         direction: 'go',
         routePoints: route,
       );
-      hub.updateRouteProgress(gps(31.0000, 35.0050));
+      hub.updateRouteProgress(
+        gps(31.0000, 35.0050, timestamp: DateTime.utc(2026, 1, 1), speed: 10.0),
+      );
 
       final reboundRoute = List<RoutePoint>.from(route);
       hub.setActiveVehicleTrip(
@@ -151,8 +174,14 @@ void main() {
       expect(hub.activeRouteProgress, isNotNull);
       expect(hub.activeRouteProgress!.progress, closeTo(0.5, 0.001));
 
-      final later =
-          hub.updateRouteProgress(gps(31.0000, 35.0055));
+      final later = hub.updateRouteProgress(
+        gps(
+          31.0000,
+          35.0055,
+          timestamp: DateTime.utc(2026, 1, 1, 0, 0, 5),
+          speed: 10.0,
+        ),
+      );
 
       expect(later, isNotNull);
       expect(later!.progress, greaterThan(0.5));
