@@ -205,6 +205,42 @@ class DriverTrackingHub {
         List<PlannedRouteStopModel>.unmodifiable(stops);
   }
 
+  /// Refreshes the derived Stop runtime snapshot from the latest
+  /// accepted RouteProgress and already loaded Stops.
+  ///
+  /// State and Eligibility policies are supplied explicitly by the caller.
+  /// No Firestore access occurs here.
+  StopRuntimeSnapshot? refreshActiveStopRuntimeSnapshot({
+    required PlannedRouteStopEligibility isEligible,
+    required StopStatePolicy statePolicy,
+  }) {
+    final routePoints = _activeVehicleTripRoutePoints;
+    final stops = _activeVehicleTripStops;
+    final vehicleAlongMeters =
+        _routeProgressTracker.lastAccepted?.alongMeters;
+
+    if (routePoints == null || routePoints.length < 2 || stops == null) {
+      _activeStopRuntimeSnapshot = null;
+      return null;
+    }
+
+    if (vehicleAlongMeters == null || !vehicleAlongMeters.isFinite) {
+      _activeStopRuntimeSnapshot = null;
+      return null;
+    }
+
+    final snapshot = StopRuntimeSnapshotResolver.resolve(
+      routePoints: routePoints,
+      vehicleAlongMeters: vehicleAlongMeters,
+      stops: stops,
+      isEligible: isEligible,
+      statePolicy: statePolicy,
+    );
+
+    _activeStopRuntimeSnapshot = snapshot;
+    return snapshot;
+  }
+
   List<RoutePoint>? _copyRoutePoints(List<RoutePoint>? routePoints) {
     if (routePoints == null || routePoints.isEmpty) return null;
     return List<RoutePoint>.unmodifiable(routePoints);
