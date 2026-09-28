@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 
 import 'package:jordan_bus_tracker_new/driver/services/driver_tracking_hub.dart';
-import 'package:jordan_bus_tracker_new/services/accepted_eta_observation.dart';
 import 'package:jordan_bus_tracker_new/services/stop_state_resolver.dart';
 import 'package:jordan_bus_tracker_new/services/stop_runtime_policy.dart';
 import 'package:jordan_bus_tracker_new/models/planned_route_stop_model.dart';
