@@ -2,11 +2,13 @@
 
 > المرجع الرسمي لخطة تطوير مشروع Jordan Smart Transit باتجاه منظومة Smart Bus.
 >
-> **الحالة الحالية:** Phase 0 مكتملة.
+> **الحالة التنفيذية الموثقة:** Phase 0 وPhase 1 وPhase 2 وPhase 3 — التنفيذ البرمجي مغلقة، مع تأجيل الاختبار الميداني النهائي لـPhase 3 لعدم توفر إمكانية تحريك الحافلة.
 >
-> **المرحلة التالية:** Phase 1 — VehicleTrip + StartTrip.
+> **Phase 4.1-A:** استخراج `RoutePolylineProjection` المشترك مغلق بعد نجاح `flutter analyze` و`flutter test` بنتيجة **126/126**.
 >
-> **قاعدة التنفيذ:** فحص الموجود → تغيير محدود → اختبار نجاح وفشل → دليل واضح → Commit → تثبيت → الانتقال للمرحلة التالية.
+> **الخطوة التالية:** Phase 4.1-B — تصميم وتنفيذ `Stop-to-Route Projection` فقط بعد تثبيت بنية المحطات الثابتة المستقبلية، دون افتراض وجود Stops حاليًا.
+>
+> **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
 ---
 
@@ -322,33 +324,76 @@ RouteProgress
 
 # 7. Phase 4 — NextStop / Pickup
 
-## الهدف
+## الحالة الحالية
 
-تحديد المحطة أو نقطة الالتقاط التالية.
+**قيد التنفيذ — تم إغلاق 4.1-A ✅، ولم تبدأ خوارزمية Stop-to-Route بعد.**
+
+### 4.1-A — RoutePolylineProjection ✅
+
+تم استخراج primitive هندسي مشترك من إسقاط RouteProgress الحالي:
+
+```text
+RoutePolylineProjection
+    ↓
+alongMeters
+distanceToRouteMeters
+segmentIndex
+segmentT
+```
+
+الـprimitive لا يعرف GPS أو Stop أو VehicleTrip أو Firestore.
+
+تم الحفاظ على سلوك `RouteProgressCalculator` الحالي دون تغيير في:
+- `100m` minimum projection distance.
+- accuracy handling.
+- `250m` hard cap.
+- nearest projection selection.
+- `alongMeters`, `segmentT`, `segmentIndex`, `distanceToRouteMeters`.
+- حساب `progress`.
+
+التحقق على جهاز التطوير:
+- `flutter analyze` → **No issues found!**
+- الاختبار المخصص → **7/7**
+- `flutter test` الكامل → **126/126**
+- لا تغييرات محلية بعد التثبيت.
+
+### 4.1-B — Stop-to-Route Projection ⏳
+
+المطلوب لاحقًا:
+
+```text
+Optional Fixed Route Stops
++
+PlannedRoute.points
+        ↓
+RoutePolylineProjection
+        ↓
+stopAlongMeters
+```
+
+**مهم:** لا توجد حاليًا Stops ثابتة معرفة لكل المسارات التشغيلية. وجود Stops مستقبلًا هو قدرة اختيارية لبعض المسارات، وليس شرطًا لتشغيل المسارات الحالية.
+
+البنية المستهدفة للمحطات هي قرار تصميم مستقبلي، وليست بنية Firestore موجودة حاليًا.
+
+لا يتم استخدام `routeCatalog` كمصدر للمحطات، ولا يتم تحويل `PickupPointModel` أو `NearestStopFinder` إلى نظام محطات المسار.
+
+في حالة وجود أكثر من projection محتملة لنفس المحطة:
+- ننتج projection هندسية وفق الـprimitive.
+- لا نضيف ambiguity resolution معقدًا قبل توفر Stops حقيقية وبيانات فعلية.
+
+### الهدف النهائي للمرحلة
 
 ```text
 Current Position
 +
 RouteProgress
 +
-Stops
+Optional Fixed Route Stops
       ↓
 NextStop
 ```
 
-يجب أن نعرف:
-
-- `nextStopId`.
-- المسافة إلى المحطة.
-- approaching / at stop / passed.
-
-ويجب التعامل مع:
-
-- تجاوز المحطة.
-- GPS غير دقيق.
-- عدم وجود محطة لاحقة.
-
----
+ويجب أن يدعم النظام أيضًا المسار الذي لا توجد له محطة ثابتة لاحقة.
 
 # 8. Phase 5 — ETA Engine
 
@@ -649,41 +694,30 @@ ML / Prediction
 
 # 19. نقطة البداية الحالية
 
-**لا نبدأ الآن بـ RouteProgress أو ETA أو AI.**
+**Phase 4.1-A مغلقة ✅.**
 
-نبدأ فقط بـ:
-
-> **Phase 1 — VehicleTrip + StartTrip**
-
-وأول مهمة تنفيذية قبل تعديل الكود:
-
-### Phase 1 Pre-flight Decisions
+الحالة التنفيذية الحالية:
 
 ```text
-1. direction source: يتم تحديده من تدفق UI الحالي بعد فحص الكود.
-2. routeId source: PlannedRoute.id.
-3. busNumber source: يُحسم من البنية الحالية قبل التنفيذ.
-4. offline behavior at startTrip: رفض واضح قبل الإنشاء أو فشل آمن دون تفعيل Local Trip.
+Phase 4.1-A
+RoutePolylineProjection
+✅
+        ↓
+Phase 4.1-B
+Stop-to-Route Projection
+⏳ NEXT
+        ↓
+Phase 4.2
+NextStop Resolver
+        ↓
+Phase 4.3
+Stop State
+        ↓
+Phase 4.4
+Firestore / Hub Integration
 ```
 
-بعد حسم هذه النقاط:
+ولا يتم الانتقال إلى 4.1-B قبل تثبيت تصميم المحطات الثابتة الاختيارية وتحديد مصدر بياناتها المستقبلي.
 
-```text
-فحص الكود الحالي
-→ Patch صغير
-→ flutter analyze
-→ flutter run
-→ اختبار Phase 1
-→ Evidence
-→ Commit
-```
+**المسارات الحالية لا تتطلب Stops ثابتة حتى تستمر في العمل وفق نموذج التشغيل الحالي القائم على صعود الركاب عند طلب التوقف.**
 
----
-
-# 20. ملاحظات مرجعية للمستقبل
-
-- Route Drawing تم تثبيته قبل اعتماد هذه الخطة، ولا يُعاد فتحه دون Regression.
-- `VehicleTrip` و`VehicleTripService` موجودان في المشروع، والخدمة تتضمن آلية لمنع الرحلات النشطة المتعارضة للسائق نفسه.
-- `VehicleTrip` مصمم ليحمل `currentLocation`, `speed`, `heading`, `routeProgress`, و`lastLocationAt`.
-- Historical Capture مقصود أن يبدأ مبكرًا في Phase 2، بينما التحليل والاستخدام المتقدم للبيانات يأتي لاحقًا.
-- الهدف النهائي هو Smart Bus مبني على بيانات تشغيل حقيقية.
