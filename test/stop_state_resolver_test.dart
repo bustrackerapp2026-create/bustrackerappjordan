@@ -3,7 +3,7 @@ import 'package:jordan_bus_tracker_new/services/stop_state_resolver.dart';
 
 void main() {
   const totalRouteMeters = 10000.0;
-  const policy = StopStatePolicy(
+  final policy = StopStatePolicy(
     atStopRadius: 20,
     approachingDistance: 200,
   );
@@ -31,7 +31,7 @@ void main() {
       expect(state, StopState.approaching);
     });
 
-    test('classifies approaching above atStopRadius', () {
+    test('classifies approaching just above atStopRadius', () {
       final state = StopStateResolver.resolve(
         vehicleAlongMeters: 1000,
         stopAlongMeters: 1020.001,
@@ -64,7 +64,7 @@ void main() {
       expect(state, StopState.atStop);
     });
 
-    test('classifies passed just beyond the negative radius boundary', () {
+    test('classifies passed just beyond negative radius', () {
       final state = StopStateResolver.resolve(
         vehicleAlongMeters: 1020.001,
         stopAlongMeters: 1000,
@@ -75,7 +75,7 @@ void main() {
       expect(state, StopState.passed);
     });
 
-    test('classifies the same alongMeters as atStop', () {
+    test('classifies same along position as atStop', () {
       final state = StopStateResolver.resolve(
         vehicleAlongMeters: 1000,
         stopAlongMeters: 1000,
@@ -86,95 +86,97 @@ void main() {
       expect(state, StopState.atStop);
     });
 
-    test('returns null for invalid vehicleAlongMeters', () {
-      expect(
-        StopStateResolver.resolve(
-          vehicleAlongMeters: double.nan,
-          stopAlongMeters: 1000,
-          totalRouteMeters: totalRouteMeters,
-          policy: policy,
-        ),
-        isNull,
+    test('returns null for NaN vehicle position', () {
+      final state = StopStateResolver.resolve(
+        vehicleAlongMeters: double.nan,
+        stopAlongMeters: 1000,
+        totalRouteMeters: totalRouteMeters,
+        policy: policy,
       );
 
-      expect(
-        StopStateResolver.resolve(
-          vehicleAlongMeters: -1,
-          stopAlongMeters: 1000,
-          totalRouteMeters: totalRouteMeters,
-          policy: policy,
-        ),
-        isNull,
-      );
-
-      expect(
-        StopStateResolver.resolve(
-          vehicleAlongMeters: 10001,
-          stopAlongMeters: 1000,
-          totalRouteMeters: totalRouteMeters,
-          policy: policy,
-        ),
-        isNull,
-      );
+      expect(state, isNull);
     });
 
-    test('returns null for invalid stopAlongMeters', () {
-      expect(
-        StopStateResolver.resolve(
-          vehicleAlongMeters: 1000,
-          stopAlongMeters: double.infinity,
-          totalRouteMeters: totalRouteMeters,
-          policy: policy,
-        ),
-        isNull,
+    test('returns null for negative vehicle position', () {
+      final state = StopStateResolver.resolve(
+        vehicleAlongMeters: -0.001,
+        stopAlongMeters: 1000,
+        totalRouteMeters: totalRouteMeters,
+        policy: policy,
       );
 
-      expect(
-        StopStateResolver.resolve(
-          vehicleAlongMeters: 1000,
-          stopAlongMeters: -1,
-          totalRouteMeters: totalRouteMeters,
-          policy: policy,
-        ),
-        isNull,
-      );
-
-      expect(
-        StopStateResolver.resolve(
-          vehicleAlongMeters: 1000,
-          stopAlongMeters: 10001,
-          totalRouteMeters: totalRouteMeters,
-          policy: policy,
-        ),
-        isNull,
-      );
+      expect(state, isNull);
     });
 
-    test('returns null for an invalid route axis', () {
-      expect(
-        StopStateResolver.resolve(
-          vehicleAlongMeters: 1000,
-          stopAlongMeters: 1200,
-          totalRouteMeters: 0,
-          policy: policy,
-        ),
-        isNull,
+    test('returns null for vehicle position above route axis', () {
+      final state = StopStateResolver.resolve(
+        vehicleAlongMeters: totalRouteMeters + 0.001,
+        stopAlongMeters: 1000,
+        totalRouteMeters: totalRouteMeters,
+        policy: policy,
       );
 
-      expect(
-        StopStateResolver.resolve(
-          vehicleAlongMeters: 1000,
-          stopAlongMeters: 1200,
-          totalRouteMeters: double.nan,
-          policy: policy,
-        ),
-        isNull,
+      expect(state, isNull);
+    });
+
+    test('returns null for infinite stop position', () {
+      final state = StopStateResolver.resolve(
+        vehicleAlongMeters: 1000,
+        stopAlongMeters: double.infinity,
+        totalRouteMeters: totalRouteMeters,
+        policy: policy,
       );
+
+      expect(state, isNull);
+    });
+
+    test('returns null for negative stop position', () {
+      final state = StopStateResolver.resolve(
+        vehicleAlongMeters: 1000,
+        stopAlongMeters: -0.001,
+        totalRouteMeters: totalRouteMeters,
+        policy: policy,
+      );
+
+      expect(state, isNull);
+    });
+
+    test('returns null for stop position above route axis', () {
+      final state = StopStateResolver.resolve(
+        vehicleAlongMeters: 1000,
+        stopAlongMeters: totalRouteMeters + 0.001,
+        totalRouteMeters: totalRouteMeters,
+        policy: policy,
+      );
+
+      expect(state, isNull);
+    });
+
+    test('returns null for nonpositive route length', () {
+      final state = StopStateResolver.resolve(
+        vehicleAlongMeters: 100,
+        stopAlongMeters: 200,
+        totalRouteMeters: 0,
+        policy: policy,
+      );
+
+      expect(state, isNull);
+    });
+
+    test('returns null for nonfinite route length', () {
+      final state = StopStateResolver.resolve(
+        vehicleAlongMeters: 100,
+        stopAlongMeters: 200,
+        totalRouteMeters: double.nan,
+        policy: policy,
+      );
+
+      expect(state, isNull);
     });
   });
 
   group('StopStatePolicy', () {
-    test('rejects a non-positive atStopRadius', () {
+    test('rejects zero atStopRadius', () {
       expect(
         () => StopStatePolicy(
           atStopRadius: 0,
@@ -182,7 +184,9 @@ void main() {
         ),
         throwsArgumentError,
       );
+    });
 
+    test('rejects NaN atStopRadius', () {
       expect(
         () => StopStatePolicy(
           atStopRadius: double.nan,
@@ -192,7 +196,7 @@ void main() {
       );
     });
 
-    test('rejects approachingDistance that is not greater', () {
+    test('rejects approachingDistance equal to atStopRadius', () {
       expect(
         () => StopStatePolicy(
           atStopRadius: 20,
@@ -200,7 +204,9 @@ void main() {
         ),
         throwsArgumentError,
       );
+    });
 
+    test('rejects approachingDistance below atStopRadius', () {
       expect(
         () => StopStatePolicy(
           atStopRadius: 20,
@@ -208,7 +214,9 @@ void main() {
         ),
         throwsArgumentError,
       );
+    });
 
+    test('rejects infinite approachingDistance', () {
       expect(
         () => StopStatePolicy(
           atStopRadius: 20,
