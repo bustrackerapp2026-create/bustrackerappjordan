@@ -16,6 +16,7 @@ import '../../driver/services/driver_tracking_hub.dart';
 import '../../models/route_point.dart';
 import '../../models/planned_route.dart';
 import '../../models/driver_line_assignment.dart';
+import '../../services/planned_route_stop_service.dart';
 import '../../services/route_start_resolver.dart';
 
 mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
@@ -30,6 +31,8 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       DriverLineAssignmentService();
   final VehicleOperationalSessionService _vehicleSession =
       VehicleOperationalSessionService();
+  final PlannedRouteStopService _plannedRouteStopService =
+      PlannedRouteStopService();
   final DriverTrackingHub _trackingHub = DriverTrackingHub.instance;
 
   static const double _routeStartMatchMaxMeters = 750.0;
@@ -121,6 +124,10 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         routePoints: route.points,
         savedRouteProgress: activeTrip.routeProgress,
       );
+      await _loadActiveVehicleTripStops(
+        tripId: activeTrip.id,
+        routeId: activeTrip.routeId,
+      );
 
       await showRouteOnMap(route.points);
     } catch (e, st) {
@@ -131,6 +138,33 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       debugPrint(st.toString());
     }
   }
+  /// Loads fixed Stops once after an operational trip is bound/restored.
+  ///
+  /// A Stops read failure must not interrupt VehicleTrip/GPS tracking.
+  Future<void> _loadActiveVehicleTripStops({
+    required String tripId,
+    required String routeId,
+  }) async {
+    final normalizedTripId = tripId.trim();
+    final normalizedRouteId = routeId.trim();
+    if (normalizedTripId.isEmpty || normalizedRouteId.isEmpty) return;
+
+    try {
+      final stops = await _plannedRouteStopService.fetchStops(normalizedRouteId);
+      _trackingHub.setActiveVehicleTripStops(
+        tripId: normalizedTripId,
+        routeId: normalizedRouteId,
+        stops: stops,
+      );
+    } catch (e, st) {
+      MapUtils.log(
+        '⚠️ تعذر تحميل محطات المسار التشغيلي: $normalizedRouteId — $e',
+        tag: 'TripManager',
+      );
+      debugPrint(st.toString());
+    }
+  }
+
   Future<PlannedRoute?> _getApprovedRouteForAssignment(
     String routeId,
     String lineId,
@@ -450,6 +484,10 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         routeId: vehicleTrip.routeId,
         direction: vehicleTrip.direction,
         routePoints: route.points,
+      );
+      await _loadActiveVehicleTripStops(
+        tripId: vehicleTrip.id,
+        routeId: vehicleTrip.routeId,
       );
 
       await showRouteOnMap(route.points);

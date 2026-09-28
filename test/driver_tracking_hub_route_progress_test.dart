@@ -1,7 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 
 import 'package:jordan_bus_tracker_new/driver/services/driver_tracking_hub.dart';
+import 'package:jordan_bus_tracker_new/models/planned_route_stop_model.dart';
 import 'package:jordan_bus_tracker_new/models/route_point.dart';
 
 void main() {
@@ -33,6 +35,16 @@ void main() {
         speed: speed,
         speedAccuracy: 1.0,
       );
+
+
+  PlannedRouteStopModel stop(String id, double longitude) {
+    return PlannedRouteStopModel(
+      id: id,
+      name: id,
+      location: GeoPoint(31.0000, longitude),
+      order: 0,
+    );
+  }
 
   setUp(() {
     hub.clearActiveVehicleTrip();
@@ -230,5 +242,81 @@ void main() {
         isNull,
       );
     });
+
+    test('stores a loaded fixed-stop snapshot for the active trip', () {
+      hub.setActiveVehicleTrip(
+        'trip-stops',
+        routeId: 'route-a',
+        direction: 'go',
+        routePoints: route,
+      );
+
+      final stops = [
+        stop('stop-1', 35.0030),
+        stop('stop-2', 35.0070),
+      ];
+
+      hub.setActiveVehicleTripStops(
+        tripId: 'trip-stops',
+        routeId: 'route-a',
+        stops: stops,
+      );
+
+      expect(hub.activeVehicleTripStops, isNotNull);
+      expect(
+        hub.activeVehicleTripStops!.map((item) => item.id),
+        ['stop-1', 'stop-2'],
+      );
+    });
+
+    test('ignores a stop snapshot that no longer matches the active trip binding', () {
+      hub.setActiveVehicleTrip(
+        'trip-1',
+        routeId: 'route-a',
+        direction: 'go',
+        routePoints: route,
+      );
+
+      hub.setActiveVehicleTripStops(
+        tripId: 'trip-other',
+        routeId: 'route-a',
+        stops: [stop('stale', 35.0030)],
+      );
+
+      expect(hub.activeVehicleTripStops, isNull);
+    });
+
+    test('clears fixed-stop data when the active trip binding changes or clears', () {
+      hub.setActiveVehicleTrip(
+        'trip-1',
+        routeId: 'route-a',
+        direction: 'go',
+        routePoints: route,
+      );
+      hub.setActiveVehicleTripStops(
+        tripId: 'trip-1',
+        routeId: 'route-a',
+        stops: [stop('stop-1', 35.0030)],
+      );
+
+      hub.setActiveVehicleTrip(
+        'trip-1',
+        routeId: 'route-b',
+        direction: 'go',
+        routePoints: route,
+      );
+      expect(hub.activeVehicleTripStops, isNull);
+
+      hub.setActiveVehicleTripStops(
+        tripId: 'trip-1',
+        routeId: 'route-b',
+        stops: [stop('stop-2', 35.0070)],
+      );
+      expect(hub.activeVehicleTripStops, isNotNull);
+
+      hub.clearActiveVehicleTrip();
+      expect(hub.activeVehicleTripStops, isNull);
+    });
+
   });
 }
