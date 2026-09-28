@@ -1,6 +1,5 @@
-import 'next_stop_resolver.dart';
-import 'stop_state_resolver.dart';
-import 'stop_runtime_snapshot_resolver.dart';
+import 'package:jordan_bus_tracker_new/services/next_stop_resolver.dart';
+import 'package:jordan_bus_tracker_new/services/stop_state_resolver.dart';
 
 /// Production policy for deriving runtime information for fixed route stops.
 ///
