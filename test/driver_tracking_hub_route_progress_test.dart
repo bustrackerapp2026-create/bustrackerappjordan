@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 
 import 'package:jordan_bus_tracker_new/driver/services/driver_tracking_hub.dart';
+import 'package:jordan_bus_tracker_new/services/stop_state_resolver.dart';
 import 'package:jordan_bus_tracker_new/models/planned_route_stop_model.dart';
 import 'package:jordan_bus_tracker_new/models/route_point.dart';
 
@@ -223,6 +224,153 @@ void main() {
 
       expect(newRouteStart, isNotNull);
       expect(newRouteStart!.progress, closeTo(0.0, 0.0005));
+    });
+
+
+    test('derives a stop runtime snapshot from the accepted RouteProgress', () {
+      hub.setActiveVehicleTrip(
+        'trip-runtime',
+        routeId: 'route-a',
+        direction: 'go',
+        routePoints: route,
+      );
+      hub.setActiveVehicleTripStops(
+        tripId: 'trip-runtime',
+        routeId: 'route-a',
+        stops: [
+          stop('stop-1', 35.0040),
+          stop('stop-2', 35.0080),
+        ],
+      );
+
+      final progress = hub.updateRouteProgress(
+        gps(
+          31.0000,
+          35.0025,
+          timestamp: DateTime.utc(2026, 9, 28, 20, 0, 0),
+          speed: 10.0,
+        ),
+      );
+      expect(progress, isNotNull);
+
+      final snapshot = hub.refreshActiveStopRuntimeSnapshot(
+        isEligible: (_) => true,
+        statePolicy: StopStatePolicy(
+          atStopRadius: 20,
+          approachingDistance: 200,
+        ),
+      );
+
+      expect(snapshot, isNotNull);
+      expect(hub.activeStopRuntimeSnapshot, same(snapshot));
+      expect(snapshot!.nextStop!.stop.id, 'stop-1');
+      expect(snapshot.statesByStopId['stop-1'], StopState.approaching);
+    });
+
+    test('refresh uses explicit eligibility and does not invent policy values', () {
+      hub.setActiveVehicleTrip(
+        'trip-runtime-policy',
+        routeId: 'route-a',
+        direction: 'go',
+        routePoints: route,
+      );
+      hub.setActiveVehicleTripStops(
+        tripId: 'trip-runtime-policy',
+        routeId: 'route-a',
+        stops: [
+          stop('eligible', 35.0040),
+          stop('ineligible', 35.0060),
+        ],
+      );
+      final progress = hub.updateRouteProgress(
+        gps(
+          31.0000,
+          35.0025,
+          timestamp: DateTime.utc(2026, 9, 28, 20, 0, 0),
+          speed: 10.0,
+        ),
+      );
+      expect(progress, isNotNull);
+
+      final snapshot = hub.refreshActiveStopRuntimeSnapshot(
+        isEligible: (candidate) => candidate.stop.id == 'eligible',
+        statePolicy: StopStatePolicy(
+          atStopRadius: 20,
+          approachingDistance: 200,
+        ),
+      );
+
+      expect(snapshot, isNotNull);
+      expect(
+        snapshot!.eligibleProjectedStops.map((candidate) => candidate.stop.id),
+        ['eligible'],
+      );
+      expect(snapshot.nextStop!.stop.id, 'eligible');
+      expect(snapshot.statesByStopId.containsKey('ineligible'), isFalse);
+    });
+
+    test('returns null when no accepted RouteProgress exists', () {
+      hub.setActiveVehicleTrip(
+        'trip-runtime-no-progress',
+        routeId: 'route-a',
+        direction: 'go',
+        routePoints: route,
+      );
+      hub.setActiveVehicleTripStops(
+        tripId: 'trip-runtime-no-progress',
+        routeId: 'route-a',
+        stops: [stop('stop', 35.0040)],
+      );
+
+      final snapshot = hub.refreshActiveStopRuntimeSnapshot(
+        isEligible: (_) => true,
+        statePolicy: StopStatePolicy(
+          atStopRadius: 20,
+          approachingDistance: 200,
+        ),
+      );
+
+      expect(snapshot, isNull);
+      expect(hub.activeStopRuntimeSnapshot, isNull);
+    });
+
+    test('clears the derived snapshot when the route binding changes', () {
+      hub.setActiveVehicleTrip(
+        'trip-runtime-clear',
+        routeId: 'route-a',
+        direction: 'go',
+        routePoints: route,
+      );
+      hub.setActiveVehicleTripStops(
+        tripId: 'trip-runtime-clear',
+        routeId: 'route-a',
+        stops: [stop('stop', 35.0040)],
+      );
+      hub.updateRouteProgress(
+        gps(
+          31.0000,
+          35.0025,
+          timestamp: DateTime.utc(2026, 9, 28, 20, 0, 0),
+          speed: 10.0,
+        ),
+      );
+      hub.refreshActiveStopRuntimeSnapshot(
+        isEligible: (_) => true,
+        statePolicy: StopStatePolicy(
+          atStopRadius: 20,
+          approachingDistance: 200,
+        ),
+      );
+      expect(hub.activeStopRuntimeSnapshot, isNotNull);
+
+      hub.setActiveVehicleTrip(
+        'trip-runtime-clear',
+        routeId: 'route-b',
+        direction: 'go',
+        routePoints: route,
+      );
+
+      expect(hub.activeStopRuntimeSnapshot, isNull);
     });
 
     test('clearActiveVehicleTrip clears route geometry and progress state', () {
