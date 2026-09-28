@@ -27,6 +27,8 @@
 **Phase 5.2-D — ETA Runtime Invocation:** مكتملة ✅ بعد تنفيذ عقد `EtaResult?` والتحقق المحلي، مع بقاء Passenger/UI وDriverTrackingHub خارج النطاق.
 
 **Phase 5.2-E — ETA Result Consumption:** مثبتة كتصميم ✅ دون Production Code أو UI/Hub integration.
+
+**Phase 6-A — BusWatch Operational Read Model:** مثبتة كتصميم ✅ دون Reader implementation أو UI integration.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -1396,25 +1398,130 @@ Consumer
 
 ## الهدف
 
-تمكين الراكب من مراقبة رحلة فعلية.
+تمكين الراكب من مراقبة رحلة فعلية عبر **Operational Read Model للقراءة فقط**، مع إبقاء ETA وStop Runtime وPresentation كطبقات مستقلة.
 
 ```text
-Passenger
-   ↓
-VehicleTrip
-   ↓
-Live Location
-   ↓
-Route
-   ↓
-ETA
+Passenger Trip
+      ↓
+driverId / passenger context
+      ↓
+Active VehicleTrip
+      +
+Public Live Location
+      +
+Approved PlannedRoute
+      ↓
+BusWatch Operational Snapshot
+      ↓
+BusWatch Consumer لاحقًا
 ```
 
-**Read-only بالكامل.**
+**Read-only بالكامل.** الراكب لا يعدّل `VehicleTrip` أو `PlannedRoute` أو `driverPublic`.
 
-الراكب لا يعدّل الرحلة التشغيلية.
+### 6-A — BusWatch Operational Read Model ✅ DESIGN FROZEN
 
----
+**الحالة:** DESIGN FROZEN ONLY — لا Production Code أو Reader implementation في هذه الخطوة.
+
+تم تثبيت عقد قراءة موحدة **immutable snapshot** لرحلة Passenger محددة، دون إنشاء state طويل العمر داخل Service ودون إدخال ETA/NextStop/Stop Runtime في الـRead Model.
+
+### اختيار Passenger Context
+
+- الـRead Model يعمل على **Passenger Trip محددة**، وليس على `passengerId` وحده، لتجنب اختيار رحلة عشوائية عند وجود أكثر من رحلة مفتوحة.
+- `passengerTripId` هو معرف السياق الذي اختاره المستهلك الأعلى؛ لا يقرر الـRead Model من تلقاء نفسه أي رحلة هو الأنسب.
+- `TripModel.driverId` هو الرابط الحالي بين رحلة الراكب والسائق.
+- لا تتم إضافة `vehicleTripId` إلى `TripModel` في 6-A.
+
+### تحديد Operational VehicleTrip
+
+- بعد وجود Passenger Trip صالحة، يتم البحث عن `VehicleTrip` نشطة لنفس `driverId`.
+- مصدر العملية الحالي الموجود هو `VehicleTripService.findActiveTripForDriver(driverId)`.
+- العقد يفترض invariant وجود VehicleTrip تشغيلية نشطة واحدة كحد أقصى للسائق؛ لا يتم اختيار واحدة من عدة رحلات على أساس ترتيب عشوائي.
+- غياب VehicleTrip نشطة لا يعني أن Passenger Trip أُلغيت أو انتهت؛ يعني فقط أنه لا توجد Operational Trip متاحة للمراقبة في هذه اللحظة.
+- حالة Passenger Trip وحالة VehicleTrip تبقيان حقلي حالة مستقلين؛ لا توجد مساواة ضمنية بينهما.
+
+### مصادر الحقول
+
+| الحقل | المصدر السلطوي | ملاحظة |
+|---|---|---|
+| `passengerTripId` | Passenger Trip context | لا يختاره الـRead Model |
+| `passengerTripStatus` | `TripModel.status` | مستقل عن VehicleTrip |
+| `driverId` | `TripModel.driverId` مع مطابقة `VehicleTrip.driverId` | الرابط بين السياقين |
+| `vehicleTripId` | `VehicleTrip.id` | معرف الرحلة التشغيلية |
+| `vehicleTripStatus` | `VehicleTrip.status` | يجب أن تكون `active` للنتيجة التشغيلية |
+| `busNumber` | `VehicleTrip.busNumber` | هوية المركبة التشغيلية |
+| `routeId` | `VehicleTrip.routeId` | المعرف السلطوي للمسار |
+| `direction` | `VehicleTrip.direction` | القيمة التشغيلية outbound/return |
+| `routeLineName` | `PlannedRoute.lineName` | بعد نجاح route lookup بالـ`routeId` |
+| `routeApproved` | `PlannedRoute.status` | يجب أن تكون `approved` |
+| `routeGeometryValid` | `PlannedRoute.points.length >= 2` | صلاحية مرجعية وليست Mapbox state |
+| `currentLocation` | `driverPublic` | المصدر العام للـlive position |
+| `speed` | `driverPublic` | قيمة العرض/الحالة العامة الحالية |
+| `heading` | `driverPublic` | قيمة العرض/الحالة العامة الحالية |
+| `lastLocationAt` | `driverPublic.locationUpdatedAt` | وقت الموقع العام، وليس `Eta observedAt` |
+| `routeProgress` | `VehicleTrip.routeProgress` | operational field فقط، وليس `AcceptedEtaObservation` |
+
+لا يتم في 6-A افتراض أن `VehicleTrip.currentLocation + speed + lastLocationAt + routeProgress` تساوي `AcceptedEtaObservation`.
+
+### Route Reference
+
+- يتم حل المسار من `plannedRoutes/{routeId}` باستخدام `VehicleTrip.routeId` نفسه.
+- لا يستخدم 6-A `lineName + direction` كبديل عن `routeId` عندما نحتاج المسار المقابل للرحلة التشغيلية.
+- لا يستخدم `routeCatalog` كمصدر للهندسة التشغيلية.
+- حالة المسار المطلوبة لقراءة تشغيلية مكتملة: `status == approved` مع Geometry صالحة (`points.length >= 2`).
+- عدم توفر helper حالي للقراءة exact-by-id داخل `RoutePlanService` هو **ملاحظة تنفيذية** للـReader المستقبلي، وليس سببًا لإضافة lookup بديل الآن.
+
+### Live Location Boundary
+
+- `driverPublic` هو المصدر العام لموقع السائق الذي سيستهلكه BusWatch.
+- غياب وثيقة عامة، أو غياب إحداثيات صالحة، يعني `No Live Location`.
+- لا يوجد fallback تلقائي من `VehicleTrip.currentLocation` إلى `driverPublic` داخل العقد؛ لا نخلط مصدرين عام/تشغيلي في حقل واحد.
+- freshness الرقمية لموقع BusWatch ليست جزءًا من 6-A. `lastLocationAt` يمرر كما هو، وأي Freshness Policy للعرض أو المراقبة يجب أن تكون عقدًا مستقلاً لاحقًا.
+
+### Stops Boundary
+
+- `Stops` ليست جزءًا من `BusWatchOperationalSnapshot` في 6-A.
+- `No Stops` لا يُسقط الـOperational snapshot الأساسي إذا كانت VehicleTrip وLive Location وApproved Route متوفرة.
+- Fixed Stops و`StopRuntimeSnapshot` تبقيان ضمن عقود Phase 4، ويُصمم استهلاكهما لاحقًا دون دمجهما في هذا Read Model.
+- لا يتم إدخال `NextStop` أو Stop State أو ETA في هذه المرحلة.
+
+### نتيجة القراءة وحالات الغياب
+
+تم اختيار **Result Object immutable** بدل `nullable snapshot` فقط، حتى تبقى أسباب الغياب صريحة:
+
+```text
+BusWatchOperationalReadResult
+   ├── available + BusWatchOperationalSnapshot
+   ├── noPassengerContext
+   ├── noActiveVehicleTrip
+   ├── noLiveLocation
+   └── noApprovedRoute
+```
+
+القواعد:
+- `available` يتطلب Passenger Context صالحًا + Active VehicleTrip + Live Location عامة صالحة + Approved PlannedRoute صالحة.
+- `noPassengerContext` يعني عدم وجود Passenger Trip محددة/صالحة ضمن سياق BusWatch.
+- `noActiveVehicleTrip` يعني وجود Passenger Context مع عدم وجود VehicleTrip تشغيلية نشطة مقابلة.
+- `noLiveLocation` يعني أن VehicleTrip موجودة لكن `driverPublic` لا يوفر موقعًا عامًا صالحًا.
+- `noApprovedRoute` يعني أن VehicleTrip تحمل `routeId` لكن المسار المرجعي غير موجود، غير معتمد، أو Geometry غير صالحة.
+- `No Stops` ليست حالة فشل أعلى للـOperational Read Model؛ هي غياب تابع يُعالج في Stop Runtime لاحقًا.
+
+### حدود 6-A
+
+ممنوع في هذه الخطوة:
+- تعديل `TripModel` لإضافة `vehicleTripId`.
+- تعديل `VehicleTrip` أو `VehicleTripService`.
+- تعديل `driverPublic` schema.
+- تعديل `DriverTrackingHub`.
+- تعديل `EtaRuntimeInvocation` أو `EtaEngine` أو `EtaInputBuilder` أو `EtaFreshnessPolicy`.
+- دمج Passenger/UI أو `ActiveTripBanner`.
+- إضافة ETA أو `EtaResult` إلى الـsnapshot.
+- إضافة `NextStop` أو `StopRuntimeSnapshot` إلى الـsnapshot.
+- إضافة cache أو scheduler أو stream طويل العمر داخل الـRead Model.
+- إضافة Firestore writes.
+
+### القرار
+
+6-A مجمدة كعقد تصميم فقط. التنفيذ التالي، إذا ثبتت الحاجة التشغيلية، هو إنشاء Reader صغير يعيد `BusWatchOperationalReadResult` لرحلة Passenger محددة، مع اختبارات focused لحالات `available` والغياب الأربع، ودون تعديل الطبقات المحمية إلا إذا احتاج الـReader helper ضيقًا ومثبتًا.
 
 # 10. Phase 7 — JourneyPlanner
 
@@ -1687,10 +1794,13 @@ ETA Runtime Invocation
 5.2-E
 ETA Result Consumption
 ✅ DESIGN FROZEN
-
         ↓
 PHASE 6
 BusWatch (Read Only)
+        ↓
+6-A
+Operational Read Model
+✅ DESIGN FROZEN
         ↓
 PHASE 7
 JourneyPlanner
@@ -1726,6 +1836,8 @@ ML / Prediction
 ---
 
 # 19. نقطة البداية الحالية
+
+**Phase 6-A مثبتة كتصميم ✅.**
 
 **Phase 5.2-D مغلقة ✅.**
 
