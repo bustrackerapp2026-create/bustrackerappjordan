@@ -18,6 +18,7 @@ import '../../models/planned_route.dart';
 import '../../models/driver_line_assignment.dart';
 import '../../services/planned_route_stop_service.dart';
 import '../../services/route_start_resolver.dart';
+import '../../services/stop_runtime_policy.dart';
 
 mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   bool _isProcessingTrip = false;
@@ -33,6 +34,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       VehicleOperationalSessionService();
   final PlannedRouteStopService _plannedRouteStopService =
       PlannedRouteStopService();
+  final StopRuntimePolicy _stopRuntimePolicy = StopRuntimePolicy.production();
   final DriverTrackingHub _trackingHub = DriverTrackingHub.instance;
 
   static const double _routeStartMatchMaxMeters = 750.0;
@@ -123,6 +125,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         direction: activeTrip.direction,
         routePoints: route.points,
         savedRouteProgress: activeTrip.routeProgress,
+        stopRuntimePolicy: _stopRuntimePolicy,
       );
       await _loadActiveVehicleTripStops(
         tripId: activeTrip.id,
@@ -484,6 +487,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         routeId: vehicleTrip.routeId,
         direction: vehicleTrip.direction,
         routePoints: route.points,
+        stopRuntimePolicy: _stopRuntimePolicy,
       );
       await _loadActiveVehicleTripStops(
         tripId: vehicleTrip.id,
