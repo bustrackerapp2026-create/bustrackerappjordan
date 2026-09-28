@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - "stage/route-progress-hub-integration-v1"
+  pull_request:
+    branches:
+      - "stage/approved-route-line-vehicle-link-v1"
 
 jobs:
   validate:
