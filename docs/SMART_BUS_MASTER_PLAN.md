@@ -18,7 +18,9 @@
 >
 > **Phase 4.3-A:** عقد حالات المحطة مغلق كقرار تصميم فقط. تم تثبيت الحالات `upcoming`, `approaching`, `atStop`, `passed`، مع تصنيف حتمي على محور المسار وإبقاء الحدود العددية ضمن Policy غير مثبتة بعد.
 >
-> **الخطوة التالية:** Phase 4.3-B — `Stop State Resolver`.
+> **Phase 4.3-B:** `Stop State Resolver` مغلق بعد نجاح `flutter analyze` بنتيجة **No issues found!**، واختبار مخصص **20/20**، و`flutter test` الكامل **171/171**. التغيير Domain-only ولا يتضمن GPS أو Projection أو NextStop أو Firestore أو Hub أو VehicleTrip أو ETA.
+>
+> **الخطوة التالية:** 4.4 — Firestore / Hub Integration، وفق الخريطة التنفيذية الحالية.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -338,7 +340,7 @@ RouteProgress
 
 ## الحالة الحالية
 
-**قيد التنفيذ — تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B و4.1-B.2-C و4.2، و4.3-A مغلقة كقرار تصميم فقط، والخطوة التالية هي 4.3-B.**
+**قيد التنفيذ — تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B و4.1-B.2-C و4.2 و4.3-B، و4.3-A مغلقة كقرار تصميم فقط، والخطوة التالية هي 4.4 Firestore / Hub Integration.**
 
 ### 4.1-A — RoutePolylineProjection ✅
 
@@ -369,7 +371,7 @@ segmentT
 - `flutter test` الكامل → **126/126**
 - لا تغييرات محلية بعد التثبيت.
 
-### 4.1-B — Stop-to-Route Projection ⏳
+### 4.1-B — Stop-to-Route Projection ✅
 
 #### 4.1-B.0 — Projection Primitive Contract Hardening ✅
 
@@ -548,7 +550,7 @@ NextStop Resolver
 - يتم اختيار المرشح ذي أصغر:
   `stopAlongMeters - vehicleAlongMeters`
   أي أقرب Stop إلى الأمام على محور المسار.
-- إذا تساوى أكثر من مرشح في `alongMeters`، يبقى `order` tie-breaker إداريًا.
+- إذا تساوى أكثر من مرشح في `alongMeters)، يبقى `order` tie-breaker إداريًا.
 - Stop الواقعة تمامًا عند `vehicleAlongMeters` لا تعتبر NextStop في هذه الخطوة؛ هذا يمنع إعادة اختيار المحطة الحالية.
 - إذا لم يوجد مرشح صالح إلى الأمام، تكون النتيجة `null`.
 - PlannedRoute بدون Stops ثابتة حالة صحيحة، والنتيجة `null`.
@@ -696,6 +698,89 @@ passed
 - لا self-intersection ambiguity resolution.
 
 الخطوة البرمجية التالية بعد تثبيت هذا العقد هي 4.3-B — `Stop State Resolver`.
+
+#### 4.3-B — Stop State Resolver ✅
+
+تم تنفيذ Resolver Domain-only حتمي لحالة محطة ثابتة على محور المسار.
+
+### العقد والتنفيذ
+
+```text
+Stop State Resolver
+        ↓
+validate inputs
+        ↓
+calculate delta
+        ↓
+classify state
+```
+
+يعتمد التصنيف على:
+
+```text
+delta = stopAlongMeters - vehicleAlongMeters
+```
+
+والحالات المثبتة:
+
+```text
+delta < -atStopRadius
+        → passed
+
+|delta| <= atStopRadius
+        → atStop
+
+atStopRadius < delta <= approachingDistance
+        → approaching
+
+delta > approachingDistance
+        → upcoming
+```
+
+### Policy
+
+- `atStopRadius` يجب أن يكون finite و`> 0`.
+- `approachingDistance` يجب أن يكون finite و`> atStopRadius`.
+- لا توجد قيم افتراضية رقمية في resolver.
+- صلاحية قيم المحور تُتحقق مقابل `[0, totalRouteMeters]`.
+- `totalRouteMeters` نفسه يجب أن يكون finite و`> 0`.
+
+### حدود التنفيذ
+
+لا يعرف هذا الـResolver:
+- GPS.
+- Projection.
+- NextStop.
+- Firestore.
+- VehicleTrip.
+- DriverTrackingHub.
+- Mapbox.
+- ETA.
+- persistence.
+
+ولا يغير أي طبقة سابقة.
+
+### الاختبارات
+
+تمت تغطية الحدود الأساسية وقيم الإدخال والسياسة، بما في ذلك:
+- `delta = -atStopRadius`.
+- `delta = +atStopRadius`.
+- `delta = approachingDistance`.
+- `delta > approachingDistance`.
+- `delta < -atStopRadius`.
+- نفس موضع المركبة والمحطة.
+- قيم محور غير صالحة.
+- قيم route length غير صالحة.
+- سياسات غير صالحة.
+
+التحقق المحلي:
+- `flutter analyze` → **No issues found!**
+- focused `stop_state_resolver_test.dart` → **20/20**
+- `flutter test` الكامل → **171/171**
+- PR **#30** → merged squash إلى `stage/approved-route-line-vehicle-link-v1`.
+- merge commit → `690c26f25f9372649f5b722802ed932bd997a66f`.
+
+هذه الخطوة مغلقة. لا يوجد في الخطة الحالية بند رسمي باسم 4.3-C.
 
 ### الهدف النهائي للمرحلة
 
@@ -986,7 +1071,7 @@ NextStop Resolver
         ↓
 4.3
 Stop State
-⏳ IN PROGRESS
+✅
         ↓
 4.3-A
 State Contract
@@ -994,6 +1079,10 @@ State Contract
         ↓
 4.3-B
 Stop State Resolver
+✅
+        ↓
+4.4
+Firestore / Hub Integration
 ⏳ NEXT
         ↓
 PHASE 5
@@ -1038,7 +1127,7 @@ ML / Prediction
 
 # 19. نقطة البداية الحالية
 
-**Phase 4.3-A مغلقة كقرار تصميم فقط ✅.**
+**Phase 4.3-B مغلقة ✅.**
 
 الحالة التنفيذية الحالية:
 
@@ -1069,13 +1158,23 @@ Stop-to-Route Projection
         ↓
 4.2
 NextStop Resolver
-⏳ NEXT
+✅
         ↓
 4.3
 Stop State
+✅
+        ↓
+4.3-A
+State Contract
+✅ DESIGN
+        ↓
+4.3-B
+Stop State Resolver
+✅
         ↓
 4.4
 Firestore / Hub Integration
+⏳ NEXT
 ```
 
 **4.2 مغلقة ✅.**
@@ -1090,11 +1189,21 @@ Firestore / Hub Integration
 **4.3-A — Stop State Contract ✅ DESIGN ONLY.**
 - الحالات: `upcoming`, `approaching`, `atStop`, `passed`.
 - التصنيف يعتمد على `delta = stopAlongMeters - vehicleAlongMeters`.
-- `atStopRadius` و`approachingDistance` قيم Policy قابلة للضبط ولم تُثبت رقميًا بعد.
-- التقسيم يجب أن يكون حتميًا بلا تداخل أو فجوات.
+- `atStopRadius` و`approachingDistance` قيم Policy قابلة للضبط ولم تُثبت رقميًا في العقد.
+- التقسيم حتمي بلا تداخل أو فجوات.
 - الحركة الطبيعية: `upcoming → approaching → atStop → passed`.
 - القيم غير الصالحة لا تنتج State.
-- الخطوة التالية: 4.3-B — `Stop State Resolver`.
+
+**4.3-B — Stop State Resolver ✅.**
+- Resolver Domain-only وحتمي.
+- Policy validation بدون default numeric thresholds.
+- صلاحية `vehicleAlongMeters` و`stopAlongMeters` على محور `[0, totalRouteMeters]`.
+- التصنيف يعتمد على `delta` فقط بعد validation.
+- لا GPS أو Projection أو NextStop أو Firestore أو Hub أو VehicleTrip أو ETA أو persistence.
+- التحقق: `flutter analyze` بدون مشاكل، focused **20/20**، full suite **171/171**.
+- PR **#30** merged squash، merge commit `690c26f25f9372649f5b722802ed932bd997a66f`.
+
+**الخطوة التالية الموثقة:** 4.4 — Firestore / Hub Integration.
 
 **المسارات الحالية لا تتطلب Stops ثابتة حتى تستمر في العمل وفق نموذج التشغيل الحالي القائم على صعود الركاب عند طلب التوقف.**
 
