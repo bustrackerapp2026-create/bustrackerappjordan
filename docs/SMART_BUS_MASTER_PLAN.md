@@ -29,6 +29,8 @@
 **Phase 5.2-E — ETA Result Consumption:** مثبتة كتصميم ✅ دون Production Code أو UI/Hub integration.
 
 **Phase 6-A — BusWatch Operational Read Model:** مكتملة ✅ — تم تنفيذ الـReader والـResult والاختبارات المركزة، مع بقاء Consumer/UI خارج نطاق 6-A.
+
+**Phase 6-B — BusWatch Read Consistency & Refresh Contract:** مثبتة كتصميم ✅ — تنسيق القراءة والاتساق فقط، دون refresh/stream implementation.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -1540,6 +1542,67 @@ enum BusWatchOperationalReadStatus {
 - `git status` — working tree clean.
 - UI/Consumer integration ليست ضمن 6-A، ولا تُعد جزءًا من دليل إغلاق هذه المرحلة.
 
+### 6-B — BusWatch Read Consistency & Refresh Contract 🔍 DESIGN ONLY
+
+**الحالة:** DESIGN ONLY — لا Production Code أو Reader/Consumer refresh implementation في هذه الخطوة.
+
+### الهدف
+
+تحديد عقد تنسيق القراءات المتعددة التي تدخل في BusWatch، بحيث تكون النتيجة المعروضة للمستهلك متسقة دلاليًا، مع عدم الادعاء بوجود transaction ذري بين Collections مختلفة.
+
+### نطاق 6-B
+
+- تحديد ترتيب الاعتماد بين القراءات:
+  `Passenger Trip`
+  ثم `Active VehicleTrip`
+  ثم `driverPublic`
+  ثم `plannedRoutes/{routeId}`.
+- تثبيت أن الـConsumer لا يختار رحلة أخرى أثناء القراءة، ولا يغير `passengerTripId` ضمن نفس الاستدعاء.
+- التحقق النهائي من تطابق الهويات قبل إرجاع نتيجة تشغيلية:
+  - `TripModel.driverId == VehicleTrip.driverId`
+  - `driverPublic.driverId == VehicleTrip.driverId`
+  - `PlannedRoute.id == VehicleTrip.routeId`
+  - `VehicleTrip.status == active`
+  - `PlannedRoute.status == approved`
+  - Geometry صالحة.
+- تحديد أن القراءة متعددة المصادر **best-effort coordinated read** وليست Firestore transaction؛ لا يوجد ادعاء أن المصادر الأربع تم التقاطها في لحظة زمنية ذرية واحدة.
+- تحديد أن الاستدعاء الواحد ينتج نتيجة واحدة فقط؛ لا يتم خلط نتائج استدعاء سابق مع الاستدعاء الحالي.
+- عند اكتشاف عدم اتساق بين المصادر، لا يُعاد بناء snapshot جزئي ولا يتم اختيار مصدر بديل تلقائيًا.
+- لا توجد Freshness Threshold رقمية جديدة في 6-B؛ أزمنة المصادر تمرر كما هي، وأي سياسة freshness مستقلة تأتي بعقد منفصل لاحقًا.
+- Refresh frequency ليست من مسؤولية Read Model؛ المستدعي الأعلى يقرر متى يعيد `read(...)`.
+
+### حالات الاتساق
+
+```text
+Coordinated Read
+      ↓
+Identity / Status / Geometry Validation
+      ↓
+Consistent → BusWatchOperationalReadResult.available
+Inconsistent → one explicit non-available result
+```
+
+لا يتم تعريف حالة فشل جديدة إذا كان عدم الاتساق يؤدي بوضوح إلى إحدى الحالات الموجودة في 6-A؛ تتم المحافظة على الحالات الخمس نفسها.
+
+### حدود 6-B
+
+ممنوع في هذه الخطوة:
+
+- تعديل `BusWatchOperationalReader` أو `BusWatchOperationalReadResult` للإضافة التشغيلية.
+- إضافة Stream أو listener أو scheduler أو timer.
+- إضافة cache أو retained state.
+- إضافة transaction أو batch write بغرض تنسيق القراءة.
+- إضافة Firestore writes.
+- إضافة numerical freshness policy.
+- إدخال ETA أو `EtaResult`.
+- إدخال NextStop أو `StopRuntimeSnapshot`.
+- دمج Passenger/UI أو `ActiveTripBanner`.
+- تعديل `TripModel` أو `VehicleTrip` أو `driverPublic` schema أو `DriverTrackingHub`.
+
+### القرار
+
+6-B تبقى Design-only حتى يثبت احتياج تشغيلي لتنفيذ refresh/consumer behavior. العقد الحالي يقرر **كيفية تنسيق القراءة والاتساق فقط**؛ ولا يضيف lifecycle أو timing policy إلى BusWatch Operational Read Model.
+ 
 # 10. Phase 7 — JourneyPlanner
 
 ## الهدف
