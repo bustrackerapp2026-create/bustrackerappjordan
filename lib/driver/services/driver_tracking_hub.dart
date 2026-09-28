@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart' as geo;
 import '../../models/planned_route_stop_model.dart';
 import '../../models/route_point.dart';
 import '../../models/trip_ping.dart';
+import '../../services/accepted_eta_observation.dart';
 import '../../services/historical_sampling_policy.dart';
 import '../../services/location_service.dart';
 import '../../services/route_progress_calculator.dart';
@@ -68,6 +69,7 @@ class DriverTrackingHub {
   List<PlannedRouteStopModel>? _activeVehicleTripStops;
   StopRuntimePolicy? _activeStopRuntimePolicy;
   StopRuntimeSnapshot? _activeStopRuntimeSnapshot;
+  AcceptedEtaObservation? _activeEtaObservation;
   DateTime? _lastHistoricalPingAt;
 
   static const Duration _vehicleTripLocationInterval =
@@ -97,6 +99,13 @@ class DriverTrackingHub {
   /// Latest locally derived Stop runtime snapshot for the accepted progress.
   StopRuntimeSnapshot? get activeStopRuntimeSnapshot =>
       _activeStopRuntimeSnapshot;
+
+  /// Latest accepted GPS observation paired with the accepted route progress.
+  ///
+  /// A rejected GPS sample never replaces this observation. A backward GPS
+  /// jitter sample can replace it when RouteProgress accepts the sample while
+  /// clamping the route-axis position to the previous accepted position.
+  AcceptedEtaObservation? get activeEtaObservation => _activeEtaObservation;
 
   /// Policy explicitly bound to the active operational VehicleTrip.
   StopRuntimePolicy? get activeStopRuntimePolicy => _activeStopRuntimePolicy;
@@ -131,6 +140,7 @@ class DriverTrackingHub {
       _activeVehicleTripStops = null;
       _activeStopRuntimePolicy = null;
       _activeStopRuntimeSnapshot = null;
+      _activeEtaObservation = null;
       _routeProgressTracker.reset();
       _lastVehicleTripLocationWriteAt = null;
       _lastHistoricalPingAt = null;
@@ -152,6 +162,7 @@ class DriverTrackingHub {
         _activeVehicleTripStops = null;
         _activeStopRuntimePolicy = stopRuntimePolicy;
         _activeStopRuntimeSnapshot = null;
+        _activeEtaObservation = null;
       } else if (routePoints != null &&
           !_sameRoutePoints(_activeVehicleTripRoutePoints, routePoints)) {
         _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
@@ -186,6 +197,7 @@ class DriverTrackingHub {
     _activeVehicleTripStops = null;
     _activeStopRuntimePolicy = stopRuntimePolicy;
     _activeStopRuntimeSnapshot = null;
+    _activeEtaObservation = null;
     _seedRouteProgress(savedRouteProgress);
     _lastVehicleTripLocationWriteAt = null;
     _lastHistoricalPingAt = null;
@@ -287,6 +299,7 @@ class DriverTrackingHub {
     final routePoints = _activeVehicleTripRoutePoints;
     if (routePoints == null || routePoints.length < 2) return null;
 
+    final beforeAccepted = _routeProgressTracker.lastAccepted;
     final result = _routeProgressTracker.update(
       routePoints: routePoints,
       latitude: position.latitude,
@@ -295,8 +308,14 @@ class DriverTrackingHub {
       timestamp: position.timestamp,
       speedMetersPerSecond: position.speed,
     );
+    final afterAccepted = _routeProgressTracker.lastAccepted;
 
-    if (result != null) {
+    if (afterAccepted != null && !identical(afterAccepted, beforeAccepted)) {
+      _activeEtaObservation = AcceptedEtaObservation(
+        acceptedRouteProgress: afterAccepted,
+        speedMps: position.speed,
+        observedAt: position.timestamp,
+      );
       refreshActiveStopRuntimeSnapshot();
     }
 

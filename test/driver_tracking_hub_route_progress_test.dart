@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 
 import 'package:jordan_bus_tracker_new/driver/services/driver_tracking_hub.dart';
+import 'package:jordan_bus_tracker_new/services/accepted_eta_observation.dart';
 import 'package:jordan_bus_tracker_new/services/stop_state_resolver.dart';
 import 'package:jordan_bus_tracker_new/services/stop_runtime_policy.dart';
 import 'package:jordan_bus_tracker_new/models/planned_route_stop_model.dart';
@@ -134,6 +135,88 @@ void main() {
       expect(midpoint, isNotNull);
       expect(jitter, isNotNull);
       expect(jitter!.progress, closeTo(midpoint!.progress, 0.0001));
+    });
+
+    test('does not replace ETA observation when a GPS sample is rejected', () {
+      hub.setActiveVehicleTrip(
+        'trip-eta-rejected',
+        routeId: 'route-a',
+        direction: 'go',
+        routePoints: route,
+      );
+
+      final timeA = DateTime.utc(2026, 9, 28, 20, 0, 0);
+      final acceptedA = hub.updateRouteProgress(
+        gps(
+          31.0000,
+          35.0025,
+          timestamp: timeA,
+          speed: 8.0,
+        ),
+      );
+      final observationA = hub.activeEtaObservation;
+
+      final timeB = timeA.add(const Duration(seconds: 5));
+      final rejectedB = hub.updateRouteProgress(
+        gps(
+          31.0000,
+          35.0100,
+          timestamp: timeB,
+          speed: 42.0,
+        ),
+      );
+
+      expect(acceptedA, isNotNull);
+      expect(observationA, isNotNull);
+      expect(rejectedB, same(acceptedA));
+      expect(hub.activeEtaObservation, same(observationA));
+      expect(observationA!.acceptedRouteProgress, same(acceptedA));
+      expect(observationA.speedMps, 8.0);
+      expect(observationA.observedAt, timeA);
+      expect(hub.activeEtaObservation!.speedMps, isNot(42.0));
+      expect(hub.activeEtaObservation!.observedAt, isNot(timeB));
+    });
+
+    test('updates ETA observation for an accepted backward-jitter sample', () {
+      hub.setActiveVehicleTrip(
+        'trip-eta-jitter',
+        routeId: 'route-a',
+        direction: 'go',
+        routePoints: route,
+      );
+
+      final timeA = DateTime.utc(2026, 9, 28, 20, 10, 0);
+      final acceptedA = hub.updateRouteProgress(
+        gps(
+          31.0000,
+          35.0050,
+          timestamp: timeA,
+          speed: 10.0,
+        ),
+      );
+      final observationA = hub.activeEtaObservation;
+
+      final timeB = timeA.add(const Duration(seconds: 5));
+      final acceptedB = hub.updateRouteProgress(
+        gps(
+          31.0000,
+          35.0045,
+          timestamp: timeB,
+          speed: 6.5,
+        ),
+      );
+      final observationB = hub.activeEtaObservation;
+
+      expect(acceptedA, isNotNull);
+      expect(acceptedB, isNotNull);
+      expect(acceptedB, isNot(same(acceptedA)));
+      expect(acceptedB!.alongMeters, closeTo(acceptedA!.alongMeters, 0.1));
+      expect(observationA, isNotNull);
+      expect(observationB, isNotNull);
+      expect(observationB, isNot(same(observationA)));
+      expect(observationB!.acceptedRouteProgress, same(acceptedB));
+      expect(observationB.speedMps, 6.5);
+      expect(observationB.observedAt, timeB);
     });
 
     test('starts a new VehicleTrip with fresh RouteProgress state', () {
