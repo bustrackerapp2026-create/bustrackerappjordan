@@ -7,8 +7,8 @@ void main() {
       final service = PlannedRouteStopService();
 
       expect(
-        await service.watchStops('   ').first,
-        isEmpty,
+        await service.watchStops('   ').isEmpty,
+        isTrue,
       );
     });
 
