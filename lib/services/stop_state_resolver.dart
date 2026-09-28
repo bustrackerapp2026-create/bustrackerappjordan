@@ -13,7 +13,7 @@ class StopStatePolicy {
   final double atStopRadius;
   final double approachingDistance;
 
-  const StopStatePolicy({
+  StopStatePolicy({
     required this.atStopRadius,
     required this.approachingDistance,
   }) {
