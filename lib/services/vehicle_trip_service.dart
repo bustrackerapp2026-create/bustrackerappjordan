@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -120,6 +121,7 @@ class VehicleTripService {
     required GeoPoint currentLocation,
     double? speed,
     double? heading,
+    double? routeProgress,
   }) async {
     final id = tripId.trim();
     if (id.isEmpty) {
@@ -147,18 +149,50 @@ class VehicleTripService {
         speed != null && speed.isFinite && speed >= 0 ? speed : null;
     final normalizedHeading =
         heading != null && heading.isFinite && heading >= 0 ? heading : null;
+    final normalizedRouteProgress = _validateRouteProgress(routeProgress);
 
     await _withRetryAndTimeout(() async {
-      await _col.doc(id).update({
-        // إرسال active يمنع تحديث رحلة أنهِيت بالتزامن مع هذا الـGPS.
-        'status': VehicleTripStatus.active.firestoreValue,
-        'currentLocation': currentLocation,
-        'speed': normalizedSpeed,
-        'heading': normalizedHeading,
-        'lastLocationAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await _col.doc(id).update(
+        buildLiveLocationUpdatePayload(
+          currentLocation: currentLocation,
+          speed: normalizedSpeed,
+          heading: normalizedHeading,
+          routeProgress: normalizedRouteProgress,
+        ),
+      );
     });
+  }
+
+  static double? _validateRouteProgress(double? routeProgress) {
+    if (routeProgress == null) return null;
+    if (!routeProgress.isFinite || routeProgress < 0 || routeProgress > 1) {
+      throw const VehicleTripServiceException(
+        'نسبة تقدم الرحلة التشغيلية غير صالحة.',
+        code: 'invalid-route-progress',
+      );
+    }
+    return routeProgress;
+  }
+
+  @visibleForTesting
+  static Map<String, dynamic> buildLiveLocationUpdatePayload({
+    required GeoPoint currentLocation,
+    double? speed,
+    double? heading,
+    double? routeProgress,
+  }) {
+    final normalizedRouteProgress = _validateRouteProgress(routeProgress);
+    return {
+      // إرسال active يمنع تحديث رحلة أنهِيت بالتزامن مع هذا الـGPS.
+      'status': VehicleTripStatus.active.firestoreValue,
+      'currentLocation': currentLocation,
+      'speed': speed,
+      'heading': heading,
+      'lastLocationAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      if (normalizedRouteProgress != null)
+        'routeProgress': normalizedRouteProgress,
+    };
   }
 
   Future<VehicleTrip> startTrip({
