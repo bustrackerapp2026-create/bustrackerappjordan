@@ -8,6 +8,7 @@ import '../../models/route_point.dart';
 import '../../models/trip_ping.dart';
 import '../../services/historical_sampling_policy.dart';
 import '../../services/location_service.dart';
+import '../../services/route_progress_calculator.dart';
 import '../../services/trip_ping_buffer.dart';
 import '../../services/trip_ping_service.dart';
 import '../../services/vehicle_trip_service.dart';
