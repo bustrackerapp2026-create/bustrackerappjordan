@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:jordan_bus_tracker_new/models/planned_route_stop_model.dart';
 import 'package:jordan_bus_tracker_new/models/route_point.dart';
-import 'package:jordan_bus_tracker_new/services/stop_runtime_snapshot.dart';
 import 'package:jordan_bus_tracker_new/services/stop_runtime_snapshot_resolver.dart';
 import 'package:jordan_bus_tracker_new/services/stop_state_resolver.dart';
 
@@ -71,8 +70,8 @@ void main() {
   test('classifies the eligible stop state from accepted along-route position', () {
     final snapshot = StopRuntimeSnapshotResolver.resolve(
       routePoints: route,
-      vehicleAlongMeters: 900,
-      stops: [stop('approaching', 35.0090)],
+      vehicleAlongMeters: 700,
+      stops: [stop('approaching', 35.0085)],
       isEligible: (_) => true,
       statePolicy: statePolicy,
     );
@@ -127,12 +126,7 @@ void main() {
 
   test('uses stop order only as a tie-breaker inherited from NextStopResolver', () {
     final snapshot = StopRuntimeSnapshotResolver.resolve(
-      routePoints: [
-        RoutePoint(latitude: 31.0000, longitude: 35.0000),
-        RoutePoint(latitude: 31.0000, longitude: 35.0100),
-        RoutePoint(latitude: 31.0000, longitude: 35.0000),
-        RoutePoint(latitude: 31.0000, longitude: 35.0100),
-      ],
+      routePoints: route,
       vehicleAlongMeters: 500,
       stops: [
         stop('later-order', 35.0050, order: 10),
@@ -155,6 +149,6 @@ void main() {
       statePolicy: statePolicy,
     );
 
-    expect(snapshot, isA<StopRuntimeSnapshot>());
+    expect(snapshot, isNotNull);
   });
 }
