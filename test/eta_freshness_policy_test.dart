@@ -6,7 +6,7 @@ void main() {
   group('EtaFreshnessPolicy', () {
     test('returns fresh when observedAt equals evaluatedAt', () {
       final evaluatedAt = DateTime(2026, 9, 28, 20, 30);
-      final policy = EtaFreshnessPolicy(maxAge: const Duration.zero);
+      final policy = EtaFreshnessPolicy(maxAge: Duration.zero);
 
       final result = policy.evaluate(
         observedAt: evaluatedAt,
