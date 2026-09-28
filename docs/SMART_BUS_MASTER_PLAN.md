@@ -25,6 +25,8 @@
 > **Phase 5.1 — ETA Contract + Deterministic Engine:** مكتملة ✅ بعد تثبيت العقد والتنفيذ والتحقق المحلي، دون Integration أو Passenger/UI أو تعديل على EtaUtils القديم.
 
 **Phase 5.2-D — ETA Runtime Invocation:** مكتملة ✅ بعد تنفيذ عقد `EtaResult?` والتحقق المحلي، مع بقاء Passenger/UI وDriverTrackingHub خارج النطاق.
+
+**Phase 5.2-E — ETA Result Consumption:** مثبتة كتصميم ✅ دون Production Code أو UI/Hub integration.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -1289,7 +1291,104 @@ EtaResult
 
 هذه الخطوة مغلقة ولا يعاد فتحها إلا عند ظهور Regression أو دليل جديد.
 
-**الخطوة التالية:** الانتقال إلى تصميم حدود استهلاك `EtaResult?` في طبقة Runtime التالية، دون القفز تلقائيًا إلى Passenger/UI أو تعديل `DriverTrackingHub` قبل تثبيت العقد التالية.
+**الخطوة التالية:** اختيار المستهلك التنفيذي الواحد لـ`EtaResult?` وتثبيت عقده قبل أي Production Patch.
+
+
+### 5.2-E — ETA Result Consumption ✅ DESIGN FROZEN
+
+**الحالة:** DESIGN FROZEN ONLY — لا Production Code في هذه الخطوة.
+
+تم تثبيت عقد استهلاك `EtaResult?` بعد اكتمال `EtaRuntimeInvocation`. الهدف هنا هو تحديد كيف تتعامل طبقة لاحقة مع نتيجة ETA دون إنشاء عقد بديل أو إدخال ETA في `DriverTrackingHub` أو Passenger/UI.
+
+### العقد الأساسي
+
+يبقى `EtaResult?` هو **العقد القياسي للمخرج** من ETA Runtime إلى المستهلك اللاحق.
+
+لا يتم إنشاء Wrapper جديد مثل `EtaViewModel` أو `EtaRuntimeState` داخل هذه الخطوة، ولا تتم إعادة حساب ETA بعد خروج النتيجة من `EtaRuntimeInvocation`.
+
+```text
+EtaRuntimeInvocation
+        ↓
+EtaResult?
+        ↓
+Consumer
+```
+
+### دلالات المخرج
+
+#### `EtaResult == null`
+
+تعني أن تقييم Runtime لم ينتج `EtaInput` صالحًا، ولذلك لم يبدأ `EtaEngine` أصلًا.
+
+الأسباب الداخلة ضمن هذا المسار:
+- غياب `AcceptedEtaObservation`.
+- غياب `StopRuntimeSnapshot`.
+- observation غير صالحة من ناحية Freshness: `stale` أو `future`.
+- غياب `nextStop`.
+
+المستهلك يجب ألا يحول `null` إلى `EtaUnavailableReason` جديدة، وألا يخترع ETA بديلة.
+
+#### `EtaResult.status == available`
+
+المستهلك يستعمل القيم كما خرجت من المحرك:
+- `etaSeconds`.
+- `distanceAheadMeters`.
+- `observedAt`.
+
+لا يعيد المستهلك حساب المسافة أو ETA من GPS أو Stop أو speed.
+
+#### `EtaResult.status == unavailable`
+
+المستهلك يحافظ على النتيجة غير المتاحة وسببها:
+- `unavailableReason`.
+
+ولا يحولها تلقائيًا إلى قيمة ETA تقديرية، ولا يستعمل fallback speed.
+
+### Freshness عند الاستهلاك
+
+- `observedAt` في `EtaResult` هو وقت observation الأصلية، وليس وقت استهلاك النتيجة.
+- صلاحية freshness تمتلكها مرحلة Runtime أثناء التقييم.
+- لا يجوز للمستهلك أن يستنتج من `observedAt` وحده أن النتيجة ما تزال fresh الآن.
+- لا يستخدم Consumer `DateTime.now()` لإعادة تفسير العقد الحالية.
+- إذا احتجنا Freshness عند العرض/الاستخدام الفعلي لاحقًا، فهذا عقد مستقل يجب تصميمه صراحةً ولا يُضاف ضمن هذه الخطوة.
+
+### قواعد الاستهلاك
+
+- النتيجة الخارجة من Runtime تُستهلك كما هي؛ لا تعديل على قيم `EtaResult`.
+- لا استدعاء ثانٍ لـ`EtaEngine` من Consumer.
+- لا قراءة مباشرة لـGPS أو `RouteProgressTracker` أو `StopRuntime` أو Firestore للحصول على ETA بديلة.
+- لا استخدام `EtaUtils` القديم لإعادة بناء ETA عند توفر/عدم توفر `EtaResult`.
+- لا تنسيق نصي للـETA داخل عقد Domain/Runtime؛ التحويل إلى دقائق أو نص عرض يخص طبقة Presentation عندما تُصمم لاحقًا.
+- لا Persistence لـ`EtaResult` داخل Firestore في هذه الخطوة.
+
+### إعادة الاستخدام وتغيّر النتيجة
+
+- كل `EtaResult` مرتبط بالمدخلات التي أنتجته في ذلك التقييم، وبخاصة `observedAt` وtarget الحالي.
+- عند تنفيذ تقييم جديد، النتيجة الجديدة هي نتيجة التقييم الحالي؛ لا يعاد استخدام ETA قديمة مع target جديد.
+- إذا أعاد التقييم `null`، لا يجوز للمستهلك الاحتفاظ تلقائيًا بـETA السابقة على أنها نتيجة صالحة للتقييم الحالي.
+- العينة المرفوضة التي لا تطلب evaluation جديدة لا تنشئ نتيجة جديدة؛ لذلك لا يترتب عليها تغيير في هذا العقد بحد ذاته.
+
+### حدود 5.2-E
+
+ممنوع في هذه الخطوة:
+- تعديل `EtaRuntimeInvocation`.
+- تعديل `EtaEngine`.
+- تعديل `EtaInputBuilder`.
+- تعديل `EtaFreshnessPolicy`.
+- تعديل `AcceptedEtaObservation`.
+- تعديل `DriverTrackingHub`.
+- تعديل `RouteProgressTracker` أو StopRuntime.
+- تعديل Passenger/UI أو `ActiveTripBanner`.
+- تعديل `EtaUtils`.
+- إضافة Firestore reads/writes لمسار ETA.
+- إضافة cache أو persistence أو scheduler.
+- تثبيت Freshness Policy ثانية للعرض.
+
+### قرار الانتقال
+
+العقد التالي التنفيذي، عندما يحين دوره، يجب أن يختار **مستهلكًا واحدًا واضح المسؤولية** لـ`EtaResult?` ويبني عليه Patch صغيرًا، دون إدخال طبقة العرض أو `DriverTrackingHub` إلا إذا أثبتت المتطلبات أن ذلك هو المستهلك المقصود.
+
+هذه النقطة مغلقة كتصميم فقط حتى يتم تنفيذ المستهلك المحدد لاحقًا.
 
 ---
 
@@ -1584,6 +1683,10 @@ EtaInput Builder Integration
 5.2-D
 ETA Runtime Invocation
 ✅ CLOSED
+        ↓
+5.2-E
+ETA Result Consumption
+✅ DESIGN FROZEN
 
         ↓
 PHASE 6
