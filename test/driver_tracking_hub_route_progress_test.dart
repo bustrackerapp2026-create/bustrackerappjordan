@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart' as geo;
 
 import 'package:jordan_bus_tracker_new/driver/services/driver_tracking_hub.dart';
 import 'package:jordan_bus_tracker_new/services/stop_state_resolver.dart';
+import 'package:jordan_bus_tracker_new/services/stop_runtime_policy.dart';
 import 'package:jordan_bus_tracker_new/models/planned_route_stop_model.dart';
 import 'package:jordan_bus_tracker_new/models/route_point.dart';
 
@@ -43,6 +44,19 @@ void main() {
       id: id,
       name: id,
       location: GeoPoint(31.0000, longitude),
+      order: 0,
+    );
+  }
+
+  PlannedRouteStopModel offRouteStop(
+    String id,
+    double latitude,
+    double longitude,
+  ) {
+    return PlannedRouteStopModel(
+      id: id,
+      name: id,
+      location: GeoPoint(latitude, longitude),
       order: 0,
     );
   }
@@ -233,6 +247,7 @@ void main() {
         routeId: 'route-a',
         direction: 'go',
         routePoints: route,
+        stopRuntimePolicy: StopRuntimePolicy.production(),
       );
       hub.setActiveVehicleTripStops(
         tripId: 'trip-runtime',
@@ -253,13 +268,7 @@ void main() {
       );
       expect(progress, isNotNull);
 
-      final snapshot = hub.refreshActiveStopRuntimeSnapshot(
-        isEligible: (_) => true,
-        statePolicy: StopStatePolicy(
-          atStopRadius: 20,
-          approachingDistance: 200,
-        ),
-      );
+      final snapshot = hub.activeStopRuntimeSnapshot;
 
       expect(snapshot, isNotNull);
       expect(hub.activeStopRuntimeSnapshot, same(snapshot));
@@ -267,7 +276,7 @@ void main() {
       expect(snapshot.statesByStopId['stop-1'], StopState.approaching);
     });
 
-    test('refresh uses explicit eligibility and does not invent policy values', () {
+    test('uses the centrally bound production eligibility policy', () {
       hub.setActiveVehicleTrip(
         'trip-runtime-policy',
         routeId: 'route-a',
@@ -279,7 +288,7 @@ void main() {
         routeId: 'route-a',
         stops: [
           stop('eligible', 35.0040),
-          stop('ineligible', 35.0060),
+          offRouteStop('ineligible', 31.0010, 35.0060),
         ],
       );
       final progress = hub.updateRouteProgress(
@@ -292,13 +301,7 @@ void main() {
       );
       expect(progress, isNotNull);
 
-      final snapshot = hub.refreshActiveStopRuntimeSnapshot(
-        isEligible: (candidate) => candidate.stop.id == 'eligible',
-        statePolicy: StopStatePolicy(
-          atStopRadius: 20,
-          approachingDistance: 200,
-        ),
-      );
+      final snapshot = hub.activeStopRuntimeSnapshot;
 
       expect(snapshot, isNotNull);
       expect(
@@ -352,13 +355,6 @@ void main() {
           35.0025,
           timestamp: DateTime.utc(2026, 9, 28, 20, 0, 0),
           speed: 10.0,
-        ),
-      );
-      hub.refreshActiveStopRuntimeSnapshot(
-        isEligible: (_) => true,
-        statePolicy: StopStatePolicy(
-          atStopRadius: 20,
-          approachingDistance: 200,
         ),
       );
       expect(hub.activeStopRuntimeSnapshot, isNotNull);
@@ -415,6 +411,8 @@ void main() {
         hub.activeVehicleTripStops!.map((item) => item.id),
         ['stop-1', 'stop-2'],
       );
+      expect(hub.activeStopRuntimeSnapshot, isNotNull);
+      expect(hub.activeStopRuntimeSnapshot!.nextStop!.stop.id, 'stop-1');
     });
 
     test('ignores a stop snapshot that no longer matches the active trip binding', () {
