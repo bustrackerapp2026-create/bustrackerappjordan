@@ -158,7 +158,7 @@ void main() {
       );
     });
 
-    test('valid zero and one hour? no, boundary at 30 seconds remains constrained',
+    test('30-second boundary remains constrained',
         () {
       final result =
           constrained(RouteProgressPhysicalPlausibilityPolicy.evaluate(
