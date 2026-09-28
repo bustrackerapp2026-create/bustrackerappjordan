@@ -1420,7 +1420,9 @@ BusWatch Consumer لاحقًا
 
 ### 6-A — BusWatch Operational Read Model ✅ DESIGN FROZEN
 
-**الحالة:** DESIGN FROZEN ONLY — لا Production Code أو Reader implementation في هذه الخطوة.
+**الحالة:** DESIGN FROZEN — العقد النهائي قبل أول Production Reader implementation.
+
+تم تثبيت عقد قراءة موحدة **immutable snapshot** لرحلة Passenger محددة، دون إنشاء state طويل العمر داخل Service ودون إدخال ETA/NextStop/Stop Runtime في الـRead Model.
 
 تم تثبيت عقد قراءة موحدة **immutable snapshot** لرحلة Passenger محددة، دون إنشاء state طويل العمر داخل Service ودون إدخال ETA/NextStop/Stop Runtime في الـRead Model.
 
@@ -1443,22 +1445,19 @@ BusWatch Consumer لاحقًا
 
 | الحقل | المصدر السلطوي | ملاحظة |
 |---|---|---|
-| `passengerTripId` | Passenger Trip context | لا يختاره الـRead Model |
-| `passengerTripStatus` | `TripModel.status` | مستقل عن VehicleTrip |
-| `driverId` | `TripModel.driverId` مع مطابقة `VehicleTrip.driverId` | الرابط بين السياقين |
+| `passengerTripId` | Passenger Trip context | هوية السياق فقط، ولا يختار الـReader الرحلة |
 | `vehicleTripId` | `VehicleTrip.id` | معرف الرحلة التشغيلية |
-| `vehicleTripStatus` | `VehicleTrip.status` | يجب أن تكون `active` للنتيجة التشغيلية |
+| `driverId` | `TripModel.driverId` مع مطابقة `VehicleTrip.driverId` | الرابط بين السياقين |
 | `busNumber` | `VehicleTrip.busNumber` | هوية المركبة التشغيلية |
 | `routeId` | `VehicleTrip.routeId` | المعرف السلطوي للمسار |
 | `direction` | `VehicleTrip.direction` | القيمة التشغيلية outbound/return |
-| `routeLineName` | `PlannedRoute.lineName` | بعد نجاح route lookup بالـ`routeId` |
-| `routeApproved` | `PlannedRoute.status` | يجب أن تكون `approved` |
-| `routeGeometryValid` | `PlannedRoute.points.length >= 2` | صلاحية مرجعية وليست Mapbox state |
-| `currentLocation` | `driverPublic` | المصدر العام للـlive position |
-| `speed` | `driverPublic` | قيمة العرض/الحالة العامة الحالية |
-| `heading` | `driverPublic` | قيمة العرض/الحالة العامة الحالية |
+| `status` | `VehicleTrip.status` | يجب أن تكون `active` للنتيجة التشغيلية |
+| `liveLocation` | `driverPublic` | المصدر العام للـlive position |
+| `speed` | `driverPublic` | قيمة الحالة العامة الحالية |
+| `heading` | `driverPublic` | قيمة الحالة العامة الحالية |
 | `lastLocationAt` | `driverPublic.locationUpdatedAt` | وقت الموقع العام، وليس `Eta observedAt` |
 | `routeProgress` | `VehicleTrip.routeProgress` | operational field فقط، وليس `AcceptedEtaObservation` |
+| `approvedRoute` | `plannedRoutes/{routeId}` | يجب أن تكون Approved مع Geometry صالحة |
 
 لا يتم في 6-A افتراض أن `VehicleTrip.currentLocation + speed + lastLocationAt + routeProgress` تساوي `AcceptedEtaObservation`.
 
@@ -1486,24 +1485,35 @@ BusWatch Consumer لاحقًا
 
 ### نتيجة القراءة وحالات الغياب
 
-تم اختيار **Result Object immutable** بدل `nullable snapshot` فقط، حتى تبقى أسباب الغياب صريحة:
+تم اختيار **Result Object immutable typed** مع حالة واحدة حاسمة، بدل مجموعة booleans أو `nullable snapshot` فقط:
 
 ```text
 BusWatchOperationalReadResult
-   ├── available + BusWatchOperationalSnapshot
-   ├── noPassengerContext
-   ├── noActiveVehicleTrip
-   ├── noLiveLocation
-   └── noApprovedRoute
+   ├── status
+   └── snapshot?
+```
+
+والحالة المسموح بها تكون قيمة واحدة فقط من:
+
+```dart
+enum BusWatchOperationalReadStatus {
+  available,
+  noPassengerContext,
+  noActiveVehicleTrip,
+  noLiveLocation,
+  noApprovedRoute,
+}
 ```
 
 القواعد:
-- `available` يتطلب Passenger Context صالحًا + Active VehicleTrip + Live Location عامة صالحة + Approved PlannedRoute صالحة.
+- `available` يتطلب Passenger Context صالحًا + Active VehicleTrip + Live Location عامة صالحة + Approved PlannedRoute صالحة، وعندها فقط يكون `snapshot != null`.
+- أي حالة غير `available` يكون معها `snapshot == null`.
 - `noPassengerContext` يعني عدم وجود Passenger Trip محددة/صالحة ضمن سياق BusWatch.
 - `noActiveVehicleTrip` يعني وجود Passenger Context مع عدم وجود VehicleTrip تشغيلية نشطة مقابلة.
 - `noLiveLocation` يعني أن VehicleTrip موجودة لكن `driverPublic` لا يوفر موقعًا عامًا صالحًا.
 - `noApprovedRoute` يعني أن VehicleTrip تحمل `routeId` لكن المسار المرجعي غير موجود، غير معتمد، أو Geometry غير صالحة.
 - `No Stops` ليست حالة فشل أعلى للـOperational Read Model؛ هي غياب تابع يُعالج في Stop Runtime لاحقًا.
+- لا يتم تحويل أخطاء Firestore/الشبكة إلى واحدة من حالات الغياب؛ أخطاء البنية التحتية تبقى أخطاء تنفيذية منفصلة وتنتقل للمستدعي.
 
 ### حدود 6-A
 
@@ -1517,11 +1527,12 @@ BusWatchOperationalReadResult
 - إضافة ETA أو `EtaResult` إلى الـsnapshot.
 - إضافة `NextStop` أو `StopRuntimeSnapshot` إلى الـsnapshot.
 - إضافة cache أو scheduler أو stream طويل العمر داخل الـRead Model.
+- الاحتفاظ بأي mutable state بين استدعاءات `read(...)`.
 - إضافة Firestore writes.
 
 ### القرار
 
-6-A مجمدة كعقد تصميم فقط. التنفيذ التالي، إذا ثبتت الحاجة التشغيلية، هو إنشاء Reader صغير يعيد `BusWatchOperationalReadResult` لرحلة Passenger محددة، مع اختبارات focused لحالات `available` والغياب الأربع، ودون تعديل الطبقات المحمية إلا إذا احتاج الـReader helper ضيقًا ومثبتًا.
+6-A مجمدة كعقد نهائي قبل الكود. التنفيذ هو إنشاء `BusWatchOperationalReader` مستقل، بلا state داخلي أو Stream lifecycle طويل العمر، ويعيد `BusWatchOperationalReadResult` بصيغة `status + snapshot?`. الاختبارات focused تغطي `available` والغياب الأربع، إضافة إلى إثبات أن `routeProgress` داخل الـsnapshot يأتي من `VehicleTrip.routeProgress` ويظل Operational فقط. لا يتم تعديل الطبقات المحمية.
 
 # 10. Phase 7 — JourneyPlanner
 
