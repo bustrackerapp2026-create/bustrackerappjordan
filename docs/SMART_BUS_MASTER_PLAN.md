@@ -1424,8 +1424,6 @@ BusWatch Consumer لاحقًا
 
 تم تثبيت عقد قراءة موحدة **immutable snapshot** لرحلة Passenger محددة، دون إنشاء state طويل العمر داخل Service ودون إدخال ETA/NextStop/Stop Runtime في الـRead Model.
 
-تم تثبيت عقد قراءة موحدة **immutable snapshot** لرحلة Passenger محددة، دون إنشاء state طويل العمر داخل Service ودون إدخال ETA/NextStop/Stop Runtime في الـRead Model.
-
 ### اختيار Passenger Context
 
 - الـRead Model يعمل على **Passenger Trip محددة**، وليس على `passengerId` وحده، لتجنب اختيار رحلة عشوائية عند وجود أكثر من رحلة مفتوحة.
