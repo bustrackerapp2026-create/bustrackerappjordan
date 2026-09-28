@@ -266,3 +266,15 @@ Runtime snapshot
 **4.4-B — Runtime Integration**.
 
 هذه الخطوة هي أول Patch برمجي لـ4.4، وستقتصر على توصيل البيانات المحملة والنتائج المشتقة بالـHub دون إدخال منطق جديد داخل GPS callback.
+
+### 4.4-B Runtime Status (after the first integration patches)
+
+تم تنفيذ جزأين برمجيين محدودين من 4.4-B:
+- تحميل Stops مرة واحدة عند bind/restore من `plannedRoutes/{routeId}/stops` عبر `PlannedRouteStopService`.
+- تخزين Stops محليًا في `DriverTrackingHub` مع حماية trip/route binding.
+- توفير اشتقاق محلي لـ`StopRuntimeSnapshot` من آخر `accepted RouteProgress` عبر `refreshActiveStopRuntimeSnapshot()`.
+- الاشتقاق يتطلب صراحةً `StopRuntimeSnapshotResolver` و`StopStatePolicy` وStop Eligibility، ولا يقرأ Firestore.
+
+**الحالة:** 4.4-B ما زالت مفتوحة. لا توجد حتى الآن سياسة إنتاجية معتمدة لمقادير `atStopRadius` و`approachingDistance`، ولا يجوز اختراع قيم افتراضية داخل الـHub. كما لم يتم ربط refresh تلقائيًا بالـGPS callback.
+
+**الخطوة الآمنة التالية:** تثبيت مصدر سياسة Stop Runtime واختيار المستهلك التشغيلي الذي يمررها صراحةً، ثم تنفيذ الربط النهائي دون تعديل `driver_map_tab.dart` أو بنية GPS/Lifecycle.

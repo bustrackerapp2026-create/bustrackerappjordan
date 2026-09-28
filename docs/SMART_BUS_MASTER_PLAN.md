@@ -856,6 +856,16 @@ Runtime Stop Snapshot
 
 هذه الخطوة تثبت عقد التكامل فقط؛ التنفيذ البرمجي المحدود يأتي في 4.4-B.
 
+### حالة 4.4-B التنفيذية الحالية
+
+تم تنفيذ مرحلتين محدودتين من Runtime Integration على `stage/approved-route-line-vehicle-link-v1`:
+1. تحميل Fixed Stops مرة واحدة عند bind/restore وتخزينها محليًا في `DriverTrackingHub`.
+2. توفير `refreshActiveStopRuntimeSnapshot()` لاشتقاق Snapshot محلي من `accepted RouteProgress` وStops المحملة.
+
+الاشتقاق لا يحتوي Firestore access ولا يعيد حساب RouteProgress من GPS، ويطلب صراحةً `StopStatePolicy` وStop Eligibility.
+
+**4.4-B لم تُغلق بعد:** لا توجد سياسة إنتاجية مثبتة رقميًا لحدود Stop State، ولا مصدر سياسة واضح يحقنها في المستهلك التشغيلي. لذلك لا يجوز إدخال thresholds افتراضية أو استدعاء refresh تلقائيًا داخل GPS callback.
+
 ### الهدف النهائي للمرحلة
 
 ```text
