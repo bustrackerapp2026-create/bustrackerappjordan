@@ -305,7 +305,7 @@ firebase deploy --only storage
 ### الفرع والحالة المرجعية
 
 - **الفرع التطويري الحالي:** `stage/approved-route-line-vehicle-link-v1`
-- **آخر commit تقني مُثبت حاليًا:** `0126459fcd8b6f910c586f42fe978d728775672d` — `feat(phase2): reject stale historical GPS fixes`
+- **آخر commit تقني مُثبت حاليًا:** `dfa67862604c48028c7c085b51a536d1c2d2469f` — `Phase 3: test RouteProgress continuity and monotonicity`
 - **آخر commit تقني سابق لمسار Failure Path 1:** `5e820c8da9dbf171ddbaca156dba52d95e56e25c`
 - **آخر commit توثيقي سابق لـFailure Path 1:** `311a0aafb5bc88493757f4501e5c5a838779546c`
 - **آخر commit تقني لـ Buffer Isolation:** `c058b26ccdf62ed9abc2ad325522f8403a7fa81e`
@@ -850,6 +850,40 @@ firebase deploy --only storage
 - تم التحقق محليًا من الإصلاحين قبل تثبيتهما على فرع التطوير.
 
 **نتيجة البوابة:** **Live GPS freshness gate مغلق وناجح ✅** من حيث stream + heartbeat، مع اختبار regression كامل دون تغيير منظومة GPS أو بدء Phase 3.
+
+### إغلاق RouteProgress Continuity + Monotonic Progress — 2026-09-28
+
+تم إغلاق الوحدة الثانية من **Phase 3 — RouteProgress** بعد فصل حماية الاستمرارية والتقدم الأحادي عن `DriverTrackingHub` وFirestore.
+
+#### التنفيذ المثبت
+
+- **الملف الجديد:** `lib/services/route_progress_tracker.dart`
+- يحتفظ الـtracker بآخر إسقاط مقبول على المسار.
+- التقدم الطبيعي للأمام يُقبل.
+- الانحراف الخلفي البسيط بسبب jitter في GPS لا يُنقص `routeProgress`؛ يُحافظ على آخر تقدم مقبول.
+- القفزة الأمامية التي تتجاوز **300 متر** في عينة واحدة تُرفض ويُحافظ على الحالة السابقة كحماية أولية من القفزات غير المنطقية.
+- العينات غير الصالحة أو البعيدة عن المسار لا تغيّر الحالة الحالية.
+- يدعم `seedFromProgress()` لتهيئة الحالة من `routeProgress` المحفوظ عند استعادة الرحلة.
+- يدعم `reset()` لفصل حالة كل `VehicleTrip` عن الرحلة التالية.
+- لم يتم تعديل `DriverTrackingHub` أو `DriverTrackingLifecycle` أو `driver_map_tab.dart` أو Firestore.
+
+#### الاختبارات
+
+- **الاختبار:** `test/route_progress_tracker_test.dart`
+- يغطي: أول projection صالح، منع التراجع بسبب GPS jitter، استمرار التقدم للأمام بعد jitter، رفض القفزة الأمامية غير المنطقية، تجاهل الموقع غير الصالح/البعيد، seed من `routeProgress`، رفض القيم غير الصالحة، وreset بين الرحلات.
+
+#### Evidence
+
+على الجهاز المحلي بعد سحب commit التنفيذ:
+
+- `flutter test test/route_progress_tracker_test.dart` → **8/8 All tests passed!**
+- `flutter analyze` → **No issues found!**
+- `flutter test` → **85/85 All tests passed!**
+- الفرع بعد السحب متزامن مع `origin` عند commit `dfa67862604c48028c7c085b51a536d1c2d2469f`.
+
+**نتيجة البوابة:** **Continuity + Monotonic Progress — مغلقة وناجحة ✅**
+
+**الخطوة التالية:** ربط الـtracker تدريجيًا مع `DriverTrackingHub` لحساب `routeProgress` من GPS الحي على الرحلة النشطة، مع إبقاء الكتابة إلى Firestore في طبقة منفصلة واختبار التكامل قبل تفعيلها ميدانيًا.
 
 ### ملاحظات تشغيلية
 
