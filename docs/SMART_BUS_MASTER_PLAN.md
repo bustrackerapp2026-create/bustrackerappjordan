@@ -20,7 +20,7 @@
 >
 > **Phase 4.3-B:** `Stop State Resolver` مغلق بعد نجاح `flutter analyze` بنتيجة **No issues found!**، واختبار مخصص **20/20**، و`flutter test` الكامل **171/171**. التغيير Domain-only ولا يتضمن GPS أو Projection أو NextStop أو Firestore أو Hub أو VehicleTrip أو ETA.
 >
-> **الخطوة التالية:** 4.4-A — Stop Runtime Integration Contract، ثم 4.4-B — تنفيذ التكامل وفق العقد المثبت.
+> **Phase 4 — Runtime / Domain Implementation:** مكتملة ✅. تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B و4.1-B.2-C و4.2 و4.3-A و4.3-B و4.4-A و4.4-B. لا توجد ملاحظة حالية تستدعي إعادة فتح Phase 4؛ فجوة اختبار Firestore failure تبقى فجوة Evidence فقط، والاختبار الميداني النهائي مؤجل.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -340,7 +340,9 @@ RouteProgress
 
 ## الحالة الحالية
 
-**قيد التنفيذ — تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B و4.1-B.2-C و4.2 و4.3-B، و4.3-A مغلقة كقرار تصميم فقط، والخطوة التالية هي 4.4 Firestore / Hub Integration.**
+**مكتملة — Runtime / Domain Implementation ✅**
+
+تم إغلاق جميع نقاط Phase 4 التنفيذية حتى `4.4-B`. لا توجد Regression أو مشكلة معمارية مثبتة تستدعي إعادة فتح أي جزء من Phase 4.
 
 ### 4.1-A — RoutePolylineProjection ✅
 
@@ -894,8 +896,15 @@ Runtime Stop Snapshot
 - PR #37 — Stop Runtime Policy → merged.
 - PR #38 — automatic runtime refresh → merged.
 - PR #39 — unused import cleanup → merged.
-- الفرع المحلي بعد الدمج نظيف ومتزامن مع origin عند merge commit:
-  `204060a468a183faa09f3e46b4360e0017d973b9`.
+- الفرع التطويري الحالي بعد PR #41 عند merge commit:
+  `08f442cedf71d4eef7e691a801c859b455c21d77`.
+
+### فجوات Evidence المتبقية
+
+- **Firestore failure integration test:** 🟡 غير موجود كاختبار تكاملي مستقل يحقن فشل `fetchStops()` ويثبت آليًا استمرار `VehicleTrip` وGPS. الكود الإنتاجي يعالج الفشل عبر `try/catch` دون قطع الرحلة أو التتبع، لذلك هذه فجوة Evidence وليست Bug.
+- **Field acceptance:** 🟡 مؤجل لعدم توفر إمكانية تحريك الحافلة فعليًا. الاختبارات الحالية deterministic/synthetic.
+- **UI presentation:** ⏭ خارج نطاق Phase 4؛ الـStop Runtime Snapshot حاليًا derived in-memory runtime data.
+- قيم `75m / 30m / 200m` هي engineering baseline مركزية في `StopRuntimePolicy` وقابلة للمعايرة لاحقًا بناءً على evidence ميداني؛ ليست قيمًا ميدانية نهائية مثبتة.
 
 ### الهدف التشغيلي
 
@@ -1335,6 +1344,8 @@ Firestore / Hub Integration
 - PR **#30** merged squash، merge commit `690c26f25f9372649f5b722802ed932bd997a66f`.
 
 **الخطوة التالية الموثقة:** Phase 5 — ETA Engine.
+
+**Phase 4 Closure Notes:** الكود والتكامل والحدود المعمارية والتحقق الآلي موثقة كمكتملة. لا تعاد فتح Phase 4 إلا عند ظهور Regression أو دليل جديد يستوجب ذلك.
 
 **المسارات الحالية لا تتطلب Stops ثابتة حتى تستمر في العمل وفق نموذج التشغيل الحالي القائم على صعود الركاب عند طلب التوقف.**
 
