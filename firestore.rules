@@ -303,6 +303,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Fixed route stops are read-only at this stage.
+    // Write permissions will be added only with the future admin-management flow.
+    match /plannedRoutes/{routeId}/stops/{stopId} {
+      allow read: if isSignedIn();
+    }
+
     // Smart Bus / VehicleTrip — الرحلة التشغيلية للحافلة
 
     // Historical telemetry for active VehicleTrips.
