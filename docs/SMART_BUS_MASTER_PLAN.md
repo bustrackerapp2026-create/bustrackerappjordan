@@ -34,7 +34,7 @@
 
 **Phase 6-C — Passenger BusWatch Consumer Contract:** مكتملة ✅ — تم تنفيذ Consumer مستقل، مع استبدال النتيجة السابقة ومسح snapshot عند أي نتيجة non-available، مع بقاء UI integration خارج نطاق 6-C.
 
-**Phase 6-D — Passenger BusWatch Read Lifecycle / Context Contract:** ✅ DESIGN FROZEN — ملكية دورة القراءة وحماية Context Generation محسومة، دون Coordinator implementation.
+**Phase 6-D — Passenger BusWatch Read Lifecycle / Context Contract:** مكتملة ✅ — تم تنفيذ `BusWatchReadLifecycleCoordinator` مع حماية Context/Read Generation ضد النتائج والأخطاء المتأخرة.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -1714,9 +1714,9 @@ Infrastructure Error
 - `git status` — working tree clean.
 - Consumer/UI integration الفعلية ليست ضمن 6-C، ولا تُعد جزءًا من دليل إغلاق هذه النقطة.
 
-### 6-D — Passenger BusWatch Read Lifecycle / Context Contract ✅ DESIGN FROZEN
+### 6-D — Passenger BusWatch Read Lifecycle / Context Contract ✅
 
-**الحالة:** DESIGN FROZEN — تم حسم ملكية دورة القراءة وحماية السياق، دون Production Coordinator implementation.
+**الحالة:** مكتملة ✅ — تم تنفيذ Production `BusWatchReadLifecycleCoordinator` واختبار عقده بشكل مستقل.
 
 ### المشكلة التي تحلها 6-D
 
@@ -1857,24 +1857,24 @@ late A error
 
 ### حدود 6-D
 
-ممنوع في هذه الخطوة:
+تم الالتزام بالحدود التالية في التنفيذ:
 
-- تنفيذ `BusWatchReadLifecycleCoordinator`.
-- تعديل `BusWatchOperationalReader`.
-- تعديل `BusWatchOperationalConsumer`.
-- إدخال UI integration.
-- إدخال `ActiveTripBanner`.
-- إدخال ETA أو `EtaResult`.
-- إدخال NextStop أو `StopRuntimeSnapshot`.
-- إضافة freshness policy.
-- إضافة cache أو persistence.
-- إضافة Timer أو polling أو periodic Stream.
-- تعديل `TripModel` أو `VehicleTrip` أو `driverPublic` schema أو `DriverTrackingHub`.
-- إضافة Firestore writes.
+- تعديل `BusWatchReadLifecycleCoordinator` فقط وإضافة focused tests الخاصة به.
+- عدم تعديل `BusWatchOperationalReader`.
+- عدم تعديل `BusWatchOperationalConsumer`.
+- عدم إدخال UI integration.
+- عدم إدخال `ActiveTripBanner`.
+- عدم إدخال ETA أو `EtaResult`.
+- عدم إدخال NextStop أو `StopRuntimeSnapshot`.
+- عدم إضافة freshness policy.
+- عدم إضافة cache أو persistence.
+- عدم إضافة Timer أو polling أو periodic Stream.
+- عدم تعديل `TripModel` أو `VehicleTrip` أو `driverPublic` schema أو `DriverTrackingHub`.
+- عدم إضافة Firestore writes.
 
 ### القرار
 
-6-D مجمدة كعقد تصميم مستقل ✅. الفصل أصبح:
+6-D مكتملة ومثبتة ✅. الفصل أصبح:
 
 ```text
 6-A = ماذا نقرأ
@@ -1883,7 +1883,7 @@ late A error
 6-D = من يدير دورة القراءة ويحمي السياق
 ```
 
-والتنفيذ التالي، عند الانتقال إليه، هو Patch صغير ومعزول لـ`BusWatchReadLifecycleCoordinator` مع focused tests لـ:
+والتنفيذ المثبت في 6-D يغطي focused tests لـ:
 - bind A → initial read.
 - bind A → explicit refresh.
 - A → B → late A result rejected.
@@ -1891,6 +1891,14 @@ late A error
 - clear → late result rejected.
 - reactivate → new read.
 - same tripId + explicit refresh → fresh read.
+
+### Evidence
+
+- `flutter test test/bus_watch_read_lifecycle_coordinator_test.dart` — **7/7 passed**.
+- `flutter analyze` — **No issues found!** بعد إزالة الـunused import من اختبار 6-D.
+- `flutter test` — **261/261 passed**.
+- تم تثبيت التنفيذ على الفرع `stage/approved-route-line-vehicle-link-v1` في commit `bc72bff5dcf0befb844b331d0052e7802d5f1f67`، ثم patch تنظيف الاختبار `735695459bcee44cd3d8824865c97d9a45c997ae`.
+- لم تتغير عقود 6-A أو 6-B أو 6-C ضمن 6-D.
 
 ولا تعيد 6-D فتح 6-A أو 6-B أو 6-C.
  
@@ -2168,10 +2176,23 @@ ETA Result Consumption
         ↓
 PHASE 6
 BusWatch (Read Only)
+⏳ IN PROGRESS
         ↓
 6-A
 Operational Read Model
+✅ CLOSED
+        ↓
+6-B
+Read Consistency & Refresh Contract
 ✅ DESIGN FROZEN
+        ↓
+6-C
+Passenger Consumer Contract
+✅ CLOSED
+        ↓
+6-D
+Read Lifecycle / Context Contract
+✅ CLOSED
         ↓
 PHASE 7
 JourneyPlanner
@@ -2208,7 +2229,13 @@ ML / Prediction
 
 # 19. نقطة البداية الحالية
 
-**Phase 6-A مثبتة كتصميم ✅.**
+**Phase 6-A مغلقة تنفيذياً ✅.**
+
+**Phase 6-B مثبتة كتصميم ✅.**
+
+**Phase 6-C مغلقة تنفيذياً ✅.**
+
+**Phase 6-D مغلقة تنفيذياً ✅.**
 
 **Phase 5.2-D مغلقة ✅.**
 
