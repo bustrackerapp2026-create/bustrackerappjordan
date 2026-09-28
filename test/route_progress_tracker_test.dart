@@ -12,6 +12,8 @@ void main() {
     point(31.0000, 35.0200),
   ];
 
+  final t0 = DateTime.utc(2026, 1, 1);
+
   group('RouteProgressTracker', () {
     test('accepts the first valid projection', () {
       final tracker = RouteProgressTracker();
@@ -108,23 +110,235 @@ void main() {
       expect(tracker.lastAccepted, same(first));
     });
 
-    test('seedFromProgress prevents the next sample from moving backwards',
-        () {
+    test('seeds from persisted progress and clears physical metadata', () {
       final tracker = RouteProgressTracker();
 
-      final seeded = tracker.seedFromProgress(
-        routePoints: straightRoute,
-        progress: 0.5,
-      );
-      final behind = tracker.update(
+      final first = tracker.update(
         routePoints: straightRoute,
         latitude: 31.0000,
-        longitude: 35.0040,
+        longitude: 35.0000,
+        timestamp: t0,
+        speedMetersPerSecond: 20.0,
+      );
+      expect(first, isNotNull);
+
+      expect(
+        tracker.seedFromProgress(
+          routePoints: straightRoute,
+          progress: 0.5,
+        ),
+        isTrue,
       );
 
-      expect(seeded, isTrue);
-      expect(behind, isNotNull);
-      expect(behind!.progress, closeTo(0.5, 0.001));
+      final forward = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0125,
+        timestamp: t0.add(const Duration(seconds: 1)),
+        speedMetersPerSecond: 20.0,
+      );
+
+      expect(forward, isNotNull);
+      expect(forward!.progress, greaterThan(0.5));
+    });
+
+    test('rejects a forward move above the physical allowance', () {
+      final tracker = RouteProgressTracker();
+
+      final first = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0000,
+        timestamp: t0,
+        speedMetersPerSecond: 0.0,
+      );
+      final constrained = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0003,
+        timestamp: t0.add(const Duration(seconds: 5)),
+        speedMetersPerSecond: 0.0,
+      );
+
+      expect(first, isNotNull);
+      expect(constrained, same(first));
+      expect(tracker.lastAccepted, same(first));
+    });
+
+    test('accepts forward movement within the physical allowance', () {
+      final tracker = RouteProgressTracker();
+
+      final first = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0000,
+        timestamp: t0,
+        speedMetersPerSecond: 0.0,
+      );
+      final constrained = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0002,
+        timestamp: t0.add(const Duration(seconds: 5)),
+        speedMetersPerSecond: 0.0,
+      );
+
+      expect(first, isNotNull);
+      expect(constrained, isNotNull);
+      expect(constrained!.progress, greaterThan(first!.progress));
+    });
+
+    test('uses current valid speed before the previous valid speed', () {
+      final tracker = RouteProgressTracker();
+
+      final first = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0000,
+        timestamp: t0,
+        speedMetersPerSecond: 0.0,
+      );
+      final later = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0010,
+        timestamp: t0.add(const Duration(seconds: 5)),
+        speedMetersPerSecond: 20.0,
+      );
+
+      expect(first, isNotNull);
+      expect(later, isNotNull);
+      expect(later!.progress, greaterThan(first!.progress));
+    });
+
+    test('falls back to the previous accepted valid speed', () {
+      final tracker = RouteProgressTracker();
+
+      final first = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0000,
+        timestamp: t0,
+        speedMetersPerSecond: 10.0,
+      );
+      final later = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0030,
+        timestamp: t0.add(const Duration(seconds: 5)),
+        speedMetersPerSecond: -1.0,
+      );
+
+      expect(first, isNotNull);
+      expect(later, same(first));
+      expect(tracker.lastAccepted, same(first));
+    });
+
+    test('same timestamp blocks positive forward movement', () {
+      final tracker = RouteProgressTracker();
+
+      final first = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0000,
+        timestamp: t0,
+        speedMetersPerSecond: 10.0,
+      );
+      final sameTimestamp = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0005,
+        timestamp: t0,
+        speedMetersPerSecond: 10.0,
+      );
+
+      expect(first, isNotNull);
+      expect(sameTimestamp, same(first));
+    });
+
+    test('long timestamp gaps remain governed by the existing 300 m guard', () {
+      final tracker = RouteProgressTracker();
+
+      final first = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0000,
+        timestamp: t0,
+        speedMetersPerSecond: 0.0,
+      );
+      final longGap = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0020,
+        timestamp: t0.add(const Duration(seconds: 31)),
+        speedMetersPerSecond: 0.0,
+      );
+
+      expect(first, isNotNull);
+      expect(longGap, isNotNull);
+      expect(longGap!.progress, greaterThan(first!.progress));
+    });
+
+    test('a backward accepted sample becomes the new physical reference', () {
+      final tracker = RouteProgressTracker();
+
+      final first = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0050,
+        timestamp: t0,
+        speedMetersPerSecond: 20.0,
+      );
+      final backward = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0045,
+        timestamp: t0.add(const Duration(seconds: 5)),
+        speedMetersPerSecond: 0.0,
+      );
+      final forward = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0060,
+        timestamp: t0.add(const Duration(seconds: 10)),
+        speedMetersPerSecond: 0.0,
+      );
+
+      expect(first, isNotNull);
+      expect(backward, isNotNull);
+      expect(backward!.progress, closeTo(first!.progress, 0.001));
+      expect(forward, same(backward));
+    });
+
+    test('a rejected sample does not advance the physical reference state', () {
+      final tracker = RouteProgressTracker();
+
+      final first = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0000,
+        timestamp: t0,
+        speedMetersPerSecond: 0.0,
+      );
+      final rejected = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0003,
+        timestamp: t0.add(const Duration(seconds: 5)),
+        speedMetersPerSecond: -1.0,
+      );
+      final afterRejected = tracker.update(
+        routePoints: straightRoute,
+        latitude: 31.0000,
+        longitude: 35.0003,
+        timestamp: t0.add(const Duration(seconds: 6)),
+        speedMetersPerSecond: -1.0,
+      );
+
+      expect(first, isNotNull);
+      expect(rejected, same(first));
+      expect(afterRejected, same(first));
+      expect(tracker.lastAccepted, same(first));
     });
 
     test('seedFromProgress rejects invalid progress values', () {
@@ -154,6 +368,8 @@ void main() {
         routePoints: straightRoute,
         latitude: 31.0000,
         longitude: 35.0100,
+        timestamp: t0,
+        speedMetersPerSecond: 10.0,
       );
 
       tracker.reset();
@@ -164,6 +380,8 @@ void main() {
         routePoints: straightRoute,
         latitude: 31.0000,
         longitude: 35.0000,
+        timestamp: t0.add(const Duration(seconds: 5)),
+        speedMetersPerSecond: 0.0,
       );
 
       expect(newTripStart, isNotNull);
