@@ -28,7 +28,7 @@
 
 **Phase 5.2-E — ETA Result Consumption:** مثبتة كتصميم ✅ دون Production Code أو UI/Hub integration.
 
-**Phase 6-A — BusWatch Operational Read Model:** مثبتة كتصميم ✅ دون Reader implementation أو UI integration.
+**Phase 6-A — BusWatch Operational Read Model:** مكتملة ✅ — تم تنفيذ الـReader والـResult والاختبارات المركزة، مع بقاء Consumer/UI خارج نطاق 6-A.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -1420,7 +1420,7 @@ BusWatch Consumer لاحقًا
 
 ### 6-A — BusWatch Operational Read Model ✅ DESIGN FROZEN
 
-**الحالة:** DESIGN FROZEN — العقد النهائي قبل أول Production Reader implementation.
+**الحالة:** IMPLEMENTED & VERIFIED ✅ — العقد منفذ ومثبت بالاختبارات.
 
 تم تثبيت عقد قراءة موحدة **immutable snapshot** لرحلة Passenger محددة، دون إنشاء state طويل العمر داخل Service ودون إدخال ETA/NextStop/Stop Runtime في الـRead Model.
 
@@ -1530,7 +1530,15 @@ enum BusWatchOperationalReadStatus {
 
 ### القرار
 
-6-A مجمدة كعقد نهائي قبل الكود. التنفيذ هو إنشاء `BusWatchOperationalReader` مستقل، بلا state داخلي أو Stream lifecycle طويل العمر، ويعيد `BusWatchOperationalReadResult` بصيغة `status + snapshot?`. الاختبارات focused تغطي `available` والغياب الأربع، إضافة إلى إثبات أن `routeProgress` داخل الـsnapshot يأتي من `VehicleTrip.routeProgress` ويظل Operational فقط. لا يتم تعديل الطبقات المحمية.
+6-A مكتملة ومثبتة. تم تنفيذ `BusWatchOperationalReader` مستقل، بلا state داخلي أو Stream lifecycle طويل العمر، ويعيد `BusWatchOperationalReadResult` بصيغة `status + snapshot?`. تم التحقق من حالات `available` والغياب الأربع، ومطابقة driverId، والقراءة exact-by-routeId، وبقاء `VehicleTrip.routeProgress` كبيانات تشغيلية فقط. لا تم تعديل الطبقات المحمية.
+
+### Evidence
+
+- `flutter analyze` — No issues found.
+- `flutter test test/bus_watch_operational_reader_test.dart` — **14/14 passed**.
+- `flutter test` — **248/248 passed**.
+- `git status` — working tree clean.
+- UI/Consumer integration ليست ضمن 6-A، ولا تُعد جزءًا من دليل إغلاق هذه المرحلة.
 
 # 10. Phase 7 — JourneyPlanner
 
