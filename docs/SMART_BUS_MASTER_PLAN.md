@@ -1126,6 +1126,70 @@ EtaEngine
 
 الخطوة التالية: تصميم/مراجعة أول Integration لتكوين `EtaInput` من `AcceptedEtaObservation` بعد اجتياز freshness gate، دون تعديل `EtaEngine` نفسه قبل تثبيت ذلك العقد.
 
+### 5.2-C — EtaInput Builder Integration ✅ CLOSED
+
+**الحالة:** DESIGN FROZEN + IMPLEMENTED + VERIFIED + CLOSED.
+
+تم تنفيذ مكوّن Integration مستقل وصغير يحوّل البيانات التشغيلية المقبولة إلى `EtaInput` فقط بعد اجتياز Freshness Gate ووجود NextStop صالح.
+
+### العقد المثبت
+
+```text
+AcceptedEtaObservation
+        +
+EtaFreshnessPolicy
+        +
+StopRuntimeSnapshot
+        +
+explicit evaluatedAt
+        ↓
+EtaInputBuilder
+        ↓
+EtaInput?
+        ↓
+EtaEngine
+```
+
+### قواعد التحويل
+
+- يتم تقييم freshness أولًا باستخدام `observedAt` و`evaluatedAt` والـPolicy المحقونة.
+- `stale` أو `future` → لا يتم إنشاء `EtaInput`.
+- غياب `nextStop` → لا يتم إنشاء `EtaInput`.
+- `vehicleAlongMeters` يؤخذ مباشرةً من `AcceptedEtaObservation.acceptedRouteProgress.alongMeters`.
+- `targetAlongMeters` يؤخذ مباشرةً من `StopRuntimeSnapshot.nextStop.projection.alongMeters`.
+- `speedMps` و`observedAt` يؤخذان مباشرةً من `AcceptedEtaObservation`.
+- لا يعيد الـBuilder اشتقاق `targetNotAhead` ولا يعيد تنفيذ أي منطق من `EtaEngine`.
+- لا يستخدم الـBuilder `DateTime.now()` ولا يختار قيمة لـ`maxAge`.
+
+### حدود الـPatch
+
+تم تعديل/إضافة:
+- `lib/services/eta_input_builder.dart`.
+- `test/eta_input_builder_test.dart`.
+
+لم يتم تعديل:
+- `EtaEngine`.
+- `AcceptedEtaObservation`.
+- `EtaFreshnessPolicy`.
+- `RouteProgressTracker`.
+- `DriverTrackingHub`.
+- `StopRuntime`.
+- `Passenger/UI`.
+- `Firestore`.
+- `EtaUtils`.
+
+### دليل التحقق المحلي
+
+- `flutter analyze` → **No issues found!**.
+- focused `test/eta_input_builder_test.dart` → **9/9 passed**.
+- `flutter test` الكامل → **225/225 passed**.
+
+تمت تغطية Fresh / stale / future / no NextStop، ومطابقة كل حقل في `EtaInput` مع مصدره الصحيح، والحفاظ على `observedAt`، والحتمية عند تكرار المدخلات.
+
+هذه الخطوة مغلقة ولا يعاد فتحها إلا عند ظهور Regression أو دليل جديد.
+
+الخطوة التالية: تصميم طريقة استدعاء ETA في Integration Runtime بعد تكوين `EtaInput`، دون تعديل `EtaEngine` نفسه قبل تثبيت عقد الاستدعاء.
+
 ---
 
 # 9. Phase 6 — BusWatch
@@ -1411,6 +1475,10 @@ Accepted ETA Observation Bridge
 5.2-B
 ETA Freshness Policy
 ✅ CLOSED
+        ↓
+5.2-C
+EtaInput Builder Integration
+✅ CLOSED
 
         ↓
 PHASE 6
@@ -1547,7 +1615,13 @@ Firestore / Hub Integration
 - التنفيذ اقتصر على Policy واختبارها المستقل؛ لم يتغير `EtaEngine` أو `AcceptedEtaObservation` أو `DriverTrackingHub` أو أي طبقة أخرى محمية.
 - الدليل النهائي: analyze بلا مشاكل، focused **6/6**، full **216/216**.
 
-**الخطوة التالية الموثقة:** تصميم Integration لتكوين `EtaInput` من observation المقبولة بعد freshness gate، مع إبقاء `EtaEngine` مستقلًا عن clock وfreshness.
+**Phase 5.2-C — EtaInput Builder Integration مغلقة ✅.**
+- `EtaInputBuilder` مستقل ويُنشئ `EtaInput` فقط بعد Freshness Gate ووجود NextStop.
+- مصادر الحقول مثبتة: vehicle position/speed/time من `AcceptedEtaObservation`، والهدف من `StopRuntimeSnapshot.nextStop.projection`.
+- لا يعيد الـBuilder منطق `EtaEngine` ولا يختار `maxAge` ولا يستخدم clock داخليًا.
+- الدليل النهائي: analyze بلا مشاكل، focused **9/9**، full **225/225**.
+
+**الخطوة التالية الموثقة:** تصميم طريقة استدعاء ETA في Integration Runtime بعد تكوين `EtaInput`، مع إبقاء `EtaEngine` وطبقات المصدر دون تعديل قبل تجميد عقد الاستدعاء.
 
 **Phase 4 Closure Notes:** الكود والتكامل والحدود المعمارية والتحقق الآلي موثقة كمكتملة. لا تعاد فتح Phase 4 إلا عند ظهور Regression أو دليل جديد يستوجب ذلك.
 
