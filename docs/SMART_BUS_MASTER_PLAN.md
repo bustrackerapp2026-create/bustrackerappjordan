@@ -384,31 +384,47 @@ segmentT
 
 هذا hardening مغلق ولا يعيد فتح 4.1-A.
 
-#### 4.1-B.1 — Stop data contract ⏳
+#### 4.1-B.1 — Stop data contract ✅
 
-قبل أي Model أو Firestore write، يجب تثبيت عقد المحطات الثابتة المستقبلية ومصدرها وربطها بالـ`plannedRoutes/{routeId}`.
+تم تثبيت عقد بيانات المحطات الثابتة المستقبلية كقرار تصميم فقط.
 
-المطلوب لاحقًا:
+العقد المستهدف:
 
 ```text
-Optional Fixed Route Stops
-+
-PlannedRoute.points
-        ↓
-RoutePolylineProjection
-        ↓
-stopAlongMeters
+plannedRoutes/{routeId}/stops/{stopId}
+
+Stop
+├── name       : String      required
+├── location   : GeoPoint    required
+├── order      : int         required, >= 0
+└── isMajor    : bool        optional, default false
 ```
 
-**مهم:** لا توجد حاليًا Stops ثابتة معرفة لكل المسارات التشغيلية. وجود Stops مستقبلًا هو قدرة اختيارية لبعض المسارات، وليس شرطًا لتشغيل المسارات الحالية.
+الـinvariants:
+- `stopId` هو Firestore Document ID.
+- `routeId` هو Parent `PlannedRoute` ID، ولا يُكرر كحقل إلزامي داخل Stop.
+- `direction` مصدره `PlannedRoute.direction`، ولا يُكرر داخل Stop.
+- `order` هو تسلسل إداري zero-based للمحطات في اتجاه `PlannedRoute.points`، وفريد داخل Stops الخاصة بالـroute.
+- `order` لا يعرّف الهندسة ولا يُستخدم كبديل عن projection.
+- المصدر الهندسي هو `location + PlannedRoute.points`.
+- `stopAlongMeters` قيمة مشتقة ولا تُخزن.
+- `NextStop` قيمة مشتقة ولا تُخزن.
+- لا توجد Stops ثابتة مفروضة على كل المسارات؛ `PlannedRoute` بدون Stops حالة Domain صحيحة، ويدعم لاحقًا `NextStop = null`.
 
-البنية المستهدفة للمحطات هي قرار تصميم مستقبلي، وليست بنية Firestore موجودة حاليًا.
+مصادر خارج العقد:
+- لا يُستخدم `routeCatalog` كمصدر Stops.
+- لا يُعاد استخدام `PickupPointModel` أو `NearestStopFinder` كنظام Route Stops.
+- `RouteStopModel` القديم المرتبط بـ`routes/{routeId}/stops` يبقى خارج Phase 4.
 
-لا يتم استخدام `routeCatalog` كمصدر للمحطات، ولا يتم تحويل `PickupPointModel` أو `NearestStopFinder` إلى نظام محطات المسار.
+حدود الإغلاق:
+- لا Model جديد.
+- لا Firestore write.
+- لا Firestore Rules.
+- لا Hub أو VehicleTrip.
+- لا NextStop Resolver.
+- لا تعديل في RouteProgress أو `RoutePolylineProjection`.
 
-في حالة وجود أكثر من projection محتملة لنفس المحطة:
-- ننتج projection هندسية وفق الـprimitive.
-- لا نضيف ambiguity resolution معقدًا قبل توفر Stops حقيقية وبيانات فعلية.
+تم تثبيت uniqueness لـ`order` كـinvariant منطقي؛ آلية enforcement تؤجل إلى طبقة الإدارة/الكتابة عند التنفيذ العملي.
 
 ### الهدف النهائي للمرحلة
 
