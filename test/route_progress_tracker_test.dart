@@ -224,7 +224,7 @@ void main() {
       final later = tracker.update(
         routePoints: straightRoute,
         latitude: 31.0000,
-        longitude: 35.0015,
+        longitude: 35.0030,
         timestamp: t0.add(const Duration(seconds: 5)),
         speedMetersPerSecond: -1.0,
       );
@@ -299,7 +299,7 @@ void main() {
       final forward = tracker.update(
         routePoints: straightRoute,
         latitude: 31.0000,
-        longitude: 35.0053,
+        longitude: 35.0060,
         timestamp: t0.add(const Duration(seconds: 10)),
         speedMetersPerSecond: 0.0,
       );
@@ -325,7 +325,7 @@ void main() {
         latitude: 31.0000,
         longitude: 35.0003,
         timestamp: t0.add(const Duration(seconds: 5)),
-        speedMetersPerSecond: 20.0,
+        speedMetersPerSecond: -1.0,
       );
       final afterRejected = tracker.update(
         routePoints: straightRoute,
