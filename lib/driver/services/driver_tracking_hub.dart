@@ -67,6 +67,7 @@ class DriverTrackingHub {
   String? _activeVehicleTripDirection;
   List<RoutePoint>? _activeVehicleTripRoutePoints;
   List<PlannedRouteStopModel>? _activeVehicleTripStops;
+  StopRuntimeSnapshot? _activeStopRuntimeSnapshot;
   DateTime? _lastHistoricalPingAt;
 
   static const Duration _vehicleTripLocationInterval =
@@ -92,6 +93,10 @@ class DriverTrackingHub {
   /// list is a valid loaded result containing no Stops.
   List<PlannedRouteStopModel>? get activeVehicleTripStops =>
       _activeVehicleTripStops;
+
+  /// Latest locally derived Stop runtime snapshot for the accepted progress.
+  StopRuntimeSnapshot? get activeStopRuntimeSnapshot =>
+      _activeStopRuntimeSnapshot;
 
   /// يربط الـHub بمعرف VehicleTrip النشطة وبياناتها اللازمة للتسجيل التاريخي.
   ///
