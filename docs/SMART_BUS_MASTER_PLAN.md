@@ -8,9 +8,11 @@
 >
 > **Phase 4.1-B.1:** عقد بيانات المحطات الثابتة المستقبلية مغلق كقرار تصميم فقط.
 >
-> **Phase 4.1-B.2-A:** `PlannedRouteStopModel` الحديث مغلق بعد نجاح `flutter analyze` و`flutter test` بنتيجة **132/132**، دون Firestore writer أو Rules أو Runtime integration.
+> **Phase 4.1-B.2-A:** `PlannedRouteStopModel` الحديث مغلق بعد نجاح `flutter analyze` و`flutter test` بنتيجة **132/132**، دون Firestore writer أو Runtime integration.
 >
-> **الخطوة التالية:** Phase 4.1-B.2-B — فصل Reader للمحطات عن خوارزمية `Stop-to-Route Projection`.
+> **Phase 4.1-B.2-B:** `PlannedRouteStopService` (read-only Stop Reader) مغلق بعد نجاح `flutter analyze` و`flutter test` بنتيجة **134/134**، مع Rule قراءة للمسار الحديث `plannedRoutes/{routeId}/stops` ودون أي write API أو Runtime integration.
+>
+> **الخطوة التالية:** Phase 4.1-B.2-C — `Stop-to-Route Projection` باستخدام `RoutePolylineProjection` الموجود أصلًا.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -330,7 +332,7 @@ RouteProgress
 
 ## الحالة الحالية
 
-**قيد التنفيذ — تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A، ولم تبدأ خوارزمية Stop-to-Route بعد.**
+**قيد التنفيذ — تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B، والخطوة التالية هي 4.1-B.2-C.**
 
 ### 4.1-A — RoutePolylineProjection ✅
 
@@ -450,6 +452,28 @@ Stop
 - PR **#21** → merged إلى `stage/approved-route-line-vehicle-link-v1`.
 
 هذه الخطوة جزء من 4.1-B.2، وليست تنفيذًا لخوارزمية `Stop-to-Route Projection` نفسها.
+
+#### 4.1-B.2-B — PlannedRouteStopService / Read-only Stop Reader ✅
+
+تم تنفيذ Reader حديث مستقل للمحطات الثابتة المستقبلية وفق العقد المثبت في 4.1-B.1.
+
+الحدود:
+- القراءة من `plannedRoutes/{routeId}/stops` فقط.
+- استخدام `orderBy('order')` لإرجاع المحطات بترتيبها الإداري.
+- `routeId` فارغ/بيضاء يعيد مصدرًا فارغًا دون محاولة الوصول إلى Firestore.
+- لا توجد عمليات create/update/delete داخل الخدمة.
+- تمت إضافة Rule قراءة فقط للمسار الحديث.
+- لا يوجد Stop-to-Route Projection في هذه الخطوة.
+- لا يوجد NextStop أو Stop State أو ETA أو VehicleTrip أو DriverTrackingHub أو Mapbox integration.
+- المسار القديم `routes/{routeId}/stops` يبقى خارج Phase 4.
+
+التحقق:
+- `flutter analyze` → **No issues found!**
+- الاختبار المخصص → **2/2**
+- `flutter test` الكامل → **134/134**
+- PR **#22** → merged إلى `stage/approved-route-line-vehicle-link-v1`.
+
+هذه الخطوة تغلق Reader فقط. لا تعني بدء `Stop-to-Route Projection`.
 
 ### الهدف النهائي للمرحلة
 
@@ -764,30 +788,52 @@ ML / Prediction
 
 # 19. نقطة البداية الحالية
 
-**Phase 4.1-A مغلقة ✅.**
+**Phase 4.1-B.2-B مغلقة ✅.**
 
 الحالة التنفيذية الحالية:
 
 ```text
-Phase 4.1-A
+4.1-A
 RoutePolylineProjection
 ✅
         ↓
-Phase 4.1-B
+4.1-B.0
+Projection Edge Contract
+✅
+        ↓
+4.1-B.1
+Stop Data Contract
+✅
+        ↓
+4.1-B.2-A
+PlannedRouteStopModel
+✅
+        ↓
+4.1-B.2-B
+Read-only Stop Reader
+✅
+        ↓
+4.1-B.2-C
 Stop-to-Route Projection
 ⏳ NEXT
         ↓
-Phase 4.2
+4.2
 NextStop Resolver
         ↓
-Phase 4.3
+4.3
 Stop State
         ↓
-Phase 4.4
+4.4
 Firestore / Hub Integration
 ```
 
-ولا يتم الانتقال إلى 4.1-B قبل تثبيت تصميم المحطات الثابتة الاختيارية وتحديد مصدر بياناتها المستقبلي.
+**حدود 4.1-B.2-C المثبتة مسبقًا:**
+- استخدام `PlannedRouteStopModel.location` مع `PlannedRoute.points`.
+- إعادة استخدام `RoutePolylineProjection.project(...)` الموجود أصلًا؛ لا primitive هندسي جديد.
+- `projection.alongMeters` هو `stopAlongMeters` المشتق محليًا.
+- تغطية Stops على المسار، خارج المسار، بداية/نهاية المسار، والنقاط المتكررة `A → A → B`.
+- عدم إدخال NextStop أو Stop State أو ETA أو VehicleTrip أو DriverTrackingHub أو Firestore persistence أو Mapbox.
+- عدم حل ambiguity لمسارات self-intersecting في هذه الخطوة.
 
 **المسارات الحالية لا تتطلب Stops ثابتة حتى تستمر في العمل وفق نموذج التشغيل الحالي القائم على صعود الركاب عند طلب التوقف.**
 
