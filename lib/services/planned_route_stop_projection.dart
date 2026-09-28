@@ -6,8 +6,8 @@ import 'route_plan/route_polyline_projection.dart';
 /// إلى الـgeometry primitive نفسه.
 ///
 /// النتيجة مشتقة من:
-/// - PlannedRouteStopModel.location
-/// - List<RoutePoint>
+/// - موقع PlannedRouteStopModel.location
+/// - قائمة RoutePoint
 ///
 /// و[RoutePolylineProjection.alongMeters] تمثل موضع المحطة على محور
 /// المسار (stopAlongMeters) في runtime فقط.
