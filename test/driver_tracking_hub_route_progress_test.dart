@@ -12,8 +12,8 @@ void main() {
 
   final route = [
     point(31.0000, 35.0000),
+    point(31.0000, 35.0050),
     point(31.0000, 35.0100),
-    point(31.0000, 35.0200),
   ];
 
   geo.Position gps(double latitude, double longitude) => geo.Position(
@@ -62,8 +62,8 @@ void main() {
       );
 
       final start = hub.updateRouteProgress(gps(31.0000, 35.0000));
-      final midpoint = hub.updateRouteProgress(gps(31.0000, 35.0100));
-      final later = hub.updateRouteProgress(gps(31.0000, 35.0140));
+      final midpoint = hub.updateRouteProgress(gps(31.0000, 35.0050));
+      final later = hub.updateRouteProgress(gps(31.0000, 35.0065));
 
       expect(start, isNotNull);
       expect(midpoint, isNotNull);
