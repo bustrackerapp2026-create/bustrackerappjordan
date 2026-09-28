@@ -199,6 +199,8 @@ class DriverTrackingHub {
       latitude: position.latitude,
       longitude: position.longitude,
       accuracy: position.accuracy,
+      timestamp: position.timestamp,
+      speedMetersPerSecond: position.speed,
     );
   }
 
