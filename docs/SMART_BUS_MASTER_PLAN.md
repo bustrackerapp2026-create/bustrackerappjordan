@@ -6,7 +6,11 @@
 >
 > **Phase 4.1-A:** استخراج `RoutePolylineProjection` المشترك مغلق بعد نجاح `flutter analyze` و`flutter test` بنتيجة **126/126**.
 >
-> **الخطوة التالية:** Phase 4.1-B — تصميم وتنفيذ `Stop-to-Route Projection` فقط بعد تثبيت بنية المحطات الثابتة المستقبلية، دون افتراض وجود Stops حاليًا.
+> **Phase 4.1-B.1:** عقد بيانات المحطات الثابتة المستقبلية مغلق كقرار تصميم فقط.
+>
+> **Phase 4.1-B.2-A:** `PlannedRouteStopModel` الحديث مغلق بعد نجاح `flutter analyze` و`flutter test` بنتيجة **132/132**، دون Firestore writer أو Rules أو Runtime integration.
+>
+> **الخطوة التالية:** Phase 4.1-B.2-B — فصل Reader للمحطات عن خوارزمية `Stop-to-Route Projection`.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -326,7 +330,7 @@ RouteProgress
 
 ## الحالة الحالية
 
-**قيد التنفيذ — تم إغلاق 4.1-A ✅، ولم تبدأ خوارزمية Stop-to-Route بعد.**
+**قيد التنفيذ — تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A، ولم تبدأ خوارزمية Stop-to-Route بعد.**
 
 ### 4.1-A — RoutePolylineProjection ✅
 
@@ -425,6 +429,27 @@ Stop
 - لا تعديل في RouteProgress أو `RoutePolylineProjection`.
 
 تم تثبيت uniqueness لـ`order` كـinvariant منطقي؛ آلية enforcement تؤجل إلى طبقة الإدارة/الكتابة عند التنفيذ العملي.
+
+#### 4.1-B.2-A — PlannedRouteStopModel ✅
+
+تم تنفيذ Model حديث مستقل للمحطات الثابتة المستقبلية وفق العقد المثبت في 4.1-B.1.
+
+الحدود:
+- `PlannedRouteStopModel` يمثل: `id`, `name`, `location: GeoPoint`, `order >= 0`, `isMajor`.
+- `id` هو Document ID؛ لا يتم تكرار `routeId` أو `direction`.
+- القيم المشتقة (`stopAlongMeters`, `NextStop`, `distanceAhead`, `eta`) خارج النموذج.
+- لا يوجد Writer أو Reader للمسارات الثابتة في هذه الخطوة.
+- لا توجد Firestore Rules جديدة.
+- لا تغيير في RouteProgress أو `RoutePolylineProjection` أو Hub/VehicleTrip.
+- `routes/{routeId}/stops` القديم يبقى خارج Phase 4.
+
+التحقق:
+- `flutter analyze` → **No issues found!**
+- الاختبار المخصص → **5/5**
+- `flutter test` الكامل → **132/132**
+- PR **#21** → merged إلى `stage/approved-route-line-vehicle-link-v1`.
+
+هذه الخطوة جزء من 4.1-B.2، وليست تنفيذًا لخوارزمية `Stop-to-Route Projection` نفسها.
 
 ### الهدف النهائي للمرحلة
 
