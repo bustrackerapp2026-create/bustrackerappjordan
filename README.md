@@ -914,7 +914,35 @@ firebase deploy --only storage
 
 **نتيجة البوابة:** **RouteProgress Hub Integration — مغلقة وناجحة ✅**
 
-**الخطوة التالية:** إبقاء كتابة routeProgress إلى Firestore كـPatch مستقل لاحق، ثم معالجة physical plausibility بشكل مستقل دون تغيير هذا الـguard أو إعادة فتح منظومة GPS.
+تم لاحقًا إغلاق Persistence إلى Firestore في الوحدة التالية، مع إبقاء physical plausibility كمسار مستقل.
+
+### إغلاق RouteProgress Firestore Persistence — 2026-09-28
+
+تم تفعيل حفظ routeProgress المقبول مع نفس live VehicleTrip flush الحالي، دون إنشاء cadence أو writer جديد.
+
+#### التنفيذ المثبت
+
+- DriverTrackingHub يأخذ snapshot متزامنًا من tripId وPosition وآخر routeProgress مقبول في بداية live flush.
+- VehicleTripService.updateLiveLocation() يستقبل routeProgress اختياريًا.
+- قيمة routeProgress الصحيحة بين 0.0 و1.0 تُضاف إلى نفس payload الخاص بتحديث VehicleTrip الحي.
+- عندما تكون routeProgress = null لا يُضاف حقل routeProgress إلى payload أصلًا، وبذلك لا تُمسح قيمة محفوظة مسبقًا.
+- القيم غير finite أو خارج المجال 0.0..1.0 تُرفض دفاعيًا داخل VehicleTripService.
+- لم تتم إضافة cadence أو Firestore writer مستقل لـRouteProgress.
+- بقي guard القفزة الأمامية 300 متر كما هو، ولم تتم إضافة physical plausibility.
+- لم يتم تعديل DriverTrackingLifecycle أو LocationService أو Mapbox أو driver_map_tab.dart.
+
+#### الاختبارات
+
+- الاختبار: test/vehicle_trip_live_location_payload_test.dart
+- يغطي: تمرير routeProgress الصحيحة، غياب الحقل عند null، قبول 0 و1، ورفض القيم السالبة، الأكبر من 1، وNaN/Infinity.
+- على الجهاز المحلي:
+  - flutter analyze → No issues found!
+  - flutter test test/vehicle_trip_live_location_payload_test.dart → 6/6 All tests passed!
+  - flutter test → 99/99 All tests passed!
+
+**نتيجة البوابة:** **RouteProgress Firestore Persistence — مغلقة وناجحة ✅**
+
+**الخطوة التالية:** physical plausibility مستقلة، ثم أي نقاط RouteProgress أخرى فقط إذا ظهرت من الاختبارات أو المتطلبات التشغيلية؛ لا نعيد فتح ما أُغلق.
 
 ### ملاحظات تشغيلية
 

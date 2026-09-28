@@ -358,6 +358,7 @@ class DriverTrackingHub {
 
     final tripId = _activeVehicleTripId;
     final position = _pendingVehicleTripPosition;
+    final routeProgress = _routeProgressTracker.lastAccepted?.progress;
     if (tripId == null || tripId.isEmpty || position == null) return;
 
     final last = _lastVehicleTripLocationWriteAt;
@@ -377,6 +378,7 @@ class DriverTrackingHub {
         currentLocation: GeoPoint(position.latitude, position.longitude),
         speed: position.speed,
         heading: position.heading,
+        routeProgress: routeProgress,
       );
       if (_activeVehicleTripId == tripId) {
         _lastVehicleTripLocationWriteAt = DateTime.now();
