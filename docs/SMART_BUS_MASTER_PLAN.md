@@ -22,6 +22,8 @@
 >
 > **Phase 4 — Runtime / Domain Implementation:** مكتملة ✅. تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B و4.1-B.2-C و4.2 و4.3-A و4.3-B و4.4-A و4.4-B. لا توجد ملاحظة حالية تستدعي إعادة فتح Phase 4؛ فجوة اختبار Firestore failure تبقى فجوة Evidence فقط، والاختبار الميداني النهائي مؤجل.
 >
+> **Phase 5.1 — ETA Contract + Deterministic Engine:** مكتملة ✅ بعد تثبيت العقد والتنفيذ والتحقق المحلي، دون Integration أو Passenger/UI أو تعديل على EtaUtils القديم.
+>
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
 ---
@@ -952,6 +954,42 @@ ETA
 - السرعات غير الواقعية لا تنتج ETA ساذجًا.
 - GPS stale/lost قد يجعل ETA غير متاح.
 - **ETA unavailable أفضل من رقم وهمي.**
+### 5.1 — ETA Contract + Deterministic Engine ✅
+
+**الحالة:** DESIGN FROZEN + IMPLEMENTED + VERIFIED.
+
+تم تنفيذ baseline حتمي مستقل يعتمد فقط على vehicleAlongMeters وtargetAlongMeters وspeedMps، مع حفظ observedAt كما ورد من المصدر. لا يستخدم المحرك DateTime.now()؛ Freshness مسؤولية Integration Layer.
+
+Validation المثبتة:
+- vehicleAlongMeters وtargetAlongMeters يجب أن يكونا finite و>= 0.
+- targetAlongMeters <= vehicleAlongMeters → targetNotAhead.
+- speedMps = NaN أو ±Infinity → invalidSpeed.
+- speedMps <= 0 → nonPositiveSpeed.
+
+الحساب الوحيد:
+- distanceAheadMeters = targetAlongMeters - vehicleAlongMeters.
+- etaSeconds = distanceAheadMeters / speedMps.
+
+لا fallback speed، ولا buffer، ولا rounding، ولا max cap، ولا traffic factor، ولا dwell time، ولا historical correction، ولا ML.
+
+الـEngine لا يعرف GPS أو Firestore أو Flutter UI أو Mapbox أو DriverTrackingHub أو DriverTrackingLifecycle أو VehicleTrip أو StopRuntimeSnapshot أو system clock.
+
+الملفات المضافة:
+- lib/models/eta_input.dart
+- lib/models/eta_result.dart
+- lib/models/eta_status.dart
+- lib/models/eta_unavailable_reason.dart
+- lib/services/eta_engine.dart
+- test/eta_engine_test.dart
+
+الحدود: لم يتم تعديل RouteProgressTracker أو DriverTrackingHub أو DriverTrackingLifecycle أو VehicleTrip أو Firestore أو StopRuntime أو Passenger أو driverPublic أو EtaUtils أو UI.
+
+دليل التحقق المحلي:
+- flutter analyze → **No issues found!**
+- flutter test test/eta_engine_test.dart → **16/16 passed**.
+- flutter test الكامل → **208/208 passed**.
+
+هذه الخطوة مغلقة ولا يعاد فتحها إلا عند ظهور Regression أو دليل جديد.
 
 ---
 
@@ -1225,7 +1263,14 @@ Runtime Integration
         ↓
 PHASE 5
 ETA
-⏳
+⏳ IN PROGRESS
+        ↓
+5.1
+Deterministic ETA Engine
+✅
+        ↓
+Phase 5 Integration
+⏳ DESIGN NEXT
         ↓
 PHASE 6
 BusWatch (Read Only)
@@ -1343,7 +1388,9 @@ Firestore / Hub Integration
 - التحقق: `flutter analyze` بدون مشاكل، focused **20/20**، full suite **171/171**.
 - PR **#30** merged squash، merge commit `690c26f25f9372649f5b722802ed932bd997a66f`.
 
-**الخطوة التالية الموثقة:** Phase 5 — ETA Engine.
+**Phase 5.1 — ETA Contract + Deterministic Engine مغلقة ✅.**
+
+**الخطوة التالية الموثقة:** تصميم طبقة Integration الخاصة بالـETA، دون تنفيذ Production Code أو Passenger/UI قبل تثبيت عقد التكامل كخطوة مستقلة.
 
 **Phase 4 Closure Notes:** الكود والتكامل والحدود المعمارية والتحقق الآلي موثقة كمكتملة. لا تعاد فتح Phase 4 إلا عند ظهور Regression أو دليل جديد يستوجب ذلك.
 
