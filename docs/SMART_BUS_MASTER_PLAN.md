@@ -856,29 +856,66 @@ Runtime Stop Snapshot
 
 هذه الخطوة تثبت عقد التكامل فقط؛ التنفيذ البرمجي المحدود يأتي في 4.4-B.
 
-### حالة 4.4-B التنفيذية الحالية
+### حالة 4.4-B التنفيذية النهائية ✅
 
-تم تنفيذ مرحلتين محدودتين من Runtime Integration على `stage/approved-route-line-vehicle-link-v1`:
-1. تحميل Fixed Stops مرة واحدة عند bind/restore وتخزينها محليًا في `DriverTrackingHub`.
-2. توفير `refreshActiveStopRuntimeSnapshot()` لاشتقاق Snapshot محلي من `accepted RouteProgress` وStops المحملة.
+تم إغلاق Runtime Integration على `stage/approved-route-line-vehicle-link-v1`.
 
-الاشتقاق لا يحتوي Firestore access ولا يعيد حساب RouteProgress من GPS، ويطلب صراحةً `StopStatePolicy` وStop Eligibility.
+### ما تم تثبيته
 
-**4.4-B لم تُغلق بعد:** لا توجد سياسة إنتاجية مثبتة رقميًا لحدود Stop State، ولا مصدر سياسة واضح يحقنها في المستهلك التشغيلي. لذلك لا يجوز إدخال thresholds افتراضية أو استدعاء refresh تلقائيًا داخل GPS callback.
+1. تحميل Fixed Stops مرة واحدة عند bind/restore من:
+   `plannedRoutes/{routeId}/stops`
+   عبر `PlannedRouteStopService`.
+2. تخزين Stops محليًا في `DriverTrackingHub` مع حماية `tripId/routeId`.
+3. إنشاء `StopRuntimePolicy` كمصدر مركزي للسياسة التشغيلية.
+4. السياسة الإنتاجية الحالية:
+   - `stopEligibilityDistanceMeters = 75m`.
+   - `atStopRadius = 30m`.
+   - `approachingDistance = 200m`.
+5. حقن السياسة صراحةً عند بدء واستعادة `VehicleTrip`.
+6. تحديث `StopRuntimeSnapshot` تلقائيًا بعد كل `RouteProgress` مقبول.
+7. إعادة اشتقاق الـSnapshot عند اكتمال تحميل Stops إذا كان هناك `accepted RouteProgress` متاح.
+8. عدم إدخال Firestore reads في GPS callback وعدم إضافة Firestore writes لـStop State.
 
-### الهدف النهائي للمرحلة
+### حدود التكامل
+
+- `StopStateResolver` و`NextStopResolver` بقيَا policy/domain services مستقلة.
+- `DriverTrackingHub` يستهلك السياسة والنتائج المشتقة ولا يعيد تنفيذ منطق Projection أو Resolution.
+- لم يتم تعديل `driver_map_tab.dart`.
+- لم يتم تعديل `DriverTrackingLifecycle`.
+- لم يتم تعديل `RouteProgressTracker` أو `RoutePolylineProjection`.
+- لم تتم إضافة fields جديدة إلى `VehicleTrip`.
+- الـStop Runtime Snapshot يبقى in-memory derived data.
+
+### دليل التحقق
+
+- `flutter analyze` بعد Patch التنظيف → **No issues found!**
+- focused Hub tests → **15/15**
+- full `flutter test` → **192/192**
+- PR #37 — Stop Runtime Policy → merged.
+- PR #38 — automatic runtime refresh → merged.
+- PR #39 — unused import cleanup → merged.
+- الفرع المحلي بعد الدمج نظيف ومتزامن مع origin عند merge commit:
+  `204060a468a183faa09f3e46b4360e0017d973b9`.
+
+### الهدف التشغيلي
 
 ```text
-Current Position
+Active VehicleTrip
 +
-RouteProgress
+Approved PlannedRoute
 +
-Optional Fixed Route Stops
+Accepted RouteProgress
++
+Loaded Fixed Stops
++
+StopRuntimePolicy
       ↓
-NextStop
+Local StopRuntimeSnapshot
+      ↓
+NextStop + StopState
 ```
 
-ويجب أن يدعم النظام أيضًا المسار الذي لا توجد له محطة ثابتة لاحقة.
+المسار الذي لا يحتوي Stops ثابتة يبقى صالحًا؛ في هذه الحالة تكون بيانات Stop-derived فارغة أو غير متاحة، بينما تستمر VehicleTrip/GPS tracking بشكل طبيعي.
 
 # 8. Phase 5 — ETA Engine
 
@@ -1139,7 +1176,7 @@ RouteProgress
         ↓
 PHASE 4
 NextStop / Pickup
-⏳ IN PROGRESS
+✅ COMPLETE
         ↓
 4.1-A
 RoutePolylineProjection
@@ -1167,7 +1204,7 @@ Stop State Resolver
         ↓
 4.4
 Firestore / Hub Integration
-⏳ IN PROGRESS
+✅
         ↓
 4.4-A
 Stop Runtime Integration Contract
@@ -1175,7 +1212,7 @@ Stop Runtime Integration Contract
         ↓
 4.4-B
 Runtime Integration
-⏳ NEXT
+✅
         ↓
 PHASE 5
 ETA
@@ -1268,7 +1305,7 @@ Stop State Resolver
         ↓
 4.4
 Firestore / Hub Integration
-⏳ NEXT
+✅
 ```
 
 **4.2 مغلقة ✅.**
@@ -1297,7 +1334,7 @@ Firestore / Hub Integration
 - التحقق: `flutter analyze` بدون مشاكل، focused **20/20**، full suite **171/171**.
 - PR **#30** merged squash، merge commit `690c26f25f9372649f5b722802ed932bd997a66f`.
 
-**الخطوة التالية الموثقة:** 4.4-B — Runtime Integration.
+**الخطوة التالية الموثقة:** Phase 5 — ETA Engine.
 
 **المسارات الحالية لا تتطلب Stops ثابتة حتى تستمر في العمل وفق نموذج التشغيل الحالي القائم على صعود الركاب عند طلب التوقف.**
 
