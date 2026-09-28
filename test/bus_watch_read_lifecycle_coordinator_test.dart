@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jordan_bus_tracker_new/services/bus_watch_operational_consumer.dart';
 import 'package:jordan_bus_tracker_new/services/bus_watch_operational_read_result.dart';
 import 'package:jordan_bus_tracker_new/services/bus_watch_read_lifecycle_coordinator.dart';
 
