@@ -22,7 +22,9 @@
 >
 > **Phase 4 — Runtime / Domain Implementation:** مكتملة ✅. تم إغلاق 4.1-A و4.1-B.0 و4.1-B.1 و4.1-B.2-A و4.1-B.2-B و4.1-B.2-C و4.2 و4.3-A و4.3-B و4.4-A و4.4-B. لا توجد ملاحظة حالية تستدعي إعادة فتح Phase 4؛ فجوة اختبار Firestore failure تبقى فجوة Evidence فقط، والاختبار الميداني النهائي مؤجل.
 >
-> **Phase 5.1 — ETA Contract + Deterministic Engine:** مكتملة ✅ بعد تثبيت العقد والتنفيذ والتحقق المحلي، دون Integration أو Passenger/UI أو تعديل على EtaUtils القديم.\n\n**Phase 5.2-D — ETA Runtime Invocation:** مكتملة ✅ بعد تنفيذ عقد `EtaResult?` والتحقق المحلي، مع بقاء Passenger/UI وDriverTrackingHub خارج النطاق.
+> **Phase 5.1 — ETA Contract + Deterministic Engine:** مكتملة ✅ بعد تثبيت العقد والتنفيذ والتحقق المحلي، دون Integration أو Passenger/UI أو تعديل على EtaUtils القديم.
+
+**Phase 5.2-D — ETA Runtime Invocation:** مكتملة ✅ بعد تنفيذ عقد `EtaResult?` والتحقق المحلي، مع بقاء Passenger/UI وDriverTrackingHub خارج النطاق.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -1622,7 +1624,9 @@ ML / Prediction
 
 # 19. نقطة البداية الحالية
 
-**Phase 5.2-D مغلقة ✅.**\n\n**Phase 4.3-B مغلقة ✅.**
+**Phase 5.2-D مغلقة ✅.**
+
+**Phase 4.3-B مغلقة ✅.**
 
 **Phase 4.4-A مغلقة كقرار تصميم فقط ✅.**
 
