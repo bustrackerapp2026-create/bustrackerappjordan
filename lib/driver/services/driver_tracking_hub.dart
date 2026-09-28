@@ -221,8 +221,8 @@ class DriverTrackingHub {
   /// Refreshes the derived Stop runtime snapshot from the latest
   /// accepted RouteProgress and already loaded Stops.
   ///
-  /// State and Eligibility policies are supplied explicitly by the caller.
-  /// No Firestore access occurs here.
+  /// The policy was explicitly bound when the active VehicleTrip was
+  /// established. No Firestore access occurs here.
   StopRuntimeSnapshot? refreshActiveStopRuntimeSnapshot() {
     final routePoints = _activeVehicleTripRoutePoints;
     final stops = _activeVehicleTripStops;
