@@ -32,15 +32,17 @@
 - لا نقلب القائمة تلقائيًا بسبب `direction`.
 - `direction` جزء من هوية VehicleTrip ويُستخدم للتحقق من الاتساق.
 
-## 4. ملاحظة حرجة قبل Phase 3
+## 4. ملاحظة حرجة قبل Phase 3 — تم إغلاقها
 
-الدالة الحالية `TripManagerMixin._distanceToRouteStart()` تستخدم:
-- outbound → `points.first`
-- return → `points.last`
+في النسخة السابقة من الـPre-flight كان تعريف بداية route matching يحتاج تثبيتًا قبل التنفيذ.
 
-وهذا لا يطابق ترتيب المسارات الاتجاهية الذي تم التحقق منه.
+تم لاحقًا إغلاق هذا الشرط في **Route Start Consistency Gate**:
+- بداية المسار التشغيلي هي `PlannedRoute.points.first` لكل اتجاه.
+- لا يتم عكس قائمة نقاط `return` تلقائيًا داخل StartTrip.
+- أضيف regression test للـreturn.
+- لم يتم تعديل `driver_map_tab.dart` أو إعادة بناء GPS/Mapbox بسبب هذا القرار.
 
-لذلك نحتاج **Patch مستقل صغير** لتثبيت تعريف بداية المسار في StartTrip مع regression test للـreturn، قبل تنفيذ RouteProgress. هذا ليس إعادة بناء لـGPS/Mapbox ولا يحتاج تعديل `driver_map_tab.dart`.
+أصبحت هذه الملاحظة الآن **قرارًا مغلقًا** وليست خطوة تنفيذ مستقبلية.
 
 ## 5. طريقة الحساب
 
