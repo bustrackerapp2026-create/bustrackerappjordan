@@ -125,6 +125,7 @@ class DriverTrackingHub {
       _activeVehicleTripDirection = null;
       _activeVehicleTripRoutePoints = null;
       _activeVehicleTripStops = null;
+      _activeStopRuntimeSnapshot = null;
       _routeProgressTracker.reset();
       _lastVehicleTripLocationWriteAt = null;
       _lastHistoricalPingAt = null;
@@ -144,6 +145,7 @@ class DriverTrackingHub {
         _routeProgressTracker.reset();
         _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
         _activeVehicleTripStops = null;
+        _activeStopRuntimeSnapshot = null;
       } else if (routePoints != null &&
           !_sameRoutePoints(_activeVehicleTripRoutePoints, routePoints)) {
         _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
@@ -173,6 +175,7 @@ class DriverTrackingHub {
         normalizedDirection?.isNotEmpty == true ? normalizedDirection : null;
     _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
     _activeVehicleTripStops = null;
+    _activeStopRuntimeSnapshot = null;
     _seedRouteProgress(savedRouteProgress);
     _lastVehicleTripLocationWriteAt = null;
     _lastHistoricalPingAt = null;
