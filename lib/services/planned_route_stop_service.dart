@@ -11,7 +11,7 @@ class PlannedRouteStopService {
   static final PlannedRouteStopService instance = PlannedRouteStopService._();
   factory PlannedRouteStopService() => instance;
 
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  late final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   CollectionReference<Map<String, dynamic>> _stops(String routeId) {
     return _db.collection('plannedRoutes').doc(routeId).collection('stops');
