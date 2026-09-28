@@ -1418,7 +1418,7 @@ BusWatch Consumer لاحقًا
 
 **Read-only بالكامل.** الراكب لا يعدّل `VehicleTrip` أو `PlannedRoute` أو `driverPublic`.
 
-### 6-A — BusWatch Operational Read Model ✅ DESIGN FROZEN
+### 6-A — BusWatch Operational Read Model ✅ IMPLEMENTED & VERIFIED
 
 **الحالة:** IMPLEMENTED & VERIFIED ✅ — العقد منفذ ومثبت بالاختبارات.
 
