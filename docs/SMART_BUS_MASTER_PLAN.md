@@ -20,7 +20,7 @@
 >
 > **Phase 4.3-B:** `Stop State Resolver` مغلق بعد نجاح `flutter analyze` بنتيجة **No issues found!**، واختبار مخصص **20/20**، و`flutter test` الكامل **171/171**. التغيير Domain-only ولا يتضمن GPS أو Projection أو NextStop أو Firestore أو Hub أو VehicleTrip أو ETA.
 >
-> **الخطوة التالية:** 4.4 — Firestore / Hub Integration، وفق الخريطة التنفيذية الحالية.
+> **الخطوة التالية:** 4.4-A — Stop Runtime Integration Contract، ثم 4.4-B — تنفيذ التكامل وفق العقد المثبت.
 >
 > **قاعدة التنفيذ:** فحص الموجود → مشكلة مثبتة → قيد تصميم → Patch محدود → اختبار → دليل واضح → Commit → تثبيت → الانتقال للخطوة التالية.
 
@@ -782,6 +782,80 @@ delta > approachingDistance
 
 هذه الخطوة مغلقة. لا يوجد في الخطة الحالية بند رسمي باسم 4.3-C.
 
+#### 4.4-A — Stop Runtime Integration Contract ✅ DESIGN ONLY
+
+قبل أي ربط تنفيذي مع الـHub أو Firestore، تم تثبيت عقد التكامل بين الطبقات السابقة.
+
+### التدفق المقصود
+
+```text
+Active VehicleTrip
+      +
+Approved PlannedRoute
+      +
+Accepted RouteProgress
+      ↓
+Read fixed Stops once
+      ↓
+Project Stops to route axis
+      ↓
+Stop Eligibility
+      ↓
+NextStopResolver
+      +
+StopStateResolver per projected stop
+      ↓
+Runtime Stop Snapshot
+```
+
+### مصدر البيانات
+
+- المصدر الوحيد للمحطات الثابتة هو:
+  `plannedRoutes/{routeId}/stops`
+- القراءة تتم عبر `PlannedRouteStopService`.
+- لا توجد عمليات write للمحطات في هذا التكامل.
+- لا تتم إعادة استخدام `routes/{routeId}/stops` القديم أو `PickupPointModel`.
+
+### قاعدة الأداء
+
+- لا يُسمح بقراءة Firestore للمحطات داخل كل GPS callback.
+- يتم تحميل/تحديث Stops عند ربط الرحلة التشغيلية أو استعادتها، ثم تُستخدم بياناتها المحملة محليًا.
+- إسقاط المحطات، واختيار NextStop، وتصنيف StopState عمليات محلية deterministic بعد توفر المدخلات.
+- لا نضيف stream/query جديدًا إلى مسار GPS الساخن قبل وجود حاجة مثبتة.
+
+### مسؤوليات التكامل
+
+- `PlannedRouteStopService`: قراءة Stops فقط.
+- `PlannedRouteStopProjection`: تحويل موقع Stop إلى `RoutePolylineProjection`.
+- `NextStopResolver`: اختيار أقرب Stop مؤهل إلى الأمام.
+- `StopStateResolver`: تصنيف حالة كل Stop من `vehicleAlongMeters` وPolicy صريحة.
+- `DriverTrackingHub`: يحتفظ ببيانات الرحلة التشغيلية والـderived runtime snapshot، ولا يعيد اختراع منطق الإسقاط أو resolver.
+
+### Policy
+
+- `StopStatePolicy` تُمرر صراحة ولا توجد قيم افتراضية رقمية.
+- Stop Eligibility تبقى سياسة مستقلة يمررها المستهلك.
+- لا يتم تثبيت threshold جديد لـ`distanceToRouteMeters` في 4.4-A.
+
+### الحالة عند غياب البيانات
+
+- لا توجد Stops → `NextStop = null` وحالات Stops فارغة.
+- لا يوجد `vehicleAlongMeters` مقبول → لا يتم اشتقاق NextStop/StopState.
+- Stop لا تملك Projection صالحًا أو لا تجتاز Eligibility → لا تدخل في NextStop، وتصنيفها لا يُعامل كحالة تشغيلية صالحة.
+- فشل قراءة Stops لا ينهي VehicleTrip ولا يوقف GPS tracking؛ يبقى التكامل بدون Stop-derived data ويجب أن يكون الفشل observable دون كسر الرحلة.
+
+### حدود 4.4-A
+
+- لا Firestore write للمحطات أو Stop State.
+- لا إضافة fields جديدة إلى `VehicleTrip`.
+- لا تعديل على `RouteProgressTracker` أو `RoutePolylineProjection`.
+- لا ETA أو dwell time.
+- لا Mapbox أو `driver_map_tab.dart`.
+- لا self-intersection ambiguity resolution.
+- لا تغيير في GPS/Lifecycle architecture.
+
+هذه الخطوة تثبت عقد التكامل فقط؛ التنفيذ البرمجي المحدود يأتي في 4.4-B.
+
 ### الهدف النهائي للمرحلة
 
 ```text
@@ -1083,6 +1157,14 @@ Stop State Resolver
         ↓
 4.4
 Firestore / Hub Integration
+⏳ IN PROGRESS
+        ↓
+4.4-A
+Stop Runtime Integration Contract
+✅ DESIGN
+        ↓
+4.4-B
+Runtime Integration
 ⏳ NEXT
         ↓
 PHASE 5
@@ -1128,6 +1210,8 @@ ML / Prediction
 # 19. نقطة البداية الحالية
 
 **Phase 4.3-B مغلقة ✅.**
+
+**Phase 4.4-A مغلقة كقرار تصميم فقط ✅.**
 
 الحالة التنفيذية الحالية:
 
@@ -1203,7 +1287,7 @@ Firestore / Hub Integration
 - التحقق: `flutter analyze` بدون مشاكل، focused **20/20**، full suite **171/171**.
 - PR **#30** merged squash، merge commit `690c26f25f9372649f5b722802ed932bd997a66f`.
 
-**الخطوة التالية الموثقة:** 4.4 — Firestore / Hub Integration.
+**الخطوة التالية الموثقة:** 4.4-B — Runtime Integration.
 
 **المسارات الحالية لا تتطلب Stops ثابتة حتى تستمر في العمل وفق نموذج التشغيل الحالي القائم على صعود الركاب عند طلب التوقف.**
 

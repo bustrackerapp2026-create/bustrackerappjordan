@@ -221,3 +221,48 @@
 | 2026-09-12 | رفع `firestore.rules` إلى GitHub | ✅ | تم تحديث `main` |
 | 2026-09-12 | اختبار بحث `الجيزة` | ❌ | التطبيق ما زال يستعلم من `plannedRoutes` ويظهر `PERMISSION_DENIED` |
 | 2026-09-12 | رفع نسخة الجهاز الحالية ومقارنتها | ⏳ | الخطوة التالية |
+
+
+---
+
+# 10. Phase 4.4-A — Stop Runtime Integration Contract
+
+**الحالة: ✅ DESIGN ONLY**
+
+تم تثبيت عقد التكامل قبل أي تعديل على `DriverTrackingHub` أو تدفق الرحلة.
+
+### المبدأ
+
+```text
+Firestore Stops
+      ↓
+Read once at trip bind/restore
+      ↓
+Local projected stops
+      ↓
+NextStop + StopState
+      ↓
+Runtime snapshot
+```
+
+### القيود
+
+- لا قراءة Firestore داخل كل GPS callback.
+- المحطات تقرأ من `plannedRoutes/{routeId}/stops` عبر `PlannedRouteStopService`.
+- الإسقاط يستخدم `PlannedRouteStopProjection`.
+- `NextStopResolver` و`StopStateResolver` يبقيان domain services مستقلة.
+- `vehicleAlongMeters` مصدره RouteProgress المقبول؛ لا يعاد حسابه من GPS داخل طبقة التكامل.
+- `StopStatePolicy` وStop Eligibility تُمرران صراحةً دون قيم افتراضية جديدة.
+- لا Firestore write لـStop State.
+- لا fields جديدة في `VehicleTrip`.
+- لا تغيير في `RouteProgressTracker` أو Mapbox أو GPS/Lifecycle.
+
+### سلوك الفشل
+
+فشل قراءة Stops لا ينهي VehicleTrip ولا يوقف التتبع؛ فقط تكون بيانات Stop-derived غير متاحة، مع تسجيل/ملاحظة الفشل دون كسر المسار التشغيلي.
+
+### الخطوة التالية
+
+**4.4-B — Runtime Integration**.
+
+هذه الخطوة هي أول Patch برمجي لـ4.4، وستقتصر على توصيل البيانات المحملة والنتائج المشتقة بالـHub دون إدخال منطق جديد داخل GPS callback.
