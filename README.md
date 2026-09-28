@@ -304,8 +304,9 @@ firebase deploy --only storage
 
 ### الفرع والحالة المرجعية
 
-- **الفرع التطويري الحالي:** `stage/approved-route-line-vehicle-link-v1`
-- **آخر commit تقني مُثبت حاليًا:** `dfa67862604c48028c7c085b51a536d1c2d2469f` — `Phase 3: test RouteProgress continuity and monotonicity`
+- **الفرع التطويري المرجعي:** `stage/approved-route-line-vehicle-link-v1`
+- **فرع Patch الحالي:** `stage/route-progress-hub-integration-v1`
+- **آخر commit تقني في Patch الحالي:** `e16dfdb850d4f4a052a01fa47e4ea8d322a5bd99` — `fix(route-progress): defer Firebase service initialization in Hub`
 - **آخر commit تقني سابق لمسار Failure Path 1:** `5e820c8da9dbf171ddbaca156dba52d95e56e25c`
 - **آخر commit توثيقي سابق لـFailure Path 1:** `311a0aafb5bc88493757f4501e5c5a838779546c`
 - **آخر commit تقني لـ Buffer Isolation:** `c058b26ccdf62ed9abc2ad325522f8403a7fa81e`
@@ -883,7 +884,37 @@ firebase deploy --only storage
 
 **نتيجة البوابة:** **Continuity + Monotonic Progress — مغلقة وناجحة ✅**
 
-**الخطوة التالية:** ربط الـtracker تدريجيًا مع `DriverTrackingHub` لحساب `routeProgress` من GPS الحي على الرحلة النشطة، مع إبقاء الكتابة إلى Firestore في طبقة منفصلة واختبار التكامل قبل تفعيلها ميدانيًا.
+تم لاحقًا إغلاق تكامل الـtracker مع `DriverTrackingHub` في الوحدة التالية، مع إبقاء الكتابة إلى Firestore خارج هذا المسار.
+
+### إغلاق RouteProgress Hub Integration — 2026-09-28
+
+تم ربط RouteProgressTracker مع DriverTrackingHub تدريجيًا، مع إبقاء الحساب محليًا وفصل الكتابة إلى Firestore عن هذه الوحدة.
+
+#### التنفيذ المثبت
+
+- DriverTrackingHub يستقبل routePoints وrouteId وdirection وsavedRouteProgress عند ربط VehicleTrip.
+- الرحلة الجديدة: reset ثم bind للمسار ثم seed اختياري ثم استقبال GPS.
+- Restore: reset ثم bind ثم seed من VehicleTrip.routeProgress المحفوظ إن وُجد.
+- إعادة الربط لنفس tripId + routeId تحافظ على حالة الـtracker؛ وجود routePoints جديدة لا يسبب reset تلقائيًا.
+- إذا تغيّر routeId مع بقاء tripId نفسه، تتم إعادة تهيئة الـtracker وربط هندسة المسار الجديدة.
+- clearActiveVehicleTrip() يمسح معرف الرحلة، هندسة المسار، ويعمل reset() للـtracker لمنع انتقال الحالة إلى رحلة لاحقة.
+- _dispatchPosition() يمرر GPS إلى نقطة الربط المحلية updateRouteProgress() قبل مسارات التسجيل التاريخي والتحديث الحي.
+- تم تأخير إنشاء خدمات Firestore داخل الـHub (VehicleTripService وTripPingService) إلى وقت استخدامها حتى يبقى اختبار RouteProgress المحلي مستقلًا عن Firebase.initializeApp()، دون تغيير واجهات هذه الخدمات أو مخطط Firestore.
+- بقي guard القفزة الأمامية 300 متر كما هو دون تغيير.
+- لم تتم إضافة أي كتابة لـrouteProgress إلى Firestore في هذه الوحدة.
+
+#### الاختبار
+
+- الاختبار: test/driver_tracking_hub_route_progress_test.dart
+- يغطي: أول projection، التقدم الأمامي الأحادي، GPS jitter، عزل الرحلة الجديدة، Restore مع saved progress، إعادة الربط لنفس الرحلة، تغيير routeId، وclear/reset.
+- على الجهاز المحلي:
+  - flutter analyze → No issues found!
+  - flutter test test/driver_tracking_hub_route_progress_test.dart → 8/8 All tests passed!
+  - flutter test → 93/93 All tests passed!
+
+**نتيجة البوابة:** **RouteProgress Hub Integration — مغلقة وناجحة ✅**
+
+**الخطوة التالية:** إبقاء كتابة routeProgress إلى Firestore كـPatch مستقل لاحق، ثم معالجة physical plausibility بشكل مستقل دون تغيير هذا الـguard أو إعادة فتح منظومة GPS.
 
 ### ملاحظات تشغيلية
 

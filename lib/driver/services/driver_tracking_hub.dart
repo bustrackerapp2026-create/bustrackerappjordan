@@ -4,12 +4,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 
+import '../../models/route_point.dart';
 import '../../models/trip_ping.dart';
 import '../../services/historical_sampling_policy.dart';
 import '../../services/location_service.dart';
+import '../../services/route_progress_calculator.dart';
 import '../../services/trip_ping_buffer.dart';
 import '../../services/trip_ping_service.dart';
 import '../../services/vehicle_trip_service.dart';
+import '../../services/route_progress_tracker.dart';
 import 'driver_tracking_lifecycle.dart';
 
 /// نقطة مركزية لتتبع السائق — تبقى حية حتى لو أُغلقت شاشة الخريطة.
@@ -38,7 +41,10 @@ class DriverTrackingHub {
   bool _wantOnline = false;
   bool _wantTrip = false;
 
-  final VehicleTripService _vehicleTripService = VehicleTripService();
+  VehicleTripService? _vehicleTripServiceInstance;
+  VehicleTripService get _vehicleTripService =>
+      _vehicleTripServiceInstance ??= VehicleTripService();
+  final RouteProgressTracker _routeProgressTracker = RouteProgressTracker();
 
   String? _activeVehicleTripId;
   DateTime? _lastVehicleTripLocationWriteAt;
@@ -47,12 +53,15 @@ class DriverTrackingHub {
   geo.Position? _pendingVehicleTripPosition;
 
   final TripPingBuffer _tripPingBuffer = TripPingBuffer();
-  final TripPingService _tripPingService = TripPingService();
+  TripPingService? _tripPingServiceInstance;
+  TripPingService get _tripPingService =>
+      _tripPingServiceInstance ??= TripPingService();
   Future<void>? _tripPingUploadFuture;
   Timer? _tripPingUploadTimer;
   bool _historicalCapturePaused = false;
   String? _activeVehicleTripRouteId;
   String? _activeVehicleTripDirection;
+  List<RoutePoint>? _activeVehicleTripRoutePoints;
   DateTime? _lastHistoricalPingAt;
 
   static const Duration _vehicleTripLocationInterval =
@@ -69,6 +78,9 @@ class DriverTrackingHub {
 
   int get bufferedTripPingCount => _tripPingBuffer.length;
 
+  RouteProgressProjection? get activeRouteProgress =>
+      _routeProgressTracker.lastAccepted;
+
   /// يربط الـHub بمعرف VehicleTrip النشطة وبياناتها اللازمة للتسجيل التاريخي.
   ///
   /// بيانات Historical تبقى أولًا في الـBuffer، ثم تُرفع على دفعات أثناء
@@ -80,6 +92,8 @@ class DriverTrackingHub {
     String? tripId, {
     String? routeId,
     String? direction,
+    List<RoutePoint>? routePoints,
+    double? savedRouteProgress,
   }) {
     final normalized = tripId?.trim();
     _vehicleTripFlushTimer?.cancel();
@@ -92,6 +106,8 @@ class DriverTrackingHub {
       _activeVehicleTripId = null;
       _activeVehicleTripRouteId = null;
       _activeVehicleTripDirection = null;
+      _activeVehicleTripRoutePoints = null;
+      _routeProgressTracker.reset();
       _lastVehicleTripLocationWriteAt = null;
       _lastHistoricalPingAt = null;
       _pendingVehicleTripPosition = null;
@@ -102,25 +118,88 @@ class DriverTrackingHub {
     final normalizedDirection = direction?.trim().toLowerCase();
 
     if (_activeVehicleTripId == normalized) {
+      final routeChanged = normalizedRouteId != null &&
+          normalizedRouteId.isNotEmpty &&
+          normalizedRouteId != _activeVehicleTripRouteId;
+
+      if (routeChanged) {
+        _routeProgressTracker.reset();
+        _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
+      } else if (routePoints != null &&
+          !_sameRoutePoints(_activeVehicleTripRoutePoints, routePoints)) {
+        _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
+      }
+
       if (normalizedRouteId != null && normalizedRouteId.isNotEmpty) {
         _activeVehicleTripRouteId = normalizedRouteId;
       }
       if (normalizedDirection != null && normalizedDirection.isNotEmpty) {
         _activeVehicleTripDirection = normalizedDirection;
       }
+
+      if (_routeProgressTracker.lastAccepted == null &&
+          savedRouteProgress != null) {
+        _seedRouteProgress(savedRouteProgress);
+      }
+
       _scheduleHistoricalTripPingUpload();
       return;
     }
 
+    _routeProgressTracker.reset();
     _activeVehicleTripId = normalized;
     _activeVehicleTripRouteId =
         normalizedRouteId?.isNotEmpty == true ? normalizedRouteId : null;
     _activeVehicleTripDirection =
         normalizedDirection?.isNotEmpty == true ? normalizedDirection : null;
+    _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
+    _seedRouteProgress(savedRouteProgress);
     _lastVehicleTripLocationWriteAt = null;
     _lastHistoricalPingAt = null;
     _pendingVehicleTripPosition = null;
     _scheduleHistoricalTripPingUpload();
+  }
+
+  List<RoutePoint>? _copyRoutePoints(List<RoutePoint>? routePoints) {
+    if (routePoints == null || routePoints.isEmpty) return null;
+    return List<RoutePoint>.unmodifiable(routePoints);
+  }
+
+  bool _sameRoutePoints(
+    List<RoutePoint>? current,
+    List<RoutePoint> next,
+  ) {
+    if (current == null || current.length != next.length) return false;
+    for (var i = 0; i < next.length; i++) {
+      final a = current[i];
+      final b = next[i];
+      if (a.latitude != b.latitude || a.longitude != b.longitude) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _seedRouteProgress(double? savedRouteProgress) {
+    if (savedRouteProgress == null) return;
+    final routePoints = _activeVehicleTripRoutePoints;
+    if (routePoints == null || routePoints.length < 2) return;
+    _routeProgressTracker.seedFromProgress(
+      routePoints: routePoints,
+      progress: savedRouteProgress,
+    );
+  }
+
+  RouteProgressProjection? updateRouteProgress(geo.Position position) {
+    final routePoints = _activeVehicleTripRoutePoints;
+    if (routePoints == null || routePoints.length < 2) return null;
+
+    return _routeProgressTracker.update(
+      routePoints: routePoints,
+      latitude: position.latitude,
+      longitude: position.longitude,
+      accuracy: position.accuracy,
+    );
   }
 
   void clearActiveVehicleTrip() {
@@ -342,6 +421,9 @@ class DriverTrackingHub {
         ),
       );
     }
+
+    // RouteProgress محلي ومستقل عن Firestore وواجهة الخريطة.
+    updateRouteProgress(pos);
 
     // التسجيل التاريخي مستقل عن واجهة الخريطة، لكنه يبقى محليًا في الـBuffer.
     _captureHistoricalTripPing(pos);

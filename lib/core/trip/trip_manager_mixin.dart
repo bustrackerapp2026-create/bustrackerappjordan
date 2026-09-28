@@ -118,6 +118,8 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         activeTrip.id,
         routeId: activeTrip.routeId,
         direction: activeTrip.direction,
+        routePoints: route.points,
+        savedRouteProgress: activeTrip.routeProgress,
       );
 
       await showRouteOnMap(route.points);
@@ -447,6 +449,7 @@ mixin TripManagerMixin<T extends StatefulWidget> on MapCoreMixin<T> {
         vehicleTrip.id,
         routeId: vehicleTrip.routeId,
         direction: vehicleTrip.direction,
+        routePoints: route.points,
       );
 
       await showRouteOnMap(route.points);
