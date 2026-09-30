@@ -131,7 +131,7 @@ class _MapTabState extends State<MapTab>
     }
 
     _openTripsSub = _tripService.watchPassengerOpenTrips(uid).listen((list) {
-      if (!mounted) return;
+      if (!mounted || _passengerAuthUid != uid) return;
       _setOpenTrip(list.isEmpty ? null : list.first);
     }, onError: (e) {
       debugPrint('open trips watch: $e');
