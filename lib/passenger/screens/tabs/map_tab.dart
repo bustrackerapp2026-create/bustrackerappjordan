@@ -1098,7 +1098,7 @@ class _MapTabState extends State<MapTab>
                 },
               ),
             ),
-          );
+          ),
       ],
     );
   }
