@@ -1968,6 +1968,86 @@ BusWatchReadLifecycleCoordinator
 والخطوة التالية هي **6-E.2 — Passenger Presentation Consumption**، وتبدأ بـInspect مستقل قبل أي Production Code.
 
 
+### 6-E.2-A — Passenger Presentation Consumption Contract ✅
+
+**الحالة:** مكتملة ✅ — تم تنفيذ جسر العرض في `MapTab` فوق طبقات BusWatch المغلقة، مع إبقاء Domain Result منفصلًا عن Infrastructure Error وحماية Presentation State من النتائج المتأخرة.
+
+### العقد المثبت
+
+```text
+Passenger Context
+        ↓
+BusWatchPassengerContextBinder
+        ↓
+BusWatchReadLifecycleCoordinator
+        ↓
+BusWatchOperationalConsumer
+        ↓
+Passenger Presentation Bridge
+        ↓
+BusWatchPassengerPresentationState
+```
+
+Presentation State محدود إلى:
+
+```text
+contextTripId : String?
+loading       : bool
+result        : BusWatchOperationalReadResult?
+error         : Object?
+```
+
+`loading` يعني وجود operation نشطة بدأت من السياق الحالي ولم تكتمل بعد، وليس مجرد غياب `result`.
+
+### السلوك المثبت
+
+- `MapTab` يملك Presentation State ولا تتم إضافة `ChangeNotifier` أو `ValueNotifier` أو Stream جديدة.
+- الهوية التشغيلية للسياق هي `TripModel.id` / `passengerTripId` فقط.
+- `BusWatchOperationalReadResult` يبقى كما هو؛ حالات `noLiveLocation` و`noApprovedRoute` وغيرها تبقى Domain results وليست أخطاء بنية تحتية.
+- الخطأ القادم من القراءة يبقى منفصلًا في `error` من النوع `Object?` ولا يتحول إلى رسالة UI في هذه الخطوة.
+- كل Presentation operation تحمل generation/token داخليًا؛ completion أو error المتأخر لا يستطيع تعديل `contextTripId` أو `loading` أو `result` أو `error` للسياق الحالي.
+- `clear()` يبطل generation الحالي ويمسح `contextTripId` و`loading` و`result` و`error`.
+- عند إعادة القراءة لنفس الرحلة، يبقى `result` السابق أثناء `loading` إلى أن تكتمل العملية؛ عرض هذه الحالة للمستخدم يؤجل إلى 6-E.2-B.
+- تغيّر `AuthProvider.userId` داخل `MapTab` يبطل Passenger BusWatch context السابق، ويعاد إنشاء الـwatch فقط للـuid الحالي.
+- callback متأخر من Passenger Trip stream لuid سابق يُرفض.
+- `resumed` لا يضيف `binder.refresh()`؛ إعادة إنشاء الـPassenger Trip stream الحالية بقيت كما هي.
+- `dispose()` يمسح Binder وPresentation State.
+
+### حدود 6-E.2-A
+
+لم تتضمن هذه الخطوة:
+
+- تعديل `BusWatchPassengerContextBinder`.
+- تعديل `BusWatchReadLifecycleCoordinator`.
+- تعديل `BusWatchOperationalConsumer`.
+- تعديل `BusWatchOperationalReader`.
+- استبدال `ActiveTripBanner`.
+- تعديل `PassengerLiveTrackingMixin`.
+- إدخال ETA أو NextStop أو StopRuntime.
+- إضافة Timer أو polling أو Stream جديد.
+- تعديل Firestore schema أو writes.
+- تعديل `TripModel` أو `VehicleTrip` أو `driverPublic`.
+- إعادة تصميم واجهة BusWatch المرئية؛ ذلك مؤجل إلى 6-E.2-B.
+
+### Evidence
+
+- `flutter test test/bus_watch_passenger_presentation_state_test.dart` — **7/7 passed**.
+- `flutter analyze` — **No issues found! (ran in 17.8s)**.
+- `flutter test` — **275/275 passed**.
+- ظهر أثناء الـfull test تشغيل اختبارات stale driver tracking مع سجلات تشخيصية متوقعة، ثم اكتملت المجموعة بالكامل بـ **275/275 passed**؛ لم تُسجّل failures.
+
+### الملفات
+
+- `lib/passenger/screens/tabs/map_tab.dart`
+- `lib/services/bus_watch_passenger_presentation_state.dart`
+- `test/bus_watch_passenger_presentation_state_test.dart`
+
+### القرار
+
+6-E.2-A مغلقة ✅.
+
+يبقى **6-E.2-B — Presentation State → Passenger UI** كخطوة مستقلة، ولا تبدأ إلا بعد Inspect منفصل لتحديد كيف تُعرض حالات `loading` و`available` و`noLiveLocation` و`noApprovedRoute` وغيرها داخل الواجهة الحالية.
+
 # 10. Phase 7 — JourneyPlanner
 
 ## الهدف
