@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jordan_bus_tracker_new/models/live_driver_location.dart';
 import 'package:jordan_bus_tracker_new/models/planned_route.dart';
 import 'package:jordan_bus_tracker_new/models/route_point.dart';
+import 'package:jordan_bus_tracker_new/models/vehicle_trip.dart';
 import 'package:jordan_bus_tracker_new/services/bus_watch_operational_read_result.dart';
 import 'package:jordan_bus_tracker_new/passenger/widgets/bus_watch_operational_card.dart';
 
