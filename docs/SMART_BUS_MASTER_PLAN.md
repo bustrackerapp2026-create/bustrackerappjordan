@@ -1902,6 +1902,72 @@ late A error
 
 ولا تعيد 6-D فتح 6-A أو 6-B أو 6-C.
  
+### 6-E.1 — Passenger Context Binding ✅
+
+**الحالة:** مكتملة ✅ — تم تنفيذ وربط عقد `Passenger Context Binding` بشكل مستقل، دون إدخال UI integration الفعلية أو تغيير مسؤوليات BusWatch السابقة.
+
+### العقد
+
+```text
+Passenger Context Owner
+        ↓
+Passenger-selected TripModel?
+        ↓
+BusWatchPassengerContextBinder
+        ↓
+exact TripModel.id
+        ↓
+BusWatchReadLifecycleCoordinator
+```
+
+`BusWatchPassengerContextBinder` مسؤول فقط عن تحويل الـ`TripModel` الذي يختاره المستهلك الأعلى إلى `TripModel.id` وربط هذا المعرف بدورة قراءة BusWatch.
+
+### السلوك المثبت
+
+- `sync(selectedTrip)` يربط `TripModel.id` المحدد فقط.
+- نفس `tripId` لا يبدأ `bind` أو قراءة أولية جديدة.
+- تغيير `tripId` يبدأ سياقًا جديدًا عبر الـCoordinator.
+- غياب الرحلة أو وجود `id` فارغ يؤدي إلى عدم إنشاء سياق BusWatch صالح.
+- `refresh()` يعيد قراءة نفس الرحلة المرتبطة فقط.
+- لا يقوم الـBinder باختيار الرحلة، ولا يستخدم `list.first`، ولا ينفذ Firestore reads بنفسه.
+
+### حدود 6-E.1
+
+لم تتضمن هذه الخطوة:
+
+- UI presentation integration.
+- تعديل `MapTab`.
+- استبدال `ActiveTripBanner`.
+- تعديل `PassengerLiveTrackingMixin`.
+- إدخال ETA أو `EtaResult`.
+- إدخال NextStop أو `StopRuntimeSnapshot`.
+- إضافة Timer أو polling أو Stream.
+- تعديل `TripModel` أو `VehicleTrip` أو `driverPublic`.
+- تعديل `BusWatchOperationalReader` أو `BusWatchOperationalConsumer` أو `BusWatchReadLifecycleCoordinator`.
+- إضافة Firestore writes.
+
+### Evidence
+
+- `flutter test test/bus_watch_passenger_context_binder_test.dart` — **7/7 passed**.
+- `flutter analyze` — **No issues found!**.
+- `flutter test` — **268/268 passed**.
+- تم التحقق من أن التغيير البرمجي في 6-E.1 محصور في `BusWatchPassengerContextBinder` واختباراته، وهذه النقطة لا تضيف أي تعديل إلى طبقات BusWatch المغلقة.
+
+### القرار
+
+6-E.1 مغلقة ✅.
+
+الفصل الحالي يصبح:
+
+`6-A` = ماذا نقرأ  
+`6-B` = كيف ننسق القراءة  
+`6-C` = كيف نستهلك النتيجة  
+`6-D` = من يدير دورة القراءة ويحمي السياق  
+`6-E.1` = كيف يرتبط Passenger Context المحدد بدورة BusWatch
+
+والخطوة التالية هي **6-E.2 — Passenger Presentation Consumption**، وتبدأ بـInspect مستقل قبل أي Production Code.
+
+
 # 10. Phase 7 — JourneyPlanner
 
 ## الهدف
