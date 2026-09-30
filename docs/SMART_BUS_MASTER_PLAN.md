@@ -2029,6 +2029,14 @@ error         : Object?
 - تعديل `TripModel` أو `VehicleTrip` أو `driverPublic`.
 - إعادة تصميم واجهة BusWatch المرئية؛ ذلك مؤجل إلى 6-E.2-B.
 
+### Correction بعد التكامل
+
+أثناء Inspect 6-E.2-B ظهر تعارض تكاملي محدود في `MapTab`: تغيّر `TripModel.status` أو `driverId` مع بقاء `tripId` نفسه كان لا يعيد قراءة BusWatch، كما أن إلغاء الرحلة كان يمسح `_openTrip` مباشرة دون المرور بمسار BusWatch context clear.
+
+تم تصحيح ذلك داخل `MapTab` فقط:
+- تغيّر `status` أو `driverId` لنفس `tripId` يؤدي إلى `binder.refresh()` مع Presentation `beginRefresh()`.
+- إلغاء الرحلة يمر عبر `_setOpenTrip(null)` ليؤدي إلى `Presentation clear` و`Binder clear`.
+- لم يتم تعديل Binder أو Coordinator أو Consumer أو Reader.
 ### Evidence
 
 - `flutter test test/bus_watch_passenger_presentation_state_test.dart` — **7/7 passed**.
