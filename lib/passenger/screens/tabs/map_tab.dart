@@ -24,6 +24,8 @@ import '../../../passenger/widgets/destination_search_sheet.dart';
 import '../../../passenger/widgets/passenger_live_status_bar.dart';
 import '../../../passenger/widgets/passenger_map_fabs.dart';
 import '../../../services/analytics_service.dart';
+import '../../../services/bus_watch_passenger_context_binder.dart';
+import '../../../services/bus_watch_passenger_presentation_state.dart';
 import '../../../services/location_service.dart';
 import '../../../services/map_camera_prefs_service.dart';
 import '../../../services/nearby_routes_service.dart';
@@ -67,6 +69,11 @@ class _MapTabState extends State<MapTab>
   final NearbyRoutesService _nearbyRoutes = NearbyRoutesService();
   StreamSubscription<List<TripModel>>? _openTripsSub;
   TripModel? _openTrip;
+  final BusWatchPassengerContextBinder _busWatchBinder =
+      BusWatchPassengerContextBinder();
+  final BusWatchPassengerPresentationState _busWatchPresentation =
+      BusWatchPassengerPresentationState();
+  String? _passengerAuthUid;
 
   @override
   bool get wantKeepAlive => true;
@@ -98,19 +105,86 @@ class _MapTabState extends State<MapTab>
     preloadPassengerMarker();
     liveDriversCount.addListener(_onLiveCountChanged);
     _loadPreferredRoute();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _watchOpenTrips());
   }
 
-  void _watchOpenTrips() {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final uid = context.select<AuthProvider, String?>((auth) => auth.userId);
+    if (_passengerAuthUid == uid) return;
+
+    _passengerAuthUid = uid;
+    _setOpenTrip(null);
+
+    if (uid != null && uid.isNotEmpty) {
+      _watchOpenTrips(uid);
+    }
+  }
+
+  void _watchOpenTrips([String? passengerId]) {
     _openTripsSub?.cancel();
-    final uid = context.read<AuthProvider>().userId;
-    if (uid == null || uid.isEmpty) return;
+    final uid = passengerId ?? context.read<AuthProvider>().userId;
+    if (uid == null || uid.isEmpty) {
+      _setOpenTrip(null);
+      return;
+    }
+
     _openTripsSub = _tripService.watchPassengerOpenTrips(uid).listen((list) {
       if (!mounted) return;
-      setState(() => _openTrip = list.isEmpty ? null : list.first);
+      _setOpenTrip(list.isEmpty ? null : list.first);
     }, onError: (e) {
       debugPrint('open trips watch: $e');
     });
+  }
+
+  void _setOpenTrip(TripModel? trip) {
+    if (!mounted) return;
+
+    setState(() => _openTrip = trip);
+    unawaited(_syncBusWatchContext(trip));
+  }
+
+  Future<void> _syncBusWatchContext(TripModel? trip) async {
+    final tripId = trip?.id.trim() ?? '';
+
+    if (tripId.isEmpty) {
+      _busWatchPresentation.clear();
+      _busWatchBinder.clear();
+      if (mounted) setState(() {});
+      return;
+    }
+
+    if (_busWatchBinder.currentTripId == tripId) {
+      return;
+    }
+
+    final generation = _busWatchPresentation.beginContext(tripId);
+    if (mounted) setState(() {});
+
+    try {
+      await _busWatchBinder.sync(trip);
+      if (!mounted ||
+          !_busWatchPresentation.isCurrent(generation, tripId)) {
+        return;
+      }
+
+      final result = _busWatchBinder.coordinator.consumer.currentResult;
+      if (result == null) {
+        return;
+      }
+
+      _busWatchPresentation.complete(generation, tripId, result);
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (!mounted ||
+          !_busWatchPresentation.isCurrent(generation, tripId)) {
+        return;
+      }
+
+      _busWatchPresentation.fail(generation, tripId, error);
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _loadPreferredRoute() async {
@@ -187,6 +261,8 @@ class _MapTabState extends State<MapTab>
 
   @override
   void dispose() {
+    _busWatchBinder.clear();
+    _busWatchPresentation.clear();
     _openTripsSub?.cancel();
     try {
       liveDriversCount.removeListener(_onLiveCountChanged);
