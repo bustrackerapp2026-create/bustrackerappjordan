@@ -141,11 +141,27 @@ class _MapTabState extends State<MapTab>
   void _setOpenTrip(TripModel? trip) {
     if (!mounted) return;
 
+    final previous = _openTrip;
+    final sameTripId = previous?.id.trim().isNotEmpty == true &&
+        trip?.id.trim().isNotEmpty == true &&
+        previous!.id.trim() == trip!.id.trim();
+    final operationalContextChanged = sameTripId &&
+        (previous.status != trip.status ||
+            previous.driverId.trim() != trip.driverId.trim());
+
     setState(() => _openTrip = trip);
-    unawaited(_syncBusWatchContext(trip));
+    unawaited(
+      _syncBusWatchContext(
+        trip,
+        forceRefresh: operationalContextChanged,
+      ),
+    );
   }
 
-  Future<void> _syncBusWatchContext(TripModel? trip) async {
+  Future<void> _syncBusWatchContext(
+    TripModel? trip, {
+    bool forceRefresh = false,
+  }) async {
     final tripId = trip?.id.trim() ?? '';
 
     if (tripId.isEmpty) {
@@ -155,15 +171,21 @@ class _MapTabState extends State<MapTab>
       return;
     }
 
-    if (_busWatchBinder.currentTripId == tripId) {
+    if (_busWatchBinder.currentTripId == tripId && !forceRefresh) {
       return;
     }
 
-    final generation = _busWatchPresentation.beginContext(tripId);
+    final generation = forceRefresh
+        ? _busWatchPresentation.beginRefresh(tripId)
+        : _busWatchPresentation.beginContext(tripId);
     if (mounted) setState(() {});
 
     try {
-      await _busWatchBinder.sync(trip);
+      if (forceRefresh) {
+        await _busWatchBinder.refresh();
+      } else {
+        await _busWatchBinder.sync(trip);
+      }
       if (!mounted ||
           !_busWatchPresentation.isCurrent(generation, tripId)) {
         return;
@@ -595,7 +617,7 @@ class _MapTabState extends State<MapTab>
         passengerId: uid,
       );
       if (!mounted) return;
-      setState(() => _openTrip = null);
+      _setOpenTrip(null);
       MapUtils.showSnackBar(context, 'تم إلغاء الطلب');
     } catch (e, st) {
       debugPrint('cancel trip failed: $e\n$st');
