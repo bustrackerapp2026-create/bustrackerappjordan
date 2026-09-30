@@ -65,20 +65,28 @@ void main() {
       expect(state.error, isNull);
     });
 
-    test('beginRefresh keeps the current result while loading', () {
+    test('retry keeps old result during loading and accepts the new result', () {
       final state = BusWatchPassengerPresentationState();
       final firstGeneration = state.beginContext('A');
-      final result =
+      final oldResult =
           resultFor(BusWatchOperationalReadStatus.noApprovedRoute);
-      state.complete(firstGeneration, 'A', result);
+      state.complete(firstGeneration, 'A', oldResult);
 
       final refreshGeneration = state.beginRefresh('A');
 
       expect(state.contextTripId, 'A');
       expect(state.loading, isTrue);
-      expect(state.result, same(result));
+      expect(state.result, same(oldResult));
       expect(state.error, isNull);
-      expect(state.isCurrent(refreshGeneration, 'A'), isTrue);
+
+      final newResult =
+          resultFor(BusWatchOperationalReadStatus.noLiveLocation);
+      state.complete(refreshGeneration, 'A', newResult);
+
+      expect(state.loading, isFalse);
+      expect(state.result, same(newResult));
+      expect(state.error, isNull);
+      expect(state.contextTripId, 'A');
     });
 
     test('fail clears result and preserves infrastructure error', () {
