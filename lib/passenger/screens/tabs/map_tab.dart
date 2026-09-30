@@ -971,7 +971,7 @@ class _MapTabState extends State<MapTab>
     super.build(context);
     final l10n = AppLocalizations.of(context);
     final hasOpenTrip = _openTrip != null;
-    final bottomPad = hasOpenTrip ? 80.0 : 0.0;
+    final bottomPad = hasOpenTrip ? 130.0 : 0.0;
     final busWatch = _busWatchPresentation;
 
     return Stack(
