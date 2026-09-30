@@ -6,6 +6,7 @@ import 'package:jordan_bus_tracker_new/models/trip_model.dart';
 import 'package:jordan_bus_tracker_new/models/trip_status.dart';
 import 'package:jordan_bus_tracker_new/services/bus_watch_operational_read_result.dart';
 import 'package:jordan_bus_tracker_new/services/bus_watch_passenger_context_binder.dart';
+import 'package:jordan_bus_tracker_new/services/bus_watch_read_lifecycle_coordinator.dart';
 
 void main() {
   TripModel trip(String id) {
