@@ -20,6 +20,7 @@ import '../../../models/live_driver_location.dart';
 import '../../../models/planned_route.dart';
 import '../../../models/trip_model.dart';
 import '../../../passenger/widgets/active_trip_banner.dart';
+import '../../../passenger/widgets/bus_watch_operational_card.dart';
 import '../../../passenger/widgets/destination_search_sheet.dart';
 import '../../../passenger/widgets/passenger_live_status_bar.dart';
 import '../../../passenger/widgets/passenger_map_fabs.dart';
@@ -195,6 +196,36 @@ class _MapTabState extends State<MapTab>
       if (result == null) {
         return;
       }
+
+      _busWatchPresentation.complete(generation, tripId, result);
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (!mounted ||
+          !_busWatchPresentation.isCurrent(generation, tripId)) {
+        return;
+      }
+
+      _busWatchPresentation.fail(generation, tripId, error);
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _refreshBusWatch() async {
+    final tripId = _busWatchBinder.currentTripId;
+    if (tripId == null || _busWatchPresentation.loading) return;
+
+    final generation = _busWatchPresentation.beginRefresh(tripId);
+    if (mounted) setState(() {});
+
+    try {
+      await _busWatchBinder.refresh();
+      if (!mounted ||
+          !_busWatchPresentation.isCurrent(generation, tripId)) {
+        return;
+      }
+
+      final result = _busWatchBinder.coordinator.consumer.currentResult;
+      if (result == null) return;
 
       _busWatchPresentation.complete(generation, tripId, result);
       if (mounted) setState(() {});
@@ -941,6 +972,7 @@ class _MapTabState extends State<MapTab>
     final l10n = AppLocalizations.of(context);
     final hasOpenTrip = _openTrip != null;
     final bottomPad = hasOpenTrip ? 80.0 : 0.0;
+    final busWatch = _busWatchPresentation;
 
     return Stack(
       fit: StackFit.expand,
@@ -1021,10 +1053,24 @@ class _MapTabState extends State<MapTab>
             bottom: 88,
             left: 16,
             right: 16,
-            child: ActiveTripBanner(
-              trip: _openTrip!,
-              onCancel: _cancelOpenTrip,
-              onFocusDriver: _focusOpenTripDriver,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (busWatch.contextTripId == _openTrip!.id.trim())
+                  BusWatchOperationalCard(
+                    loading: busWatch.loading,
+                    result: busWatch.result,
+                    error: busWatch.error,
+                    onRetry:
+                        busWatch.loading ? null : _refreshBusWatch,
+                  ),
+                const SizedBox(height: 8),
+                ActiveTripBanner(
+                  trip: _openTrip!,
+                  onCancel: _cancelOpenTrip,
+                  onFocusDriver: _focusOpenTripDriver,
+                ),
+              ],
             ),
           )
         else
@@ -1052,7 +1098,7 @@ class _MapTabState extends State<MapTab>
                 },
               ),
             ),
-          ),
+          );
       ],
     );
   }
