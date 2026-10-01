@@ -2555,3 +2555,41 @@ Firestore / Hub Integration
 **نتيجة البوابة:** **6-E.2-B مغلقة وناجحة ✅**
 
 **قاعدة الانتقال:** لا يوجد Patch برمجي جديد مطلوب لهذه النقطة. قبل فتح Feature جديدة، يجب تنفيذ Preflight قصير لتثبيت نقطة المرحلة التالية وتحديد ما إذا كان المسار التالي هو إكمال ETA Result Consumption أو فتح Phase 7، دون استنتاج ذلك من نجاح الاختبارات وحده.
+
+
+### قرار ما بعد إغلاق 6-E.2-B — 2026-10-01
+
+**FACTS VERIFIED**
+
+- `EtaRuntimeInvocation` موجود ويعيد `EtaResult?` بصورة صحيحة.
+- `DriverTrackingHub` يحتفظ بـ`activeEtaObservation` و`activeStopRuntimeSnapshot`، لكنه لا يستدعي `EtaRuntimeInvocation`.
+- `BusWatchOperationalSnapshot` لا يحتوي ETA، وفق العقد المثبت.
+- `BusWatchOperationalCard` تستهلك Presentation State الخاص بـBusWatch ولا تستهلك ETA.
+- `ActiveTripBanner` هو المستهلك الحالي الفعلي للـETA في الواجهة، لكنه يستخدم `EtaUtils` القديم، وتعديلُه خارج حدود 5.2-E المثبتة.
+
+**PROBLEM IDENTIFIED**
+
+لا يوجد حاليًا Production Consumer مناسب لـ`EtaResult?` يمكن تنفيذه داخل حدود 5.2-E دون إدخال ETA إلى Passenger/UI أو `DriverTrackingHub` أو إعادة بناء `ActiveTripBanner`.
+
+**DESIGN CONSTRAINT**
+
+لا ننشئ Consumer اصطناعيًا أو Wrapper/state/cache/scheduler لمجرد إغلاق البند برمجيًا، ولا نكسر الحدود المعمارية المثبتة.
+
+**DECISION**
+
+تبقى **Phase 5.2-E — ETA Result Consumption** في حالة **DESIGN FROZEN / DEFERRED ✅** حتى يظهر مستهلك إنتاجي محدد بمتطلب واضح. لا يوجد Patch برمجي مطلوب الآن.
+
+وبعد إغلاق **6-E.2-B** تصبح **Phase 6 — BusWatch** مكتملة من نطاقها الحالي.
+
+### الخطوة التالية
+
+**Phase 7 — JourneyPlanner Preflight** فقط، دون Production Code.
+
+الـPreflight سيحدد:
+- مصدر Origin وDestination في الواجهة الحالية.
+- ما هي الرحلات التشغيلية التي يمكن اعتبارها Candidates.
+- كيف يرتبط Candidate بالـroute/VehicleTrip.
+- كيف يُستخدم ETA عندما يصبح له Consumer صالح.
+- حدود عدم توفر البيانات، دون اختراع ETA أو fallback غير مثبت.
+
+لا يبدأ تنفيذ JourneyPlanner قبل تثبيت هذا العقد واختبار أول وحدة مستقلة.
