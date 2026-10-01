@@ -369,6 +369,129 @@ Runtime snapshot
 لا يبدأ تنفيذ JourneyPlanner قبل تثبيت هذا العقد واختبار أول وحدة مستقلة.
 
 
+
+### Phase 7 — Journey Candidate Consumer Contract v1 — 2026-10-01
+
+**FACTS VERIFIED**
+
+- لا يوجد حاليًا `JourneyPlanner` أو `JourneyCandidate` كـProduction abstraction في الفرع.
+- `MapTab` يستخدم `NearbyRoutesService` لاكتشاف الخطوط القريبة/المتجهة نحو الوجهة ثم يطبق line filters على العرض؛ هذا مسار Discovery/Presentation وليس Consumer لعقد Journey Candidate.
+- `NearbyRoutesService` يعيد `NearbyLineMatch` مع `PlannedRoute`، لكنه لا يقرأ `vehicleTrips` ولا يبني Journey Candidates.
+- `VehicleTripService.findActiveTripsForRoute({routeId, direction})` هو Read Contract التشغيلي المغلق للمركبات النشطة.
+- لذلك لا يوجد Consumer إنتاجي حالي يمكنه إثبات أن `JourneyCandidate` Model أو `JourneyCandidateRef` مطلوب.
+
+**PROBLEM IDENTIFIED**
+
+السؤال الحالي ليس كيفية تمثيل Candidate، بل ما أول عملية فعلية سيجريها Consumer على مجموعة المسارات والمركبات.
+
+حتى هذه اللحظة لا يوجد Consumer إنتاجي يثبت هل المطلوب:
+- مجرد enumerate/associate للمركبات مع المسارات،
+- أو فحص هندسة المسار بالنسبة إلى Origin/Destination،
+- أو فحص الحالة المكانية للمركبة (`currentLocation` / `routeProgress`)،
+- أو مجموعة مركبات كاملة لكل Route قبل التقييم.
+
+**DESIGN CONSTRAINT**
+
+المستهلك المفاهيمي هو **JourneyPlanner Consumer v1** في طبقة الـDomain/Planner المستقبلية، وليس `MapTab` ولا `NearbyRoutesService` ولا `VehicleTripService` نفسها.
+
+العقد المجمد دلاليًا:
+
+```text
+Input:
+  Route Candidate(s)
+  +
+  Active Vehicle Candidate(s)
+
+Relationship:
+  route.id == vehicleTrip.routeId
+  &&
+  route.direction.firestoreValue == vehicleTrip.direction
+
+Multiplicity:
+  one Route Candidate
+      →
+  zero or more matching Active VehicleTrips
+
+Candidate semantics:
+  one valid association per
+  (PlannedRoute, VehicleTrip)
+
+Important:
+  this is association by matching identity,
+  not a Cartesian product between independent sets.
+```
+
+**DECISIONS**
+
+1. **Receiver**
+   - المستقبل المقصود هو JourneyPlanner Consumer المستقبلي.
+   - لا يتم إنشاء Class باسم `JourneyPlanner` في هذه الخطوة لمجرد تثبيت الاسم.
+
+2. **Route Candidate input**
+   - المسار المعتمد هو `PlannedRoute`.
+   - هويته التشغيلية: `id + direction`.
+   - `lineName` ليس مفتاح الربط.
+
+3. **Active Vehicle input**
+   - المصدر هو `List<VehicleTrip>` الناتج من Read Contract المغلق.
+   - هويته: `vehicleTrip.id`.
+   - ربطه بالمسار يتم فقط عبر `routeId + direction`.
+
+4. **Route without Vehicle**
+   - يبقى Route Candidate صالحًا upstream.
+   - ينتج عنه **zero Journey Candidates**.
+   - لا يتم إنشاء Candidate وهمي ولا fallback.
+
+5. **Vehicle with unusable location**
+   - لا تُستخدم `currentLocation` كجزء من هوية Candidate.
+   - لا يقوم Consumer الحالي بتحويل "لا يوجد موقع صالح" إلى "لا توجد مركبة".
+   - تبقى association ممكنة ما دام `Route + VehicleTrip` متطابقين؛ صلاحية الموقع تُحسم عند طبقة التقييم التي تحتاجه.
+
+6. **PlannedRoute completeness**
+   - لا يوجد بعد Consumer إنتاجي يفرض تمثيلًا مختصرًا للمسار.
+   - لذلك لا يُنشأ wrapper أو ref بديل الآن.
+   - عند ظهور أول تقييم فعلي يحتاج geometry، يمكن تمرير `PlannedRoute` الأصلي مباشرة.
+
+7. **VehicleTrip completeness**
+   - لا يوجد بعد Consumer إنتاجي يبرر نسخ حقول `VehicleTrip` إلى Model جديد.
+   - الحقول التشغيلية الموجودة أصلًا (`currentLocation`، `speed`، `heading`، `routeProgress`، `lastLocationAt`) تبقى على `VehicleTrip`.
+   - عند ظهور أول تقييم يحتاجها، يستخدم الـConsumer الكائن الأصلي.
+
+8. **Planning inputs vs candidate data**
+   - `Origin` و`Destination` inputs للتخطيط وليسا جزءًا من هوية Candidate.
+   - ETA ليس Candidate identity/data في هذه المرحلة.
+   - Ranking/UI/fallback خارج هذا العقد.
+   - Discovery metadata مثل مسافات `NearbyLineMatch` لا تصبح Candidate identity تلقائيًا.
+
+9. **Minimum output**
+   - الحد الأدنى المجمد حاليًا هو **مجموعة associations صالحة بين Route Candidate وActive VehicleTrip**.
+   - شكل التمثيل البرمجي لهذا الناتج **غير مجمد عمدًا** حتى يظهر Consumer التالي الفعلي.
+   - لذلك لا يتم إنشاء `JourneyCandidate` أو `JourneyCandidateRef` أو map/DTO بديل في هذه الخطوة.
+
+10. **Boundary**
+   - هذا العقد لا يختار Route.
+   - لا يرتب المركبات.
+   - لا يحسب ETA.
+   - لا يقرر صلاحية GPS بمعايير جديدة.
+   - لا يغير `NearbyRoutesService`.
+   - لا يغير `MapTab`.
+   - لا يضيف Firestore reads أو indexes أو writes.
+
+**RESULT**
+
+**Journey Candidate Consumer Contract v1 — DESIGN FROZEN ✅**
+
+المثبت الآن هو **Consumer Semantics + Association Semantics** فقط.
+
+أما قرار:
+`PlannedRoute + VehicleTrip` مباشرةً مقابل association model صغير،
+فيبقى مؤجلًا حتى يظهر أول Consumer/evaluation behavior يثبت حاجة حقيقية إلى abstraction مستقلة.
+
+**NEXT**
+
+أول Patch في JourneyPlanner يجب أن يثبت **أول عملية فعلية على هذه associations** فقط، مع إبقاء `JourneyCandidate` Model مؤجلًا ما لم يثبت Consumer أنه ضروري.
+
+
 ### إغلاق Phase 7 — Active Vehicle Discovery Read Contract v1 — 2026-10-01
 
 **FACTS VERIFIED**
