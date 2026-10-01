@@ -213,6 +213,28 @@ void main() {
     expect(readerCalls, 0);
   });
 
+  test('returns no candidates for longitude above 180 without reading routes',
+      () async {
+    var readerCalls = 0;
+    final service = RouteCandidateDiscoveryService(
+      approvedRoutesReader: () async {
+        readerCalls++;
+        return const [];
+      },
+      policy: policy,
+    );
+
+    final result = await service.discover(
+      originLatitude: 31.9000,
+      originLongitude: 180.0001,
+      destinationLatitude: 31.9000,
+      destinationLongitude: 35.9040,
+    );
+
+    expect(result, isEmpty);
+    expect(readerCalls, 0);
+  });
+
   test('rejects invalid route geometry', () async {
     final route = _route(
       id: 'route-invalid',
