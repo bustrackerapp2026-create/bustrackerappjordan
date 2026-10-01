@@ -367,3 +367,42 @@ Runtime snapshot
 - حدود عدم توفر البيانات، دون اختراع ETA أو fallback غير مثبت.
 
 لا يبدأ تنفيذ JourneyPlanner قبل تثبيت هذا العقد واختبار أول وحدة مستقلة.
+
+
+### إغلاق Phase 7 — Active Vehicle Discovery Read Contract v1 — 2026-10-01
+
+**FACTS VERIFIED**
+
+- تم تجميد عقد قراءة المركبات النشطة على:
+  `findActiveTripsForRoute({routeId, direction}) → Future<List<VehicleTrip>>`.
+- مصدر القراءة هو `vehicleTrips` فقط.
+- الاستعلام يعتمد `routeId + direction + status = active`.
+- لا تدخل `currentLocation` أو freshness في Query أو filtering.
+- بعد القراءة تتم إعادة مطابقة `status` و`routeId` و`direction` قبل الإرجاع.
+- يتم إعادة استخدام `VehicleTrip.parseDirection()` عبر validation الموجودة في الخدمة بدل إنشاء قواعد اتجاه مكررة.
+- لم يتم إنشاء `ActiveVehicleCandidate` أو `JourneyCandidate`.
+- لم يتم تعديل `NearbyRoutesService` أو `MapTab` أو `DriverTrackingHub` أو ETA أو Firestore Rules/Indexes.
+
+**PROBLEM IDENTIFIED**
+
+لم تعد هناك مشكلة تصميمية مفتوحة في Read Contract v1. بقيت صلاحية الموقع ومعنى Candidate مسؤولية الطبقة الأعلى، لا خدمة القراءة نفسها.
+
+**VALIDATION**
+
+- focused test: **7/7 passed**.
+- `flutter analyze`: **No issues found**.
+- full `flutter test`: **290/290 passed**.
+- working tree: **clean**.
+- branch: **up to date with origin**.
+
+**INDEX DECISION**
+
+لم تتم إضافة Composite Index. الحاجة إليه لم تثبت بعد عبر تشغيل الاستعلام على Firestore الفعلي، ولذلك يبقى Deferred إلى أن يظهر دليل مباشر.
+
+**RESULT**
+
+**Active Vehicle Discovery Read Contract v1 — CLOSED ✅**
+
+### الخطوة التالية
+
+**Journey Candidate Contract Preflight** فقط، دون Production Code جديد، لتحديد أقل بيانات تربط Route Candidate بالمركبة التشغيلية دون إدخال ETA أو Ranking أو UI.
