@@ -453,6 +453,7 @@ firebase deploy --only storage
     - التحقق البرمجي على نسخة الجهاز بعد التحديث: `flutter analyze` → **No issues found!** و`flutter test` → **50/50 All tests passed!**
     - **الاختبار الميداني مكتمل:** أثناء رحلة فعلية تم التأكد من تغير `vehicleTrips/{tripId}` في Firestore (`currentLocation` و`lastLocationAt` وبيانات السرعة/الاتجاه)، ثم توقف التحديث بعد `End Trip`.
     - **الحالة:** التنفيذ البرمجي ✅ — اختبار الهاتف ✅ — تم اعتماد الانتقال إلى التسجيل التاريخي `TripPing + Buffer`.
+
 ### إغلاق Phase 2.4 — Batch Upload → Firestore — 2026-09-26
 
 تم إغلاق بوابة **Phase 2.4** رسميًا بعد نجاح الاختبار الميداني وتأكيد مستند Firestore الفعلي للرحلة التجريبية.
@@ -478,6 +479,7 @@ firebase deploy --only storage
 هذا القسم هو **المرجع التشغيلي الحالي** بعد اكتمال اختبارات Failure Paths على الجهاز. السجلات الأقدم في هذا الملف تبقى كتاريخ للتنفيذ، لكن حالة هذا القسم هي المعتمدة عند تحديد ما إذا كان العمل قد أُغلق.
 
 #### Phase 1 — الحالة النهائية
+
 - **Active VehicleTrip موجودة مسبقًا:** مغلق ✅
 - **PlannedRoute مفقودة / غير موجودة:** مغلق ✅
 - **PlannedRoute موجودة ولكن غير معتمدة/غير صالحة:** مغلق ✅
@@ -485,6 +487,7 @@ firebase deploy --only storage
 - **حماية Start من الضغط المتكرر (`isProcessingTrip`):** مغلق ✅
 
 #### Phase 2 — الحالة النهائية الحالية
+
 - **Live GPS → VehicleTrip:** مغلق ✅
 - **Historical TripPing → Buffer → Batch Upload:** مغلق ✅
 - **TripPingBuffer Isolation:** مغلق ✅
@@ -496,17 +499,20 @@ firebase deploy --only storage
 - **Live GPS freshness gate — stream + heartbeat:** مغلق ✅
 
 #### التحقق المحلي النهائي — جهاز التطوير
+
 - `flutter analyze` → **No issues found!** ✅
 - `flutter test` → **66/66 All tests passed!** ✅
 - `git status` → **working tree clean** ✅
 - الفرع المحلي `stage/approved-route-line-vehicle-link-v1` متزامن مع `origin` ✅
 
 #### ما لم يبدأ بعد
+
 - `routeProgress` لا يزال `null` عند إنشاء `VehicleTrip`، ولم يبدأ حساب التقدم على المسار. ⏸️
 - ETA وML وأي منطق متقدم مبني على التقدم مؤجل إلى ما بعد Phase 3.
 - لا توجد إضافة `LIVE/STALE/LOST` إلى Firestore.
 
 #### قواعد عدم العودة إلى ما أُغلق
+
 - لا تعاد اختبارات Failure Paths المغلقة إلا عند ظهور Regression أو تغيير معماري يمسها.
 - لا يعاد بناء GPS أو `DriverTrackingLifecycle` أو Mapbox بلا دليل تقني جديد.
 - لا يُستخدم `driver_map_tab.dart` للتعديلات الجانبية بسبب حادثة الاستعادة السابقة.
@@ -625,6 +631,7 @@ firebase deploy --only storage
 **نتيجة البوابة:** مسار الفشل والاستعادة لا يفقد نقاط TripPing عند انقطاع الشبكة، وإعادة المحاولة تستخدم دفعة Firestore جديدة مع نفس المعرّفات deterministic. الاختبار الميداني للحالة الحالية ناجح ✅.
 
 **الخطوة التالية:** الانتقال إلى Failure Path مستقل آخر أو إلى تضييق مصدر المسار التشغيلي ليكون معتمدًا على المركبة فقط، دون خلط التغييرات في نفس checkpoint.
+
 ### إغلاق Failure Path 2 — End Trip أثناء انقطاع الإنترنت ثم Recovery — 2026-09-26
 
 تم اختبار مسار الفشل الخاص بإنهاء الرحلة أثناء انقطاع الإنترنت ميدانيًا بعد تثبيت الإصلاح `d1ae474fc1fc1a5a36c565dc7aeef359773f8d47`.
@@ -650,6 +657,7 @@ firebase deploy --only storage
 - بعد الاسترداد ظهرت **20 وثيقة** مرتبطة بالرحلة `SoObQxt2lXYpYgtlSvFV` داخل مجموعة `tripPings`. هذا يثبت وجود التسجيل التاريخي النهائي في Firestore؛ ولا يُستخدم وحده كإثبات عددي بأن كل نقطة كانت موجودة تحديدًا قبل لحظة قطع الإنترنت.
 
 **نتيجة البوابة:** Failure Path 2 — **End Trip مع انقطاع الشبكة + Recovery بعد عودة الشبكة** — مغلق وناجح ميدانيًا ✅ من حيث:
+
 1. فشل الـflush عند انقطاع الشبكة.
 2. عدم إغلاق الرحلة عبر محاولة End Trip الفاشلة.
 3. عدم ظهور Unhandled Exception/ANR في السجل المرسل.
@@ -664,11 +672,13 @@ firebase deploy --only storage
 تم تثبيت سياسة Sampling مبدئية لمرحلة Phase 2 قبل إدخال `routeProgress`. هذه الخطوة توثيقية فقط ولا تغيّر سلوك التطبيق التنفيذي.
 
 #### 1. الفصل بين GPS Health وFirestore Health
+
 - **GPS Health:** تُحدد من زمن آخر GPS fix مقبول (`Position.timestamp`) وليس من وقت آخر نجاح لكتابة Firestore.
 - **Firestore Health:** فشل الكتابة (`UNAVAILABLE`/`TimeoutException`) لا يعني أن GPS مفقود؛ وقد يستمر التقاط الـGPS والـbuffer أثناء انقطاع الشبكة.
 - **GPS LOST:** لا يعني إنهاء `VehicleTrip` ولا تحويلها تلقائيًا إلى `completed` أو `cancelled`.
 
 #### 2. الحالات التشغيلية المقترحة
+
 - **LIVE:** آخر GPS fix مقبول حديث، بحيث يكون عمره **≤ 45 ثانية** أثناء `driverTrip`. هذا يتماشى مع حد heartbeat الحالي الذي يبدأ عند 45 ثانية.
 - **STALE:** لا يوجد GPS fix حديث ضمن 45 ثانية، لكن آخر fix لا يزال ضمن نافذة احتفاظ قصيرة **>45 إلى ≤90 ثانية**؛ تتم محاولة probe/استعادة ولا يُنهى `VehicleTrip`.
 - **LOST:** لم يصل GPS fix مقبول خلال **>90 ثانية**، أو لا يوجد fix صالح يمكن الاعتماد عليه. تستمر الرحلة كحالة تشغيلية ما لم يطلب المستخدم/المنطق التشغيلي إنهاءها.
@@ -676,6 +686,7 @@ firebase deploy --only storage
 > هذه الحدود هي سياسة تشغيلية للمشروع وليست معيارًا عالميًا. يجب مراجعتها بعد القياس الميداني، خصوصًا للمركبة المتوقفة أو عند قيود Android/البطارية.
 
 #### 3. Sampling Historical TripPing
+
 - لا نرفع كل GPS event إلى Firestore.
 - المعدل التاريخي الحالي يبقى **حوالي نقطة كل 5 ثوانٍ** حتى يثبت البديل بالقياس.
 - الرفع الدفعي الحالي: **5 نقاط** أو مؤقت **20 ثانية**.
@@ -684,6 +695,7 @@ firebase deploy --only storage
 - أي Position تُستخدم لتسجيل Historical يجب أن تمر ببوابة freshness تعتمد على `Position.timestamp`.
 
 #### 4. مبدأ التعافي
+
 `LIVE → STALE → محاولة probe → LIVE` عند عودة GPS.
 
 `LIVE/STALE/LOST` مستقلة عن:
@@ -692,7 +704,9 @@ firebase deploy --only storage
 ولا يجوز أن يؤدي فقد الاتصال بالخادم وحده إلى إنهاء `VehicleTrip`.
 
 #### 5. قاعدة التنفيذ المرحلي
+
 تم تنفيذ **freshness gate صغير** عند إدخال `TripPing` إلى الـBuffer، مع الإبقاء على سياسة المرحلة محدودة النطاق:
+
 - لا يوجد حاليًا حقل Firestore جديد باسم `LIVE/STALE/LOST`.
 - لا يتم إنشاء `TripPing` من Position قديم لمجرد وصول callback جديد.
 - لا يوجد أي استخدام لـ`routeProgress` في هذه الخطوة؛ يبقى مؤجلًا إلى **Phase 3**.
@@ -703,6 +717,7 @@ firebase deploy --only storage
 تم إغلاق نقطة **Sampling freshness gate** رسميًا بعد اكتمال التنفيذ البرمجي والاختبار الميداني على الهاتف.
 
 #### التنفيذ المثبت
+
 - **الملف الجديد:** `lib/services/historical_sampling_policy.dart`
 - **التكامل:** `lib/driver/services/driver_tracking_hub.dart`
 - **اختبار الوحدة:** `test/historical_sampling_policy_test.dart`
@@ -714,12 +729,15 @@ firebase deploy --only storage
 - `routeProgress` بقي `null` ولم يبدأ Phase 3.
 
 #### التحقق البرمجي
+
 على نسخة المشروع المحلية بعد سحب commit التنفيذ:
+
 - `flutter analyze` → **No issues found!**
 - `flutter test` → **65/65 All tests passed!**
 - الـcommit البرمجي: `0126459fcd8b6f910c586f42fe978d728775672d`
 
 #### الاختبار الميداني
+
 - **الرحلة التجريبية:** `4oaA3NdEm5vq5Gj10qep`
 - تم تشغيل رحلة فعلية لمدة تقارب 5 دقائق دون قطع الإنترنت أو إدخال Failure Path مقصود.
 - ظهر `TripPing buffered` بشكل طبيعي واستمر التسجيل خلال الرحلة.
@@ -1031,6 +1049,7 @@ firebase deploy --only storage
 - `flutter test` → **119/119 All tests passed!**
 
 **نتيجة البوابة:** **RouteProgress Physical Plausibility Integration — مغلقة وناجحة ✅**
+
 ### ملاحظات تشغيلية
 
 - لا نحذف الملفات الناتجة محليًا أو ملفات lock/generated دون سبب موثق.
