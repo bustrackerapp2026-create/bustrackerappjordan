@@ -25,7 +25,7 @@
 
 ## الحالة الحالية
 
-**آخر تحقق محلي مؤكد — 2026-10-02**
+### آخر تحقق محلي مؤكد — 2026-10-02
 
 - الفرع المرجعي: `stage/approved-route-line-vehicle-link-v1`
 - آخر commit: `e4a571a30e0a19a6060fec7ddbd662af3a1e0f75`
@@ -142,7 +142,7 @@ firebase deploy --only firestore:rules,firestore:indexes,storage
 
 الاستعلامات المركّبة (مثل `where` + `orderBy`) تحتاج فهارس. الملف الرسمي:
 
-**`firestore.indexes.json`**
+### `firestore.indexes.json`
 
 الفهارس المعرّفة حالياً:
 
@@ -716,7 +716,7 @@ firebase deploy --only storage
 
 تم إغلاق نقطة **Sampling freshness gate** رسميًا بعد اكتمال التنفيذ البرمجي والاختبار الميداني على الهاتف.
 
-#### التنفيذ المثبت
+#### التنفيذ المثبت — RouteProgress Continuity
 
 - **الملف الجديد:** `lib/services/historical_sampling_policy.dart`
 - **التكامل:** `lib/driver/services/driver_tracking_hub.dart`
@@ -777,12 +777,12 @@ firebase deploy --only storage
 
 ### قرار UX مهم تم اعتماده
 
-**طلبات الركاب التي يستقبلها السائق يجب أن تبقى قسمًا مستقلًا خاصًا بها.**
+### فصل طلبات الركاب عن تعيين المسار
 
 لذلك:
 
 - لا ندمج طلبات تعيين المسار مع طلبات الركاب.
-- لا نستبدل `BookingsTab` بوظيفة تعيين المسار؛ `BookingsTab` حاليًا مخصص لطلبات الرحلات التي يرسلها الركاب. 
+- لا نستبدل `BookingsTab` بوظيفة تعيين المسار؛ `BookingsTab` حاليًا مخصص لطلبات الرحلات التي يرسلها الركاب.
 - لن نضع اختيار المسار يدويًا داخل تعديل الملف الشخصي باعتباره الحل الأساسي.
 - التصميم النهائي لواجهة تعيين المسار سيُحدد بعد أن يقدّم صاحب المشروع التصور الكامل للقسم المطلوب.
 
@@ -805,8 +805,6 @@ firebase deploy --only storage
 - **قاعدة العمل التالية:** نواصل التطوير على `stage/approved-route-line-vehicle-link-v1`، ولا نغيّر فرع الاستقرار الجديد إلا عند وجود سبب موثق.
 - **المرحلة التالية المخططة:** Phase 2 — **Live GPS + Historical Capture**، بعد فحص الموجود حاليًا وعدم إعادة بناء أجزاء مستقرة بلا Regression واضح.
 
-
-
 ### إغلاق أول وحدة هندسية لـRouteProgress — 2026-09-27
 
 تم تنفيذ أول وحدة مستقلة من **Phase 3 — RouteProgress** دون ربطها بعد بـDriverTrackingHub أو Firestore.
@@ -822,7 +820,7 @@ firebase deploy --only storage
 - لا توجد أي قراءة شبكة لكل GPS event.
 - لم يتم تعديل `DriverTrackingHub` أو `DriverTrackingLifecycle` أو `driver_map_tab.dart`.
 
-#### Evidence
+#### Evidence — Route Start Consistency
 
 على الجهاز المحلي بعد سحب التحديث:
 
@@ -846,7 +844,7 @@ firebase deploy --only storage
 - أضيف `test/route_start_resolver_test.dart` ويغطي outbound وreturn والمسار الفارغ.
 - لم يتم تعديل `driver_map_tab.dart` أو DriverTrackingLifecycle أو Mapbox.
 
-#### Evidence
+#### Evidence — RouteProgress Continuity
 
 على الجهاز المحلي بعد سحب commit الإصلاح:
 
@@ -887,7 +885,7 @@ firebase deploy --only storage
 - لم يتم تعديل LocationService أو driver_map_tab.dart في إصلاح بوابة freshness.
 - لا يتم تغيير مخطط vehicleTrips ولا إضافة LIVE/STALE/LOST إلى Firestore.
 
-### الاختبارات
+### الاختبارات — Live GPS freshness gate
 
 - test/driver_tracking_stale_position_test.dart — يثبت رفض cached Position القديمة بعد stream error وقبول Position حديثة.
 - test/driver_tracking_heartbeat_stale_probe_test.dart — يثبت رفض Position القديمة القادمة من heartbeat probe.
@@ -907,7 +905,7 @@ firebase deploy --only storage
 
 تم إغلاق الوحدة الثانية من **Phase 3 — RouteProgress** بعد فصل حماية الاستمرارية والتقدم الأحادي عن `DriverTrackingHub` وFirestore.
 
-#### التنفيذ المثبت
+#### التنفيذ المثبت — RouteProgress Hub Integration
 
 - **الملف الجديد:** `lib/services/route_progress_tracker.dart`
 - يحتفظ الـtracker بآخر إسقاط مقبول على المسار.
@@ -919,7 +917,7 @@ firebase deploy --only storage
 - يدعم `reset()` لفصل حالة كل `VehicleTrip` عن الرحلة التالية.
 - لم يتم تعديل `DriverTrackingHub` أو `DriverTrackingLifecycle` أو `driver_map_tab.dart` أو Firestore.
 
-#### الاختبارات
+#### الاختبارات — RouteProgress Continuity
 
 - **الاختبار:** `test/route_progress_tracker_test.dart`
 - يغطي: أول projection صالح، منع التراجع بسبب GPS jitter، استمرار التقدم للأمام بعد jitter، رفض القفزة الأمامية غير المنطقية، تجاهل الموقع غير الصالح/البعيد، seed من `routeProgress`، رفض القيم غير الصالحة، وreset بين الرحلات.
@@ -941,7 +939,7 @@ firebase deploy --only storage
 
 تم ربط RouteProgressTracker مع DriverTrackingHub تدريجيًا، مع إبقاء الحساب محليًا وفصل الكتابة إلى Firestore عن هذه الوحدة.
 
-#### التنفيذ المثبت
+#### التنفيذ المثبت — RouteProgress Firestore Persistence
 
 - DriverTrackingHub يستقبل routePoints وrouteId وdirection وsavedRouteProgress عند ربط VehicleTrip.
 - الرحلة الجديدة: reset ثم bind للمسار ثم seed اختياري ثم استقبال GPS.
@@ -971,7 +969,7 @@ firebase deploy --only storage
 
 تم تفعيل حفظ routeProgress المقبول مع نفس live VehicleTrip flush الحالي، دون إنشاء cadence أو writer جديد.
 
-#### التنفيذ المثبت
+#### التنفيذ المثبت — Physical Plausibility Integration
 
 - DriverTrackingHub يأخذ snapshot متزامنًا من tripId وPosition وآخر routeProgress مقبول في بداية live flush.
 - VehicleTripService.updateLiveLocation() يستقبل routeProgress اختياريًا.
@@ -982,7 +980,7 @@ firebase deploy --only storage
 - بقي guard القفزة الأمامية 300 متر كما هو، ولم تتم إضافة physical plausibility.
 - لم يتم تعديل DriverTrackingLifecycle أو LocationService أو Mapbox أو driver_map_tab.dart.
 
-#### الاختبارات
+#### الاختبارات — RouteProgress Firestore Persistence
 
 - الاختبار: test/vehicle_trip_live_location_payload_test.dart
 - يغطي: تمرير routeProgress الصحيحة، غياب الحقل عند null، قبول 0 و1، ورفض القيم السالبة، الأكبر من 1، وNaN/Infinity.
@@ -1010,7 +1008,7 @@ firebase deploy --only storage
 - هذه القيم Policy parameters قابلة للمعايرة والاختبار وليست ثوابت فيزيائية مطلقة.
 - لم تدخل `speedAccuracy` في هذه النسخة.
 
-#### الاختبارات
+#### الاختبارات — Physical Plausibility Policy
 
 - **الاختبار:** `test/route_progress_physical_plausibility_policy_test.dart`
 - يغطي: الحركة الطبيعية، same timestamp، timestamp regression، timestamps المفقودة، long gap، أولوية السرعة الحالية، fallback للسرعة السابقة، غياب السرعة الصالحة، التوقف بسرعة صفر، 300m hard cap، وحدود 30 ثانية.
@@ -1038,7 +1036,7 @@ firebase deploy --only storage
 - `seedFromProgress()` يمسح metadata الفيزيائي حتى تبدأ الاستعادة بدون مرجع GPS قديم.
 - لم يتم تعديل `DriverTrackingLifecycle` أو `RouteProgressCalculator` أو Mapbox/UI أو مسار Firestore.
 
-#### الاختبارات
+#### الاختبارات — Physical Plausibility Integration
 
 - `test/route_progress_tracker_test.dart` — حالات السماح/الرفض، أولوية السرعة، fallback، same timestamp، long gap، backward reference، وعدم تقدم المرجع بعد الرفض.
 - `test/driver_tracking_hub_route_progress_test.dart` — تمرير timestamp/speed واقعيين في سيناريوهات التكامل.
