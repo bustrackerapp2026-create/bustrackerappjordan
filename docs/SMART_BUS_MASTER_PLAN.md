@@ -2950,3 +2950,97 @@ Important:
 **Active Vehicle Discovery Read Contract v1 — CLOSED ✅**
 
 **NEXT:** Journey Candidate Contract Preflight فقط، دون Production Code.
+
+
+### Phase 7 — JourneyPlanner First Association Operation Contract v1 — 2026-10-01
+
+**FACTS VERIFIED**
+
+- لا يوجد حاليًا Production `JourneyPlanner` أو `JourneyCandidate` model يفرض تمثيلًا خاصًا للناتج.
+- `RouteCandidateDiscoveryService.discover()` يعيد `List<PlannedRoute>` مع الحفاظ على هوية المسار `id + direction`.
+- `VehicleTripService.findActiveTripsForRoute({routeId, direction})` يعيد `List<VehicleTrip>` للمركبات النشطة المطابقة.
+- المشروع يستخدم Dart SDK `^3.5.0`، وبالتالي named records متاحة في لغة Dart الحالية للمشروع.
+
+**PROBLEM IDENTIFIED**
+
+العقد الدلالي السابق ثبت علاقة Route Candidate بالمركبات والتعدد، لكنه لم يثبت بعد الشكل البرمجي للناتج. لا يجوز اختراع `JourneyCandidate` أو DTO جديد فقط لسد هذه الفجوة.
+
+**DESIGN CONSTRAINT**
+
+يُجمّد أول Consumer Operation بالشكل التالي:
+
+```text
+Input:
+  List<PlannedRoute> routeCandidates
+
+Dependency:
+  VehicleTripService.findActiveTripsForRoute({
+    routeId,
+    direction,
+  })
+
+Matching:
+  route.id == vehicleTrip.routeId
+  AND
+  route.direction.firestoreValue == vehicleTrip.direction
+
+Multiplicity:
+  one association per valid (PlannedRoute, VehicleTrip) pair
+
+Output:
+  Future<List<({
+    PlannedRoute route,
+    VehicleTrip vehicleTrip,
+  })>>
+```
+
+**OUTPUT SHAPE DECISION**
+
+- الناتج هو **Dart named record** وليس Model أو DTO أو `JourneyCandidate`.
+- حقلا السجل هما بالاسم: `route` و`vehicleTrip`.
+- يحتفظ `route` بكائن `PlannedRoute` الأصلي كاملًا.
+- يحتفظ `vehicleTrip` بكائن `VehicleTrip` الأصلي كاملًا.
+- لا يتم نسخ الحقول إلى structure جديد.
+- لا يتم إنشاء typedef مسمى في هذه الخطوة؛ type الـrecord يبقى مباشرًا حتى يثبت Consumer لاحق حاجة حقيقية إلى abstraction مستقلة.
+
+**OPERATION SEMANTICS**
+
+- Route Candidate بلا VehicleTrip مطابق → لا association لهذا المسار.
+- عدة VehicleTrips مطابقة لنفس Route → association مستقلة لكل VehicleTrip.
+- لا يوجد Cartesian Product بين Routes ومركبات غير مطابقة.
+- `currentLocation` ليس شرطًا للـassociation ولا تتم تصفية المركبة بسببه.
+- لا ranking، ولا scoring، ولا ETA، ولا freshness evaluation في هذه العملية.
+- لا dedupe إضافي حسب `lineName` أو أي metadata أخرى.
+- ترتيب الناتج ليس Ranking؛ عند التنفيذ يحافظ على ترتيب Route Candidates المدخل، وداخل كل Route يحافظ على ترتيب `findActiveTripsForRoute()` كما يعيده المصدر.
+- نتيجة فارغة من Read Contract تعني zero associations لذلك Route.
+- استثناء من Read Contract لا يتحول إلى قائمة فارغة؛ يُمرَّر إلى المستهلك الأعلى كما هو، لأن فشل البنية التحتية مختلف دلاليًا عن عدم وجود مركبات نشطة.
+
+**NON-GOALS**
+
+- لا إنشاء `JourneyPlanner` class لمجرد تثبيت الاسم.
+- لا إنشاء `JourneyCandidate` model أو DTO أو wrapper جديد.
+- لا تعديل `NearbyRoutesService`.
+- لا تعديل `MapTab`.
+- لا ETA.
+- لا UI.
+- لا Mapbox.
+- لا DriverTrackingHub.
+- لا Firestore writes أو indexes جديدة.
+
+**RESULT**
+
+**JourneyPlanner First Association Operation Contract v1 — DESIGN FROZEN ✅**
+
+تم الآن تجميد **Input + Dependency + Matching + Multiplicity + Output Shape + Error/Ordering Semantics** قبل كتابة أي Production Code.
+
+**NEXT**
+
+تنفيذ أصغر orchestration boundary ممكنة فقط لتطبيق هذا العقد، مع focused tests تثبت على الأقل:
+- Route بلا مركبات → zero associations.
+- Route مع عدة مركبات مطابقة → association لكل مركبة.
+- Route + Vehicle غير متطابقين → لا association.
+- أكثر من Route → لا Cartesian Product.
+- فشل قراءة المركبات → error propagated.
+- الحفاظ على `route + vehicleTrip` الأصليين داخل الناتج.
+
+لا يتجاوز التنفيذ هذه الحدود.
