@@ -21,7 +21,7 @@ PlannedRoute _route({
 }
 
 void main() {
-  const policy = RouteCandidateDiscoveryPolicy(
+  final policy = RouteCandidateDiscoveryPolicy(
     originMaxDistanceMeters: 30,
     destinationMaxDistanceMeters: 30,
   );

@@ -12,7 +12,7 @@ class RouteCandidateDiscoveryPolicy {
   final double originMaxDistanceMeters;
   final double destinationMaxDistanceMeters;
 
-  const RouteCandidateDiscoveryPolicy({
+  RouteCandidateDiscoveryPolicy({
     required this.originMaxDistanceMeters,
     required this.destinationMaxDistanceMeters,
   })  : assert(originMaxDistanceMeters.isFinite),
