@@ -2596,6 +2596,135 @@ Firestore / Hub Integration
 
 
 
+### Phase 7 — Route Candidate Discovery Contract v1 — 2026-10-01
+
+**FACTS VERIFIED**
+
+- PlannedRoute هو مصدر بيانات المسار المعتمد، ويحمل الهوية id + direction.
+- NearbyRoutesService الحالي يستخدم lineName في _dedupeBestByLine()، لذلك لا يمكن اعتماد ناتجه الحالي كما هو كمجموعة Route Candidates نهائية للـJourneyPlanner.
+- NearbyRoutesService.progressAlongRoute() يعتمد تقريب segmentIndex / numberOfSegments، وليس محور alongMeters الدقيق.
+- RoutePolylineProjection.project() يعيد alongMeters وdistanceToRouteMeters على هندسة المسار نفسها، وهو primitive هندسي مستقل قابل لإعادة الاستخدام.
+- لا يوجد بعد Production Route Candidate Discovery Consumer يبرر تعديل NearbyRoutesService أو إنشاء RouteCandidate Model.
+
+**PROBLEM IDENTIFIED**
+
+قبل ربط أي VehicleTrip بالمسار، يجب أن تنتج Route Discovery مجموعة Candidates تحتفظ بكامل هوية كل مسار.
+
+المشكلة الحالية هي أن Discovery القديم يمكن أن:
+- يدمج مسارات مختلفة تحت lineName.
+- يستخدم اتجاهًا تقريبيًا مبنيًا على segmentIndex.
+- يحمل thresholds داخل الخدمة بدل Policy معلنة ومحقونة.
+
+**DESIGN CONSTRAINT**
+
+العقد المجمد دلاليًا:
+
+```text
+Input:
+  origin   = latitude + longitude
+  destination = latitude + longitude
+
+Source:
+  approved PlannedRoute(s)
+
+Output:
+  List<PlannedRoute>
+
+Identity:
+  route.id + route.direction
+
+Qualifying:
+  origin is sufficiently close to route
+  AND
+  destination is sufficiently close to route
+  AND
+  destination lies ahead of origin on the route axis
+
+Direction relation:
+  project origin and destination onto the same route geometry
+  using RoutePolylineProjection
+  then require:
+    destinationProjection.alongMeters > originProjection.alongMeters
+```
+
+**DECISIONS**
+
+1. **Input**
+   - Origin وDestination هما إحداثيات فقط.
+   - لا PassengerTrip ولا VehicleTrip ضمن هذا العقد.
+
+2. **Source**
+   - المصدر الدلالي هو المسارات المعتمدة PlannedRoute.
+   - لا يعتمد العقد على routeCatalog كمصدر geometry.
+   - لا يعتمد على NearbyRoutesService كـfinal planner discovery API.
+
+3. **Output**
+   - الناتج هو List<PlannedRoute>.
+   - كل Route مؤهل تبقى هويته الأصلية محفوظة.
+   - لا يتم إسقاط Route بسبب تشابه lineName.
+   - لا يتم دمج outbound وreturn أو مسارين مختلفين لهما نفس الاسم.
+
+4. **Route identity**
+   - الهوية التشغيلية للـRoute Candidate هي PlannedRoute.id + PlannedRoute.direction.
+   - lineName metadata للعرض/البحث، وليس مفتاحًا للتفريد أو الربط.
+
+5. **Origin proximity**
+   - يتم تقييم قرب Origin من هندسة Route.
+   - الحد العددي لا يُثبت داخل العقد.
+   - يجب أن يكون هذا الحد جزءًا من Discovery Policy معلنة/محقونة عند التنفيذ.
+   - لا يُسمح بإضافة رقم مخفي داخل Planner لمجرد تقليد NearbyRoutesService.
+
+6. **Destination proximity**
+   - يتم تقييم قرب Destination من هندسة Route.
+   - الحد العددي كذلك Policy محقونة وليس قيمة ثابتة جديدة داخل Planner.
+
+7. **Same-direction relation**
+   - يتم إسقاط Origin وDestination على نفس هندسة Route بواسطة RoutePolylineProjection.
+   - الاتجاه لا يُستنتج من segmentIndex / numberOfSegments.
+   - العلاقة المؤهلة هي destinationProjection.alongMeters > originProjection.alongMeters.
+   - استخدام علاقة strict يمنع اعتبار نقطة تقع على نفس الموضع المحوري للRoute كرحلة forward.
+   - لا يتم تثبيت minimum forward distance أو epsilon إضافي في هذه الخطوة؛ إن احتاجت سياسة لاحقة ذلك يُضاف صراحةً عبر Policy.
+
+8. **Projection failure / invalid route**
+   - إذا تعذر إسقاط أحد الإحداثيين، أو كانت هندسة Route غير صالحة، فلا يكون Route مؤهلًا.
+   - لا يتم اختراع نتيجة أو fallback.
+   - هذه الحالة لا تجعل VehicleTrip جزءًا من Discovery.
+
+9. **Multiplicity**
+   - يمكن أن ينتج Discovery عدة PlannedRoute مختلفة لها نفس lineName.
+   - كل id + direction يبقى Candidate مستقلًا.
+   - لا توجد عملية Cartesian Product ولا أي association مع المركبات هنا.
+
+10. **Policy boundary**
+    - يمكن أن تتولى Policy لاحقًا originMaxDistanceMeters وdestinationMaxDistanceMeters وأي قواعد إضافية صريحة لمعالجة ambiguity أو minimum forward separation.
+    - لا يتم تثبيت أسماء أو قيم تنفيذية لهذه Policy ما دام أول Consumer لم يثبت الحاجة إليها.
+
+11. **Out of scope**
+    - VehicleTrips.
+    - ETA.
+    - Ranking.
+    - UI.
+    - JourneyCandidate model.
+    - تعديل NearbyRoutesService.
+    - Firestore writes.
+    - Firestore schema/index changes.
+
+**RESULT**
+
+**Route Candidate Discovery Contract v1 — DESIGN FROZEN ✅**
+
+تم تثبيت معنى Route Candidate qualifying، مع الحفاظ على:
+- الهوية id + direction.
+- كل المسارات المؤهلة دون lineName dedupe.
+- اتجاه route المبني على alongMeters من RoutePolylineProjection.
+- thresholds كـPolicy injected ولم تُثبت أرقام جديدة.
+
+لم يتم إنشاء RouteCandidate Model ولم يتم تعديل أي Production Code.
+
+**NEXT**
+
+الخطوة التالية فقط هي تحديد **First Route Discovery Implementation Boundary**: هل تنفذ Discovery كخدمة مستقلة صغيرة أم تُوسّع خدمة موجودة، ويُحسم ذلك بعد Inspect للاعتماد الفعلي الأول على العقد، دون تعديل NearbyRoutesService مسبقًا.
+
 ### Phase 7 — Journey Candidate Consumer Contract v1 — 2026-10-01
 
 **FACTS VERIFIED**
