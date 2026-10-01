@@ -3044,3 +3044,115 @@ Output:
 - الحفاظ على `route + vehicleTrip` الأصليين داخل الناتج.
 
 لا يتجاوز التنفيذ هذه الحدود.
+### Phase 7 — Journey Option Domain Contract v1 — 2026-10-02
+
+**FACTS VERIFIED**
+
+- Route Candidate Discovery produces qualified `PlannedRoute` candidates for the requested Origin/Destination context.
+- Active Vehicle Read produces matching active `VehicleTrip` records.
+- First Association Operation produces one valid association per matching `PlannedRoute + VehicleTrip` pair.
+- لا يوجد حاليًا `JourneyOption` أو `JourneyCandidate` Production model يفرض حقولًا تشغيلية إضافية.
+- `currentLocation`, `routeProgress`, `speed`, `lastLocationAt`, وETA ليست شروطًا مثبتة لإنشاء الـOption.
+
+**DOMAIN DEFINITION — FROZEN**
+
+**Journey Option** هو:
+
+> **A route-vehicle association that qualifies within a specific passenger planning context.**
+
+وبالعربية:
+
+> **خيار الرحلة هو Association بين مسار مؤهل ومركبة نشطة مطابقة، ضمن سياق تخطيط محدد للراكب.**
+
+**IDENTITY**
+
+هوية الـroute-vehicle association هي:
+
+```text
+route.id
++
+route.direction
++
+vehicleTrip.id
+```
+
+ولا تدخل `Origin` أو `Destination` في هذه الهوية.
+
+**PLANNING CONTEXT**
+
+السياق الذي يفسر لماذا أصبح الـAssociation خيارًا هو:
+
+```text
+origin
++
+destination
+```
+
+ويمكن أن يرتبط نفس `route + vehicleTrip` بأكثر من Planning Context مختلف.
+
+**EXISTENCE**
+
+وجود Journey Option يتطلب:
+
+```text
+Qualified PlannedRoute
++
+Matching Active VehicleTrip
++
+Specific Planning Context
+```
+
+ولا يتطلب، وفق الأدلة الحالية:
+
+```text
+currentLocation
+routeProgress
+lastLocationAt
+speed
+ETA
+```
+
+**DATA BOUNDARY**
+
+لا نفترض أن البيانات التشغيلية التالية هي Attributes داخل `JourneyOption` نفسه:
+
+- `currentLocation`
+- `routeProgress`
+- `lastLocationAt`
+- `speed`
+
+تبقى هذه البيانات مرتبطة بالـ`VehicleTrip` أو بطبقات لاحقة عند ظهور Consumer يحتاجها.
+
+أما ETA فهو **derived data اختياري لاحق**، وليس جزءًا من تعريف وجود Journey Option.
+
+**UNAVAILABLE DATA**
+
+عدم توفر `currentLocation` أو `routeProgress` أو `lastLocationAt` أو `speed` أو ETA لا يحوّل تلقائيًا Association موجودة إلى "لا يوجد Journey Option".
+
+أي قرار لاحق بشأن هذه البيانات يحتاج Consumer محددًا ومتطلبًا مثبتًا.
+
+**OUTSIDE OPTION SEMANTICS**
+
+- لا Ranking.
+- لا scoring.
+- لا Freshness Policy عامة.
+- لا Vehicle Availability Policy جديدة.
+- لا ETA computation داخل تعريف الـOption.
+- لا UI أو Presentation semantics داخل Domain definition.
+- لا `JourneyOptionEvaluator` ما لم يظهر Consumer يثبت الحاجة إليه.
+
+**RESULT**
+
+**Journey Option Domain Contract v1 — FROZEN ✅**
+
+تم تثبيت:
+- تعريف Journey Option.
+- Association Identity.
+- Planning Context.
+- شروط الوجود الدنيا.
+- الفصل بين وجود الـOption والبيانات التشغيلية/المشتقة.
+- حدود Ranking وETA وFreshness.
+
+**NEXT**
+
+أي خطوة لاحقة يجب أن تبدأ من **Consumer محدد لـJourney Option**. لا يتم إنشاء Evaluator أو Model جديد لمجرد وجود الاسم في الخطة.
