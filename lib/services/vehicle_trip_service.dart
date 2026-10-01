@@ -20,12 +20,31 @@ class VehicleTripServiceException implements Exception {
 ///
 /// ┘à┘å┘ü╪╡┘ä╪⌐ ╪¬┘à╪º┘à┘ï╪º ╪╣┘å [TripService] ╪º┘ä╪«╪º╪╡╪⌐ ╪¿╪╖┘ä╪¿╪º╪¬ ╪º┘ä╪▒┘â╪º╪¿.
 /// Collection: vehicleTrips
+typedef ActiveTripsForRouteReader = Future<List<VehicleTrip>> Function({
+  required String routeId,
+  required String direction,
+});
+
 class VehicleTripService {
-  VehicleTripService._();
+  VehicleTripService._({
+    FirebaseFirestore? db,
+    ActiveTripsForRouteReader? activeTripsForRouteReader,
+  })  : _dbOverride = db,
+        _activeTripsForRouteReader = activeTripsForRouteReader;
+
   static final VehicleTripService instance = VehicleTripService._();
   factory VehicleTripService() => instance;
 
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  @visibleForTesting
+  VehicleTripService.forTesting({
+    required ActiveTripsForRouteReader activeTripsForRouteReader,
+  })  : _dbOverride = null,
+        _activeTripsForRouteReader = activeTripsForRouteReader;
+
+  final FirebaseFirestore? _dbOverride;
+  final ActiveTripsForRouteReader? _activeTripsForRouteReader;
+
+  FirebaseFirestore get _db => _dbOverride ?? FirebaseFirestore.instance;
 
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection('vehicleTrips');
@@ -92,6 +111,55 @@ class VehicleTripService {
   }
 
   /// ┘è╪¬╪¡┘é┘é ┘à┘à╪º ╪Ñ╪░╪º ┘â╪º┘å ┘ä┘ä╪│╪º╪ª┘é ╪▒╪¡┘ä╪⌐ ╪¬╪┤╪║┘è┘ä┘è╪⌐ ┘å╪┤╪╖╪⌐ ╪¡╪º┘ä┘è┘ï╪º.
+  Future<List<VehicleTrip>> findActiveTripsForRoute({
+    required String routeId,
+    required String direction,
+  }) async {
+    final normalizedRouteId = routeId.trim();
+    if (normalizedRouteId.isEmpty) {
+      throw const VehicleTripServiceException(
+        'معرف المسار مطلوب.',
+        code: 'invalid-route-id',
+      );
+    }
+
+    final normalizedDirection = _parseDirectionForStart(direction);
+    final reader = _activeTripsForRouteReader;
+
+    final List<VehicleTrip> records;
+    if (reader != null) {
+      records = await reader(
+        routeId: normalizedRouteId,
+        direction: normalizedDirection,
+      );
+    } else {
+      final snap = await _col
+          .where('routeId', isEqualTo: normalizedRouteId)
+          .where(
+            'direction',
+            isEqualTo: normalizedDirection,
+          )
+          .where(
+            'status',
+            isEqualTo: VehicleTripStatus.active.firestoreValue,
+          )
+          .get();
+
+      records = snap.docs
+          .map((doc) => VehicleTrip.fromMap(doc.data(), doc.id))
+          .toList(growable: false);
+    }
+
+    return records
+        .where(
+          (trip) =>
+              trip.status == VehicleTripStatus.active &&
+              trip.routeId == normalizedRouteId &&
+              trip.direction == normalizedDirection,
+        )
+        .toList(growable: false);
+  }
+
   Future<VehicleTrip?> findActiveTripForDriver(String driverId) async {
     if (driverId.isEmpty) return null;
 
