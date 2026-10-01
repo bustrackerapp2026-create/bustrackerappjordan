@@ -826,3 +826,80 @@ Output:
 - الحفاظ على `route + vehicleTrip` الأصليين داخل الناتج.
 
 لا يتجاوز التنفيذ هذه الحدود.
+### Phase 7 — Journey Option Domain Preflight / Contract v1 — 2026-10-02
+
+**FACTS VERIFIED**
+
+- تم إغلاق Route Candidate Discovery وActive Vehicle Read وFirst Association Operation.
+- لا يوجد Production Consumer يفرض `JourneyOption` model أو Evaluation layer.
+- البيانات التشغيلية في `VehicleTrip` لا تُعتبر متطلبات لوجود الـOption دون Consumer يثبت ذلك.
+
+**DOMAIN DEFINITION — FROZEN**
+
+```text
+Journey Option
+=
+a route-vehicle association
+that qualifies within a specific passenger planning context
+```
+
+أي:
+
+**خيار الرحلة هو Association بين مسار مؤهل ومركبة نشطة مطابقة، ضمن سياق تخطيط محدد للراكب.**
+
+**IDENTITY**
+
+```text
+route.id + route.direction + vehicleTrip.id
+```
+
+ولا تدخل Origin/Destination في الهوية.
+
+**PLANNING CONTEXT**
+
+```text
+origin + destination
+```
+
+هو سياق التخطيط الذي يجعل الـAssociation خيارًا لهذا الطلب.
+
+**MINIMUM EXISTENCE**
+
+```text
+Qualified PlannedRoute
++
+Matching Active VehicleTrip
++
+Planning Context
+```
+
+ولا توجد حاليًا متطلبات إضافية مثبتة من:
+```text
+currentLocation
+routeProgress
+lastLocationAt
+speed
+ETA
+```
+
+**DATA BOUNDARY**
+
+- `currentLocation`, `routeProgress`, `lastLocationAt`, و`speed` تبقى بيانات تشغيلية على `VehicleTrip` أو مدخلات لطبقات لاحقة.
+- ETA يبقى derived data لاحقًا، وليس شرطًا لوجود Journey Option.
+- غياب أي من هذه البيانات لا يعني تلقائيًا عدم وجود Option.
+
+**RANKING / EVALUATION BOUNDARY**
+
+- Ranking خارج تعريف الـOption.
+- لا يتم إنشاء `JourneyOptionEvaluator` أو `JourneyOptionStatus` أو `VehicleAvailabilityPolicy` أو `FreshnessPolicy` لمجرد سد فراغ معماري.
+- لا تبدأ Evaluation مستقلة إلا بعد ظهور Consumer محدد يطلب قرارًا واضحًا.
+
+**RESULT**
+
+**Journey Option Domain Contract v1 — FROZEN ✅**
+
+**NEXT**
+
+نبحث فقط عن **أول Consumer فعلي لـJourney Option**. عند ظهور Consumer، نحدد هل يحتاج Enrichment أو ETA أو Evaluation أو Ranking، وبأي عقد محدد.
+
+لا يوجد Production Patch مطلوب لهذه النقطة.
