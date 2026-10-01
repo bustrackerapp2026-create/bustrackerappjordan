@@ -19,6 +19,34 @@
 11. [أوامر مفيدة](#أوامر-مفيدة)
 12. [استكشاف الأخطاء](#استكشاف-الأخطاء)
 13. [مرجع التقدم والإصلاحات](#مرجع-التقدم-والإصلاحات)
+14. [الحالة الحالية](#الحالة-الحالية)
+
+---
+
+## الحالة الحالية
+
+**آخر تحقق محلي مؤكد — 2026-10-02**
+
+- الفرع المرجعي: `stage/approved-route-line-vehicle-link-v1`
+- آخر commit: `e4a571a30e0a19a6060fec7ddbd662af3a1e0f75`
+- حالة Git: متزامن مع `origin` و`working tree clean`
+- `flutter analyze`: **No issues found!**
+- اختبار Route Candidate Discovery: **9/9 passed**
+- اختبار JourneyPlanner Association: **6/6 passed**
+- الاختبارات الكاملة: **305/305 passed**
+
+### حالة Phase 7
+
+- **Route Candidate Discovery v1:** مغلقة ✅
+- **Active Vehicle Discovery Read Contract v1:** مغلقة ✅
+- **Journey Candidate Consumer Contract v1:** مجمد تصميميًا ✅
+- **First Association Operation v1:** مغلقة ✅
+- شكل الـassociation الحالي هو Dart named record:
+  `({PlannedRoute route, VehicleTrip vehicleTrip})`
+- لا يوجد حتى الآن `JourneyCandidate` model أو DTO لأن الحاجة إليه لم تثبت بعد.
+- ETA وRanking وUI خارج هذه العملية.
+
+**الخطوة التالية:** تحديد أول **Evaluation Behavior** فعلي على association قبل توسيع الـConsumer أو إضافة أي abstraction جديدة.
 
 ---
 
@@ -163,7 +191,7 @@ flutter analyze
 مصدر الحقيقة في الكود: `lib/core/constants/user_roles.dart` (`UserRoles`).
 
 | القيمة في Firestore | المعنى | يحتاج موافقة أدمن؟ |
-|---------------------|--------|---------------------|
+| --- | --- | --- |
 | `passenger` | راكب | لا |
 | `driver` | سائق | نعم |
 | `service` | سرفيس | نعم |
