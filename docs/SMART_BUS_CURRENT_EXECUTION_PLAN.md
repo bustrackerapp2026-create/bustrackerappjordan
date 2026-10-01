@@ -498,6 +498,80 @@ Direction relation:
 **NEXT**
 
 الخطوة التالية فقط هي تحديد **First Route Discovery Implementation Boundary**: هل تنفذ Discovery كخدمة مستقلة صغيرة أم تُوسّع خدمة موجودة، ويُحسم ذلك بعد Inspect للاعتماد الفعلي الأول على العقد، دون تعديل NearbyRoutesService مسبقًا.
+### Phase 7 — Route Candidate Discovery API v1 — 2026-10-01
+
+**FACTS VERIFIED**
+
+- لا يوجد في الفرع domain abstraction مستقلة باسم Origin أو Destination.
+- `PlaceSearchResult` يمثل نتيجة بحث مكان في طبقة Location/UI، ويحتوي `name + latitude + longitude`؛ لا توجد حاجة لتحويله إلى planner input abstraction في هذه الخطوة.
+- `PassengerLocationMixin` يحتفظ بـ`lastPassengerLat + lastPassengerLng` كموقع أصل حالي للراكب.
+- لذلك لا يوجد type قائم يمكن إعادة استخدامه دون إدخال مسؤولية UI/location إلى Domain/Planner.
+
+**PROBLEM IDENTIFIED**
+
+نحتاج API صغيرًا لحدود Route Candidate Discovery يستقبل نقطتي التخطيط دون إنشاء value objects جديدة لمجرد الأناقة.
+
+**DESIGN DECISION**
+
+يُجمّد API بالشكل التالي:
+
+```dart
+Future<List<PlannedRoute>> discover({
+  required double originLatitude,
+  required double originLongitude,
+  required double destinationLatitude,
+  required double destinationLongitude,
+});
+```
+
+**RATIONALE**
+
+- الإحداثيات هي الحد الأدنى الذي يحتاجه Discovery.
+- لا يتم تمرير `PlaceSearchResult` لأن `name` metadata واجهة وليس جزءًا من qualification الهندسي.
+- لا يتم إنشاء `Origin` أو `Destination` model الآن.
+- لا يتم ربط API مباشرةً بـ`PassengerLocationMixin` أو `MapTab`.
+- لا يوجد `DateTime.now()` أو GPS/Firestore/UI dependency ضمن العقد نفسه.
+
+**CONTRACT BOUNDARY**
+
+الـAPI:
+- يقرأ/يحصل على approved `PlannedRoute` candidates من المصدر المخصص لذلك.
+- يعيد `List<PlannedRoute>` مع الحفاظ على `id + direction`.
+- يطبق qualification المثبتة في Route Candidate Discovery Contract.
+- يستخدم `RoutePolylineProjection` للـroute-axis relation عند التنفيذ.
+- يستقبل Policy injected لأي proximity thresholds لازمة.
+
+ولا يملك:
+- `VehicleTrip` access.
+- ETA.
+- ranking.
+- UI.
+- cache.
+- polling.
+- fallback.
+- `JourneyCandidate` model.
+- `NearbyRoutesService` mutation لمجرد توفير هذا API.
+
+**API NON-GOALS**
+
+- لا نثبت هنا أسماء أو قيم الـDiscovery Policy.
+- لا نثبت هنا كيفية قراءة approved routes من `RoutePlanService`؛ هذا قرار Implementation Boundary منفصل.
+- لا نضيف overload يستقبل `Origin`/`Destination` objects.
+- لا نضيف factory أو DTO خاص بالطلب.
+
+**RESULT**
+
+**Route Candidate Discovery API v1 — DESIGN FROZEN ✅**
+
+تم حسم شكل الـAPI بأصغر تمثيل يطابق الكود الحالي:
+`originLatitude + originLongitude + destinationLatitude + destinationLongitude`.
+
+إنشاء abstraction مستقلة لـOrigin/Destination يبقى مؤجلًا حتى يظهر سلوك مشترك حقيقي يحتاجها خارج هذا الـConsumer.
+
+**NEXT**
+
+الخطوة التالية هي **Route Candidate Discovery Implementation** فقط: خدمة مستقلة صغيرة أو boundary مماثلة، مع dependency على approved-route source وPolicy injected، ثم focused tests. لا تعديل مسبق لـ`NearbyRoutesService` أو `MapTab`.
+
 
 ### Phase 7 — Journey Candidate Consumer Contract v1 — 2026-10-01
 
