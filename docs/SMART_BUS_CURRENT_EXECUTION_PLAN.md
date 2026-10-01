@@ -286,3 +286,46 @@ Runtime snapshot
 **Phase 5 — ETA Engine**
 
 ولا يبدأ التنفيذ حتى يظل بناء ETA معتمدًا على البيانات الفعلية المتاحة من Position + RouteProgress + Speed + Remaining Route، مع اعتبار ETA غير متاح أفضل من إنتاج رقم غير موثوق.
+
+
+### إغلاق 6-E.2-B — Passenger Presentation UI — 2026-10-01
+
+**الحالة: ✅ مكتملة**
+
+تم إغلاق Production Patch لطبقة عرض BusWatch للمسافر بعد إصلاح ملاحظة التحليل التي ظهرت بعد التنفيذ الأول.
+
+#### التنفيذ المثبت
+
+- أضيفت بطاقة عرض مستقلة:
+  `lib/passenger/widgets/bus_watch_operational_card.dart`
+- البطاقة تستهلك Presentation State فقط:
+  `loading`, `result`, `error`, `onRetry`.
+- تم ربطها داخل `MapTab` دون استبدال `ActiveTripBanner` أو إعادة بناء مسار GPS/Live Tracking.
+- حالات BusWatch غير المتاحة تُعرض كحالات تشغيلية واضحة، بينما خطأ البنية التحتية لا يُعرض خامًا للمستخدم.
+- عند وجود نتيجة سابقة يمكن إظهارها أثناء التحديث مع مؤشر تحميل.
+- لا يتم إدخال ETA أو `NextStop` أو `StopRuntimeSnapshot` إلى `BusWatchOperationalSnapshot`.
+- لم يتم تعديل `DriverTrackingLifecycle` أو Mapbox أو `driver_map_tab.dart` خارج الربط المحدود المطلوب للعرض.
+
+#### الإصلاح اللاحق
+
+تم اكتشاف خطأ صياغة في نهاية `MapTab` بعد أول تنفيذ:
+`Expected to find ']'`.
+
+تم إصلاحه بتغيير سطري واحد فقط، كما أزيل importان غير مستخدمين من بطاقة العرض.
+
+#### Evidence
+
+على الجهاز المحلي بعد سحب آخر commits:
+
+- `flutter analyze` → **No issues found!**
+- `flutter test test/bus_watch_operational_card_test.dart` → **8/8 All tests passed!**
+- `flutter test test/bus_watch_passenger_presentation_state_test.dart` → **7/7 All tests passed!**
+- `flutter test` → **283/283 All tests passed!**
+- `git status` → **working tree clean**
+- الفرع `stage/approved-route-line-vehicle-link-v1` متزامن مع `origin`.
+
+ظهور سجلات اختبارات stale GPS أثناء الاختبار الكامل كان تشخيصًا متوقعًا، ثم اكتملت المجموعة بالكامل دون failures.
+
+**نتيجة البوابة:** **6-E.2-B مغلقة وناجحة ✅**
+
+**قاعدة الانتقال:** لا يوجد Patch برمجي جديد مطلوب لهذه النقطة. قبل فتح Feature جديدة، يجب تنفيذ Preflight قصير لتثبيت نقطة المرحلة التالية وتحديد ما إذا كان المسار التالي هو إكمال ETA Result Consumption أو فتح Phase 7، دون استنتاج ذلك من نجاح الاختبارات وحده.
