@@ -2593,3 +2593,34 @@ Firestore / Hub Integration
 - حدود عدم توفر البيانات، دون اختراع ETA أو fallback غير مثبت.
 
 لا يبدأ تنفيذ JourneyPlanner قبل تثبيت هذا العقد واختبار أول وحدة مستقلة.
+
+
+### إغلاق Phase 7 — Active Vehicle Discovery Read Contract v1 — 2026-10-01
+
+**FACTS VERIFIED**
+
+- العقد المجمد: `findActiveTripsForRoute({routeId, direction}) → Future<List<VehicleTrip>>`.
+- المصدر التشغيلي هو `vehicleTrips`.
+- الاختيار يعتمد `routeId + direction + status = active`.
+- `currentLocation` لا يدخل في Query أو filtering، لذلك غياب GPS لا يساوي غياب المركبة.
+- تتم إعادة مطابقة `status` و`routeId` و`direction` بعد القراءة.
+- تم استخدام validation الموجودة أصلًا في `VehicleTrip`/service بدل تكرار قواعد الاتجاه.
+- لا توجد تغييرات في Route Discovery أو UI أو DriverTrackingHub أو ETA أو Firestore Rules/Indexes.
+
+**VALIDATION**
+
+- focused test: **7/7 passed**.
+- `flutter analyze`: **No issues found**.
+- full `flutter test`: **290/290 passed**.
+- working tree: **clean**.
+- branch synchronized with origin.
+
+**INDEX DECISION**
+
+لم تتم إضافة Composite Index لأن الحاجة إليه لم تثبت عبر Firestore الفعلي بعد.
+
+**RESULT**
+
+**Active Vehicle Discovery Read Contract v1 — CLOSED ✅**
+
+**NEXT:** Journey Candidate Contract Preflight فقط، دون Production Code.
