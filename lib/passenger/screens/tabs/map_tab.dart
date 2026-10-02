@@ -944,7 +944,8 @@ class _MapTabState extends State<MapTab>
             'خطوط تمر من هنا: $linesLabel$more',
           );
         }
-      }    } catch (e, st) {
+      }
+    } catch (e, st) {
       debugPrint('nearby buses: $e\n$st');
       if (!mounted) return;
       MapUtils.showSnackBar(
