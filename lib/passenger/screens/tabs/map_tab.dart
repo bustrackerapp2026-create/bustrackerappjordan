@@ -36,6 +36,7 @@ import '../../../services/route_prefs_service.dart';
 import '../../../services/route_plan_service.dart';
 import '../../../services/trip_service.dart';
 import '../../presentation/journey_route_presentation.dart';
+import '../../widgets/planner_status_card.dart';
 import 'mixins/passenger_location_mixin.dart';
 import 'mixins/passenger_live_tracking_mixin.dart';
 import 'mixins/passenger_planned_routes_mixin.dart';
@@ -883,13 +884,11 @@ class _MapTabState extends State<MapTab>
 
     if (!mounted || _destination == null) return;
 
-    setState(() {
-      _findingNearby = true;
-      _showLiveStatusBar = true;
-    });
+    setState(() => _showLiveStatusBar = true);
 
     beginPlannerRoutePresentation();
     final generation = _journeyPresentation.beginLoading();
+    if (mounted) setState(() {});
     final planner = context.read<PassengerJourneyPlanningService>();
 
     try {
@@ -906,6 +905,7 @@ class _MapTabState extends State<MapTab>
 
       if (options.isEmpty) {
         _journeyPresentation.completeEmpty(generation);
+        if (mounted) setState(() {});
         if (!mounted || !_journeyPresentation.isCurrent(generation)) {
           return;
         }
@@ -923,6 +923,7 @@ class _MapTabState extends State<MapTab>
 
       final routes = journeyOptionRoutesForPresentation(options);
       _journeyPresentation.completeSuccess(generation);
+      if (mounted) setState(() {});
       if (!mounted || !_journeyPresentation.isCurrent(generation)) {
         return;
       }
@@ -944,6 +945,7 @@ class _MapTabState extends State<MapTab>
       }
 
       _journeyPresentation.completeError(generation, error);
+      if (mounted) setState(() {});
       if (!mounted || !_journeyPresentation.isCurrent(generation)) {
         return;
       }
@@ -957,10 +959,6 @@ class _MapTabState extends State<MapTab>
         'تعذر تخطيط الرحلة. حاول لاحقًا.',
         isError: true,
       );
-    } finally {
-      if (mounted && _journeyPresentation.isCurrent(generation)) {
-        setState(() => _findingNearby = false);
-      }
     }
   }
 
@@ -1130,6 +1128,13 @@ class _MapTabState extends State<MapTab>
     super.build(context);
     final l10n = AppLocalizations.of(context);
     final hasOpenTrip = _openTrip != null;
+    final plannerUi =
+        PlannerUiProjection.fromState(_journeyPresentation);
+    final showPlannerStatus = !hasOpenTrip &&
+        _destination != null &&
+        (plannerUi.status == PlannerUiProjectionStatus.loading ||
+            plannerUi.status == PlannerUiProjectionStatus.empty ||
+            plannerUi.status == PlannerUiProjectionStatus.error);
     final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
     final bottomPad = hasOpenTrip ? 130.0 : 0.0;
     final busWatch = _busWatchPresentation;
@@ -1235,8 +1240,24 @@ class _MapTabState extends State<MapTab>
                 ),
               ],
             ),
-          )
-        else if (_showLiveStatusBar &&
+          ),
+        if (showPlannerStatus)
+          Positioned(
+            bottom: 88,
+            left: 16,
+            right: 16,
+            child: RepaintBoundary(
+              child: PlannerStatusCard(
+                projection: plannerUi,
+                onRetry: plannerUi.status == PlannerUiProjectionStatus.error
+                    ? () => _showDestinationJourneyPlan()
+                    : null,
+              ),
+            ),
+          ),
+
+        if (!showPlannerStatus &&
+            _showLiveStatusBar &&
             (_hasExplicitRouteContext || _nearbyMode || _destination != null))
           Positioned(
             bottom: 88,
