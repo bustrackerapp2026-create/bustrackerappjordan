@@ -6,7 +6,7 @@ void main() {
   final evaluatedAt = DateTime.utc(2026, 10, 2, 20, 0);
 
   test('missing timestamp is missing', () {
-    const policy = VehicleLocationFreshnessPolicy(
+    final policy = VehicleLocationFreshnessPolicy(
       maxAge: Duration(minutes: 1),
     );
 
@@ -20,7 +20,7 @@ void main() {
   });
 
   test('timestamp at maxAge boundary is fresh', () {
-    const policy = VehicleLocationFreshnessPolicy(
+    final policy = VehicleLocationFreshnessPolicy(
       maxAge: Duration(minutes: 1),
     );
 
@@ -36,7 +36,7 @@ void main() {
   });
 
   test('timestamp older than maxAge is stale', () {
-    const policy = VehicleLocationFreshnessPolicy(
+    final policy = VehicleLocationFreshnessPolicy(
       maxAge: Duration(minutes: 1),
     );
 
@@ -52,7 +52,7 @@ void main() {
   });
 
   test('future timestamp is future', () {
-    const policy = VehicleLocationFreshnessPolicy(
+    final policy = VehicleLocationFreshnessPolicy(
       maxAge: Duration(minutes: 1),
     );
 
@@ -66,7 +66,7 @@ void main() {
   });
 
   test('evaluation is deterministic for identical inputs', () {
-    const policy = VehicleLocationFreshnessPolicy(
+    final policy = VehicleLocationFreshnessPolicy(
       maxAge: Duration(minutes: 1),
     );
     final observedAt = evaluatedAt.subtract(const Duration(seconds: 30));
