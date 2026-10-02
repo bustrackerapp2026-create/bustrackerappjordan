@@ -1076,7 +1076,9 @@ class _MapTabState extends State<MapTab>
               ],
             ),
           )
-        if (_hasExplicitRouteContext || _nearbyMode || _destination != null)
+        else if (_hasExplicitRouteContext ||
+            _nearbyMode ||
+            _destination != null)
           Positioned(
             bottom: 88,
             left: 16,
