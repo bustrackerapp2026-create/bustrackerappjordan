@@ -54,11 +54,11 @@ No copied DTO, wrapper, or new JourneyOption model is required.
 | Criterion | Meaning | Current status |
 | --- | --- | --- |
 | **Fastest** | Smallest explicitly valid journey-time measure for the planning context. | **DEFERRED** |
-| **Closest** | Smallest explicitly defined distance measure with frozen reference points and units. | **DEFERRED** |
+| **Closest** | Smallest explicitly defined distance measure with frozen reference points and units. | **SUPPORTED** |
 | **Least Walking** | Smallest explicitly defined walking/access distance in the planning context. | **DEFERRED** |
 | **Fewest Transfers** | Smallest transfer count within an explicit multi-leg journey representation. | **DEFERRED** |
 
-**Supported production criteria: none.**
+**Supported production criteria: Closest.**
 
 ### 4. Data requirements
 
@@ -85,7 +85,7 @@ Before a criterion becomes Supported, its own semantics must explicitly choose o
 
 Ranking never invents a fallback value to force comparability.
 
-For the four current criteria, these semantics are not frozen; therefore all four remain Deferred.
+For `Closest`, the criterion-specific missing-data semantics are now frozen and implemented: unavailable location data makes the option not rankable for Closest while preserving the underlying option. `Fastest`, `Least Walking`, and `Fewest Transfers` remain Deferred.
 
 ### 6. Comparison rule
 
@@ -121,14 +121,16 @@ It does not require a new JourneyOption model.
 
 Frozen: minimum ranking input, Defined/Supported/Deferred taxonomy, data requirements, missing-data semantics, deterministic comparison, deterministic tie-break, and the prohibition of fallback/inference.
 
-**Current production-supported criteria: none.** This is intentional.
+**Current production-supported criteria: Closest.** This is the first criterion that satisfies the Supported definition; no generic Ranking Engine has been introduced.
 
 ---
 
 ## NEXT
 
-Inspect the current data available for the first concrete criterion.
+The first concrete criterion, `Closest`, is now Supported and closed.
 
-Implement one criterion only once its data requirement and missing-data semantics are demonstrably satisfiable.
+Next criteria must begin with a fresh inspect/preflight and must independently satisfy the Supported definition before implementation.
+
+`Fastest` remains Deferred because the current Planner association contract does not provide the `StopRuntimeSnapshot` required by the existing ETA runtime path.
 
 Do not build a generic Ranking framework first.
