@@ -1,7 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../models/planned_route.dart';
 import '../models/vehicle_trip.dart';
 import 'vehicle_location_freshness_policy.dart';
