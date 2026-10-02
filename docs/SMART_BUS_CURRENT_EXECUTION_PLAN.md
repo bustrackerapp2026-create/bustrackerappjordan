@@ -489,6 +489,49 @@ Runtime snapshot
 
 الانتقال إلى **Origin/Destination symmetry** فقط، مع عدم افتراض تساوي الـthresholds قبل تحليل اختلاف مصادر عدم اليقين.
 
+### Phase 7 — Origin/Destination Symmetry Decision — status 2026-10-02
+
+**FACTS VERIFIED**
+
+- **Origin** مصدره موقع الراكب، مع GPS uncertainty.
+- **Destination** مصدره `PlaceSearchResult` / search-geocoding coordinate، مع uncertainty مختلفة نوعيًا.
+- القياس الهندسي موحّد في الحالتين: projection على `PlannedRoute` ثم `distanceToRouteMeters`.
+- `RouteCandidateDiscoveryPolicy` مصممة أصلًا بحدين مستقلين:
+  - `originMaxDistanceMeters`
+  - `destinationMaxDistanceMeters`
+
+**PROBLEM IDENTIFIED**
+
+لا يوجد دليل Domain/Operational حالي يبرر افتراض أن عدم اليقين في Origin وDestination متكافئ بما يكفي لفرض threshold واحد.
+
+**DESIGN DECISION**
+
+`Origin/Destination symmetry = NO`.
+
+أي أن:
+- `originMaxDistanceMeters` و`destinationMaxDistanceMeters` مستقلان.
+- لا يُشترط تساوي القيمتين.
+- يجب أن يكون **معنى near** و**طريقة القياس** متماثلين.
+- اختلاف threshold لا يعني اختلاف نوع القياس أو إدخال walking distance في أحد الطرفين.
+
+**BOUNDARY**
+
+هذا القرار يثبت **شكل السياسة فقط** ولا يحدد أي قيمة رقمية.
+
+**RESULT**
+
+- Meaning of "near" — **DEFINED ✅**
+- Measurement — **FROZEN ✅**
+- Operational uncertainty — **FROZEN ✅**
+- Origin/Destination symmetry — **NO / independent thresholds ✅**
+- Origin threshold — **NOT DEFINED ⚠️**
+- Destination threshold — **NOT DEFINED ⚠️**
+- Production code changes — **NONE ✅**
+
+**NEXT**
+
+تحليل **False-positive tolerance / False-negative tolerance** بشكل نوعي، ثم اشتقاق القيم الرقمية من قواعد القبول المطلوبة، دون التخمين.
+
 ### Phase 7 — Route Candidate Discovery Contract v1 — 2026-10-01
 
 **FACTS VERIFIED**
