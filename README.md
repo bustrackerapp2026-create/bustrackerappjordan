@@ -25,28 +25,53 @@
 
 ## الحالة الحالية
 
-### آخر تحقق محلي مؤكد — 2026-10-02
+### آخر حالة موثقة — 2026-10-02
 
 - الفرع المرجعي: `stage/approved-route-line-vehicle-link-v1`
-- آخر commit: `e4a571a30e0a19a6060fec7ddbd662af3a1e0f75`
-- حالة Git: متزامن مع `origin` و`working tree clean`
-- `flutter analyze`: **No issues found!**
-- اختبار Route Candidate Discovery: **9/9 passed**
-- اختبار JourneyPlanner Association: **6/6 passed**
-- الاختبارات الكاملة: **305/305 passed**
+- آخر commit على الفرع: `9cc23f8804e939c95bd6061db0a6cb81dcd49968`
+- هذا الـcommit يضيف زر إغلاق **X** لبطاقة حالة التتبع في واجهة الراكب، مع إعادة إظهار البطاقة عند اختيار خط جديد أو تشغيل «باصات من هنا».
+- آخر baseline آلي قبل تغييرات واجهة الراكب الأخيرة: `flutter test` → **310/310 passed**.
+- على الـcommit الأب `a11483efb7ea3b0de5b89758a3ae997564eec6a1`: `flutter analyze` → **No issues found!**
+- لم يُعَد تشغيل `flutter analyze` أو `flutter test` بعد commit `9cc23f8`؛ التحقق الأخير لهذا الـcommit كان يدويًا على الهاتف.
 
-### حالة Phase 7
+### Phase 7 — JourneyPlanner
 
-- **Route Candidate Discovery v1:** مغلقة ✅
-- **Active Vehicle Discovery Read Contract v1:** مغلقة ✅
-- **Journey Candidate Consumer Contract v1:** مجمد تصميميًا ✅
-- **First Association Operation v1:** مغلقة ✅
-- شكل الـassociation الحالي هو Dart named record:
-  `({PlannedRoute route, VehicleTrip vehicleTrip})`
-- لا يوجد حتى الآن `JourneyCandidate` model أو DTO لأن الحاجة إليه لم تثبت بعد.
-- ETA وRanking وUI خارج هذه العملية.
+الوحدات والعقود التالية **مغلقة ومثبتة**:
+- **Active Vehicle Discovery Read Contract v1** ✅
+- **Route Candidate Discovery Contract/API v1** ✅
+- **Journey Candidate Consumer Contract v1** — مجمد تصميميًا ✅
+- **JourneyRouteVehicleAssociationService / First Association Operation v1** ✅
+- **Passenger Journey Planning Service** ✅
+- **ETA وRanking وUI** ليست جزءًا من Association الحالية.
 
-**الخطوة التالية:** تحديد أول **Evaluation Behavior** فعلي على association قبل توسيع الـConsumer أو إضافة أي abstraction جديدة.
+قيد التكامل الحالي:
+- تكامل `PassengerJourneyPlanningService` مع واجهة الراكب **لم يُفعّل بعد**.
+- السبب التصميمي المتعمد: `RouteCandidateDiscoveryPolicy` تحتاج قيمًا فعلية مستقلة لكل من:
+  - `originMaxDistanceMeters`
+  - `destinationMaxDistanceMeters`
+- القيم الرقمية ما زالت **غير محددة**؛ لذلك لا يجوز اختراع أرقام أو استخدام heuristics القديمة لـ`NearbyRoutesService` كبديل.
+
+### تحقق واجهة الراكب على الهاتف — 2026-10-02
+
+تم اختبار النقاط التالية يدويًا وإغلاقها:
+
+- فتح خريطة الراكب دون ظهور حالة خط مفروضة قبل اختيار المستخدم ✅
+- اختيار خط من الشريط العلوي وعرض حالة الخط عند عدم وجود باص حي ✅
+- الضغط على **«باصات من هنا»** وعرض الخطوط القريبة من موقع المستخدم ✅
+- إزالة بطاقة الحالة المكررة في وضع «باصات من هنا» ✅
+- اختيار وجهة من البحث، والتنقل إلى الوجهة، وعرض حالة «نحو ...» ✅
+- إلغاء الوجهة بزر **X** واستعادة الكاميرا إلى موقع المستخدم السابق ✅
+- التنقل بين تبويبات الراكب ✅
+- تسجيل الخروج/الدخول مجددًا ✅
+- إغلاق التطبيق وإعادة فتحه مع استعادة جلسة الراكب ✅
+- فتح «طبقات الخريطة» ✅
+- زر **«أقرب باص»** عند عدم وجود باص حي يعرض رسالة مناسبة للسياق وتختفي تلقائيًا ✅
+- زر **X** داخل بطاقة حالة الخط يغلق البطاقة دون تغيير الخط أو الخريطة ✅
+- «باصات من هنا» يعيد إظهار البطاقة بعد إغلاقها ✅
+- اختيار خط جديد يعيد إظهار البطاقة باسم الخط الجديد ✅
+
+**ملاحظة مفتوحة:** حركة أدوات التحكم الجانبية عند ظهور لوحة المفاتيح ما زالت ملاحظة UX مفتوحة، ولم يتم إدخال تعديل جديد عليها.
+
 
 ---
 
