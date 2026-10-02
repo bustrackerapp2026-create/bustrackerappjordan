@@ -28,8 +28,8 @@
 ### آخر حالة موثقة — 2026-10-02
 
 - الفرع المرجعي: `stage/approved-route-line-vehicle-link-v1`
-- أحدث commit تقني: `aa765b1eba1fe52b276c4e4b1008b50e54ae6d29` — **Import planner UI projection in MapTab**
-- أحدث commit توثيقي: `8a4fdd82a5aa67e5bb8b60a0efe955d3ea9cc483` — **Document planner UI projection wiring**
+- أحدث commit تقني: `21869cc1c36fad3be71704ab7cf9dcde365fec1e` — **fix(ranking): restore GeoPoint test import**
+- أحدث commit توثيقي: `120e6cbef0e45d2eb94c2fea1204703102b6ae4e` — **docs(ranking): update closest criterion status**
 - baseline السابق: `6d217c5` — **Document planner UI projection contract**
 - `PassengerJourneyPresentationState` يملك فقط: `status` و`generation` و`error`.
 - `PlannerUiProjection` تبقى pure projection لحالة Planner فقط.
@@ -54,27 +54,29 @@
 - **Planner UI Projection Wiring** ✅
 - **Engineering Ranking Contract v1** — مجمد تصميميًا ✅
 
-### Phase 8A First Criterion Preflight — Closest
+### Phase 8A — Engineering Ranking
 
-- **Closest** → **Deferred after inspect**.
-- السبب: `currentLocation` و`lastLocationAt` موجودان، لكن لا توجد بعد freshness policy حتمية ومحقونة لـRanking.
-- لا يجوز استخدام `LiveDriverLocation.isFresh` داخل Ranking لأنه time-dependent وله semantics مختلفة.
-- لا يُستبدل غياب/قدم الموقع بأي inference من `routeProgress` أو speed.
-- غياب صلاحية الموقع يبقي الـJourney Option ويجعله غير قابل للترتيب بهذا المعيار.
+تم إغلاق أول معيار إنتاجي مستقل ضمن العقد المجمد:
+
+- **Closest** → **SUPPORTED / CLOSED ✅**.
+- المرجع: `VehicleTrip.currentLocation` → Passenger Origin.
+- freshness تعتمد على `VehicleTrip.lastLocationAt` عبر `VehicleLocationFreshnessPolicy` محقونة.
+- missing / stale / future location → `unavailable` للـcriterion فقط، ولا يبطل `Journey Option`.
+- لا `DateTime.now()`، ولا inference من `routeProgress` أو speed أو heading، ولا ETA fallback.
+- الاختبارات المركزة: **15/15 passed**.
+- التحقق الكامل: `flutter analyze` بلا مشاكل و`flutter test` → **350/350 passed**.
 - التفاصيل: `docs/SMART_BUS_PHASE8A_CLOSEST_CRITERION_PREFLIGHT.md`.
 
 ### Engineering Ranking Contract v1
 
-تم تجميد عقد Phase 8A قبل إنشاء Ranking Engine. العقد الكامل في `docs/SMART_BUS_PHASE8A_RANKING_CONTRACT.md`.
-
 التصنيف الحالي:
 
 - **Fastest** — Defined / Deferred.
-- **Closest** — Defined / Deferred.
+- **Closest** — **Supported / Closed**.
 - **Least Walking** — Defined / Deferred.
 - **Fewest Transfers** — Defined / Deferred.
 
-**Supported production criteria: none.**
+**Supported production criteria: Closest.**
 
 القواعد المثبتة:
 
@@ -86,7 +88,7 @@
 - لا transfer-count guess.
 - Tie-break deterministic مبني على `route.id + route.direction.firestoreValue + vehicleTrip.id`.
 
-لا يوجد Production Code أو Ranking Engine في هذه الخطوة.
+لا يوجد Generic Ranking Engine في هذه الخطوة؛ تم تنفيذ `Closest` فقط ضمن حدوده.
 
 ### Planner Presentation State Ownership
 
