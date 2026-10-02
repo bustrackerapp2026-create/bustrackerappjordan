@@ -3156,3 +3156,170 @@ ETA
 **NEXT**
 
 أي خطوة لاحقة يجب أن تبدأ من **Consumer محدد لـJourney Option**. لا يتم إنشاء Evaluator أو Model جديد لمجرد وجود الاسم في الخطة.
+### Phase 7 — Passenger Journey Planning Use Case / Consumer Contract v1 — 2026-10-02
+
+**FACTS VERIFIED**
+
+- واجهة الراكب الحالية تحتوي بالفعل على Use Case حقيقي يبدأ من زر **«إلى أين؟»**.
+- `DestinationSearchSheet` يعيد وجهة مختارة مع `name + latitude + longitude`.
+- `PassengerLocationMixin` يوفر موقع الراكب الحالي كـOrigin عبر `lastPassengerLat + lastPassengerLng`.
+- بعد اختيار الوجهة، `MapTab` يستدعي `NearbyRoutesService.findLinesServingTrip()` لإيجاد المسارات التي تمر من موقع الراكب وتتجه نحو الوجهة، ثم يعرض المسارات/الحافلات على الخريطة.
+- نص الواجهة نفسه يصف الهدف الحالي: **«سنُظهر الباصات التي تمر من موقعك وتتجه نحو وجهتك.»**
+- هذا يثبت Use Case المستخدم، لكنه لا يثبت أن Journey Option Consumer أو Journey Option selection أصبحا Production Feature بعد.
+- Route Candidate Discovery وActive Vehicle Read وAssociation Operation موجودة كطبقات Domain/Service مستقلة ومغلقة.
+- لا يوجد `JourneyOption` model أو Production JourneyPlanner حتى الآن.
+
+**USE CASE DEFINITION**
+
+**Passenger Journey Planning v1**
+
+> يريد الراكب معرفة خيارات الرحلات بالحافلة من موقعه الحالي إلى وجهة يحددها، بحيث يمثل كل خيار مسارًا مؤهلًا ومركبة نشطة مطابقة ضمن سياق طلب التخطيط.
+
+تدفق الاستخدام:
+
+```text
+Passenger
+   ↓
+Current Location = Origin
+   +
+Selected Destination
+   ↓
+Route Candidate Discovery
+   ↓
+Active Vehicle Read
+   ↓
+Route + Vehicle Association
+   ↓
+Journey Options
+```
+
+**CONSUMER INPUT**
+
+سياق التخطيط هو:
+
+```text
+originLatitude
+originLongitude
+destinationLatitude
+destinationLongitude
+```
+
+ولا يدخل هذا السياق في هوية الـJourney Option.
+
+**CONSUMER DEPENDENCIES**
+
+يعتمد Consumer المستقبلي على الحدود الموجودة:
+
+1. `RouteCandidateDiscoveryService.discover(...)`
+2. `JourneyRouteVehicleAssociationService.associate(...)`
+
+ولا يعيد Consumer تنفيذ route qualification أو vehicle matching بنفسه.
+
+**CONSUMER OUTPUT**
+
+لا يتم إنشاء Model جديد في هذه الخطوة.
+
+الناتج الأدنى هو نفس Association shape المجمد:
+
+```dart
+Future<List<({
+  PlannedRoute route,
+  VehicleTrip vehicleTrip,
+})>>
+```
+
+كل عنصر في الناتج يمثل **Journey Option واحدة** ضمن Planning Context الخاص بالطلب.
+
+السياق نفسه يبقى ملكًا لطلب التخطيط، وليس جزءًا من Identity الخاصة بالـOption.
+
+**OPTION SEMANTICS**
+
+- Route Candidate بلا VehicleTrip نشطة مطابقة → لا ينتج Journey Option.
+- VehicleTrip نشطة مطابقة → تمثل Journey Option مستقلة مع الـRoute.
+- عدة VehicleTrips مطابقة لنفس Route → عدة Journey Options.
+- لا يوجد Cartesian Product.
+- لا dedupe حسب `lineName`.
+- Route/Vehicle identity تبقى:
+  `route.id + route.direction + vehicleTrip.id`.
+- ترتيب الخيارات الناتج عن هذا Consumer ليس Ranking؛ يحافظ على ترتيب Route Candidates ثم ترتيب VehicleTrips الذي يعيده المصدر.
+- لا يتم اختيار "أفضل" خيار داخل هذا Consumer.
+
+**OPTION DATA BOUNDARY**
+
+لا يتطلب وجود Journey Option:
+
+```text
+currentLocation
+routeProgress
+lastLocationAt
+speed
+ETA
+```
+
+ويمكن أن تستخدم هذه البيانات لاحقًا كـenrichment أو كمدخلات لعمليات أخرى عندما يثبت Consumer محدد الحاجة إليها.
+
+غياب إحدى هذه البيانات لا يلغي Journey Option تلقائيًا.
+
+**SELECTION BOUNDARY**
+
+هذا Use Case يعرّف **عرض/إنتاج خيارات الرحلة** فقط.
+
+اختيار Option من قبل الراكب هو سلوك Presentation/Consumer لاحق، ولا يعني تلقائيًا:
+
+- إنشاء Passenger Trip.
+- إنشاء Board Request.
+- إرسال طلب إلى سائق.
+- Firestore write.
+
+أي اختيار لاحق يجب أن يستطيع الإشارة إلى Option عبر هوية:
+`route.id + route.direction + vehicleTrip.id`.
+
+**ETA / EVALUATION / RANKING BOUNDARY**
+
+في v1:
+
+- ETA خارج إنشاء Journey Option.
+- Freshness خارج إنشاء Journey Option.
+- Vehicle availability policy مستقلة خارج العقد.
+- Evaluation ليست خطوة إلزامية بين Association وJourney Option.
+- Ranking خارج Consumer هذا.
+- لا fallback إلى ETA أو سرعة تقديرية.
+- لا يتم اختراع status عام مثل `usable/unusable` أو `available/unavailable` لتمثيل الـOption نفسه.
+
+**ERROR / EMPTY SEMANTICS**
+
+- لا Route Candidates → zero Journey Options.
+- Route Candidates موجودة لكن بلا VehicleTrips مطابقة → zero Journey Options.
+- فشل قراءة Route Candidates أو Active Vehicles → يُمرّر الخطأ للمستهلك الأعلى ولا يتحول تلقائيًا إلى قائمة فارغة.
+- لا fallback إلى NearbyRoutesService أو live-driver presentation لاستكمال الناتج.
+
+**NON-GOALS**
+
+- لا تعديل `MapTab`.
+- لا تعديل `NearbyRoutesService`.
+- لا إدخال JourneyPlanner داخل PassengerLiveTracking.
+- لا `JourneyOptionEvaluator`.
+- لا `JourneyOptionStatus`.
+- لا ETA integration.
+- لا Ranking implementation.
+- لا Firestore schema/index/write.
+- لا UI implementation في هذا العقد.
+
+**RESULT**
+
+**Passenger Journey Planning Consumer Contract v1 — DESIGN FROZEN ✅**
+
+تم تثبيت أول Use Case حقيقي لـJourney Option، مع:
+- سياق Origin/Destination.
+- حدود Consumer.
+- مصدر Route Candidates.
+- مصدر Active Vehicles.
+- شكل الناتج.
+- معنى وجود Journey Option.
+- حدود البيانات التشغيلية.
+- فصل Selection عن Board Request.
+- إبقاء ETA/Evaluation/Ranking خارج الإنشاء الأساسي للـOption.
+
+**NEXT**
+
+الخطوة التنفيذية التالية، إذا فُتحت، هي **أصغر Consumer Orchestration Boundary** التي تطبق هذا العقد فقط، دون UI، ودون Enrichment، ودون ETA أو Ranking.
