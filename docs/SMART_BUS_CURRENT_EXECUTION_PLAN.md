@@ -1319,3 +1319,88 @@ origin + destination
 **NEXT**
 
 تنفيذ أصغر Consumer Orchestration Boundary فقط، مع focused tests، إذا بقي هذا العقد ثابتًا أثناء مراجعة التنفيذ.
+
+
+### Phase 7 — Planner UI Wiring / Exact Route Presentation — 2026-10-02
+
+**الحالة: ✅ IMPLEMENTATION COMPLETE**
+
+**FACTS VERIFIED**
+
+- تم ربط مسار الوجهة في Passenger Map بـ`PassengerJourneyPlanningService.plan()`.
+- عند وجود Destination، التسلسل التشغيلي هو:
+
+```text
+Destination
+  ↓
+PassengerJourneyPlanningService.plan()
+  ↓
+Journey Options
+  ↓
+distinct route.id + direction
+  ↓
+exact PlannedRoute presentation
+```
+
+- عند عدم وجود Destination، يبقى مسار **«باصات من هنا»** على `NearbyRoutesService`.
+- تم استخدام helper عرض مستقل لاستخراج كل `PlannedRoute` مميز مرة واحدة من Journey Options، مع الحفاظ على ترتيب الظهور.
+- لا يتم إدخال `VehicleTrip` إلى طبقة رسم المسار؛ العرض يعتمد على `PlannedRoute` الأصلي.
+- تم إضافة focused tests لطبقة استخراج المسارات:
+  - empty options → no routes
+  - multiple active vehicles for one route → route shown once
+  - distinct routes with shared `lineName` → both retained
+  - first-seen route order preserved
+
+**EMPTY / ERROR SEMANTICS**
+
+- **Planner empty (`[]`)**
+  - يعني عدم وجود Journey Options ضمن طلب التخطيط الحالي.
+  - لا يوجد fallback إلى `NearbyRoutesService`.
+  - لا يتم مسح الرسم السابق تلقائيًا.
+- **Planner error**
+  - ينتج عنه error presentation للمستخدم.
+  - لا يوجد fallback.
+
+**DEFERRED PRESENTATION STATE CONCERN**
+
+إذا أعاد Planner نتيجة فارغة بعد وجود رسم سابق، فقد يبقى الرسم السابق ظاهرًا على الخريطة.
+
+هذا **سلوك مقصود في هذا الـPatch وليس Regression**؛ لأن العقد الحالي لا يعرّف `Planner empty` على أنه أمر لمسح Presentation State.
+
+تبقى هذه المسألة **Presentation State concern مؤجلة** إلى نقطة مستقلة، ولا يجوز حلها مستقبلًا بإضافة fallback أو clear تلقائي من داخل هذا المسار دون عقد صريح.
+
+**BOUNDARIES PRESERVED**
+
+- لا تعديل على `PassengerLiveTrackingMixin`.
+- لا تعديل على `PassengerLiveStatusBar`.
+- لا تعديل على `VehicleTrip`.
+- لا دمج ETA في هذا المسار.
+- لا تغيير في Mapbox core.
+- لا تغيير في `driver_map_tab.dart`.
+- لا تعديل على `NearbyRoutesService` لمسار الوجهة؛ استخدامه باقٍ لمسار عدم وجود Destination.
+- لا fallback مبني على Live Tracking.
+
+**VALIDATION EVIDENCE**
+
+على الفرع:
+
+`stage/approved-route-line-vehicle-link-v1`
+
+- `flutter analyze` → **No issues found!**
+- `flutter test test/journey_route_presentation_test.dart` → **4/4 All tests passed**
+- `flutter test` → **314/314 All tests passed**
+- `git status` → **nothing to commit, working tree clean**
+- `git log -1 --oneline` → `6cf1e54 Fix planner branch formatting`
+- الفرع متزامن مع `origin/stage/approved-route-line-vehicle-link-v1`.
+
+السجلات الخاصة باختبارات stale GPS التي ظهرت أثناء المجموعة الكاملة كانت رسائل تشخيصية متوقعة، وانتهت المجموعة كاملة دون failures.
+
+**RESULT**
+
+**Phase 7 — Planner UI Wiring / Exact Route Presentation — CLOSED ✅**
+
+لا يوجد Production Patch إضافي مطلوب لهذه النقطة.
+
+### الخطوة التالية
+
+ننتقل إلى **نقطة Phase 7 التالية فقط** بعد مراجعة العقد الفعلي للـPresentation/Planner consumer التالي. لا نعيد فتح هذه النقطة ما لم يظهر Regression مثبت.
