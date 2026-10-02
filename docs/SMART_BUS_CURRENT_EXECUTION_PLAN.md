@@ -903,3 +903,104 @@ ETA
 نبحث فقط عن **أول Consumer فعلي لـJourney Option**. عند ظهور Consumer، نحدد هل يحتاج Enrichment أو ETA أو Evaluation أو Ranking، وبأي عقد محدد.
 
 لا يوجد Production Patch مطلوب لهذه النقطة.
+### Phase 7 — Passenger Journey Planning Use Case / Consumer Contract v1 — 2026-10-02
+
+**FACTS VERIFIED**
+
+- Use Case الراكب موجود حاليًا في الواجهة: تحديد موقع الراكب، الضغط على **«إلى أين؟»**، اختيار وجهة، ثم محاولة إظهار الباصات التي تمر من الموقع وتتجه نحو الوجهة.
+- `DestinationSearchSheet` يوفر إحداثيات الوجهة.
+- `PassengerLocationMixin` يوفر إحداثيات Origin الحالية.
+- التنفيذ الحالي يستخدم `NearbyRoutesService` للـroute display/discovery في `MapTab`، وليس Journey Option Consumer.
+- لا يوجد Production `JourneyPlanner` أو `JourneyOption` model.
+
+**USE CASE**
+
+```text
+Passenger
+  ↓
+Origin + Destination
+  ↓
+"Show bus journey options"
+  ↓
+Journey Option Consumer
+```
+
+**CONTRACT**
+
+Input:
+
+```text
+originLatitude
+originLongitude
+destinationLatitude
+destinationLongitude
+```
+
+Dependencies:
+
+```text
+RouteCandidateDiscoveryService
++
+JourneyRouteVehicleAssociationService
+```
+
+Output:
+
+```dart
+Future<List<({
+  PlannedRoute route,
+  VehicleTrip vehicleTrip,
+})>>
+```
+
+Semantics:
+
+- كل عنصر = Journey Option ضمن Planning Context الحالي.
+- Route Candidate مؤهل + matching active VehicleTrip = Option.
+- Route بلا مركبة مطابقة = zero options.
+- عدة مركبات مطابقة = option لكل مركبة.
+- لا ranking أو scoring أو ETA أو freshness أثناء إنشاء الخيارات.
+- لا يشترط وجود `currentLocation` أو `routeProgress` أو `speed` أو `lastLocationAt`.
+- نفس `route + vehicleTrip` يمكن أن يظهر في أكثر من Planning Context مختلف.
+- لا يدخل Origin/Destination في Option identity.
+- لا ينتج اختيار Option كتابة Firestore أو Board Request تلقائيًا.
+
+**IDENTITY**
+
+```text
+route.id + route.direction + vehicleTrip.id
+```
+
+Planning Context:
+
+```text
+origin + destination
+```
+
+**ERROR / EMPTY**
+
+- عدم وجود Route Candidates → zero options.
+- عدم وجود Vehicles مطابقة → zero options.
+- أخطاء القراءة تُمرر كما هي.
+- لا fallback إلى `NearbyRoutesService` أو Live Tracking.
+
+**BOUNDARY**
+
+لا نضيف:
+- `JourneyOption` model.
+- `JourneyOptionEvaluator`.
+- `JourneyOptionStatus`.
+- ETA integration.
+- Ranking.
+- UI.
+- Firestore writes/indexes.
+
+**RESULT**
+
+**Passenger Journey Planning Consumer Contract v1 — DESIGN FROZEN ✅**
+
+لا يوجد Production Patch في هذه النقطة.
+
+**NEXT**
+
+تنفيذ أصغر Consumer Orchestration Boundary فقط، مع focused tests، إذا بقي هذا العقد ثابتًا أثناء مراجعة التنفيذ.
