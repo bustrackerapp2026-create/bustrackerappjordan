@@ -922,7 +922,7 @@ class _MapTabState extends State<MapTab>
       }
 
       final routes = journeyOptionRoutesForPresentation(options);
-      _journeyPresentation.completeSuccess(generation, routes);
+      _journeyPresentation.completeSuccess(generation);
       if (!mounted || !_journeyPresentation.isCurrent(generation)) {
         return;
       }
