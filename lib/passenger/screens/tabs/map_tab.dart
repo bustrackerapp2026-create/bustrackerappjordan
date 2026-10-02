@@ -1012,29 +1012,29 @@ class _MapTabState extends State<MapTab>
           ),
         ),
 
-        if (!keyboardVisible) ...[
-          // ── 1) باصات من هنا ──
-          Positioned(
-            right: PassengerMapControlPositions.nearbyRight,
-            bottom: PassengerMapControlPositions.nearbyBottom + bottomPad,
-            child: PassengerNearbyChip(
-              loading: _findingNearby,
-              active: _nearbyMode,
-              onPressed: _findingNearby ? null : () => _showBusesNearMe(),
-            ),
+        // ── 1) باصات من هنا ──
+        Positioned(
+          right: PassengerMapControlPositions.nearbyRight,
+          bottom: PassengerMapControlPositions.nearbyBottom + bottomPad,
+          child: PassengerNearbyChip(
+            loading: _findingNearby,
+            active: _nearbyMode,
+            onPressed: _findingNearby ? null : () => _showBusesNearMe(),
           ),
+        ),
 
-          // ── 2) إلى أين؟ ──
-          Positioned(
-            right: PassengerMapControlPositions.destinationRight,
-            bottom: PassengerMapControlPositions.destinationBottom + bottomPad,
-            child: PassengerDestinationChip(
-              hasDestination: _destination != null,
-              onPressed: _pickDestination,
-            ),
+        // ── 2) إلى أين؟ ──
+        Positioned(
+          right: PassengerMapControlPositions.destinationRight,
+          bottom: PassengerMapControlPositions.destinationBottom + bottomPad,
+          child: PassengerDestinationChip(
+            hasDestination: _destination != null,
+            onPressed: _pickDestination,
           ),
+        ),
 
-          // ── 3) عمود: أقرب باص · موقعي · طبقات ──
+        // ── 3) عمود: أقرب باص · موقعي · طبقات ──
+        if (!keyboardVisible)
           Positioned(
             right: PassengerMapControlPositions.iconsRight,
             bottom: PassengerMapControlPositions.iconsBottom + bottomPad,
@@ -1052,8 +1052,6 @@ class _MapTabState extends State<MapTab>
               },
             ),
           ),
-
-        ],
         if (hasOpenTrip)
           Positioned(
             bottom: 88,
