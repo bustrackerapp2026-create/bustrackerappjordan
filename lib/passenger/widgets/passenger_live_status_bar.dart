@@ -190,7 +190,7 @@ class PassengerLiveStatusBar extends StatelessWidget {
               ),
             ),
           ],
-          if (!hasLive && emptyGuidance != null) ...[
+          if (!hasLive && emptyGuidance != null && !nearbyMode) ...[
             const SizedBox(height: 12),
             Container(
               width: double.infinity,
