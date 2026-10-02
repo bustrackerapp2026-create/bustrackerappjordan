@@ -532,6 +532,74 @@ Runtime snapshot
 
 تحليل **False-positive tolerance / False-negative tolerance** بشكل نوعي، ثم اشتقاق القيم الرقمية من قواعد القبول المطلوبة، دون التخمين.
 
+### Phase 7 — Initial Policy Values — status 2026-10-02
+
+**DECISION**
+
+تم اعتماد قيم أولية لـRoute Candidate Discovery Policy بعد إغلاق القواعد النوعية السابقة:
+
+- `originMaxDistanceMeters = 100m`
+- `destinationMaxDistanceMeters = 150m`
+- Origin وDestination يحتفظان بحدين مستقلين.
+- القياس في الحالتين يبقى `distanceToRouteMeters` الناتج من projection على `PlannedRoute` geometry.
+
+**RATIONALE — ORIGIN 100m**
+
+`100m` نقطة تشغيل أولية مبنية على حد دقة GPS المقبول في تطبيق الراكب:
+
+- `passengerBrowse.maxAcceptableAccuracyMeters = 55m`
+- القيمة لا تُعد مشتقة رياضيًا من 55m.
+- تمثل 100m هامشًا هندسيًا/تشغيليًا إضافيًا فوق حد الدقة المقبول.
+- القيمة **Initial Design-calibrated** وليست **Field-validated**.
+
+**RATIONALE — DESTINATION 150m**
+
+`150m` قيمة تشغيلية أولية أكثر تسامحًا من Origin بسبب طبيعة إحداثيات نتائج البحث/geocoding:
+
+- `PlaceSearchResult` يحتفظ حاليًا بـ`name + latitude + longitude` فقط ولا يحمل accuracy رقمية موحدة.
+- نتائج البحث قد تمثل أنواعًا مكانية مختلفة (مثل address أو POI أو منطقة/مدينة).
+- القيمة ليست قياسًا لخطأ geocoder محددًا، ولا تمثل walking-access radius.
+- القيمة **Initial Design-calibrated** وليست **Field-validated**.
+
+**SUPPORTED SEMANTICS**
+
+هذه المعايرة لا تعني أن `150m` حد عالمي صالح لكل أنواع Destination semantics إلى الأبد. اختلاف نوع feature قد يستدعي إعادة معايرة مستقبلية إذا ظهر سلوك ميداني أو متطلب Domain يبرر ذلك.
+
+**EVIDENCE STATUS**
+
+- Design rationale — **DOCUMENTED ✅**
+- Initial Origin value — **100m / Design-calibrated ✅**
+- Initial Destination value — **150m / Design-calibrated ✅**
+- Field validation — **NOT DONE ⚠️**
+- Calibration adjustment remains possible after field evidence.
+- Calibration adjustment لا يعني تلقائيًا أن `RouteCandidateDiscoveryService` نفسه كان خاطئًا.
+
+**BOUNDARY**
+
+لا يدخل في اختيار هذه القيم:
+- walking distance/access
+- pickup stop availability
+- Vehicle location
+- freshness/staleness
+- speed
+- ETA
+- ranking
+
+**RESULT**
+
+بوابة Policy Values — **CLOSED FOR INITIAL IMPLEMENTATION ✅**
+
+القيم المعتمدة الآن هي:
+`Origin = 100m`
+`Destination = 150m`
+
+والتصنيف الرسمي:
+**Initial Design-calibrated / NOT Field-validated**
+
+**NEXT**
+
+الانتقال إلى **Policy Composition** ثم Production wiring فقط. لا يتم تعديل Route Candidate Discovery implementation نفسه، ولا إعادة فتح NearbyRoutesService.
+
 ### Phase 7 — Route Candidate Discovery Contract v1 — 2026-10-01
 
 **FACTS VERIFIED**
