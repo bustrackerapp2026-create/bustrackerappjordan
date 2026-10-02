@@ -66,6 +66,7 @@ class _MapTabState extends State<MapTab>
   bool _hasExplicitRouteContext = false;
 
   PlaceSearchResult? _destination;
+  CameraState? _cameraBeforeDestination;
 
   final TripService _tripService = TripService();
   final NearbyRoutesService _nearbyRoutes = NearbyRoutesService();
@@ -298,9 +299,13 @@ class _MapTabState extends State<MapTab>
   }
 
   void _clearDestination() {
+    final previousCamera = _cameraBeforeDestination;
+    _cameraBeforeDestination = null;
+
     setState(() {
       _destination = null;
     });
+
     if (_nearbyMode && hasPassengerLocation) {
       unawaited(_showBusesNearMe(silent: true));
     } else {
@@ -310,6 +315,27 @@ class _MapTabState extends State<MapTab>
       });
       updateLiveTrackingRouteFilter(_selectedRoute);
       updatePlannedRoutesLineFilter(_selectedRoute);
+    }
+
+    if (previousCamera != null) {
+      unawaited(_restoreCamera(previousCamera));
+    }
+  }
+
+  Future<void> _restoreCamera(CameraState camera) async {
+    if (mapboxMap == null || !mounted) return;
+    try {
+      await mapboxMap!.easeTo(
+        CameraOptions(
+          center: camera.center,
+          zoom: camera.zoom,
+          pitch: camera.pitch,
+          bearing: camera.bearing,
+        ),
+        MapAnimationOptions(duration: 480, startDelay: 0),
+      );
+    } catch (e) {
+      debugPrint('restore camera after destination clear: $e');
     }
   }
 
@@ -902,6 +928,12 @@ class _MapTabState extends State<MapTab>
       initialQuery: _destination?.name,
     );
     if (!mounted || result == null) return;
+
+    try {
+      _cameraBeforeDestination = await mapboxMap?.getCameraState();
+    } catch (_) {
+      _cameraBeforeDestination = null;
+    }
 
     setState(() => _destination = result);
 
