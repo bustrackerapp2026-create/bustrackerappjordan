@@ -659,6 +659,32 @@ Composition الحالية تستخدم `RoutePlanService.listApprovedRoutes(lim
 
 تشغيل focused tests الخاصة بـRoute Candidate Discovery وPassenger Journey Planning، ثم `flutter analyze` و`flutter test`. بعد نجاحها فقط نراجع أول نقطة Production UI wiring لزر/تدفق الوجهة دون ربط `MapTab` عشوائيًا أو إزالة `NearbyRoutesService` قبل إثبات الاستبدال.
 
+### Phase 7 — Policy Composition v1 — verification evidence 2026-10-02
+
+**VERIFICATION EVIDENCE**
+
+بعد تنفيذ Composition في `lib/main.dart`:
+- `flutter test test/route_candidate_discovery_service_test.dart` → **9/9 All tests passed!**
+- `flutter test test/passenger_journey_planning_service_test.dart` → **5/5 All tests passed!**
+- `flutter analyze` → **No issues found!**
+- `flutter test` → **310/310 All tests passed!**
+
+مخرجات الاختبار الكامل تضمنت رسائل متوقعة من اختبارات stale GPS/heartbeat، ثم انتهت النتيجة النهائية بـ **310/310 All tests passed!**.
+
+**RESULT**
+
+- Policy values — **CLOSED FOR INITIAL IMPLEMENTATION ✅**
+- Policy Composition v1 — **VERIFIED ✅**
+- Existing Discovery/Association/Passenger Planning contracts — **REGRESSION-FREE ✅** وفق الاختبارات الحالية.
+- Field validation — **PENDING ⏳**
+- Planner UI wiring — **NEXT / NOT STARTED ⏸️**
+
+لا يوجد دليل حالي على Regression في الأنظمة السابقة نتيجة Composition.
+
+**NEXT**
+
+الانتقال إلى أول UI wiring صغير: استهلاك `PassengerJourneyPlanningService` في تدفق الوجهة مع الحفاظ على `NearbyRoutesService` كمسار قائم حتى يثبت البديل الجديد سلوكيًا. لا يتم حذف المسار القديم في نفس الـpatch.
+
 ### Phase 7 — Route Candidate Discovery Contract v1 — 2026-10-01
 
 **FACTS VERIFIED**
