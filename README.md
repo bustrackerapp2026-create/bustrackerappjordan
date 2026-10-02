@@ -29,6 +29,7 @@
 
 - الفرع المرجعي: `stage/approved-route-line-vehicle-link-v1`
 - أحدث commit تقني: `aa765b1eba1fe52b276c4e4b1008b50e54ae6d29` — **Import planner UI projection in MapTab**
+- أحدث commit توثيقي: `8a4fdd82a5aa67e5bb8b60a0efe955d3ea9cc483` — **Document planner UI projection wiring**
 - baseline السابق: `6d217c5` — **Document planner UI projection contract**
 - `PassengerJourneyPresentationState` يملك فقط: `status` و`generation` و`error`.
 - `PlannerUiProjection` تبقى pure projection لحالة Planner فقط.
@@ -51,6 +52,32 @@
 - **Planner Presentation State Ownership Cleanup** ✅
 - **Planner UI Projection Contract** ✅
 - **Planner UI Projection Wiring** ✅
+- **Engineering Ranking Contract v1** — مجمد تصميميًا ✅
+
+### Engineering Ranking Contract v1
+
+تم تجميد عقد Phase 8A قبل إنشاء Ranking Engine. العقد الكامل في `docs/SMART_BUS_PHASE8A_RANKING_CONTRACT.md`.
+
+التصنيف الحالي:
+
+- **Fastest** — Defined / Deferred.
+- **Closest** — Defined / Deferred.
+- **Least Walking** — Defined / Deferred.
+- **Fewest Transfers** — Defined / Deferred.
+
+**Supported production criteria: none.**
+
+القواعد المثبتة:
+
+- غياب Criterion data لا يبطل `Journey Option` تلقائيًا.
+- لا ETA fallback.
+- لا current-location inference.
+- لا speed inference.
+- لا walking-distance guess.
+- لا transfer-count guess.
+- Tie-break deterministic مبني على `route.id + route.direction.firestoreValue + vehicleTrip.id`.
+
+لا يوجد Production Code أو Ranking Engine في هذه الخطوة.
 
 ### Planner Presentation State Ownership
 

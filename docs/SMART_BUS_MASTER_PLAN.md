@@ -2084,17 +2084,36 @@ Journey Options
 
 # 11. Phase 8A — Engineering Ranking
 
-ترتيب الخيارات بالاعتماد على البيانات الحالية والحسابات المباشرة:
+## Status
+**Engineering Ranking Contract v1 — DESIGN FROZEN ✅ — 2026-10-02**
 
-- Fastest.
-- Closest.
-- Least Walking.
-- Fewest Transfers.
+تم تجميد عقد Ranking قبل تنفيذ أي Ranking Engine.
 
-لا يحتاج ML ولا Historical Data كاملة.
+العقد الكامل: `docs/SMART_BUS_PHASE8A_RANKING_CONTRACT.md`.
 
----
+### Scope
+- Ranking Input.
+- Criterion taxonomy: Defined / Supported / Deferred.
+- Required Data لكل Criterion.
+- Missing-data semantics.
+- Deterministic comparison.
+- Deterministic tie-break.
 
+لا يوجد في هذه الخطوة Production Ranking Engine أو JourneyOption Model جديد أو ETA consumer أو walking/access model أو multi-leg transfer model أو UI integration.
+
+### Current classification
+- **Fastest** — Defined / **Deferred**.
+- **Closest** — Defined / **Deferred**.
+- **Least Walking** — Defined / **Deferred**.
+- **Fewest Transfers** — Defined / **Deferred**.
+
+**Supported production criteria: none.**
+
+قاعدة أساسية: `Unsupported criterion` ≠ `Journey Option invalid`.
+
+ولا يسمح Ranking بإدخال fallback أو inference لتغطية البيانات الناقصة.
+
+**NEXT:** فحص أول Criterion يمكن تنفيذه بالبيانات الموجودة فعليًا، ثم تنفيذ معيار واحد فقط مع focused tests.
 # 12. Phase 9 — Historical Analytics
 
 > **الجمع يبدأ في Phase 2، والتحليل يبدأ هنا.**
