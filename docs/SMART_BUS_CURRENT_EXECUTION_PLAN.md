@@ -433,6 +433,62 @@ Runtime snapshot
 تعريف Calibration Rule عمليًا ثم اشتقاق قيم Origin/Destination منها. بعد ذلك فقط:
 `Policy values → Composition → Planner wiring → focused tests → flutter analyze → flutter test → field/device validation`
 
+### Phase 7 — Operational Uncertainty Inventory — status 2026-10-02
+
+**FACTS VERIFIED**
+
+بعد تثبيت معنى `near`، تم حصر مصادر عدم اليقين النوعية قبل اختيار أي threshold رقمي.
+
+**UNCERTAINTY INVENTORY**
+
+1. **Origin**
+   - المصدر هو موقع الراكب.
+   - عدم اليقين الأساسي: GPS horizontal accuracy.
+   - جودة الإشارة والبيئة المحيطة قد تؤثر في الدقة.
+   - هذا المصدر داخل نطاق معايرة Origin.
+
+2. **Destination**
+   - المصدر هو نتيجة البحث/الـgeocoding.
+   - الإحداثية قد تمثل نقطة مكان، مركز مبنى/منطقة، أو إحداثية تقريبية للنتيجة.
+   - هذا مصدر مختلف نوعيًا عن GPS الخاص بالـOrigin، ولذلك لا يُفترض التماثل مسبقًا.
+
+3. **Route geometry**
+   - `PlannedRoute.points` تمثل المسار التشغيلي بقدر دقة التسجيل والتمثيل.
+   - يجب مراعاة digitization error / polyline simplification / sparse points عند الحاجة.
+   - لا يُضاف هامش مستقل إذا كانت هندسة المسار نفسها ذات دقة مقبولة، لتجنب احتساب الخطأ مرتين.
+
+4. **Measurement**
+   - القياس الحالي هو projection على هندسة المسار وإخراج `distanceToRouteMeters`.
+   - projection/distance uncertainty تُراجع كخاصية للقياس نفسه.
+   - لا يوجد حاليًا مبرر لإضافة margin حسابي منفصل دون دليل أن طريقة القياس تحتاجه.
+
+5. **Time / staleness**
+   - قدم إحداثية Origin ليس خطأً هندسيًا في `distanceToRouteMeters`.
+   - stale coordinate تعني أن النقطة قد لا تمثل الموقع الحالي.
+   - freshness تبقى concern مستقلة ولا تُدمج ضمن distance threshold تلقائيًا.
+
+**DESIGN CONSTRAINT**
+
+`Threshold != sum of every conceivable error`.
+
+الـthreshold يجب أن يتحمل فقط عدم اليقين الذي يحتاجه قرار Route Candidate هذا، مع تجنب double-counting بين مصادر الخطأ.
+
+**RESULT**
+
+- Meaning of "near" — **DEFINED ✅**
+- Measurement — **FROZEN ✅**
+- Origin GPS uncertainty — **IN SCOPE ✅**
+- Destination coordinate uncertainty — **IN SCOPE ✅**
+- Route geometry uncertainty — **IN SCOPE ✅**
+- Projection uncertainty — **REVIEWED; no separate margin justified yet ✅**
+- Staleness — **SEPARATE CONCERN ✅**
+- Numeric thresholds — **NOT DEFINED ⚠️**
+- Production code changes — **NONE ✅**
+
+**NEXT**
+
+الانتقال إلى **Origin/Destination symmetry** فقط، مع عدم افتراض تساوي الـthresholds قبل تحليل اختلاف مصادر عدم اليقين.
+
 ### Phase 7 — Route Candidate Discovery Contract v1 — 2026-10-01
 
 **FACTS VERIFIED**
