@@ -29,10 +29,12 @@ import '../../../services/bus_watch_passenger_context_binder.dart';
 import '../../../services/bus_watch_passenger_presentation_state.dart';
 import '../../../services/location_service.dart';
 import '../../../services/map_camera_prefs_service.dart';
+import '../../../services/passenger_journey_planning_service.dart';
 import '../../../services/nearby_routes_service.dart';
 import '../../../services/route_prefs_service.dart';
 import '../../../services/route_plan_service.dart';
 import '../../../services/trip_service.dart';
+import '../presentation/journey_route_presentation.dart';
 import 'mixins/passenger_location_mixin.dart';
 import 'mixins/passenger_live_tracking_mixin.dart';
 import 'mixins/passenger_planned_routes_mixin.dart';
@@ -864,56 +866,85 @@ class _MapTabState extends State<MapTab>
       _showLiveStatusBar = true;
     });
     try {
-      final List<NearbyLineMatch> matches;
       if (_destination != null) {
-        matches = await _nearbyRoutes.findLinesServingTrip(
-          fromLat: lastPassengerLat!,
-          fromLng: lastPassengerLng!,
-          toLat: _destination!.latitude,
-          toLng: _destination!.longitude,
-        );
+        try {
+          final planner =
+              context.read<PassengerJourneyPlanningService>();
+          final options = await planner.plan(
+            originLatitude: lastPassengerLat!,
+            originLongitude: lastPassengerLng!,
+            destinationLatitude: _destination!.latitude,
+            destinationLongitude: _destination!.longitude,
+          );
+          if (!mounted) return;
+
+          if (options.isEmpty) {
+            MapUtils.showSnackBar(
+              context,
+              'لا توجد رحلة متاحة حاليًا نحو «${_destination!.name}».',
+              isError: true,
+            );
+            return;
+          }
+
+          final routes = journeyOptionRoutesForPresentation(options);
+          await showPlannedRoutesSnapshot(routes);
+          if (!mounted) return;
+
+          if (!silent) {
+            MapUtils.showSnackBar(
+              context,
+              'تم العثور على ${routes.length} مسار نحو «${_destination!.name}».',
+            );
+          }
+        } catch (e, st) {
+          debugPrint('journey planner: $e\n$st');
+          if (!mounted) return;
+          MapUtils.showSnackBar(
+            context,
+            'تعذر تخطيط الرحلة. حاول لاحقًا.',
+            isError: true,
+          );
+        }
       } else {
-        matches = await _nearbyRoutes.findNearbyLines(
+        final matches = await _nearbyRoutes.findNearbyLines(
           latitude: lastPassengerLat!,
           longitude: lastPassengerLng!,
         );
-      }
-      if (!mounted) return;
+        if (!mounted) return;
 
-      if (matches.isEmpty) {
+        if (matches.isEmpty) {
+          setState(() {
+            _nearbyMode = true;
+            _nearbyLineNames = const [];
+          });
+          MapUtils.showSnackBar(
+            context,
+            'لا يوجد مسار معتمد يمر قرب موقعك حاليًا. سجّل مسارات من الأدمن أو السائق ثم أعد المحاولة.',
+            isError: true,
+          );
+          return;
+        }
+
+        final names = matches.map((m) => m.lineName).toList();
+        final routesSnap = matches.map((m) => m.route).toList();
         setState(() {
-          _nearbyMode = _destination == null;
-          _nearbyLineNames = const [];
+          _nearbyMode = true;
+          _nearbyLineNames = names;
+          _loggedEmptyState = false;
         });
-        MapUtils.showSnackBar(
-          context,
-          _destination != null
-              ? 'لا يوجد خط معتمد يمر من موقعك ويتجه نحو «${_destination!.name}».'
-              : 'لا يوجد مسار معتمد يمر قرب موقعك حالياً. سجّل مسارات من الأدمن أو السائق ثم أعد المحاولة.',
-          isError: true,
-        );
-        return;
-      }
 
-      final names = matches.map((m) => m.lineName).toList();
-      final routesSnap = matches.map((m) => m.route).toList();
-      setState(() {
-        _nearbyMode = true;
-        _nearbyLineNames = names;
-        _loggedEmptyState = false;
-      });
+        _applyLineFilter(names, routesSnapshot: routesSnap);
 
-      _applyLineFilter(names, routesSnapshot: routesSnap);
-
-      if (!silent) {
-        final linesLabel = names.take(3).join(' · ');
-        final more = names.length > 3 ? ' +${names.length - 3}' : '';
-        final msg = _destination != null
-            ? 'باصات نحو «${_destination!.name}»: $linesLabel$more'
-            : 'خطوط تمر من هنا: $linesLabel$more';
-        MapUtils.showSnackBar(context, msg);
-      }
-    } catch (e, st) {
+        if (!silent) {
+          final linesLabel = names.take(3).join(' · ');
+          final more = names.length > 3 ? ' +${names.length - 3}' : '';
+          MapUtils.showSnackBar(
+            context,
+            'خطوط تمر من هنا: $linesLabel$more',
+          );
+        }
+      }    } catch (e, st) {
       debugPrint('nearby buses: $e\n$st');
       if (!mounted) return;
       MapUtils.showSnackBar(
