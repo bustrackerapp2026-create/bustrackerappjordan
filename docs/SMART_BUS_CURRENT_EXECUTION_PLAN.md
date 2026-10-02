@@ -600,6 +600,65 @@ Runtime snapshot
 
 الانتقال إلى **Policy Composition** ثم Production wiring فقط. لا يتم تعديل Route Candidate Discovery implementation نفسه، ولا إعادة فتح NearbyRoutesService.
 
+### Phase 7 — Policy Composition v1 — implemented 2026-10-02
+
+**FACTS VERIFIED**
+
+تم فتح Composition بعد اعتماد قيم Policy الأولية:
+
+- `originMaxDistanceMeters = 100m`
+- `destinationMaxDistanceMeters = 150m`
+- `Origin/Destination symmetry = NO`
+- القياس = `distanceToRouteMeters`
+
+تم استخدام آلية الحقن الموجودة أصلًا في التطبيق: `MultiProvider` / `Provider`.
+لا توجد DI framework جديدة في المشروع، ولم تتم إضافة واحدة.
+
+**COMPOSITION**
+
+```text
+Passenger Journey Planning Composition
+  ├── RouteCandidateDiscoveryPolicy
+  │     ├── originMaxDistanceMeters = 100
+  │     └── destinationMaxDistanceMeters = 150
+  ├── RouteCandidateDiscoveryService
+  │     └── approvedRoutesReader → RoutePlanService.listApprovedRoutes(limit: 200)
+  ├── JourneyRouteVehicleAssociationService
+  │     └── VehicleTripService
+  └── PassengerJourneyPlanningService
+```
+
+**PRODUCTION PATCH**
+
+تمت إضافة `Provider<PassengerJourneyPlanningService>` إلى `lib/main.dart` فقط.
+
+لم يتم:
+- تعديل `RouteCandidateDiscoveryService`.
+- تعديل `NearbyRoutesService`.
+- تعديل `MapTab`.
+- ربط Planner بواجهة الراكب بعد.
+- إضافة ETA أو ranking أو UI behavior.
+- إضافة أي Firestore write أو schema/index.
+- إنشاء DI framework جديدة.
+
+**SOURCE BOUNDARY**
+
+Composition الحالية تستخدم `RoutePlanService.listApprovedRoutes(limit: 200)` كمصدر approved-route reader، لأن الخدمة الحالية تدعم حدًا أقصى قدره 200 في هذا الـAPI.
+
+هذا ليس تغييرًا في دلالة Route Candidate Discovery، بل قرار Composition للمصدر الحالي، ويجب إعادة مراجعته فقط إذا أصبح عدد المسارات المعتمدة يتجاوز هذا الحد أو ظهر متطلب completeness مختلف.
+
+**STATUS**
+
+- Policy Values — **CLOSED FOR INITIAL IMPLEMENTATION ✅**
+- Policy Composition v1 — **IMPLEMENTED ✅**
+- Planner UI wiring — **NOT STARTED ⏸️**
+- Field validation — **PENDING ⏳**
+- Production code beyond composition — **UNCHANGED ✅**
+
+**NEXT**
+
+تشغيل focused tests الخاصة بـRoute Candidate Discovery وPassenger Journey Planning، ثم `flutter analyze` و`flutter test`. بعد نجاحها فقط نراجع أول نقطة Production UI wiring لزر/تدفق الوجهة دون ربط `MapTab` عشوائيًا أو إزالة `NearbyRoutesService` قبل إثبات الاستبدال.
+
 ### Phase 7 — Route Candidate Discovery Contract v1 — 2026-10-01
 
 **FACTS VERIFIED**
