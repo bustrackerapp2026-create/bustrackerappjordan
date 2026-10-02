@@ -54,6 +54,15 @@
 - **Planner UI Projection Wiring** ✅
 - **Engineering Ranking Contract v1** — مجمد تصميميًا ✅
 
+### Phase 8A First Criterion Preflight — Closest
+
+- **Closest** → **Deferred after inspect**.
+- السبب: `currentLocation` و`lastLocationAt` موجودان، لكن لا توجد بعد freshness policy حتمية ومحقونة لـRanking.
+- لا يجوز استخدام `LiveDriverLocation.isFresh` داخل Ranking لأنه time-dependent وله semantics مختلفة.
+- لا يُستبدل غياب/قدم الموقع بأي inference من `routeProgress` أو speed.
+- غياب صلاحية الموقع يبقي الـJourney Option ويجعله غير قابل للترتيب بهذا المعيار.
+- التفاصيل: `docs/SMART_BUS_PHASE8A_CLOSEST_CRITERION_PREFLIGHT.md`.
+
 ### Engineering Ranking Contract v1
 
 تم تجميد عقد Phase 8A قبل إنشاء Ranking Engine. العقد الكامل في `docs/SMART_BUS_PHASE8A_RANKING_CONTRACT.md`.
