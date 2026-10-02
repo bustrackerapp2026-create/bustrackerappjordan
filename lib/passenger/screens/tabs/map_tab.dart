@@ -63,6 +63,7 @@ class _MapTabState extends State<MapTab>
   bool _findingNearby = false;
   bool _nearbyMode = false;
   List<String> _nearbyLineNames = const [];
+  bool _hasExplicitRouteContext = false;
 
   PlaceSearchResult? _destination;
 
@@ -747,6 +748,7 @@ class _MapTabState extends State<MapTab>
   Future<void> _onRouteChanged(String newRoute) async {
     setState(() {
       _selectedRoute = newRoute;
+      _hasExplicitRouteContext = true;
       _nearbyMode = false;
       _nearbyLineNames = const [];
       _destination = null;
@@ -783,6 +785,7 @@ class _MapTabState extends State<MapTab>
         if (!AppConstants.jordanRoutes.contains(line)) {
           setState(() {
             _selectedRoute = line;
+            _hasExplicitRouteContext = true;
             _nearbyMode = false;
             _nearbyLineNames = const [];
             _destination = null;
@@ -1073,7 +1076,7 @@ class _MapTabState extends State<MapTab>
               ],
             ),
           )
-        else
+        if (_hasExplicitRouteContext || _nearbyMode || _destination != null)
           Positioned(
             bottom: 88,
             left: 16,
