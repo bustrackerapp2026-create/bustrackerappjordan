@@ -28,15 +28,16 @@
 ### آخر حالة موثقة — 2026-10-02
 
 - الفرع المرجعي: `stage/approved-route-line-vehicle-link-v1`
-- أحدث commit: `f109b2e65c42fe1138f971d72a973056f8f0f53b` — **Add planner UI projection contract**
-- baseline السابق: `fccb19b3e6d8039b8826e96457754ed7ac56315b` — **Align planner presentation state ownership**
+- أحدث commit تقني: `aa765b1eba1fe52b276c4e4b1008b50e54ae6d29` — **Import planner UI projection in MapTab**
+- baseline السابق: `6d217c5` — **Document planner UI projection contract**
 - `PassengerJourneyPresentationState` يملك فقط: `status` و`generation` و`error`.
-- ملكية route snapshot والرسم الفعلي تبقى في `PassengerPlannedRoutesMixin`.
-- تم تثبيت `PlannerUiProjection` كـpure UI contract منفصل عن route rendering.
-- الاختبار المركّز: `flutter test test/planner_ui_projection_test.dart` → **6/6 passed**.
+- `PlannerUiProjection` تبقى pure projection لحالة Planner فقط.
+- route snapshot والرسم الفعلي يبقيان مملوكين لـ`PassengerPlannedRoutesMixin`.
+- تم تنفيذ **Planner UI Projection Wiring** داخل `MapTab` بأصغر نطاق ممكن.
+- الاختبار المركّز: `flutter test test/planner_status_card_test.dart` → **6/6 passed**.
 - `flutter analyze` → **No issues found!**
-- `flutter test` → **329/329 passed**.
-- الزيادة من **323 → 329** هي الاختبارات الستة الجديدة الخاصة بـPlanner UI Projection.
+- `flutter test` → **335/335 passed**.
+- الزيادة من **329 → 335** تعود إلى اختبارات `PlannerStatusCard` الستة.
 - لا يوجد fallback من Planner إلى `NearbyRoutesService` في مسار الوجهة.
 
 ### Phase 7 — JourneyPlanner
@@ -49,6 +50,7 @@
 - **Passenger Journey Planning Service** ✅
 - **Planner Presentation State Ownership Cleanup** ✅
 - **Planner UI Projection Contract** ✅
+- **Planner UI Projection Wiring** ✅
 
 ### Planner Presentation State Ownership
 
@@ -60,6 +62,8 @@ PassengerJourneyPlanningService
 PassengerJourneyPresentationState
         ↓
 PlannerUiProjection
+        ↓
+PlannerStatusCard
 ```
 
 ويملك `PassengerJourneyPresentationState` فقط:
@@ -99,7 +103,7 @@ Mapbox
 الحالات:
 
 | State | UI meaning | Route ownership |
-|---|---|---|
+| --- | --- | --- |
 | `idle` | لا توجد نتيجة Planner حالية لعرضها | لا تغيير |
 | `loading` | طلب Planner حالي قيد التنفيذ | لا clear تلقائي |
 | `success` | الطلب انتهى بخيارات Journey Options غير فارغة | الرسم يبقى مملوكًا للـMixin |
@@ -121,6 +125,23 @@ Planner Success
         ≠
 Mapbox Draw Success
 ```
+
+### Planner UI Projection Wiring — التنفيذ المثبت
+
+تم ربط الـProjection بالواجهة دون نقل أي ملكية للـroute lifecycle:
+
+- أضيف `PlannerStatusCard` كـpresentation-only consumer لـ`PlannerUiProjection`.
+- الودجت لا يعرف `PlannedRoute` أو `Journey Options` أو `VehicleTrip` أو Mapbox أو `NearbyRoutesService`.
+- داخل `MapTab` يتم إنشاء:
+  `PlannerUiProjection.fromState(_journeyPresentation)`.
+- حالات `loading / empty / error` فقط هي التي تُظهر بطاقة حالة Planner؛ `idle / success` لا تفرضان بطاقة دائمة.
+- زر **إعادة المحاولة** في حالة الخطأ اختياري ويأتي من orchestration؛ الودجت نفسه لا يبدأ Planner.
+- تم فصل `_findingNearby` عن مسار الوجهة؛ أصبح تمثيلًا لتفاعل **Nearby** فقط.
+- `PassengerNearbyChip` لا يعكس حالة Planner.
+- لا يتم مسح Mapbox بسبب تغيير Projection بحد ذاته.
+- لا يتم الرسم من `PlannerStatusCard`؛ الرسم يبقى في `PassengerPlannedRoutesMixin`.
+- عند وجود رحلة مفتوحة لا تُضاف بطاقة Planner فوق عرض الرحلة النشط.
+- في حالات Planner المعروضة، تم تجنب تداخلها البصري مع `PassengerLiveStatusBar` دون إعادة استخدام live status لتمثيل Planner.
 
 ### Async / transition semantics
 
@@ -161,34 +182,36 @@ clear()
 → stale completion rejected
 ```
 
-### Phase 7 — validation evidence
+### Planner UI Wiring — Validation Evidence
 
-على الفرع الحالي:
+تم تنفيذ التحقق محليًا على الجهاز بعد سحب التعديلات:
 
-- `flutter test test/planner_ui_projection_test.dart` → **6/6 passed** ✅
+- `flutter test test/planner_status_card_test.dart` → **6/6 All tests passed!** ✅
 - `flutter analyze` → **No issues found!** ✅
-- `flutter test` → **329/329 passed** ✅
+- `flutter test` → **335/335 All tests passed!** ✅
+- `git status` → **nothing to commit, working tree clean** ✅
+- آخر commit تقني قبل التوثيق: `aa765b1eba1fe52b276c4e4b1008b50e54ae6d29`.
 
-هذه النتائج تم تنفيذها فعليًا بعد سحب commit `f109b2e` إلى بيئة التطوير المحلية.
+أثناء الاختبارات الكاملة ظهرت سجلات تشغيل متوقعة في اختبارات stale GPS، وانتهت المجموعة كاملة بنجاح **335/335**؛ لم ينتج عنها failure.
 
 ### Boundaries preserved
 
-- لا تعديل على `PassengerJourneyPlanningService` ضمن هذا الـPatch.
-- لا تعديل على `PassengerPlannedRoutesMixin` ضمن هذا الـPatch.
+- لا تعديل على `PassengerJourneyPlanningService` ضمن Wiring.
+- لا تعديل على `PassengerPlannedRoutesMixin` ضمن Wiring.
 - لا تعديل على Mapbox core.
 - لا تعديل على GPS أو Tracking.
 - لا تعديل على `NearbyRoutesService`.
 - لا ETA consumer.
 - لا route snapshot داخل Presentation State.
+- لا استخدام لـ`_findingNearby` لتمثيل destination Planner loading.
 
-**الحالة:**  
-**Phase 7 — Planner UI Projection Contract → CLOSED ✅**
+**الحالة:**
 
-**الخطوة التالية:**  
-الانتقال إلى **Planner UI Projection Wiring** بأصغر Patch ممكن، بعد مراجعة كيفية عرض الحالة داخل `MapTab` دون نقل route ownership من الـMixin.
+**Phase 7 — Planner UI Projection Wiring → CLOSED ✅**
 
+**الخطوة التالية:**
 
----
+الانتقال إلى **مراجعة ما بعد الربط وتحديد عقدة Planner التالية** فقط بعد إبقاء هذه البوابة مستقرة، ودون إدخال ranking أو ETA أو Mapbox changes في نفس الـPatch.
 
 ## المتطلبات
 
