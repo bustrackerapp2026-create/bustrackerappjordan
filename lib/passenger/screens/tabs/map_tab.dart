@@ -27,6 +27,7 @@ import '../../../passenger/widgets/passenger_map_fabs.dart';
 import '../../../services/analytics_service.dart';
 import '../../../services/bus_watch_passenger_context_binder.dart';
 import '../../../services/bus_watch_passenger_presentation_state.dart';
+import '../../../services/passenger_journey_presentation_state.dart';
 import '../../../services/location_service.dart';
 import '../../../services/map_camera_prefs_service.dart';
 import '../../../services/passenger_journey_planning_service.dart';
@@ -79,6 +80,8 @@ class _MapTabState extends State<MapTab>
       BusWatchPassengerContextBinder();
   final BusWatchPassengerPresentationState _busWatchPresentation =
       BusWatchPassengerPresentationState();
+  final PassengerJourneyPresentationState _journeyPresentation =
+      PassengerJourneyPresentationState();
   String? _passengerAuthUid;
 
   @override
@@ -304,25 +307,39 @@ class _MapTabState extends State<MapTab>
   void _clearDestination() {
     final previousCamera = _cameraBeforeDestination;
     _cameraBeforeDestination = null;
+    final restoreNearby = _nearbyMode && hasPassengerLocation;
 
     setState(() {
       _destination = null;
       _showLiveStatusBar = true;
     });
-    if (_nearbyMode && hasPassengerLocation) {
-      unawaited(_showBusesNearMe(silent: true));
-    } else {
-      setState(() {
-        _nearbyMode = false;
-        _nearbyLineNames = const [];
-      });
-      updateLiveTrackingRouteFilter(_selectedRoute);
-      updatePlannedRoutesLineFilter(_selectedRoute);
-    }
+
+    unawaited(_restoreRoutesAfterDestinationClear(restoreNearby));
 
     if (previousCamera != null) {
       unawaited(_restoreCamera(previousCamera));
     }
+  }
+
+  Future<void> _restoreRoutesAfterDestinationClear(
+    bool restoreNearby,
+  ) async {
+    await clearPlannerDisplayedRoutes();
+    endPlannerRoutePresentation();
+
+    if (!mounted) return;
+
+    if (restoreNearby) {
+      await _showBusesNearMe(silent: true);
+      return;
+    }
+
+    setState(() {
+      _nearbyMode = false;
+      _nearbyLineNames = const [];
+    });
+    updateLiveTrackingRouteFilter(_selectedRoute);
+    updatePlannedRoutesLineFilter(_selectedRoute);
   }
 
   Future<void> _restoreCamera(CameraState camera) async {
@@ -346,6 +363,7 @@ class _MapTabState extends State<MapTab>
   void dispose() {
     _busWatchBinder.clear();
     _busWatchPresentation.clear();
+    _journeyPresentation.clear();
     _openTripsSub?.cancel();
     try {
       liveDriversCount.removeListener(_onLiveCountChanged);
@@ -841,7 +859,109 @@ class _MapTabState extends State<MapTab>
     await searchPassengerPlace(q);
   }
 
+  Future<void> _showDestinationJourneyPlan({
+    bool silent = false,
+  }) async {
+    if (!hasPassengerLocation) {
+      if (!silent) {
+        MapUtils.showSnackBar(context, 'جاري تحديد موقعك...');
+      }
+      await goToMyLocation();
+      if (!hasPassengerLocation) {
+        if (!mounted) return;
+        MapUtils.showSnackBar(
+          context,
+          'تعذر تحديد الموقع. فعّل GPS ثم أعد المحاولة',
+          isError: true,
+        );
+        return;
+      }
+    }
+
+    if (!mounted || _destination == null) return;
+
+    setState(() {
+      _findingNearby = true;
+      _showLiveStatusBar = true;
+    });
+
+    beginPlannerRoutePresentation();
+    final generation = _journeyPresentation.beginLoading();
+    final planner = context.read<PassengerJourneyPlanningService>();
+
+    try {
+      final destination = _destination!;
+      final options = await planner.plan(
+        originLatitude: lastPassengerLat!,
+        originLongitude: lastPassengerLng!,
+        destinationLatitude: destination.latitude,
+        destinationLongitude: destination.longitude,
+      );
+      if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+        return;
+      }
+
+      if (options.isEmpty) {
+        _journeyPresentation.completeEmpty(generation);
+        await clearPlannerDisplayedRoutes();
+        if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+          return;
+        }
+        MapUtils.showSnackBar(
+          context,
+          'لا توجد رحلة متاحة حاليًا نحو «' + destination.name + '».',
+          isError: true,
+        );
+        return;
+      }
+
+      final routes = journeyOptionRoutesForPresentation(options);
+      _journeyPresentation.completeSuccess(generation, routes);
+      await showPlannerRoutesSnapshot(routes);
+      if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+        return;
+      }
+
+      if (!silent) {
+        MapUtils.showSnackBar(
+          context,
+          'تم العثور على ' +
+              routes.length.toString() +
+              ' مسار نحو «' +
+              destination.name +
+              '».',
+        );
+      }
+    } catch (error, stackTrace) {
+      debugPrint('journey planner: $error\\n$stackTrace');
+      if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+        return;
+      }
+
+      _journeyPresentation.completeError(generation, error);
+      await clearPlannerDisplayedRoutes();
+      if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+        return;
+      }
+
+      MapUtils.showSnackBar(
+        context,
+        'تعذر تخطيط الرحلة. حاول لاحقًا.',
+        isError: true,
+      );
+    } finally {
+      if (mounted && _journeyPresentation.isCurrent(generation)) {
+        setState(() => _findingNearby = false);
+      }
+    }
+  }
+
   Future<void> _showBusesNearMe({bool silent = false}) async {
+    if (_destination != null) {
+      await _showDestinationJourneyPlan(silent: silent);
+      return;
+    }
+
     if (_findingNearby) return;
     if (!silent) MapUtils.mediumHaptic();
 
@@ -866,49 +986,6 @@ class _MapTabState extends State<MapTab>
       _showLiveStatusBar = true;
     });
     try {
-      if (_destination != null) {
-        if (!mounted) return;
-        final planner = context.read<PassengerJourneyPlanningService>();
-        try {
-          final options = await planner.plan(
-            originLatitude: lastPassengerLat!,
-            originLongitude: lastPassengerLng!,
-            destinationLatitude: _destination!.latitude,
-            destinationLongitude: _destination!.longitude,
-          );
-          if (!mounted) return;
-
-          if (options.isEmpty) {
-            MapUtils.showSnackBar(
-              context,
-              'لا توجد رحلة متاحة حاليًا نحو «${_destination!.name}».',
-              isError: true,
-            );
-            return;
-          }
-
-          final routes = journeyOptionRoutesForPresentation(options);
-          await showPlannedRoutesSnapshot(routes);
-          if (!mounted) return;
-
-          if (!silent) {
-            MapUtils.showSnackBar(
-              context,
-              'تم العثور على ${routes.length} مسار نحو «${_destination!.name}».',
-            );
-          }
-        } catch (e, st) {
-          debugPrint('journey planner: $e\n$st');
-          if (!mounted) return;
-          MapUtils.showSnackBar(
-            context,
-            'تعذر تخطيط الرحلة. حاول لاحقًا.',
-            isError: true,
-          );
-        }
-        return;
-      }
-
       final List<NearbyLineMatch> matches;
       matches = await _nearbyRoutes.findNearbyLines(
         latitude: lastPassengerLat!,
@@ -918,14 +995,12 @@ class _MapTabState extends State<MapTab>
 
       if (matches.isEmpty) {
         setState(() {
-          _nearbyMode = _destination == null;
+          _nearbyMode = true;
           _nearbyLineNames = const [];
         });
         MapUtils.showSnackBar(
           context,
-          _destination != null
-              ? 'لا يوجد خط معتمد يمر من موقعك ويتجه نحو «${_destination!.name}».'
-              : 'لا يوجد مسار معتمد يمر قرب موقعك حالياً. سجّل مسارات من الأدمن أو السائق ثم أعد المحاولة.',
+          'لا يوجد مسار معتمد يمر قرب موقعك حالياً. سجّل مسارات من الأدمن أو السائق ثم أعد المحاولة.',
           isError: true,
         );
         return;
@@ -943,14 +1018,14 @@ class _MapTabState extends State<MapTab>
 
       if (!silent) {
         final linesLabel = names.take(3).join(' · ');
-        final more = names.length > 3 ? ' +${names.length - 3}' : '';
-        final msg = _destination != null
-            ? 'باصات نحو «${_destination!.name}»: $linesLabel$more'
-            : 'خطوط تمر من هنا: $linesLabel$more';
-        MapUtils.showSnackBar(context, msg);
+        final more = names.length > 3 ? ' +' + (names.length - 3).toString() : '';
+        MapUtils.showSnackBar(
+          context,
+          'خطوط تمر من هنا: ' + linesLabel + more,
+        );
       }
     } catch (e, st) {
-      debugPrint('nearby buses: $e\n$st');
+      debugPrint('nearby buses: $e\\n$st');
       if (!mounted) return;
       MapUtils.showSnackBar(
         context,
