@@ -794,6 +794,7 @@ class _MapTabState extends State<MapTab>
   }
 
   Future<void> _onRouteChanged(String newRoute) async {
+    _journeyPresentation.clear();
     setState(() {
       _selectedRoute = newRoute;
       _hasExplicitRouteContext = true;
@@ -832,6 +833,7 @@ class _MapTabState extends State<MapTab>
       if (found.isNotEmpty) {
         final line = found.first.lineName;
         if (!AppConstants.jordanRoutes.contains(line)) {
+          _journeyPresentation.clear();
           setState(() {
             _selectedRoute = line;
             _hasExplicitRouteContext = true;
