@@ -370,6 +370,69 @@ Runtime snapshot
 
 
 
+### Phase 7 — Route Candidate Discovery Calibration Gate — status 2026-10-02
+
+**FACTS VERIFIED**
+
+الحالة الحالية مفصولة رسميًا إلى:
+
+- Route Candidate Discovery implementation — **CLOSED ✅**
+- Discovery contract — **FROZEN ✅**
+- Discovery policy shape — **FROZEN ✅**
+- Policy meaning — **FROZEN ✅**
+- Policy values — **NOT DEFINED ⚠️**
+- Planner Composition — **BLOCKED ⏸️**
+- Production UI wiring — **BLOCKED ⏸️**
+- Device verification — **PENDING ⏳**
+
+معنى «near route» المجمد:
+
+`Origin / Destination → route geometry projection → distanceToRouteMeters → independent threshold`
+
+ولا يدخل في قرار المعايرة الحالي:
+- walking distance / pedestrian routing
+- ETA
+- Vehicle location
+- route progress للمركبة
+
+**CALIBRATION RULE**
+
+قبل اعتماد أي قيمة رقمية، يجب توثيق:
+
+1. Meaning of "near".
+2. Measurement method.
+3. Operational uncertainty to tolerate.
+4. Whether Origin and Destination tolerances are symmetric.
+5. False-positive tolerance.
+6. False-negative tolerance.
+7. Initial Origin threshold.
+8. Initial Destination threshold.
+9. Design rationale.
+10. Field validation status.
+
+**EVIDENCE MODEL**
+
+يجب الفصل بين:
+
+- **Design rationale:** سبب اختيار القيمة بناءً على معنى الاستخدام والتشغيل.
+- **Field evidence:** دليل التجربة الواقعية على أن القيمة مناسبة.
+
+لذلك لا تُوصف القيمة بأنها **Field-validated** لمجرد اعتمادها تصميميًا.
+
+الحالتان المعتمدتان لاحقًا:
+
+- **Design-calibrated:** قيمة أولية معتمدة بناءً على قاعدة المعايرة والتبرير التصميمي.
+- **Field-validated:** قيمة خضعت لاختبار واقعي وأكدت التجربة ملاءمتها، أو أثبتت الحاجة إلى تعديلها.
+
+**DECISION**
+
+لا يوجد Production Patch قبل إغلاق Calibration Gate.
+
+**NEXT**
+
+تعريف Calibration Rule عمليًا ثم اشتقاق قيم Origin/Destination منها. بعد ذلك فقط:
+`Policy values → Composition → Planner wiring → focused tests → flutter analyze → flutter test → field/device validation`
+
 ### Phase 7 — Route Candidate Discovery Contract v1 — 2026-10-01
 
 **FACTS VERIFIED**
