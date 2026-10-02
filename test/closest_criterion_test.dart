@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jordan_bus_tracker_new/models/planned_route.dart';
@@ -9,7 +8,7 @@ import 'package:jordan_bus_tracker_new/services/vehicle_location_freshness_polic
 
 void main() {
   final evaluatedAt = DateTime.utc(2026, 10, 2, 20, 0);
-  const freshnessPolicy = VehicleLocationFreshnessPolicy(
+  final freshnessPolicy = VehicleLocationFreshnessPolicy(
     maxAge: Duration(minutes: 1),
   );
 
