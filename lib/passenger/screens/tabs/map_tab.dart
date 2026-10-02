@@ -112,7 +112,7 @@ class _MapTabState extends State<MapTab>
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    final uid = context.select<AuthProvider, String?>((auth) => auth.userId);
+    final uid = context.read<AuthProvider>().userId;
     if (_passengerAuthUid == uid) return;
 
     _passengerAuthUid = uid;
