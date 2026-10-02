@@ -22,6 +22,7 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
   Set<String>? _plannedRoutesMultiFilter;
   bool _drawingPlannedRoutes = false;
   bool _plannerRoutePresentationActive = false;
+  bool _plannerRouteDisplayOwned = false;
   List<PlannedRoute> _lastPlannedRoutes = const [];
 
   /// ذهاب أزرق، إياب أخضر مواصلات
@@ -43,6 +44,7 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
         .watchApprovedRoutesForLine(lineName)
         .listen((routes) {
       if (_plannerRoutePresentationActive) return;
+      _plannerRouteDisplayOwned = false;
       _lastPlannedRoutes = routes;
       unawaited(_drawPlannedRoutes(routes));
     }, onError: (e) {
@@ -80,6 +82,7 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
     _plannedRoutesSub =
         _plannedRouteService.watchAllApprovedRoutes().listen((all) {
       if (_plannerRoutePresentationActive) return;
+      _plannerRouteDisplayOwned = false;
       final filtered = all
           .where((r) => cleaned.contains(r.lineName))
           .toList();
@@ -93,6 +96,7 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
   /// رسم فوري من نتائج NearbyRoutesService بدون انتظار الـ stream.
   Future<void> showPlannedRoutesSnapshot(List<PlannedRoute> routes) async {
     _plannerRoutePresentationActive = false;
+    _plannerRouteDisplayOwned = false;
     _lastPlannedRoutes = List<PlannedRoute>.from(routes);
     await _drawPlannedRoutes(_lastPlannedRoutes);
   }
@@ -112,6 +116,7 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
     List<PlannedRoute> routes,
   ) async {
     _plannerRoutePresentationActive = true;
+    _plannerRouteDisplayOwned = true;
     _plannedRoutesSub?.cancel();
     _plannedRoutesSub = null;
     _lastPlannedRoutes = List<PlannedRoute>.from(routes);
@@ -120,8 +125,9 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
 
   /// Clears only the route display currently owned by Planner.
   Future<void> clearPlannerDisplayedRoutes() async {
-    if (!_plannerRoutePresentationActive) return;
+    if (!_plannerRouteDisplayOwned) return;
     _lastPlannedRoutes = const [];
+    _plannerRouteDisplayOwned = false;
     await clearPlannedRouteLines();
   }
 
@@ -200,6 +206,7 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
   void disposePlannedRoutes() {
     stopWatchingPlannedRoutes();
     _plannerRoutePresentationActive = false;
+    _plannerRouteDisplayOwned = false;
     _plannedLineAnnotations.clear();
     _lastPlannedRoutes = const [];
   }
