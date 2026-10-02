@@ -904,13 +904,16 @@ class _MapTabState extends State<MapTab>
 
       if (options.isEmpty) {
         _journeyPresentation.completeEmpty(generation);
+        if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+          return;
+        }
         await clearPlannerDisplayedRoutes();
         if (!mounted || !_journeyPresentation.isCurrent(generation)) {
           return;
         }
         MapUtils.showSnackBar(
           context,
-          'لا توجد رحلة متاحة حاليًا نحو «' + destination.name + '».',
+          'لا توجد رحلة متاحة حاليًا نحو «${destination.name}».',
           isError: true,
         );
         return;
@@ -918,6 +921,9 @@ class _MapTabState extends State<MapTab>
 
       final routes = journeyOptionRoutesForPresentation(options);
       _journeyPresentation.completeSuccess(generation, routes);
+      if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+        return;
+      }
       await showPlannerRoutesSnapshot(routes);
       if (!mounted || !_journeyPresentation.isCurrent(generation)) {
         return;
@@ -926,11 +932,7 @@ class _MapTabState extends State<MapTab>
       if (!silent) {
         MapUtils.showSnackBar(
           context,
-          'تم العثور على ' +
-              routes.length.toString() +
-              ' مسار نحو «' +
-              destination.name +
-              '».',
+          'تم العثور على ${routes.length} مسار نحو «${destination.name}».',
         );
       }
     } catch (error, stackTrace) {
@@ -940,6 +942,9 @@ class _MapTabState extends State<MapTab>
       }
 
       _journeyPresentation.completeError(generation, error);
+      if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+        return;
+      }
       await clearPlannerDisplayedRoutes();
       if (!mounted || !_journeyPresentation.isCurrent(generation)) {
         return;
@@ -1019,10 +1024,10 @@ class _MapTabState extends State<MapTab>
 
       if (!silent) {
         final linesLabel = names.take(3).join(' · ');
-        final more = names.length > 3 ? ' +' + (names.length - 3).toString() : '';
+        final more = names.length > 3 ? ' +${names.length - 3}' : '';
         MapUtils.showSnackBar(
           context,
-          'خطوط تمر من هنا: ' + linesLabel + more,
+          'خطوط تمر من هنا: $linesLabel$more',
         );
       }
     } catch (e, st) {
