@@ -906,6 +906,56 @@ class _MapTabState extends State<MapTab>
             isError: true,
           );
         }
+        return;
+      }
+
+      final List<NearbyLineMatch> matches;
+      matches = await _nearbyRoutes.findNearbyLines(
+        latitude: lastPassengerLat!,
+        longitude: lastPassengerLng!,
+      );
+      if (!mounted) return;
+
+      if (matches.isEmpty) {
+        setState(() {
+          _nearbyMode = _destination == null;
+          _nearbyLineNames = const [];
+        });
+        MapUtils.showSnackBar(
+          context,
+          'لا يوجد مسار معتمد يمر قرب موقعك حالياً. سجّل مسارات من الأدمن أو السائق ثم أعد المحاولة.',
+          isError: true,
+        );
+        return;
+      }
+
+      final names = matches.map((m) => m.lineName).toList();
+      final routesSnap = matches.map((m) => m.route).toList();
+      setState(() {
+        _nearbyMode = true;
+        _nearbyLineNames = names;
+        _loggedEmptyState = false;
+      });
+
+      _applyLineFilter(names, routesSnapshot: routesSnap);
+
+      if (!silent) {
+        final linesLabel = names.take(3).join(' · ');
+        final more = names.length > 3 ? ' +${names.length - 3}' : '';
+        final msg = _destination != null
+            ? 'باصات نحو «${_destination!.name}»: $linesLabel$more'
+            : 'خطوط تمر من هنا: $linesLabel$more';
+        MapUtils.showSnackBar(context, msg);
+      }
+    } catch (e, st) {
+          debugPrint('journey planner: $e\n$st');
+          if (!mounted) return;
+          MapUtils.showSnackBar(
+            context,
+            'تعذر تخطيط الرحلة. حاول لاحقًا.',
+            isError: true,
+          );
+        }
       } else {
         final matches = await _nearbyRoutes.findNearbyLines(
           latitude: lastPassengerLat!,
