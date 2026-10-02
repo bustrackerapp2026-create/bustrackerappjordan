@@ -1405,3 +1405,173 @@ exact PlannedRoute presentation
 ### الخطوة التالية
 
 ننتقل إلى **نقطة Phase 7 التالية فقط** بعد مراجعة العقد الفعلي للـPresentation/Planner consumer التالي. لا نعيد فتح هذه النقطة ما لم يظهر Regression مثبت.
+
+
+
+### Phase 7 — Planner Presentation State Contract v1 — 2026-10-02
+
+**الحالة: ✅ DESIGN FROZEN**
+
+**FACTS VERIFIED**
+
+- `BusWatchPassengerPresentationState` الموجود فعليًا يستخدم generation token مع `isCurrent()` لمنع stale async completion من تغيير الحالة الحالية.
+- `beginContext()` يبدأ طلبًا جديدًا بحالة Loading، و`beginRefresh()` يحافظ على النتيجة السابقة أثناء Loading.
+- `complete()` لا يطبق النتيجة إلا إذا بقي `generation + context` الحاليين.
+- هذا النمط يصلح كمرجع مبدئي لحماية Planner من ترتيب إكمال الطلبات المتنافسة.
+- في `PassengerPlannedRoutesMixin` الحالية، `_lastPlannedRoutes` هي ذاكرة Routes مشتركة، وتُكتب من:
+  - `startWatchingPlannedRoutes()`
+  - `updatePlannedRouteLineNames()`
+  - `showPlannedRoutesSnapshot()`
+- لذلك لا يجوز اعتبار `_lastPlannedRoutes` الحالية وحدها **Planner Presentation State**؛ فهي قد تمثل مصدر عرض آخر غير طلب Planner الحالي.
+
+**PROBLEM IDENTIFIED**
+
+بعد إدخال repeated planning أصبح لدينا مفهومان يجب ألا يندمجا دلاليًا:
+
+```text
+Planner State
+    =
+حالة أحدث طلب تخطيط
+
+Displayed Route State
+    =
+ما هو مرسوم حاليًا على الخريطة
+```
+
+وجود رسم على الخريطة لا يعني أنه نتيجة الطلب الحالي، كما أن تغير Planner State لا يعني تلقائيًا أن الرسم يجب أن يتغير قبل الوصول إلى terminal outcome.
+
+**STATE CONTRACT — FROZEN**
+
+الحالات الأساسية لطلب Planner:
+
+| State | المعنى |
+|---|---|
+| Idle | لا يوجد طلب Planner نشط |
+| Loading | يوجد طلب Planner حالي قيد التنفيذ |
+| Success | الطلب الحالي اكتمل بخيارات فعلية |
+| Empty | الطلب الحالي اكتمل بلا Journey Options |
+| Error | الطلب الحالي فشل |
+
+**DISPLAYED ROUTE CONTRACT — FROZEN**
+
+- **Idle**
+  - لا يفرض تغييرًا على الرسم.
+- **Loading**
+  - يبدأ طلب جديد، لكن الرسم السابق لا يُعتبر نتيجة للطلب الجديد.
+  - لا يتم مسح الرسم تلقائيًا عند بدء Loading.
+  - بقاء الرسم مؤقتًا أثناء Loading مسموح، لكن لا يجوز اعتباره نجاحًا للطلب الجديد.
+- **Success**
+  - يصبح ناتج الطلب الحالي مصدر الرسم الجديد.
+  - يتم استبدال **Planner-owned displayed route snapshot** بالرسم الجديد.
+- **Empty**
+  - يعني أن الطلب الحالي لم ينتج Journey Options.
+  - إذا كان هناك رسم مملوك لطلب Planner سابق، يتم مسحه.
+  - لا يوجد fallback إلى `NearbyRoutesService`.
+- **Error**
+  - يعرض حالة خطأ للمستخدم.
+  - لا يوجد fallback.
+  - يتم اعتبار الرسم المملوك لـPlanner غير صالح للطلب الفاشل ويُمسح؛ لا يُستخدم كرسم يوحي بنجاح الطلب الجديد.
+
+**OWNERSHIP BOUNDARY — FROZEN**
+
+يجب فصل:
+
+```text
+Planner Presentation State
+        +
+Planner-owned Displayed Route Snapshot
+```
+
+عن مسارات العرض الأخرى، خصوصًا:
+
+```text
+No Destination
+→ NearbyRoutesService / existing planned-route presentation
+```
+
+لذلك لا يجوز تنفيذ `Empty` أو `Error` مستقبلًا بواسطة `clearPlannedRouteLines()` بشكل أعمى إذا كانت الدالة ستزيل رسمًا ليس مملوكًا لطلب Planner الحالي.
+
+**REPEATED PLANNING / STALE COMPLETION — FROZEN**
+
+لكل طلب Planner generation/identity متزايد:
+
+```text
+Request A → generation 1 → Loading
+Request B → generation 2 → Loading
+B finishes → apply B
+A finishes → ignore A
+```
+
+القاعدة:
+
+```text
+Only current generation may mutate Planner Presentation State
+or Planner-owned Displayed Route Snapshot.
+```
+
+ولا يجوز لنتيجة متأخرة من طلب أقدم أن:
+- تعيد الرسم السابق.
+- تمسح الرسم الحالي.
+- تستبدل Success حديثة.
+- تحول الحالة من Success حديثة إلى Empty/Error قديمة.
+
+**DESTINATION CONTEXT**
+
+- Origin/Destination هما سياق الطلب.
+- تغير Destination ينشئ Planning Request جديدًا.
+- لا تدخل Destination في هوية Route نفسها.
+- لا يُفترض أن الرسم السابق ما زال يمثل Destination الجديدة بمجرد بدء الطلب.
+
+**ERROR / EMPTY DISTINCTION**
+
+- `Empty` = تخطيط نجح دلاليًا ولم يجد Journey Options.
+- `Error` = التخطيط لم يكتمل بنجاح بسبب failure.
+- كلاهما لا يستخدم fallback.
+- كلاهما لا يترك Planner-owned drawing كتمثيل ناجح للطلب الحالي، مع بقاء الرسم السابق مسموحًا فقط أثناء Loading وفق العقد أعلاه.
+
+**NON-GOALS**
+
+لا يتضمن هذا العقد:
+- تعديل `PassengerJourneyPlanningService`.
+- تعديل `NearbyRoutesService`.
+- تعديل `VehicleTrip`.
+- ETA.
+- Ranking.
+- Live Tracking.
+- Mapbox core.
+- تحديد شكل Widget جديد.
+- تنفيذ generation token الآن.
+
+**IMPLEMENTATION CONSEQUENCE — FROZEN**
+
+عند كتابة الـPatch التالي يجب ألا نضيف `clear()` داخل `_showBusesNearMe()` بدون Ownership boundary واضح.
+
+التنفيذ المستهدف هو أصغر boundary يحقق:
+1. Planner State مستقل عن Displayed Route State.
+2. generation/token يمنع stale completion.
+3. Planner Success يستبدل Planner-owned snapshot.
+4. Planner Empty/Error يمسح فقط Planner-owned snapshot.
+5. Loading لا يغيّر الرسم تلقائيًا.
+6. لا يمس ذلك مسار **No Destination → NearbyRoutesService**.
+
+**FOCUSED TESTS REQUIRED FOR NEXT PATCH**
+
+قبل أي widget/integration test كبير، الاختبارات المركزة يجب أن تثبت على الأقل:
+- Idle لا يغيّر الرسم.
+- Loading لا يمسح الرسم السابق.
+- Success تستبدل snapshot الحالي.
+- Empty تمسح Planner-owned snapshot فقط.
+- Error تمسح Planner-owned snapshot فقط.
+- Request B يمنع Request A المتأخر من الكتابة.
+- stale Empty/Error من Request A لا يزيلان نجاح Request B.
+- عدم تداخل Planner-owned snapshot مع الرسم الناتج من مسار No Destination.
+
+**RESULT**
+
+**Phase 7 — Planner Presentation State Contract v1 — FROZEN ✅**
+
+لا يوجد Production Patch مطلوب لهذه الخطوة نفسها.
+
+**NEXT**
+
+تنفيذ أصغر Presentation State boundary ممكنة فقط، مع focused tests، دون تعديل Planner أو NearbyRoutesService أو VehicleTrip أو Mapbox أو Live Tracking.
