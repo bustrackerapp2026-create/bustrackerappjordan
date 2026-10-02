@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jordan_bus_tracker_new/passenger/presentation/planner_ui_projection.dart';
 import 'package:jordan_bus_tracker_new/passenger/widgets/planner_status_card.dart';
+import 'package:jordan_bus_tracker_new/services/passenger_journey_presentation_state.dart';
 
 void main() {
   Widget host({
