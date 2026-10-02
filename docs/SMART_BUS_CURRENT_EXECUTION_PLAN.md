@@ -1506,3 +1506,127 @@ current Planner generation
 **NEXT**
 
 ننتقل إلى نقطة Phase 7 التالية فقط. لا نعيد فتح هذا الـBoundary ما لم يظهر Regression مثبت أو متطلب Presentation جديد يفرض عقدًا مختلفًا.
+
+
+### Phase 7 — Planner Presentation State UI Projection Preflight / Ownership Decision — 2026-10-02
+
+**الحالة: ✅ PREFLIGHT COMPLETE / OWNERSHIP FROZEN**
+
+**FACTS VERIFIED**
+
+- `PassengerJourneyPresentationState` الحالي هو pure presentation state ولا ينفذ I/O أو Mapbox.
+- `PassengerPlannedRoutesMixin` هو المالك الفعلي لـ `_lastPlannedRoutes` وroute polyline annotations وعمليات الرسم والمسح.
+- `MapTab` لا يستهلك `plannerDisplayedRoutes` كحالة UI مستقلة؛ الاستخدام الحالي لهذا الحقل محصور داخل `PassengerJourneyPresentationState` واختباراته.
+- لا توجد حاجة لتثبيت مصدر ثانٍ للحقيقة باسم displayed routes داخل Presentation State.
+- `clear()` في `PassengerJourneyPresentationState` هو generation/state invalidation وليس أمر Mapbox بحد ذاته.
+
+**PROBLEM IDENTIFIED**
+
+الاحتفاظ بـroute snapshot داخل Presentation State باسم `plannerDisplayedRoutes` يخلط بين حالة آخر Planner request وما هو مرسوم فعليًا على الخريطة.
+
+**OWNERSHIP DECISION — FROZEN**
+
+تم تثبيت الملكية كالتالي:
+
+```text
+PassengerJourneyPlanningService
+        ↓
+PassengerJourneyPresentationState
+        ↓
+UI Projection
+```
+
+والـState يملك فقط:
+
+```text
+latest Planner request state
+= status + generation + error
+```
+
+بينما:
+
+```text
+Journey Options
+        ↓
+distinct PlannedRoute
+        ↓
+PassengerPlannedRoutesMixin
+        ↓
+Mapbox drawing
+```
+
+الـMixin هو مالك الـroute snapshot المعروض والرسم الفعلي.
+
+**UI PROJECTION CONTRACT — FROZEN**
+
+| State | UI meaning | Route drawing |
+|---|---|---|
+| Idle | لا يوجد تخطيط نشط | لا يفرض تغييرًا |
+| Loading | التخطيط الحالي قيد التنفيذ | لا clear تلقائي |
+| Success | آخر طلب Planner نجح وأنتج Journey Options | الرسم الناتج مسؤولية الـMixin، ولا يساوى Success تلقائيًا مع نجاح الرسم |
+| Empty | الطلب نجح دلاليًا ولم ينتج Journey Options | لا fallback؛ قرار الرسم مسؤولية عقد الملكية |
+| Error | الطلب فشل | إظهار الخطأ؛ لا fallback؛ قرار الرسم مسؤولية عقد الملكية |
+
+**IMPORTANT SEMANTIC SEPARATION**
+
+```text
+Planner Success
+≠
+Mapbox Draw Success
+```
+
+نجاح Planner يعني نجاح إنتاج بيانات التخطيط. نجاح إنشاء annotations أو اكتمال الرسم الفعلي مسؤولية `PassengerPlannedRoutesMixin` ولا يدخل في enum الخاص بالـPlanner.
+
+**ROUTE SNAPSHOT DECISION — FROZEN**
+
+- لا نعتبر `plannerDisplayedRoutes` مصدر حقيقة مستقلًا.
+- لا يبقى route snapshot الخاص بالـPlanner في `PassengerJourneyPresentationState` كملكية دائمة في العقد المستقبلي.
+- في الـPatch التالي تتم إزالة/إعادة تعريف هذا الحقل بحيث يعكس قرار الملكية، مع إبقاء snapshot والرسم في `PassengerPlannedRoutesMixin`.
+- إذا احتاج UI لاحقًا معرفة ما نتج عن Planner، يكون ذلك عبر state/result projection محدد، وليس عبر نسخ ملكية الرسم إلى State آخر.
+
+**INVALIDATION SEMANTICS — FROZEN**
+
+`_journeyPresentation.clear()` تعني:
+
+- إبطال generation الحالي.
+- إعادة Planner state إلى Idle.
+- منع completion قديم من الكتابة.
+- لا تعني بحد ذاتها `clearPlannedRouteLines()`.
+
+أي مسح للرسم يصدر من boundary الذي يملك الرسم وبعد تحقق ownership المناسب.
+
+**REPEATED PLANNING — FROZEN**
+
+```text
+Request A → Loading
+Request B → Loading
+B → current
+A → stale → ignored
+```
+
+ولا يمكن لـA المتأخر تعديل Planner state أو الكتابة فوق snapshot/routing الذي أصبح مملوكًا للسياق الأحدث.
+
+**NON-GOALS**
+
+- لا Widget جديد.
+- لا تعديل `PassengerJourneyPlanningService`.
+- لا تعديل `NearbyRoutesService`.
+- لا تعديل `VehicleTrip`.
+- لا ETA.
+- لا Live Tracking.
+- لا Mapbox core.
+- لا clear/fallback جديد خارج ownership boundary.
+
+**RESULT**
+
+**Phase 7 — Planner Presentation State UI Projection Preflight — CLOSED ✅**
+
+الملكية المثبتة:
+
+- `PassengerJourneyPresentationState` = حالة/نتيجة آخر طلب Planner.
+- `PassengerPlannedRoutesMixin` = مالك route snapshot المعروض والرسم الفعلي.
+- `plannerDisplayedRoutes` لن يكون مصدر الحقيقة الثاني في العقد المستقبلي.
+
+**NEXT**
+
+أصغر Patch تالٍ هو تنظيف/إعادة تعريف `PassengerJourneyPresentationState` ليطابق هذه الملكية، ثم focused test جديد، قبل أي UI projection أو Widget changes.
