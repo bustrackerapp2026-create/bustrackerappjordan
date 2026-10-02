@@ -64,6 +64,7 @@ class _MapTabState extends State<MapTab>
   bool _nearbyMode = false;
   List<String> _nearbyLineNames = const [];
   bool _hasExplicitRouteContext = false;
+  bool _showLiveStatusBar = true;
 
   PlaceSearchResult? _destination;
   CameraState? _cameraBeforeDestination;
@@ -304,8 +305,8 @@ class _MapTabState extends State<MapTab>
 
     setState(() {
       _destination = null;
+      _showLiveStatusBar = true;
     });
-
     if (_nearbyMode && hasPassengerLocation) {
       unawaited(_showBusesNearMe(silent: true));
     } else {
@@ -775,6 +776,7 @@ class _MapTabState extends State<MapTab>
     setState(() {
       _selectedRoute = newRoute;
       _hasExplicitRouteContext = true;
+      _showLiveStatusBar = true;
       _nearbyMode = false;
       _nearbyLineNames = const [];
       _destination = null;
@@ -857,7 +859,10 @@ class _MapTabState extends State<MapTab>
       }
     }
 
-    setState(() => _findingNearby = true);
+    setState(() {
+      _findingNearby = true;
+      _showLiveStatusBar = true;
+    });
     try {
       final List<NearbyLineMatch> matches;
       if (_destination != null) {
@@ -1112,9 +1117,8 @@ class _MapTabState extends State<MapTab>
               ],
             ),
           )
-        else if (_hasExplicitRouteContext ||
-            _nearbyMode ||
-            _destination != null)
+        else if (_showLiveStatusBar &&
+            (_hasExplicitRouteContext || _nearbyMode || _destination != null))
           Positioned(
             bottom: 88,
             left: 16,
@@ -1132,6 +1136,9 @@ class _MapTabState extends State<MapTab>
                     destinationName: _destination?.name,
                     onClearDestination:
                         _destination != null ? _clearDestination : null,
+                    onDismiss: () {
+                      setState(() => _showLiveStatusBar = false);
+                    },
                     onTryNearby: (!_nearbyMode && _destination == null)
                         ? () => _showBusesNearMe()
                         : null,

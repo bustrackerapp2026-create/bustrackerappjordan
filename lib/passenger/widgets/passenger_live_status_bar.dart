@@ -15,6 +15,9 @@ class PassengerLiveStatusBar extends StatelessWidget {
   /// اختياري: عند عدم وجود باص حي يقترح تجربة «باصات من هنا».
   final VoidCallback? onTryNearby;
 
+  /// إغلاق البطاقة يدويًا مع الإبقاء على حالة الخريطة كما هي.
+  final VoidCallback? onDismiss;
+
   const PassengerLiveStatusBar({
     super.key,
     required this.routeName,
@@ -25,6 +28,7 @@ class PassengerLiveStatusBar extends StatelessWidget {
     this.destinationName,
     this.onClearDestination,
     this.onTryNearby,
+    this.onDismiss,
   });
 
   @override
@@ -157,6 +161,25 @@ class PassengerLiveStatusBar extends StatelessWidget {
                   child: InkWell(
                     customBorder: const CircleBorder(),
                     onTap: onClearDestination,
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              if (!hasDest && onDismiss != null) ...[
+                const SizedBox(width: 4),
+                Material(
+                  color: const Color(0xFFF1F5F9),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: onDismiss,
                     child: const Padding(
                       padding: EdgeInsets.all(8),
                       child: Icon(
