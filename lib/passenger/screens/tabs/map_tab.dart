@@ -948,7 +948,8 @@ class _MapTabState extends State<MapTab>
             ? 'باصات نحو «${_destination!.name}»: $linesLabel$more'
             : 'خطوط تمر من هنا: $linesLabel$more';
         MapUtils.showSnackBar(context, msg);
-      }    } catch (e, st) {
+      }
+    } catch (e, st) {
       debugPrint('nearby buses: $e\n$st');
       if (!mounted) return;
       MapUtils.showSnackBar(
