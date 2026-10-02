@@ -2087,59 +2087,82 @@ Journey Options
 ## Status
 **Engineering Ranking Contract v1 — DESIGN FROZEN ✅ — 2026-10-02**
 
-تم تجميد عقد Ranking قبل تنفيذ أي Ranking Engine.
+تم تجميد عقد Ranking قبل تنفيذ أي Generic Ranking Engine.
 
 العقد الكامل: `docs/SMART_BUS_PHASE8A_RANKING_CONTRACT.md`.
 
-### Scope
-- Ranking Input.
-- Criterion taxonomy: Defined / Supported / Deferred.
-- Required Data لكل Criterion.
-- Missing-data semantics.
-- Deterministic comparison.
-- Deterministic tie-break.
-
-لا يوجد في هذه الخطوة Production Ranking Engine أو JourneyOption Model جديد أو ETA consumer أو walking/access model أو multi-leg transfer model أو UI integration.
-
 ### Current classification
 - **Fastest** — Defined / **Deferred**.
-- **Closest** — Defined / **Deferred**.
+- **Closest** — **Supported / Closed ✅**.
 - **Least Walking** — Defined / **Deferred**.
 - **Fewest Transfers** — Defined / **Deferred**.
 
-**Supported production criteria: none.**
+**Supported production criteria: Closest.**
 
-قاعدة أساسية: `Unsupported criterion` ≠ `Journey Option invalid`.
+### First supported criterion — Closest
 
-ولا يسمح Ranking بإدخال fallback أو inference لتغطية البيانات الناقصة.
+تم تنفيذ أول Criterion مستقل بعد نجاح الـpreflight، دون Generic Ranking Engine ودون تعديل JourneyPlanner orchestration أو UI أو ETA أو Tracking.
 
-**NEXT:** فحص أول Criterion يمكن تنفيذه بالبيانات الموجودة فعليًا، ثم تنفيذ معيار واحد فقط مع focused tests.
-## First Criterion Preflight — Closest
+العقد التنفيذي:
 
-**Result: DEFERRED ✅ — 2026-10-02**
+```text
+Association
++
+Passenger Origin
++
+Injected Vehicle Location Freshness Policy
++
+evaluatedAt
+    ↓
+distance in meters / unavailable
+```
 
-Inspect أثبت أن `Closest` لديه مدخلات أولية حقيقية: `VehicleTrip.currentLocation` + `lastLocationAt` + Passenger Origin.
+القواعد:
 
-لكن لا يوجد بعد `Vehicle Location Freshness Policy` حتمي ومحقون خاص بـRanking. لذلك لا نعلن `Closest` Supported اعتمادًا على موقع مخزن قديم.
-
-العقد المؤقت المثبت:
-
-- المرجع: vehicle location → passenger Origin.
-- المصدر: `VehicleTrip.currentLocation`.
-- أهلية الموقع: تعتمد لاحقًا على `VehicleTrip.lastLocationAt` + freshness policy محقونة.
-- لا `DateTime.now()` داخل criterion.
+- المرجع: `VehicleTrip.currentLocation` → Passenger Origin.
+- المسافة: straight-line Haversine بالمتر.
+- freshness من `VehicleTrip.lastLocationAt` عبر `VehicleLocationFreshnessPolicy` محقونة.
+- `evaluatedAt` يمرره المستهلك؛ لا clock access داخل criterion.
+- missing / stale / future / invalid coordinates → criterion unavailable فقط.
+- عدم توفر Closest لا يبطل Journey Option.
+- أقل مسافة هي الأفضل.
+- التعادل يحسم بـ:
+  `route.id + route.direction.firestoreValue + vehicleTrip.id`
 - لا inference من `routeProgress` أو speed أو heading.
-- الموقع المفقود/غير المؤهل يجعل الـoption **not rankable for Closest** مع إبقائه في candidate set.
-- المقارنة عند الدعم: أقل مسافة بالمتر.
-- tie-break: `route.id + route.direction.firestoreValue + vehicleTrip.id`.
+- لا ETA fallback.
+- لا Firestore reads جديدة.
 
-`Fastest` ما يزال Deferred لأن ETA runtime الحالي يحتاج `StopRuntimeSnapshot` غير موجود في Planner association contract.
+### Validation Evidence
 
-التفاصيل الكاملة: `docs/SMART_BUS_PHASE8A_CLOSEST_CRITERION_PREFLIGHT.md`.
+على جهاز التطوير المحلي:
 
-**NEXT:** تجميد `Vehicle Location Freshness Policy` الصغيرة والمحقونة، ثم تنفيذ `Closest` فقط باختبارات مركزة.
+- `flutter test test/vehicle_location_freshness_policy_test.dart test/closest_criterion_test.dart` → **15/15 passed**.
+- `flutter analyze` → **No issues found!**.
+- `flutter test` → **350/350 passed**.
+- `git status` → **working tree clean** ومتزامن مع origin.
 
----
+أثناء full test ظهرت سجلات stale-GPS من اختبارات Tracking القائمة، وانتهت المجموعة كاملة دون failures.
+
+### Boundaries preserved
+
+لم يتم تعديل:
+
+- PassengerJourneyPlanningService.
+- JourneyRouteVehicleAssociationService.
+- Planner Presentation/UI.
+- NearbyRoutesService.
+- ETA Result Consumption.
+- DriverTrackingLifecycle / GPS.
+- Mapbox.
+- Firestore schema/indexes.
+
+**RESULT: Closest Engineering Ranking Criterion v1 — SUPPORTED / CLOSED ✅**
+
+`Fastest` يبقى Deferred لأن ETA runtime الحالي يحتاج `StopRuntimeSnapshot` غير موجود في Planner association contract.
+
+`Least Walking` و`Fewest Transfers` يبقيان Deferred لعدم وجود walking/access model أو multi-leg transfer model مثبتين لهذا الـRanking consumer.
+
+**NEXT:** Fresh inspect/preflight للـcriterion التالي فقط. لا Generic Ranking Engine.
 
 # 12. Phase 9 — Historical Analytics
 
