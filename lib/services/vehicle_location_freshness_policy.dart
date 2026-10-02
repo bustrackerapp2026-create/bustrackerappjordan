@@ -12,7 +12,7 @@ enum VehicleLocationFreshnessStatus {
 class VehicleLocationFreshnessPolicy {
   final Duration maxAge;
 
-  const VehicleLocationFreshnessPolicy({
+  VehicleLocationFreshnessPolicy({
     required this.maxAge,
   }) : assert(!maxAge.isNegative);
 
