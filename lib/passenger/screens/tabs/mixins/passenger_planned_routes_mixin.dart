@@ -23,6 +23,7 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
   bool _drawingPlannedRoutes = false;
   bool _plannerRoutePresentationActive = false;
   bool _plannerRouteDisplayOwned = false;
+  List<PlannedRoute>? _pendingPlannedRoutes;
   List<PlannedRoute> _lastPlannedRoutes = const [];
 
   /// ذهاب أزرق، إياب أخضر مواصلات
@@ -142,7 +143,11 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
   }
 
   Future<void> _drawPlannedRoutes(List<PlannedRoute> routes) async {
-    if (!mounted || _drawingPlannedRoutes) return;
+    if (!mounted) return;
+    if (_drawingPlannedRoutes) {
+      _pendingPlannedRoutes = List<PlannedRoute>.from(routes);
+      return;
+    }
     _drawingPlannedRoutes = true;
     try {
       await ensurePlannedRoutesPolylineManager();
@@ -179,6 +184,11 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
       }
     } finally {
       _drawingPlannedRoutes = false;
+      final pending = _pendingPlannedRoutes;
+      _pendingPlannedRoutes = null;
+      if (pending != null && mounted) {
+        unawaited(_drawPlannedRoutes(pending));
+      }
     }
   }
 
@@ -195,6 +205,11 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
   }
 
   Future<void> clearPlannedRouteLines() async {
+    if (_drawingPlannedRoutes) {
+      _pendingPlannedRoutes = const [];
+      return;
+    }
+
     for (final ann in _plannedLineAnnotations) {
       try {
         await polylineAnnotationManager?.delete(ann);
@@ -207,6 +222,7 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
     stopWatchingPlannedRoutes();
     _plannerRoutePresentationActive = false;
     _plannerRouteDisplayOwned = false;
+    _pendingPlannedRoutes = null;
     _plannedLineAnnotations.clear();
     _lastPlannedRoutes = const [];
   }
