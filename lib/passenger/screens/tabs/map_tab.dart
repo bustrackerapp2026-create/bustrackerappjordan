@@ -308,6 +308,7 @@ class _MapTabState extends State<MapTab>
     final previousCamera = _cameraBeforeDestination;
     _cameraBeforeDestination = null;
     final restoreNearby = _nearbyMode && hasPassengerLocation;
+    _journeyPresentation.clear();
 
     setState(() {
       _destination = null;
