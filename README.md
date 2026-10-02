@@ -28,12 +28,16 @@
 ### آخر حالة موثقة — 2026-10-02
 
 - الفرع المرجعي: `stage/approved-route-line-vehicle-link-v1`
-- آخر commit توثيقي على الفرع: `b6c3537be51efa86160e156263152c1d13a7b984`
-- آخر commit تقني/وظيفي قبل التوثيق: `9cc23f8804e939c95bd6061db0a6cb81dcd49968`
-- هذا الـcommit التقني يضيف زر إغلاق **X** لبطاقة حالة التتبع في واجهة الراكب، مع إعادة إظهار البطاقة عند اختيار خط جديد أو تشغيل «باصات من هنا».
-- آخر baseline آلي قبل تغييرات واجهة الراكب الأخيرة: `flutter test` → **310/310 passed**.
-- على الـcommit الأب `a11483efb7ea3b0de5b89758a3ae997564eec6a1`: `flutter analyze` → **No issues found!**
-- لم يُعَد تشغيل `flutter analyze` أو `flutter test` بعد commit `9cc23f8`؛ التحقق الأخير لهذا الـcommit كان يدويًا على الهاتف.
+- أحدث commit: `f109b2e65c42fe1138f971d72a973056f8f0f53b` — **Add planner UI projection contract**
+- baseline السابق: `fccb19b3e6d8039b8826e96457754ed7ac56315b` — **Align planner presentation state ownership**
+- `PassengerJourneyPresentationState` يملك فقط: `status` و`generation` و`error`.
+- ملكية route snapshot والرسم الفعلي تبقى في `PassengerPlannedRoutesMixin`.
+- تم تثبيت `PlannerUiProjection` كـpure UI contract منفصل عن route rendering.
+- الاختبار المركّز: `flutter test test/planner_ui_projection_test.dart` → **6/6 passed**.
+- `flutter analyze` → **No issues found!**
+- `flutter test` → **329/329 passed**.
+- الزيادة من **323 → 329** هي الاختبارات الستة الجديدة الخاصة بـPlanner UI Projection.
+- لا يوجد fallback من Planner إلى `NearbyRoutesService` في مسار الوجهة.
 
 ### Phase 7 — JourneyPlanner
 
@@ -43,35 +47,145 @@
 - **Journey Candidate Consumer Contract v1** — مجمد تصميميًا ✅
 - **JourneyRouteVehicleAssociationService / First Association Operation v1** ✅
 - **Passenger Journey Planning Service** ✅
-- **ETA وRanking وUI** ليست جزءًا من Association الحالية.
+- **Planner Presentation State Ownership Cleanup** ✅
+- **Planner UI Projection Contract** ✅
 
-قيد التكامل الحالي:
-- تكامل `PassengerJourneyPlanningService` مع واجهة الراكب **لم يُفعّل بعد**.
-- السبب التصميمي المتعمد: `RouteCandidateDiscoveryPolicy` تحتاج قيمًا فعلية مستقلة لكل من:
-  - `originMaxDistanceMeters`
-  - `destinationMaxDistanceMeters`
-- القيم الرقمية ما زالت **غير محددة**؛ لذلك لا يجوز اختراع أرقام أو استخدام heuristics القديمة لـ`NearbyRoutesService` كبديل.
+### Planner Presentation State Ownership
 
-### تحقق واجهة الراكب على الهاتف — 2026-10-02
+التقسيم المعماري المثبت:
 
-تم اختبار النقاط التالية يدويًا وإغلاقها:
+```text
+PassengerJourneyPlanningService
+        ↓
+PassengerJourneyPresentationState
+        ↓
+PlannerUiProjection
+```
 
-- فتح خريطة الراكب دون ظهور حالة خط مفروضة قبل اختيار المستخدم ✅
-- اختيار خط من الشريط العلوي وعرض حالة الخط عند عدم وجود باص حي ✅
-- الضغط على **«باصات من هنا»** وعرض الخطوط القريبة من موقع المستخدم ✅
-- إزالة بطاقة الحالة المكررة في وضع «باصات من هنا» ✅
-- اختيار وجهة من البحث، والتنقل إلى الوجهة، وعرض حالة «نحو ...» ✅
-- إلغاء الوجهة بزر **X** واستعادة الكاميرا إلى موقع المستخدم السابق ✅
-- التنقل بين تبويبات الراكب ✅
-- تسجيل الخروج/الدخول مجددًا ✅
-- إغلاق التطبيق وإعادة فتحه مع استعادة جلسة الراكب ✅
-- فتح «طبقات الخريطة» ✅
-- زر **«أقرب باص»** عند عدم وجود باص حي يعرض رسالة مناسبة للسياق وتختفي تلقائيًا ✅
-- زر **X** داخل بطاقة حالة الخط يغلق البطاقة دون تغيير الخط أو الخريطة ✅
-- «باصات من هنا» يعيد إظهار البطاقة بعد إغلاقها ✅
-- اختيار خط جديد يعيد إظهار البطاقة باسم الخط الجديد ✅
+ويملك `PassengerJourneyPresentationState` فقط:
 
-**ملاحظة مفتوحة:** حركة أدوات التحكم الجانبية عند ظهور لوحة المفاتيح ما زالت ملاحظة UX مفتوحة، ولم يتم إدخال تعديل جديد عليها.
+```text
+status
+generation
+error
+```
+
+ولا يملك:
+
+```text
+PlannedRoute
+Journey Options
+route snapshot
+Mapbox objects
+rendering result
+```
+
+أما route snapshot والرسم الفعلي فهما مملوكان لـ:
+
+```text
+Journey Options
+        ↓
+distinct PlannedRoute
+        ↓
+PassengerPlannedRoutesMixin
+        ↓
+Mapbox
+```
+
+### Planner UI Projection Contract
+
+`PlannerUiProjection` هي pure projection لحالة آخر Planner request فقط.
+
+الحالات:
+
+| State | UI meaning | Route ownership |
+|---|---|---|
+| `idle` | لا توجد نتيجة Planner حالية لعرضها | لا تغيير |
+| `loading` | طلب Planner حالي قيد التنفيذ | لا clear تلقائي |
+| `success` | الطلب انتهى بخيارات Journey Options غير فارغة | الرسم يبقى مملوكًا للـMixin |
+| `empty` | الطلب انتهى بلا Journey Options | لا fallback ولا clear ضمني |
+| `error` | الطلب فشل | لا fallback ولا clear ضمني |
+
+القاعدة الأساسية:
+
+```text
+Planner UI Projection
+        ≠
+Route Rendering
+```
+
+وكذلك:
+
+```text
+Planner Success
+        ≠
+Mapbox Draw Success
+```
+
+### Async / transition semantics
+
+إذا حدث:
+
+```text
+Success A
+   ↓
+Request B
+   ↓
+Loading
+```
+
+فإن:
+
+```text
+PresentationState = Loading
+Route snapshot     = آخر رسم يملكه Mixin
+```
+
+ولا تستنتج الـProjection أن `Loading` يعني مسح Mapbox أو أن الرسم الحالي هو نتيجة الطلب B.
+
+كما أن:
+
+```text
+Request A
+Request B
+→ B authoritative
+→ A stale → ignored
+```
+
+و:
+
+```text
+clear()
+→ invalidate generation
+→ Idle
+→ stale completion rejected
+```
+
+### Phase 7 — validation evidence
+
+على الفرع الحالي:
+
+- `flutter test test/planner_ui_projection_test.dart` → **6/6 passed** ✅
+- `flutter analyze` → **No issues found!** ✅
+- `flutter test` → **329/329 passed** ✅
+
+هذه النتائج تم تنفيذها فعليًا بعد سحب commit `f109b2e` إلى بيئة التطوير المحلية.
+
+### Boundaries preserved
+
+- لا تعديل على `PassengerJourneyPlanningService` ضمن هذا الـPatch.
+- لا تعديل على `PassengerPlannedRoutesMixin` ضمن هذا الـPatch.
+- لا تعديل على Mapbox core.
+- لا تعديل على GPS أو Tracking.
+- لا تعديل على `NearbyRoutesService`.
+- لا ETA consumer.
+- لا route snapshot داخل Presentation State.
+
+**الحالة:**  
+**Phase 7 — Planner UI Projection Contract → CLOSED ✅**
+
+**الخطوة التالية:**  
+الانتقال إلى **Planner UI Projection Wiring** بأصغر Patch ممكن، بعد مراجعة كيفية عرض الحالة داخل `MapTab` دون نقل route ownership من الـMixin.
 
 
 ---
