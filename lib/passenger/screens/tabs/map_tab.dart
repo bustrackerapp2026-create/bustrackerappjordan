@@ -36,6 +36,7 @@ import '../../../services/route_prefs_service.dart';
 import '../../../services/route_plan_service.dart';
 import '../../../services/trip_service.dart';
 import '../../presentation/journey_route_presentation.dart';
+import '../../presentation/planner_ui_projection.dart';
 import '../../widgets/planner_status_card.dart';
 import 'mixins/passenger_location_mixin.dart';
 import 'mixins/passenger_live_tracking_mixin.dart';
