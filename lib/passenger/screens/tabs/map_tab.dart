@@ -1077,7 +1077,7 @@ class _MapTabState extends State<MapTab>
           Positioned(
             bottom: 88,
             left: 16,
-            right: 16,
+            right: 80,
             child: RepaintBoundary(
               child: ValueListenableBuilder<int>(
                 valueListenable: liveDriversCount,
