@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../presentation/planner_ui_projection.dart';
+import '../presentation/planner_ui_projection.dart';
 
 
 /// Presentation-only status consumer for the latest Planner request.
