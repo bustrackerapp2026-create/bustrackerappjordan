@@ -4,11 +4,11 @@ import 'package:jordan_bus_tracker_new/models/vehicle_trip.dart';
 import 'package:jordan_bus_tracker_new/services/trip_duration_calculator.dart';
 
 void main() {
-  const startedAt = DateTime.utc(2026, 10, 3, 8, 15, 0);
+  final startedAt = DateTime.utc(2026, 10, 3, 8, 15, 0);
 
   VehicleTrip trip({
     VehicleTripStatus status = VehicleTripStatus.completed,
-    DateTime? started = startedAt,
+    DateTime? started,
     DateTime? ended,
   }) {
     return VehicleTrip(
@@ -47,7 +47,11 @@ void main() {
 
   test('returns null for an active trip', () {
     final result = TripDurationCalculator.calculate(
-      trip(status: VehicleTripStatus.active),
+      trip(
+        status: VehicleTripStatus.active,
+        started: startedAt,
+        ended: DateTime.utc(2026, 10, 3, 9, 47, 30),
+      ),
     );
 
     expect(result, isNull);
@@ -55,7 +59,11 @@ void main() {
 
   test('returns null for a cancelled trip', () {
     final result = TripDurationCalculator.calculate(
-      trip(status: VehicleTripStatus.cancelled),
+      trip(
+        status: VehicleTripStatus.cancelled,
+        started: startedAt,
+        ended: DateTime.utc(2026, 10, 3, 9, 47, 30),
+      ),
     );
 
     expect(result, isNull);
