@@ -25,21 +25,16 @@
 
 ## الحالة الحالية
 
-### آخر حالة موثقة — 2026-10-02
+### آخر حالة موثقة — 2026-10-03
 
 - الفرع المرجعي: `stage/approved-route-line-vehicle-link-v1`
-- أحدث commit تقني: `21869cc1c36fad3be71704ab7cf9dcde365fec1e` — **fix(ranking): restore GeoPoint test import**
-- أحدث commit توثيقي: `120e6cbef0e45d2eb94c2fea1204703102b6ae4e` — **docs(ranking): update closest criterion status**
-- baseline السابق: `6d217c5` — **Document planner UI projection contract**
-- `PassengerJourneyPresentationState` يملك فقط: `status` و`generation` و`error`.
-- `PlannerUiProjection` تبقى pure projection لحالة Planner فقط.
-- route snapshot والرسم الفعلي يبقيان مملوكين لـ`PassengerPlannedRoutesMixin`.
-- تم تنفيذ **Planner UI Projection Wiring** داخل `MapTab` بأصغر نطاق ممكن.
-- الاختبار المركّز: `flutter test test/planner_status_card_test.dart` → **6/6 passed**.
-- `flutter analyze` → **No issues found!**
-- `flutter test` → **335/335 passed**.
-- الزيادة من **329 → 335** تعود إلى اختبارات `PlannerStatusCard` الستة.
-- لا يوجد fallback من Planner إلى `NearbyRoutesService` في مسار الوجهة.
+- آخر commit في نقطة الاستقرار: `7edc80a0bd1ec5e5686a730386069f968a2e9cbd`.
+- **Development State:** **STABLE / AWAITING NEXT REQUIREMENT**.
+- Phase 7 — JourneyPlanner: **CLOSED ✅**.
+- Phase 8A — Engineering Ranking: **CLOSED within scope ✅**.
+- Phase 9 — Historical Analytics: **PAUSED AFTER SUCCESSFUL TRIP DURATION SLICE ✅**.
+- لا يوجد حاليًا Consumer أو Requirement يبرر Patch تاريخيًا جديدًا.
+- لا نبدأ Metric أو Framework إضافيًا لمجرد وجود عناصر مستقبلية في الـMaster Plan.
 
 ### Phase 7 — JourneyPlanner
 
@@ -66,6 +61,31 @@
 - الاختبارات المركزة: **15/15 passed**.
 - التحقق الكامل: `flutter analyze` بلا مشاكل و`flutter test` → **350/350 passed**.
 - التفاصيل: `docs/SMART_BUS_PHASE8A_CLOSEST_CRITERION_PREFLIGHT.md`.
+
+### Phase 9 — Historical Analytics
+
+الحالة الحالية:
+
+- **Trip Duration Contract v1** → **FROZEN ✅**.
+- **TripDurationCalculator** → **IMPLEMENTED ✅**.
+- **Focused test:** `flutter test test/trip_duration_calculator_test.dart` → **8/8 passed**.
+- `flutter analyze` → **No issues found!**
+- `flutter test` → **358/358 passed**.
+- التوثيق: `docs/SMART_BUS_PHASE9_TRIP_DURATION_CONTRACT.md` → **Implementation Closed ✅**.
+- نتيجة Trip Duration مثبتة على الـobserved test population، دون ادعاء اكتمال Historical Dataset أو production-scale statistical validation.
+- **Remaining Historical Analytics** → **DEFERRED**.
+- لا يوجد حاليًا Historical Analytics Consumer جديد يبرر تنفيذ `Segment Speed` أو `Delay` أو `Arrival Deviation` أو غيرها.
+- لا يوجد `HistoricalAnalyticsService` أو `AnalyticsRepository` أو Generic Metric Engine ضمن هذا النطاق.
+
+**قاعدة الإغلاق الحالية:**
+
+```text
+Phase 9
+└── Trip Duration → CLOSED ✅
+
+Historical Analytics
+→ PAUSED / AWAITING NEXT REQUIREMENT
+```
 
 ### Engineering Ranking Contract v1
 
