@@ -8,7 +8,7 @@ void main() {
 
   VehicleTrip trip({
     VehicleTripStatus status = VehicleTripStatus.completed,
-    DateTime? started = startedAt,
+    DateTime? started,
     DateTime? ended,
   }) {
     return VehicleTrip(
@@ -47,7 +47,11 @@ void main() {
 
   test('returns null for an active trip', () {
     final result = TripDurationCalculator.calculate(
-      trip(status: VehicleTripStatus.active),
+      trip(
+        status: VehicleTripStatus.active,
+        started: startedAt,
+        ended: DateTime.utc(2026, 10, 3, 9, 47, 30),
+      ),
     );
 
     expect(result, isNull);
@@ -55,7 +59,11 @@ void main() {
 
   test('returns null for a cancelled trip', () {
     final result = TripDurationCalculator.calculate(
-      trip(status: VehicleTripStatus.cancelled),
+      trip(
+        status: VehicleTripStatus.cancelled,
+        started: startedAt,
+        ended: DateTime.utc(2026, 10, 3, 9, 47, 30),
+      ),
     );
 
     expect(result, isNull);
