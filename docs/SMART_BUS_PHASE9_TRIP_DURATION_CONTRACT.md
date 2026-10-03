@@ -1,6 +1,6 @@
 # Phase 9 — Trip Duration Contract v1
 
-**Status: DESIGN FROZEN — Contract only**  
+**Status: CONTRACT FROZEN — IMPLEMENTATION CLOSED**  
 **Date: 2026-10-03**
 
 ## Purpose
@@ -73,6 +73,91 @@ Trip C → valid → duration
 
 This exclusion rule does not modify the underlying VehicleTrip record.
 
+## Implementation Slice
+
+The frozen contract was implemented as one focused production slice with no unrelated production changes.
+
+### Production file
+
+`lib/services/trip_duration_calculator.dart`
+
+The calculator is a pure deterministic domain helper:
+
+```text
+VehicleTrip
+→ completed
+→ timestamps present
+→ endedAt >= startedAt
+→ endedAt.difference(startedAt)
+→ Duration?
+```
+
+Invalid or incomplete input returns `null`.
+
+The implementation does not access the clock, Firestore, GPS, TripPing, ETA, RouteProgress, UI, or any tracking lifecycle.
+
+### Focused test file
+
+`test/trip_duration_calculator_test.dart`
+
+The focused suite covers:
+
+1. valid completed trip;
+2. zero duration;
+3. active trip excluded;
+4. cancelled trip excluded;
+5. missing `startedAt`;
+6. missing `endedAt`;
+7. `endedAt < startedAt`;
+8. input `VehicleTrip` remains unchanged.
+
+### Implementation commits
+
+Production slice:
+
+`bfc1e4f6517a068c8d05768689f3b62d777e61a2`
+
+Test correction:
+
+`24f04612453b163cac05687bdc6ac5aeec20c4b7`
+
+Final test fix:
+
+`27730133abd5feced3cda3f805ce7fd101ed5265`
+
+Documentation closeout:
+
+This document update is committed separately after verification.
+
+## Verification Evidence
+
+Verification was performed from the local project after pulling the final implementation commit.
+
+Focused test:
+
+```text
+flutter test test/trip_duration_calculator_test.dart
+→ 8/8 tests passed
+```
+
+Static analysis:
+
+```text
+flutter analyze
+→ No issues found
+```
+
+Full test suite:
+
+```text
+flutter test
+→ 358/358 tests passed
+```
+
+The full-suite output included existing DriverTracking-related test logging, but the suite completed successfully.
+
+These results verify the current implementation against the observed test population. They do not establish historical-dataset completeness or production-scale statistical quality.
+
 ## Explicit Non-Goals
 
 This contract does not:
@@ -111,8 +196,10 @@ The contract remains independent of any specific downstream consumer.
 
 Unit conversion, formatting, aggregation, filtering UI, persistence of derived metrics, or reporting semantics must be defined only when an actual consumer requires them.
 
-## Next Step
+## Closure
 
-The next step is a review of the smallest production implementation slice.
+The Trip Duration production slice is **closed within the current Phase 9 scope**.
 
-No Production Code is authorized by this document alone.
+No downstream Consumer, Firestore analytics reader, dashboard, aggregation framework, or additional Historical Analytics abstraction is introduced by this slice.
+
+Future Phase 9 work must begin from a newly established Consumer or Requirement rather than expanding this closed slice by assumption.
