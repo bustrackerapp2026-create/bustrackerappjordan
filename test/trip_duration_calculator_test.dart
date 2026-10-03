@@ -4,7 +4,7 @@ import 'package:jordan_bus_tracker_new/models/vehicle_trip.dart';
 import 'package:jordan_bus_tracker_new/services/trip_duration_calculator.dart';
 
 void main() {
-  final startedAt = DateTime.utc(2026, 10, 3, 8, 15, 0);
+  const startedAt = DateTime.utc(2026, 10, 3, 8, 15, 0);
 
   VehicleTrip trip({
     VehicleTripStatus status = VehicleTripStatus.completed,
