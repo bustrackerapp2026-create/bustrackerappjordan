@@ -36,6 +36,60 @@
 - لا يوجد حاليًا Consumer أو Requirement يبرر Patch تاريخيًا جديدًا.
 - لا نبدأ Metric أو Framework إضافيًا لمجرد وجود عناصر مستقبلية في الـMaster Plan.
 
+### مراجعة أمنية / Authorization Boundary — 2026-10-07
+
+تمت مراجعة تقرير **«المراجعة البرمجية — باصات الأردن»** ومقارنته بحالة الفرع الحالية، دون تعديل كود التطبيق أثناء المراجعة.
+
+**مصدر المراجعة:** تقرير المراجعة البرمجية — باصات الأردن، بتاريخ 2026-10-06، على الفرع:
+`stage/approved-route-line-vehicle-link-v1`.
+
+#### النتيجة الحالية
+
+المراجعة أكدت أن طبقة **Authorization / Data Integrity** تحتاج معالجة مستقلة، ولا تُعد جزءًا من العقود التشغيلية المغلقة سابقًا.
+
+| Finding | الحالة الحالية | القرار |
+| --- | --- | --- |
+| Vehicle Operational Session authorization | حماية إضافية موجودة في التطبيق، لكن شرط `isVerified` وحدود Rules تحتاج إثباتًا | **Needs Rules Emulator verification ⚠️** |
+| `driverPublic` publishing | Rules تسمح للمالك بالتحديث دون إثبات driver/verified/authorized | **Confirmed issue 🔴** |
+| `plannedRoutes` approval | إنشاء route من driver لا يفرض `pending`، و`RoutePlanService` يكتب `approved` | **Confirmed issue 🔴** |
+| Role consistency | التطبيق يستخدم `UserRoles.isDriverLike()` بينما Rules تعتمد `userType == driver` | **Confirmed mismatch 🟠** |
+| Registration partial failure | Auth ثم profile ثم assignment/route request بدون compensation/resume كامل | **Confirmed design gap 🟠** |
+| Pickup confirmations | صلاحيات التعديل لا تربط confirmation بهوية UID بشكل كافٍ | **Confirmed issue 🟠** |
+| `cancelledBy` audit integrity | Rules لا تثبت أن القيمة تعكس الطرف الذي نفذ الإلغاء | **Confirmed issue 🟠** |
+| CI coverage | workflow الحالي يركز على `main` ولا يمثل stage كـCI gate مكافئ | **Confirmed gap 🟠** |
+| Mapbox CI download credential | workflow يستخدم `MAPBOX_ACCESS_TOKEN` فقط؛ download token غير موثق في workflow | **CI gap 🟠** |
+| Production applicationId/signing | ما زال إعدادًا تجريبيًا | **Pre-release item 🟡** |
+| Public Mapbox token / `.env` | public client token قابل للاستخراج ويجب تقييده؛ download secret يجب فصله | **Pre-release item 🟡** |
+
+#### حدود هذه المراجعة
+
+- لا تعيد فتح **Phase 1 / RouteProgress / DriverTrackingHub / ETA / BusWatch / Planner / Ranking 8A / Trip Duration** لمجرد ظهور هذه Findings.
+- لا يتم تعديل GPS أو Mapbox أو Tracking Hub لمعالجة مشكلة Authorization في Firestore.
+- لا نعتبر أي Finding «مغلقًا» قبل وجود إصلاح صغير واختبار يثبت السلوك المطلوب.
+- **358/358** اختبارات Dart السابقة لا تثبت سلامة Firestore Rules؛ التقرير أشار إلى عدم وجود مجموعة Rules Emulator كافية لهذه الحدود.
+- فشل APK في بيئة المراجعة بسبب Mapbox SDK Registry token هو **CI/environment issue** ولا يلغي نجاح بناء APK المحلي الذي تم إثباته سابقًا.
+
+#### الأولوية المؤجلة
+
+**NEXT AUTHORIZATION PATCH — قبل استئناف الاختبارات الميدانية الموسعة:**
+
+1. **VehicleOperationalSession** — إضافة/تثبيت Rules Emulator tests لإثبات من يستطيع إنشاء/نقل الجلسة.
+2. **`driverPublic`** — تثبيت boundary تمنع النشر من حساب غير مصرح له.
+3. **`plannedRoutes`** — منع driver من إنشاء route بحالة `approved`؛ الاعتماد يجب أن يكون من Admin/trusted authority.
+4. بعد ذلك تُعالج بقية Findings في Patches مستقلة: roles، registration recovery، pickup confirmation integrity، cancellation audit، ثم CI/release readiness.
+
+**الحالة:**
+
+```text
+Authorization / Data Integrity Review
+→ REVIEWED
+→ 3 high-priority boundaries identified
+→ NO PATCH IMPLEMENTED YET
+→ AWAITING RULES EMULATOR PRECHECK
+```
+
+**قاعدة العمل:** لا ننتقل إلى Patch الإنتاج قبل إنهاء **Inspect → Rules Emulator Precheck → One Small Patch → Focused Test → flutter analyze → flutter test → Review → Document → Commit**.
+
 ### Phase 7 — JourneyPlanner
 
 الوحدات والعقود التالية **مغلقة ومثبتة**:
