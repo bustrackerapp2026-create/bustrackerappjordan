@@ -650,11 +650,27 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
+  Future<void> _resumeDriverTrackingAfterLifecycle() async {
+    await ensureDriverTrackingRunning();
+
+    if (!mounted || !_shouldTrackContinuously) return;
+
+    await _hub.restartTrackingStream();
+
+    if (!mounted || !_shouldTrackContinuously) return;
+
+    attachDriverTrackingUi();
+
+    if (isMapTabActive) {
+      _startPredictionLoop();
+    }
+  }
+
   void onDriverLocationLifecycle(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
         if (_shouldTrackContinuously) {
-          unawaited(ensureDriverTrackingRunning());
+          unawaited(_resumeDriverTrackingAfterLifecycle());
         }
         break;
       case AppLifecycleState.inactive:
