@@ -84,6 +84,31 @@ class DriverTrackingLifecycle {
     return _enqueue(_stopInternal);
   }
 
+  Future<void> restartIfRunning() {
+    if (_disposed ||
+        !_wantRunning ||
+        _boundUid == null ||
+        _activeProfile == null) {
+      return Future<void>.value();
+    }
+
+    final uid = _boundUid!;
+    final profile = _activeProfile!;
+
+    return _enqueue(() async {
+      if (_disposed || !_wantRunning || _boundUid != uid) return;
+
+      await _cancelStreamOnly();
+
+      if (_disposed || !_wantRunning || _boundUid != uid) return;
+
+      await _startInternal(
+        uid: uid,
+        profile: profile,
+      );
+    });
+  }
+
   Future<void> _startInternal({
     required String uid,
     required LocationTrackingProfile profile,
