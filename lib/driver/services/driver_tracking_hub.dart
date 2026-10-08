@@ -569,6 +569,10 @@ class DriverTrackingHub {
     await _lifecycle.requestStart(uid: uid, profile: profile);
   }
 
+  Future<void> restartTrackingStream() {
+    return _lifecycle.restartIfRunning();
+  }
+
   Future<void> requestStop() async {
     _wantOnline = false;
     _wantTrip = false;
