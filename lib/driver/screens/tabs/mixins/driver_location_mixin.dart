@@ -115,10 +115,25 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (_hub.mapUiHandler == _onHubPosition) {
       _hub.mapUiHandler = null;
     }
+    debugPrint(
+      '📷 FOLLOW-DIAG detach '
+      'follow=$followDriverCamera '
+      'hubLastPositionAt=${_hub.lastPosition?.timestamp.toIso8601String()} '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady',
+    );
     _stopPredictionLoop();
   }
 
   void _onHubPosition(geo.Position pos) {
+    debugPrint(
+      '📷 FOLLOW-DIAG hubPosition '
+      'positionAt=${pos.timestamp.toIso8601String()} '
+      'follow=$followDriverCamera '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady '
+      'active=$isMapTabActive',
+    );
     unawaited(
       _applyPosition(
         pos,
@@ -381,6 +396,18 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final doMove = _pendingMoveCamera;
     final doForce = _pendingForceUpload;
     _pendingPosition = null;
+
+    debugPrint(
+      '📷 FOLLOW-DIAG applyPosition '
+      'positionAt=${pos.timestamp.toIso8601String()} '
+      'doMove=$doMove '
+      'follow=$followDriverCamera '
+      'mounted=$mounted '
+      'active=$isMapTabActive '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady '
+      'pendingMove=$_pendingMoveCamera',
+    );
     _pendingMoveCamera = false;
     _pendingForceUpload = false;
 
@@ -403,6 +430,13 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           now.difference(_lastCameraUpdateAt!) >= _minCameraInterval;
       if (canMove) {
         _lastCameraUpdateAt = now;
+        debugPrint(
+          '📷 FOLLOW-DIAG setCamera:attempt '
+          'lat=${filtered.latitude} '
+          'lng=${filtered.longitude} '
+          'follow=$followDriverCamera '
+          'mapReady=$isMapReady',
+        );
         try {
           await mapboxMap!.setCamera(
             CameraOptions(
@@ -417,7 +451,19 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
               bearing: 0,
             ),
           );
-        } catch (_) {}
+          debugPrint(
+            '📷 FOLLOW-DIAG setCamera:success '
+            'follow=$followDriverCamera '
+            'mapReady=$isMapReady',
+          );
+        } catch (e, st) {
+          debugPrint(
+            '📷 FOLLOW-DIAG setCamera:FAIL '
+            'follow=$followDriverCamera '
+            'mapReady=$isMapReady '
+            'error=$e$n$st',
+          );
+        }
       }
     }
 
@@ -651,18 +697,61 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   }
 
   Future<void> _resumeDriverTrackingAfterLifecycle() async {
+    debugPrint(
+      '📷 FOLLOW-DIAG resume:start '
+      'follow=$followDriverCamera '
+      'hubLastPositionAt=${_hub.lastPosition?.timestamp.toIso8601String()} '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady',
+    );
+
     await ensureDriverTrackingRunning();
+
+    debugPrint(
+      '📷 FOLLOW-DIAG resume:afterEnsure '
+      'follow=$followDriverCamera '
+      'hubLastPositionAt=${_hub.lastPosition?.timestamp.toIso8601String()} '
+      'hubState=${_hub.state} '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady',
+    );
 
     if (!mounted || !_shouldTrackContinuously) return;
 
     await _hub.restartTrackingStream();
 
+    debugPrint(
+      '📷 FOLLOW-DIAG resume:afterRestart '
+      'follow=$followDriverCamera '
+      'hubLastPositionAt=${_hub.lastPosition?.timestamp.toIso8601String()} '
+      'hubState=${_hub.state} '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady',
+    );
+
     if (!mounted || !_shouldTrackContinuously) return;
 
     attachDriverTrackingUi();
 
+    debugPrint(
+      '📷 FOLLOW-DIAG resume:afterAttach '
+      'follow=$followDriverCamera '
+      'hubLastPositionAt=${_hub.lastPosition?.timestamp.toIso8601String()} '
+      'hubState=${_hub.state} '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady',
+    );
+
     if (isMapTabActive) {
       _startPredictionLoop();
+
+      debugPrint(
+        '📷 FOLLOW-DIAG predictionLoop:start '
+        'follow=$followDriverCamera '
+        'hubLastPositionAt=${_hub.lastPosition?.timestamp.toIso8601String()} '
+        'mapbox=${mapboxMap != null} '
+        'mapReady=$isMapReady',
+      );
     }
   }
 
