@@ -461,7 +461,7 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             '📷 FOLLOW-DIAG setCamera:FAIL '
             'follow=$followDriverCamera '
             'mapReady=$isMapReady '
-            'error=$e$n$st',
+            'error=$e\n$st',
           );
         }
       }
