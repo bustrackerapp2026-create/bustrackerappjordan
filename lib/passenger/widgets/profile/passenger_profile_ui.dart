@@ -112,7 +112,11 @@ class PassengerProfileSectionCard extends StatelessWidget {
           ),
         ],
       ),
-      child: child,
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: BorderRadius.circular(16),
+        child: child,
+      ),
     );
   }
 }

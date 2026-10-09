@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/theme_provider.dart';
 import '../../../core/widgets/pickup_label_size_setting.dart';
 import '../../../models/user_model.dart';
+import 'approved_route_line_screen.dart';
 import 'profile_ui.dart';
 
 /// جسم شاشة ملف السائق — بدون Scaffold داخلي (لوحة السائق لديها Scaffold).
@@ -39,6 +40,14 @@ class ProfileBody extends StatelessWidget {
     required this.onLogout,
     required this.onSnack,
   });
+
+  void _openApprovedRouteLine(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const ApprovedRouteLineScreen(),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -116,6 +125,13 @@ class ProfileBody extends StatelessWidget {
                         title: 'تعديل الملف الشخصي',
                         subtitle: 'الاسم · الهاتف · البريد · الباص · المسار · السعة',
                         onTap: onEditProfile,
+                      ),
+                      ProfileUi.divider(),
+                      ProfileUi.tile(
+                        icon: Icons.route_rounded,
+                        title: 'خط المسار المعتمد',
+                        subtitle: 'اختيار وإدارة المسار المعتمد للسائق',
+                        onTap: () => _openApprovedRouteLine(context),
                       ),
                       ProfileUi.divider(),
                       ProfileUi.tile(

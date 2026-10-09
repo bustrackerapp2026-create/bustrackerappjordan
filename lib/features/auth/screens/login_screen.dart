@@ -269,24 +269,30 @@ class _LoginScreenState extends State<LoginScreen>
                             MediaQuery.of(context).padding.bottom -
                             36,
                       ),
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 12),
-                          _buildHeader(l10n),
-                          const SizedBox(height: 28),
-                          _buildLoginCard(l10n),
-                          const SizedBox(height: 20),
-                          _buildRegisterRow(l10n),
-                          const SizedBox(height: 12),
-                          Text(
-                            l10n.appTagline,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.55),
-                              fontSize: 12,
-                              letterSpacing: 0.3,
-                            ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 460),
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 12),
+                              _buildHeader(l10n),
+                              const SizedBox(height: 24),
+                              _buildLoginCard(l10n),
+                              const SizedBox(height: 16),
+                              _buildRegisterRow(l10n),
+                              const SizedBox(height: 12),
+                              Text(
+                                l10n.appTagline,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  fontSize: 12,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -314,8 +320,8 @@ class _LoginScreenState extends State<LoginScreen>
     return Column(
       children: [
         Container(
-          width: 88,
-          height: 88,
+          width: 80,
+          height: 80,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: LinearGradient(
@@ -340,7 +346,7 @@ class _LoginScreenState extends State<LoginScreen>
           ),
           child: const Icon(
             Icons.directions_bus_filled_rounded,
-            size: 44,
+            size: 40,
             color: Colors.white,
           ),
         ),
@@ -388,10 +394,10 @@ class _LoginScreenState extends State<LoginScreen>
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxWidth: 420),
-      padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.18),
@@ -442,6 +448,13 @@ class _LoginScreenState extends State<LoginScreen>
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
               textDirection: TextDirection.ltr,
+              textCapitalization: TextCapitalization.none,
+              autofillHints: const [
+                AutofillHints.username,
+                AutofillHints.email,
+              ],
+              autocorrect: false,
+              enableSuggestions: false,
               validator: AppValidators.validateEmail,
               decoration: _fieldDecoration(
                 hint: 'example@gmail.com',
@@ -467,6 +480,7 @@ class _LoginScreenState extends State<LoginScreen>
               obscureText: _obscurePassword,
               textInputAction: TextInputAction.done,
               textDirection: TextDirection.ltr,
+              autofillHints: const [AutofillHints.password],
               autocorrect: false,
               enableSuggestions: false,
               validator: AppValidators.validatePassword,

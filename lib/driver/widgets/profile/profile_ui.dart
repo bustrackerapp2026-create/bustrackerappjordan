@@ -179,7 +179,11 @@ class ProfileUi {
               ),
             ],
           ),
-          child: child,
+          child: Material(
+            type: MaterialType.transparency,
+            borderRadius: BorderRadius.circular(16),
+            child: child,
+          ),
         );
       },
     );

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -19,12 +20,31 @@ class VehicleTripServiceException implements Exception {
 ///
 /// ┘à┘å┘ü╪╡┘ä╪⌐ ╪¬┘à╪º┘à┘ï╪º ╪╣┘å [TripService] ╪º┘ä╪«╪º╪╡╪⌐ ╪¿╪╖┘ä╪¿╪º╪¬ ╪º┘ä╪▒┘â╪º╪¿.
 /// Collection: vehicleTrips
+typedef ActiveTripsForRouteReader = Future<List<VehicleTrip>> Function({
+  required String routeId,
+  required String direction,
+});
+
 class VehicleTripService {
-  VehicleTripService._();
+  VehicleTripService._({
+    FirebaseFirestore? db,
+    ActiveTripsForRouteReader? activeTripsForRouteReader,
+  })  : _dbOverride = db,
+        _activeTripsForRouteReader = activeTripsForRouteReader;
+
   static final VehicleTripService instance = VehicleTripService._();
   factory VehicleTripService() => instance;
 
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  @visibleForTesting
+  VehicleTripService.forTesting({
+    required ActiveTripsForRouteReader activeTripsForRouteReader,
+  })  : _dbOverride = null,
+        _activeTripsForRouteReader = activeTripsForRouteReader;
+
+  final FirebaseFirestore? _dbOverride;
+  final ActiveTripsForRouteReader? _activeTripsForRouteReader;
+
+  FirebaseFirestore get _db => _dbOverride ?? FirebaseFirestore.instance;
 
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection('vehicleTrips');
@@ -91,6 +111,55 @@ class VehicleTripService {
   }
 
   /// ┘è╪¬╪¡┘é┘é ┘à┘à╪º ╪Ñ╪░╪º ┘â╪º┘å ┘ä┘ä╪│╪º╪ª┘é ╪▒╪¡┘ä╪⌐ ╪¬╪┤╪║┘è┘ä┘è╪⌐ ┘å╪┤╪╖╪⌐ ╪¡╪º┘ä┘è┘ï╪º.
+  Future<List<VehicleTrip>> findActiveTripsForRoute({
+    required String routeId,
+    required String direction,
+  }) async {
+    final normalizedRouteId = routeId.trim();
+    if (normalizedRouteId.isEmpty) {
+      throw const VehicleTripServiceException(
+        'معرف المسار مطلوب.',
+        code: 'invalid-route-id',
+      );
+    }
+
+    final normalizedDirection = _parseDirectionForStart(direction);
+    final reader = _activeTripsForRouteReader;
+
+    final List<VehicleTrip> records;
+    if (reader != null) {
+      records = await reader(
+        routeId: normalizedRouteId,
+        direction: normalizedDirection,
+      );
+    } else {
+      final snap = await _col
+          .where('routeId', isEqualTo: normalizedRouteId)
+          .where(
+            'direction',
+            isEqualTo: normalizedDirection,
+          )
+          .where(
+            'status',
+            isEqualTo: VehicleTripStatus.active.firestoreValue,
+          )
+          .get();
+
+      records = snap.docs
+          .map((doc) => VehicleTrip.fromMap(doc.data(), doc.id))
+          .toList(growable: false);
+    }
+
+    return records
+        .where(
+          (trip) =>
+              trip.status == VehicleTripStatus.active &&
+              trip.routeId == normalizedRouteId &&
+              trip.direction == normalizedDirection,
+        )
+        .toList(growable: false);
+  }
+
   Future<VehicleTrip?> findActiveTripForDriver(String driverId) async {
     if (driverId.isEmpty) return null;
 
@@ -111,6 +180,89 @@ class VehicleTripService {
   /// - [routeId] ┘è╪¼╪¿ ╪ú┘å ┘è╪┤┘è╪▒ ╪Ñ┘ä┘ë PlannedRoute ┘à╪╣╪¬┘à╪» (╪º┘ä╪¬╪¡┘é┘é ┘è╪¬┘à ┘é╪¿┘ä ╪º┘ä╪º╪│╪¬╪»╪╣╪º╪í).
   /// - [direction] ┘é┘è┘à╪¬┘ç outbound ╪ú┘ê return.
   /// - ┘ä╪º ┘è┘Å┘ü╪╣┘æ┘Ä┘ä DriverProvider ┘é╪¿┘ä ┘å╪¼╪º╪¡ ┘ç╪░┘ç ╪º┘ä╪╣┘à┘ä┘è╪⌐.
+  /// يحدّث آخر حالة حية لرحلة تشغيلية نشطة.
+  ///
+  /// يستخدم آخر موقع GPS فقط ولا يسجل التاريخ الكامل للرحلة؛
+  /// التسجيل التاريخي سيُدار لاحقًا عبر TripPing/Buffer.
+  Future<void> updateLiveLocation({
+    required String tripId,
+    required GeoPoint currentLocation,
+    double? speed,
+    double? heading,
+    double? routeProgress,
+  }) async {
+    final id = tripId.trim();
+    if (id.isEmpty) {
+      throw const VehicleTripServiceException(
+        'معرف الرحلة التشغيلية مطلوب.',
+        code: 'invalid-trip-id',
+      );
+    }
+
+    final latitude = currentLocation.latitude;
+    final longitude = currentLocation.longitude;
+    if (!latitude.isFinite ||
+        !longitude.isFinite ||
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180) {
+      throw const VehicleTripServiceException(
+        'موقع الرحلة التشغيلية غير صالح.',
+        code: 'invalid-location',
+      );
+    }
+
+    final normalizedSpeed =
+        speed != null && speed.isFinite && speed >= 0 ? speed : null;
+    final normalizedHeading =
+        heading != null && heading.isFinite && heading >= 0 ? heading : null;
+    final normalizedRouteProgress = _validateRouteProgress(routeProgress);
+
+    await _withRetryAndTimeout(() async {
+      await _col.doc(id).update(
+        buildLiveLocationUpdatePayload(
+          currentLocation: currentLocation,
+          speed: normalizedSpeed,
+          heading: normalizedHeading,
+          routeProgress: normalizedRouteProgress,
+        ),
+      );
+    });
+  }
+
+  static double? _validateRouteProgress(double? routeProgress) {
+    if (routeProgress == null) return null;
+    if (!routeProgress.isFinite || routeProgress < 0 || routeProgress > 1) {
+      throw const VehicleTripServiceException(
+        'نسبة تقدم الرحلة التشغيلية غير صالحة.',
+        code: 'invalid-route-progress',
+      );
+    }
+    return routeProgress;
+  }
+
+  @visibleForTesting
+  static Map<String, dynamic> buildLiveLocationUpdatePayload({
+    required GeoPoint currentLocation,
+    double? speed,
+    double? heading,
+    double? routeProgress,
+  }) {
+    final normalizedRouteProgress = _validateRouteProgress(routeProgress);
+    return {
+      // إرسال active يمنع تحديث رحلة أنهِيت بالتزامن مع هذا الـGPS.
+      'status': VehicleTripStatus.active.firestoreValue,
+      'currentLocation': currentLocation,
+      'speed': speed,
+      'heading': heading,
+      'lastLocationAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      if (normalizedRouteProgress != null)
+        'routeProgress': normalizedRouteProgress,
+    };
+  }
+
   Future<VehicleTrip> startTrip({
     required String driverId,
     required String busNumber,
@@ -120,8 +272,13 @@ class VehicleTripService {
     double? speed,
     double? heading,
   }) async {
-    if (driverId.isEmpty) {
-      throw const VehicleTripServiceException('┘à╪╣╪▒┘ü ╪º┘ä╪│╪º╪ª┘é ┘à╪╖┘ä┘ê╪¿.');
+    if (driverId.trim().isEmpty) {
+      throw const VehicleTripServiceException('معرف السائق مطلوب.');
+    }
+    if (busNumber.trim().isEmpty) {
+      throw const VehicleTripServiceException(
+        'رقم الباص/السرفيس مطلوب للرحلة التشغيلية.',
+      );
     }
     if (routeId.isEmpty) {
       throw const VehicleTripServiceException('┘à╪╣╪▒┘ü ╪º┘ä┘à╪│╪º╪▒ ┘à╪╖┘ä┘ê╪¿.');
@@ -133,7 +290,7 @@ class VehicleTripService {
     final trip = VehicleTrip(
       id: docRef.id,
       driverId: driverId,
-      busNumber: busNumber.trim().isEmpty ? 'ΓÇö' : busNumber.trim(),
+      busNumber: busNumber.trim(),
       routeId: routeId,
       direction: normalizedDirection,
       status: VehicleTripStatus.active,

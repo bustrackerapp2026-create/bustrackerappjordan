@@ -4,8 +4,9 @@ import '../../../core/theme/app_theme.dart';
 import '../../../l10n/app_localizations.dart';
 import 'pending_points_tab.dart';
 import 'pending_routes_tab.dart';
+import 'route_requests_tab.dart';
 
-/// مركز المراجعات: نقاط التوقف + مسارات الخطوط.
+/// مركز المراجعات: نقاط التوقف + مسارات الخطوط + طلبات مسارات السائقين.
 class AdminPendingHub extends StatefulWidget {
   final void Function({
     required double latitude,
@@ -27,7 +28,7 @@ class _AdminPendingHubState extends State<AdminPendingHub>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -47,12 +48,18 @@ class _AdminPendingHubState extends State<AdminPendingHub>
           elevation: 1,
           child: TabBar(
             controller: _tabs,
+            isScrollable: true,
             labelColor: AppTheme.primaryColor,
             unselectedLabelColor: Colors.grey.shade600,
             indicatorColor: AppTheme.primaryColor,
             tabs: [
               Tab(text: l10n.isArabic ? 'نقاط التوقف' : 'Pickup points'),
               Tab(text: l10n.isArabic ? 'مسارات الخطوط' : 'Line routes'),
+              Tab(
+                text: l10n.isArabic
+                    ? 'طلبات مسارات السائقين'
+                    : 'Driver route requests',
+              ),
             ],
           ),
         ),
@@ -65,6 +72,7 @@ class _AdminPendingHubState extends State<AdminPendingHub>
                 embedded: true,
               ),
               const PendingRoutesTab(),
+              const RouteRequestsTab(),
             ],
           ),
         ),

@@ -31,6 +31,14 @@ service cloud.firestore {
       return userExists() && userType() == 'driver';
     }
 
+    function isAssignedVehicleToCurrentUser() {
+      return isSignedIn()
+        && userExists()
+        && resource.data.busNumber is string
+        && resource.data.busNumber.size() > 0
+        && resource.data.busNumber == userDoc().data.busNumber;
+    }
+
     function isPassenger() {
       return userExists() && userType() == 'passenger';
     }
@@ -104,6 +112,52 @@ service cloud.firestore {
         'locationUpdatedAt',
         'updatedAt'
       ]);
+    }
+
+    function isVerifiedDriverAssignedToRoute(routeId) {
+      return isDriver()
+        && userDoc().data.get('isVerified', false) == true
+        && userDoc().data.get('routeId', '') == routeId;
+    }
+
+    function isVehicleSessionOwnedByCurrentUser(busNumber) {
+      return isDriver()
+        && busNumber is string
+        && busNumber.size() > 0
+        && busNumber == userDoc().data.get('busNumber', '')
+        && exists(/databases/$(database)/documents/vehicleOperationalSessions/$(busNumber))
+        && get(/databases/$(database)/documents/vehicleOperationalSessions/$(busNumber)).data.status == 'active'
+        && get(/databases/$(database)/documents/vehicleOperationalSessions/$(busNumber)).data.activeDriverId == request.auth.uid;
+    }
+
+
+    function isOwnActiveVehicleTrip(
+      tripId,
+      routeId,
+      direction
+    ) {
+      return isDriver()
+        && tripId is string
+        && tripId.size() > 0
+        && routeId is string
+        && routeId.size() > 0
+        && direction in ['outbound', 'return']
+        && exists(/databases/$(database)/documents/vehicleTrips/$(tripId))
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.status == 'active'
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.driverId == request.auth.uid
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.routeId == routeId
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.direction == direction;
+    }
+
+    function hasMatchingActiveVehicleTrip(tripId, busNumber) {
+      return tripId is string
+        && tripId.size() > 0
+        && busNumber is string
+        && busNumber.size() > 0
+        && exists(/databases/$(database)/documents/vehicleTrips/$(tripId))
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.status == 'active'
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.driverId == request.auth.uid
+        && get(/databases/$(database)/documents/vehicleTrips/$(tripId)).data.busNumber == busNumber;
     }
 
     match /users/{userId} {
@@ -223,10 +277,9 @@ service cloud.firestore {
     }
     
     match /routeCatalog/{routeId} {
-  allow read: if resource.data.status == 'approved';
-
-  allow create, update, delete: if isAdmin();
-} 
+      allow read: if resource.data.status == 'approved';
+      allow create, update, delete: if isAdmin();
+    } 
 
     match /plannedRoutes/{routeId} {
       allow read: if isSignedIn();
@@ -250,19 +303,77 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Fixed route stops are read-only at this stage.
+    // Write permissions will be added only with the future admin-management flow.
+    match /plannedRoutes/{routeId}/stops/{stopId} {
+      allow read: if isSignedIn();
+    }
+
     // Smart Bus / VehicleTrip — الرحلة التشغيلية للحافلة
+
+    // Historical telemetry for active VehicleTrips.
+    match /tripPings/{pingId} {
+      allow read: if isAdmin();
+
+      allow create: if isOwnActiveVehicleTrip(
+          request.resource.data.tripId,
+          request.resource.data.routeId,
+          request.resource.data.direction
+        )
+        && request.resource.data.keys().hasOnly([
+          'tripId',
+          'routeId',
+          'direction',
+          'location',
+          'speed',
+          'heading',
+          'timestamp'
+        ])
+        && request.resource.data.location is latlng
+        && request.resource.data.timestamp is timestamp
+        && request.resource.data.timestamp <= request.time
+        && (request.resource.data.speed == null
+          || request.resource.data.speed is number)
+        && (request.resource.data.heading == null
+          || request.resource.data.heading is number);
+
+      // Required for an idempotent retry of the same deterministic ping ID.
+      // Existing historical samples are immutable.
+      allow update: if isOwnActiveVehicleTrip(
+          resource.data.tripId,
+          resource.data.routeId,
+          resource.data.direction
+        )
+        && request.resource.data == resource.data;
+
+      allow delete: if isAdmin();
+    }
+
     match /vehicleTrips/{tripId} {
       allow read: if isSignedIn();
 
-      allow create: if isDriver()
+      allow create: if isVerifiedDriverAssignedToRoute(request.resource.data.routeId)
+        && isVehicleSessionOwnedByCurrentUser(request.resource.data.busNumber)
         && request.resource.data.driverId == request.auth.uid
         && request.resource.data.routeId is string
         && request.resource.data.routeId.size() > 0
         && request.resource.data.direction in ['outbound', 'return']
         && request.resource.data.status == 'active'
-        && request.resource.data.busNumber is string;
+        && request.resource.data.busNumber is string
+        && request.resource.data.busNumber.size() > 0;
 
-      allow update: if isAdmin()
+      // أي تعيين يبقى قابلاً للتشغيل يجب أن يحمل هوية المركبة.
+      // السجلات القديمة غير الصالحة يمكن تحويلها فقط إلى rejected/revoked للتدقيق.
+      allow update: if (
+          isAdmin()
+          && (
+            (
+              request.resource.data.busNumber is string
+              && request.resource.data.busNumber.size() > 0
+            )
+            || request.resource.data.status in ['rejected', 'revoked']
+          )
+        )
         || (
           isDriver()
           && resource.data.driverId == request.auth.uid
@@ -312,19 +423,129 @@ service cloud.firestore {
       allow delete: if isDriver() && isOwner(driverId) || isAdmin();
     }
 
+    // جلسة تشغيلية واحدة لكل مركبة.
+    // تعدد السائقين مسموح في الحسابات، لكن مركبة واحدة لا تملك
+    // أكثر من سائق تشغيلي فعال في اللحظة نفسها.
+    match /vehicleOperationalSessions/{sessionId} {
+      allow read: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.activeDriverId == request.auth.uid
+        )
+        // يحتاج السائق إلى قراءة وثيقة مركبته قبل claimOrRefresh،
+        // حتى عندما لا تكون الوثيقة موجودة بعد (قراءة transaction).
+        || (
+          isDriver()
+          && sessionId == userDoc().data.get('busNumber', '')
+        );
+
+      allow create: if isDriver()
+        && request.resource.data.busNumber is string
+        && request.resource.data.busNumber.size() > 0
+        && request.resource.data.busNumber == userDoc().data.busNumber
+        && request.resource.data.activeDriverId == request.auth.uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.isTripActive == false
+        && request.resource.data.tripId == '';
+
+      allow update: if isAdmin()
+        || (
+          isDriver()
+          && request.resource.data.busNumber is string
+          && request.resource.data.busNumber.size() > 0
+          && request.resource.data.busNumber == userDoc().data.busNumber
+          && (
+            (
+              resource.data.activeDriverId == request.auth.uid
+              && request.resource.data.activeDriverId == request.auth.uid
+              && request.resource.data.status == 'active'
+              && (
+                request.resource.data.isTripActive == false
+                || hasMatchingActiveVehicleTrip(
+                  request.resource.data.tripId,
+                  request.resource.data.busNumber
+                )
+              )
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'busNumber',
+                'activeDriverId',
+                'status',
+                'isTripActive',
+                'tripId',
+                'lastLatitude',
+                'lastLongitude',
+                'lastHeartbeatAt',
+                'updatedAt'
+              ])
+            )
+            ||
+            (
+              resource.data.busNumber == userDoc().data.busNumber
+              && resource.data.status != 'active'
+              && request.resource.data.activeDriverId == request.auth.uid
+              && request.resource.data.status == 'active'
+              && request.resource.data.isTripActive == false
+              && request.resource.data.tripId == ''
+            )
+            ||
+            (
+              resource.data.busNumber == userDoc().data.busNumber
+              && resource.data.status == 'active'
+              && resource.data.isTripActive == false
+              && request.resource.data.activeDriverId == request.auth.uid
+              && request.resource.data.status == 'active'
+              && request.resource.data.isTripActive == false
+              && request.resource.data.tripId == ''
+              && request.resource.data.handoverReason == 'stale-session-and-location-check'
+              && request.resource.data.handedOverAt == request.time
+              && request.resource.data.lastHeartbeatAt == request.time
+            )
+            ||
+            (
+              resource.data.activeDriverId == request.auth.uid
+              && request.resource.data.activeDriverId == request.auth.uid
+              && request.resource.data.status == 'released'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'status',
+                'releasedAt',
+                'updatedAt'
+              ])
+              && request.resource.data.releasedAt == request.time
+            )
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
     // الخط التشغيلي الرسمي المستقل عن المسار الجغرافي.
     match /transitLines/{lineId} {
       allow read: if isSignedIn();
 
-      allow create: if isDriver()
-        && request.resource.data.proposedBy == request.auth.uid
-        && request.resource.data.status == 'pending'
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() <= 120
-        && request.resource.data.normalizedName is string
-        && request.resource.data.normalizedName.size() > 0
-        && request.resource.data.proposedBy is string;
+      allow create: if (
+          isDriver()
+          && request.resource.data.proposedBy == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 120
+          && request.resource.data.normalizedName is string
+          && request.resource.data.normalizedName.size() > 0
+          && request.resource.data.proposedBy is string
+        )
+        || (
+          isAdmin()
+          && request.resource.data.proposedBy == request.auth.uid
+          && request.resource.data.approvedBy == request.auth.uid
+          && request.resource.data.status == 'approved'
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 120
+          && request.resource.data.normalizedName is string
+          && request.resource.data.normalizedName.size() > 0
+          && request.resource.data.proposedBy is string
+          && request.resource.data.approvedBy is string
+        );
 
       allow update: if isAdmin()
         || (
@@ -352,14 +573,38 @@ service cloud.firestore {
     // طلب تعيين خط رسمي للسائق — الاعتماد النهائي بيد الأدمن.
     match /driverLineAssignments/{assignmentId} {
       allow read: if isAdmin()
-        || (isSignedIn() && resource.data.driverId == request.auth.uid);
+        || (isSignedIn() && (
+          resource.data.driverId == request.auth.uid
+          || isAssignedVehicleToCurrentUser()
+        ));
 
-      allow create: if isDriver()
-        && request.resource.data.driverId == request.auth.uid
-        && request.resource.data.requestedBy == request.auth.uid
-        && request.resource.data.lineId is string
-        && request.resource.data.lineId.size() > 0
-        && request.resource.data.status == 'pending';
+      allow create: if (
+          isAdmin()
+          && request.resource.data.driverId is string
+          && request.resource.data.driverId.size() > 0
+          && request.resource.data.busNumber is string
+          && request.resource.data.busNumber.size() > 0
+          && request.resource.data.requestedBy is string
+          && request.resource.data.requestedBy.size() > 0
+          && request.resource.data.routeId is string
+          && request.resource.data.routeId.size() > 0
+          && request.resource.data.lineId is string
+          && request.resource.data.lineId.size() > 0
+          && request.resource.data.status == 'approved'
+          && request.resource.data.reviewedBy == request.auth.uid
+        )
+        || (
+          isDriver()
+          && request.resource.data.driverId == request.auth.uid
+          && request.resource.data.requestedBy == request.auth.uid
+          && request.resource.data.busNumber is string
+          && request.resource.data.busNumber.size() > 0
+          && request.resource.data.routeId is string
+          && request.resource.data.routeId.size() > 0
+          && request.resource.data.lineId is string
+          && request.resource.data.lineId.size() > 0
+          && request.resource.data.status == 'pending'
+        );
 
       allow update: if isAdmin()
         || (
@@ -382,6 +627,58 @@ service cloud.firestore {
           && resource.data.driverId == request.auth.uid
           && resource.data.status == 'pending'
         );
+    }
+
+    // طلب مسار جديد من السائق عندما لا يكون المسار موجودًا في الكتالوج.
+    match /driverRouteRequests/{requestId} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.driverId == request.auth.uid);
+
+      allow create: if isDriver()
+        && request.resource.data.driverId == request.auth.uid
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.lineName is string
+        && request.resource.data.lineName.size() > 0
+        && request.resource.data.lineName.size() <= 120
+        && request.resource.data.startName is string
+        && request.resource.data.startName.size() > 0
+        && request.resource.data.startName.size() <= 200
+        && request.resource.data.endName is string
+        && request.resource.data.endName.size() > 0
+        && request.resource.data.endName.size() <= 200
+        && request.resource.data.direction in ['outbound', 'return']
+        && request.resource.data.keys().hasOnly([
+          'driverId',
+          'lineId',
+          'lineName',
+          'startName',
+          'middleName',
+          'endName',
+          'direction',
+          'status',
+          'requestedBy',
+          'requestedAt',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow update: if isAdmin()
+        || (
+          isDriver()
+          && resource.data.driverId == request.auth.uid
+          && resource.data.requestedBy == request.auth.uid
+          && resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status',
+            'updatedAt'
+          ])
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.driverId == resource.data.driverId
+          && request.resource.data.requestedBy == resource.data.requestedBy
+        );
+
+      allow delete: if isAdmin();
     }
 
     // معالم الخريطة الخاصة بالمشروع (طبقة خاصة فوق Mapbox)

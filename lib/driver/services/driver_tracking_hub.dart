@@ -1,9 +1,22 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 
+import '../../models/planned_route_stop_model.dart';
+import '../../models/route_point.dart';
+import '../../models/trip_ping.dart';
+import '../../services/accepted_eta_observation.dart';
+import '../../services/historical_sampling_policy.dart';
 import '../../services/location_service.dart';
+import '../../services/route_progress_calculator.dart';
+import '../../services/trip_ping_buffer.dart';
+import '../../services/trip_ping_service.dart';
+import '../../services/vehicle_trip_service.dart';
+import '../../services/route_progress_tracker.dart';
+import '../../services/stop_runtime_snapshot_resolver.dart';
+import '../../services/stop_runtime_policy.dart';
 import 'driver_tracking_lifecycle.dart';
 
 /// نقطة مركزية لتتبع السائق — تبقى حية حتى لو أُغلقت شاشة الخريطة.
@@ -32,18 +45,496 @@ class DriverTrackingHub {
   bool _wantOnline = false;
   bool _wantTrip = false;
 
+  VehicleTripService? _vehicleTripServiceInstance;
+  VehicleTripService get _vehicleTripService =>
+      _vehicleTripServiceInstance ??= VehicleTripService();
+  final RouteProgressTracker _routeProgressTracker = RouteProgressTracker();
+
+  String? _activeVehicleTripId;
+  DateTime? _lastVehicleTripLocationWriteAt;
+  Timer? _vehicleTripFlushTimer;
+  bool _vehicleTripWriteInFlight = false;
+  geo.Position? _pendingVehicleTripPosition;
+
+  final TripPingBuffer _tripPingBuffer = TripPingBuffer();
+  TripPingService? _tripPingServiceInstance;
+  TripPingService get _tripPingService =>
+      _tripPingServiceInstance ??= TripPingService();
+  Future<void>? _tripPingUploadFuture;
+  Timer? _tripPingUploadTimer;
+  bool _historicalCapturePaused = false;
+  String? _activeVehicleTripRouteId;
+  String? _activeVehicleTripDirection;
+  List<RoutePoint>? _activeVehicleTripRoutePoints;
+  List<PlannedRouteStopModel>? _activeVehicleTripStops;
+  StopRuntimePolicy? _activeStopRuntimePolicy;
+  StopRuntimeSnapshot? _activeStopRuntimeSnapshot;
+  AcceptedEtaObservation? _activeEtaObservation;
+  DateTime? _lastHistoricalPingAt;
+
+  static const Duration _vehicleTripLocationInterval =
+      Duration(seconds: 5);
+  // المرحلة الأولى تستخدم نفس cadence الحالة الحية حتى لا ننشئ
+  // معدل GPS مستقلًا قبل تثبيت سياسة Historical Sampling النهائية.
+  static const Duration _historicalPingInterval = Duration(seconds: 5);
+  static const Duration _historicalUploadInterval = Duration(seconds: 20);
+  static const int _historicalBatchSize = 5;
+
   DriverTrackingState get state => _lifecycle.state;
   bool get isRunning => _lifecycle.isRunning;
   geo.Position? get lastPosition => _lifecycle.lastPosition;
+
+  int get bufferedTripPingCount => _tripPingBuffer.length;
+
+  RouteProgressProjection? get activeRouteProgress =>
+      _routeProgressTracker.lastAccepted;
+
+  /// Fixed Stops loaded for the currently bound VehicleTrip.
+  ///
+  /// Null means the Stops snapshot is not currently available; an empty
+  /// list is a valid loaded result containing no Stops.
+  List<PlannedRouteStopModel>? get activeVehicleTripStops =>
+      _activeVehicleTripStops;
+
+  /// Latest locally derived Stop runtime snapshot for the accepted progress.
+  StopRuntimeSnapshot? get activeStopRuntimeSnapshot =>
+      _activeStopRuntimeSnapshot;
+
+  /// Latest accepted GPS observation paired with the accepted route progress.
+  ///
+  /// A rejected GPS sample never replaces this observation. A backward GPS
+  /// jitter sample can replace it when RouteProgress accepts the sample while
+  /// clamping the route-axis position to the previous accepted position.
+  AcceptedEtaObservation? get activeEtaObservation => _activeEtaObservation;
+
+  /// Policy explicitly bound to the active operational VehicleTrip.
+  StopRuntimePolicy? get activeStopRuntimePolicy => _activeStopRuntimePolicy;
+
+  /// يربط الـHub بمعرف VehicleTrip النشطة وبياناتها اللازمة للتسجيل التاريخي.
+  ///
+  /// بيانات Historical تبقى أولًا في الـBuffer، ثم تُرفع على دفعات أثناء
+  /// الرحلة، مع Flush نهائي قبل إنهاء VehicleTrip.
+  ///
+  /// يربط الـHub بمعرف VehicleTrip النشطة حتى يستمر التحديث
+  /// حتى لو أُغلقت واجهة الخريطة أو تغيرت الشاشة.
+  void setActiveVehicleTrip(
+    String? tripId, {
+    String? routeId,
+    String? direction,
+    List<RoutePoint>? routePoints,
+    double? savedRouteProgress,
+    StopRuntimePolicy? stopRuntimePolicy,
+  }) {
+    final normalized = tripId?.trim();
+    _vehicleTripFlushTimer?.cancel();
+    _vehicleTripFlushTimer = null;
+    _tripPingUploadTimer?.cancel();
+    _tripPingUploadTimer = null;
+    _historicalCapturePaused = false;
+
+    if (normalized == null || normalized.isEmpty) {
+      _activeVehicleTripId = null;
+      _activeVehicleTripRouteId = null;
+      _activeVehicleTripDirection = null;
+      _activeVehicleTripRoutePoints = null;
+      _activeVehicleTripStops = null;
+      _activeStopRuntimePolicy = null;
+      _activeStopRuntimeSnapshot = null;
+      _activeEtaObservation = null;
+      _routeProgressTracker.reset();
+      _lastVehicleTripLocationWriteAt = null;
+      _lastHistoricalPingAt = null;
+      _pendingVehicleTripPosition = null;
+      return;
+    }
+
+    final normalizedRouteId = routeId?.trim();
+    final normalizedDirection = direction?.trim().toLowerCase();
+
+    if (_activeVehicleTripId == normalized) {
+      final routeChanged = normalizedRouteId != null &&
+          normalizedRouteId.isNotEmpty &&
+          normalizedRouteId != _activeVehicleTripRouteId;
+
+      if (routeChanged) {
+        _routeProgressTracker.reset();
+        _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
+        _activeVehicleTripStops = null;
+        _activeStopRuntimePolicy = stopRuntimePolicy;
+        _activeStopRuntimeSnapshot = null;
+        _activeEtaObservation = null;
+      } else if (routePoints != null &&
+          !_sameRoutePoints(_activeVehicleTripRoutePoints, routePoints)) {
+        _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
+      }
+
+      if (normalizedRouteId != null && normalizedRouteId.isNotEmpty) {
+        _activeVehicleTripRouteId = normalizedRouteId;
+      }
+      if (normalizedDirection != null && normalizedDirection.isNotEmpty) {
+        _activeVehicleTripDirection = normalizedDirection;
+      }
+      if (stopRuntimePolicy != null) {
+        _activeStopRuntimePolicy = stopRuntimePolicy;
+      }
+
+      if (_routeProgressTracker.lastAccepted == null &&
+          savedRouteProgress != null) {
+        _seedRouteProgress(savedRouteProgress);
+      }
+
+      _scheduleHistoricalTripPingUpload();
+      return;
+    }
+
+    _routeProgressTracker.reset();
+    _activeVehicleTripId = normalized;
+    _activeVehicleTripRouteId =
+        normalizedRouteId?.isNotEmpty == true ? normalizedRouteId : null;
+    _activeVehicleTripDirection =
+        normalizedDirection?.isNotEmpty == true ? normalizedDirection : null;
+    _activeVehicleTripRoutePoints = _copyRoutePoints(routePoints);
+    _activeVehicleTripStops = null;
+    _activeStopRuntimePolicy = stopRuntimePolicy;
+    _activeStopRuntimeSnapshot = null;
+    _activeEtaObservation = null;
+    _seedRouteProgress(savedRouteProgress);
+    _lastVehicleTripLocationWriteAt = null;
+    _lastHistoricalPingAt = null;
+    _pendingVehicleTripPosition = null;
+    _scheduleHistoricalTripPingUpload();
+  }
+
+  /// Stores a Stops snapshot only if it still belongs to the active
+  /// VehicleTrip and its currently bound route.
+  ///
+  /// The Hub does not read Firestore here. Callers load Stops outside the GPS
+  /// hot path and pass the resulting snapshot into this method.
+  void setActiveVehicleTripStops({
+    required String tripId,
+    required String routeId,
+    required List<PlannedRouteStopModel> stops,
+  }) {
+    final normalizedTripId = tripId.trim();
+    final normalizedRouteId = routeId.trim();
+    if (normalizedTripId.isEmpty || normalizedRouteId.isEmpty) return;
+    if (_activeVehicleTripId != normalizedTripId ||
+        _activeVehicleTripRouteId != normalizedRouteId) {
+      return;
+    }
+
+    _activeVehicleTripStops =
+        List<PlannedRouteStopModel>.unmodifiable(stops);
+    refreshActiveStopRuntimeSnapshot();
+  }
+
+  /// Refreshes the derived Stop runtime snapshot from the latest
+  /// accepted RouteProgress and already loaded Stops.
+  ///
+  /// The policy was explicitly bound when the active VehicleTrip was
+  /// established. No Firestore access occurs here.
+  StopRuntimeSnapshot? refreshActiveStopRuntimeSnapshot() {
+    final routePoints = _activeVehicleTripRoutePoints;
+    final stops = _activeVehicleTripStops;
+    final policy = _activeStopRuntimePolicy;
+    final vehicleAlongMeters =
+        _routeProgressTracker.lastAccepted?.alongMeters;
+
+    if (routePoints == null ||
+        routePoints.length < 2 ||
+        stops == null ||
+        policy == null) {
+      _activeStopRuntimeSnapshot = null;
+      return null;
+    }
+
+    if (vehicleAlongMeters == null || !vehicleAlongMeters.isFinite) {
+      _activeStopRuntimeSnapshot = null;
+      return null;
+    }
+
+    final snapshot = StopRuntimeSnapshotResolver.resolve(
+      routePoints: routePoints,
+      vehicleAlongMeters: vehicleAlongMeters,
+      stops: stops,
+      isEligible: policy.eligibility,
+      statePolicy: policy.statePolicy,
+    );
+
+    _activeStopRuntimeSnapshot = snapshot;
+    return snapshot;
+  }
+
+  List<RoutePoint>? _copyRoutePoints(List<RoutePoint>? routePoints) {
+    if (routePoints == null || routePoints.isEmpty) return null;
+    return List<RoutePoint>.unmodifiable(routePoints);
+  }
+
+  bool _sameRoutePoints(
+    List<RoutePoint>? current,
+    List<RoutePoint> next,
+  ) {
+    if (current == null || current.length != next.length) return false;
+    for (var i = 0; i < next.length; i++) {
+      final a = current[i];
+      final b = next[i];
+      if (a.latitude != b.latitude || a.longitude != b.longitude) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _seedRouteProgress(double? savedRouteProgress) {
+    if (savedRouteProgress == null) return;
+    final routePoints = _activeVehicleTripRoutePoints;
+    if (routePoints == null || routePoints.length < 2) return;
+    _routeProgressTracker.seedFromProgress(
+      routePoints: routePoints,
+      progress: savedRouteProgress,
+    );
+  }
+
+  RouteProgressProjection? updateRouteProgress(geo.Position position) {
+    final routePoints = _activeVehicleTripRoutePoints;
+    if (routePoints == null || routePoints.length < 2) return null;
+
+    final beforeAccepted = _routeProgressTracker.lastAccepted;
+    final result = _routeProgressTracker.update(
+      routePoints: routePoints,
+      latitude: position.latitude,
+      longitude: position.longitude,
+      accuracy: position.accuracy,
+      timestamp: position.timestamp,
+      speedMetersPerSecond: position.speed,
+    );
+    final afterAccepted = _routeProgressTracker.lastAccepted;
+
+    if (afterAccepted != null && !identical(afterAccepted, beforeAccepted)) {
+      _activeEtaObservation = AcceptedEtaObservation(
+        acceptedRouteProgress: afterAccepted,
+        speedMps: position.speed,
+        observedAt: position.timestamp,
+      );
+      refreshActiveStopRuntimeSnapshot();
+    }
+
+    return result;
+  }
+
+  void clearActiveVehicleTrip() {
+    setActiveVehicleTrip(null);
+  }
+
+  void _scheduleHistoricalTripPingUpload() {
+    if (_activeVehicleTripId == null || _activeVehicleTripId!.isEmpty) {
+      return;
+    }
+    _tripPingUploadTimer?.cancel();
+    _tripPingUploadTimer = Timer(
+      _historicalUploadInterval,
+      () => unawaited(
+        flushHistoricalTripPings(),
+      ),
+    );
+  }
+
+  Future<void> _runHistoricalTripPingUpload({required bool force}) async {
+    if (_historicalCapturePaused && !force) return;
+    final batch = _tripPingBuffer.peekBatch(TripPingService.maxBatchSize);
+    if (batch.isEmpty) return;
+    if (!force && batch.length < _historicalBatchSize) return;
+
+    _tripPingUploadFuture = Future<void>(() async {
+      await _tripPingService.uploadBatch(batch);
+      _tripPingBuffer.removeFirst(batch.length);
+    });
+
+    try {
+      await _tripPingUploadFuture!;
+    } finally {
+      _tripPingUploadFuture = null;
+    }
+  }
+
+  Future<void> flushHistoricalTripPings({bool force = false}) async {
+    if (_activeVehicleTripId == null || _activeVehicleTripId!.isEmpty) return;
+
+    try {
+      if (_tripPingUploadFuture != null) {
+        await _tripPingUploadFuture;
+      }
+
+      if (force) {
+        _historicalCapturePaused = true;
+      }
+
+      while (!_tripPingBuffer.isEmpty) {
+        await _runHistoricalTripPingUpload(force: true);
+      }
+    } catch (e) {
+      if (force) {
+        _historicalCapturePaused = false;
+        rethrow;
+      }
+      debugPrint('🧭 Historical TripPing batch upload failed: $e');
+    } finally {
+      _tripPingUploadTimer?.cancel();
+      _tripPingUploadTimer = null;
+      if (!force &&
+          _activeVehicleTripId != null &&
+          _activeVehicleTripId!.isNotEmpty &&
+          !_tripPingBuffer.isEmpty) {
+        _scheduleHistoricalTripPingUpload();
+      }
+    }
+  }
+
+  void _captureHistoricalTripPing(geo.Position position) {
+    if (_historicalCapturePaused) return;
+
+    final tripId = _activeVehicleTripId;
+    final routeId = _activeVehicleTripRouteId;
+    final direction = _activeVehicleTripDirection;
+    if (tripId == null || tripId.isEmpty) return;
+    if (routeId == null || routeId.isEmpty) return;
+    if (direction == null || direction.isEmpty) return;
+
+    final now = DateTime.now();
+    if (!HistoricalSamplingPolicy.isFresh(position, now: now)) {
+      if (kDebugMode) {
+        final age = now.difference(position.timestamp);
+        debugPrint(
+          '🧭 TripPing rejected: stale GPS fix age=${age.inSeconds}s',
+        );
+      }
+      return;
+    }
+
+    final last = _lastHistoricalPingAt;
+    if (last != null &&
+        now.difference(last) < _historicalPingInterval) {
+      return;
+    }
+
+    final ping = TripPing(
+      tripId: tripId,
+      routeId: routeId,
+      direction: direction,
+      location: GeoPoint(position.latitude, position.longitude),
+      speed: position.speed,
+      heading: position.heading,
+      timestamp: position.timestamp,
+    );
+
+    if (_tripPingBuffer.tryAdd(ping)) {
+      _lastHistoricalPingAt = now;
+      if (_tripPingBuffer.length >= _historicalBatchSize) {
+        unawaited(flushHistoricalTripPings());
+      }
+      _scheduleHistoricalTripPingUpload();
+      if (kDebugMode) {
+        debugPrint(
+          '🧭 TripPing buffered: trip=$tripId count=${_tripPingBuffer.length}',
+        );
+      }
+    } else if (kDebugMode) {
+      debugPrint('🧭 TripPing buffer full or invalid; point not buffered.');
+    }
+  }
+
+  void _queueActiveVehicleTripPosition(geo.Position position) {
+    final tripId = _activeVehicleTripId;
+    if (tripId == null || tripId.isEmpty) return;
+
+    _pendingVehicleTripPosition = position;
+    if (_vehicleTripWriteInFlight) return;
+
+    final last = _lastVehicleTripLocationWriteAt;
+    if (last != null) {
+      final elapsed = DateTime.now().difference(last);
+      if (elapsed < _vehicleTripLocationInterval) {
+        _scheduleVehicleTripFlush(_vehicleTripLocationInterval - elapsed);
+        return;
+      }
+    }
+
+    unawaited(_flushActiveVehicleTripPosition());
+  }
+
+  void _scheduleVehicleTripFlush(Duration delay) {
+    if (_activeVehicleTripId == null || _activeVehicleTripId!.isEmpty) {
+      return;
+    }
+    _vehicleTripFlushTimer?.cancel();
+    _vehicleTripFlushTimer = Timer(
+      delay,
+      () => unawaited(_flushActiveVehicleTripPosition()),
+    );
+  }
+
+  Future<void> _flushActiveVehicleTripPosition() async {
+    if (_vehicleTripWriteInFlight) return;
+
+    final tripId = _activeVehicleTripId;
+    final position = _pendingVehicleTripPosition;
+    final routeProgress = _routeProgressTracker.lastAccepted?.progress;
+    if (tripId == null || tripId.isEmpty || position == null) return;
+
+    final last = _lastVehicleTripLocationWriteAt;
+    if (last != null) {
+      final elapsed = DateTime.now().difference(last);
+      if (elapsed < _vehicleTripLocationInterval) {
+        _scheduleVehicleTripFlush(_vehicleTripLocationInterval - elapsed);
+        return;
+      }
+    }
+
+    _pendingVehicleTripPosition = null;
+    _vehicleTripWriteInFlight = true;
+    try {
+      await _vehicleTripService.updateLiveLocation(
+        tripId: tripId,
+        currentLocation: GeoPoint(position.latitude, position.longitude),
+        speed: position.speed,
+        heading: position.heading,
+        routeProgress: routeProgress,
+      );
+      if (_activeVehicleTripId == tripId) {
+        _lastVehicleTripLocationWriteAt = DateTime.now();
+      }
+    } catch (e) {
+      debugPrint('🛰️ VehicleTrip live update failed: $e');
+      if (_activeVehicleTripId == tripId) {
+        _lastVehicleTripLocationWriteAt = DateTime.now();
+      }
+    } finally {
+      _vehicleTripWriteInFlight = false;
+      if (_activeVehicleTripId == tripId &&
+          _pendingVehicleTripPosition != null) {
+        final latest = _lastVehicleTripLocationWriteAt;
+        if (latest == null) {
+          unawaited(_flushActiveVehicleTripPosition());
+        } else {
+          final elapsed = DateTime.now().difference(latest);
+          if (elapsed >= _vehicleTripLocationInterval) {
+            unawaited(_flushActiveVehicleTripPosition());
+          } else {
+            _scheduleVehicleTripFlush(
+              _vehicleTripLocationInterval - elapsed,
+            );
+          }
+        }
+      }
+    }
+  }
 
   void _dispatchPosition(geo.Position pos) {
     final ui = mapUiHandler;
     if (ui != null) {
       ui(pos);
-      return;
-    }
-    // لا واجهة خريطة: ارفع الموقع للخادم مباشرة
-    if (_wantOnline || _wantTrip) {
+    } else if (_wantOnline || _wantTrip) {
+      // لا واجهة خريطة: ارفع الموقع للخادم مباشرة.
       unawaited(
         _lifecycle.uploadLocation(
           position: pos,
@@ -52,6 +543,15 @@ class DriverTrackingHub {
         ),
       );
     }
+
+    // RouteProgress محلي ومستقل عن Firestore وواجهة الخريطة.
+    updateRouteProgress(pos);
+
+    // التسجيل التاريخي مستقل عن واجهة الخريطة، لكنه يبقى محليًا في الـBuffer.
+    _captureHistoricalTripPing(pos);
+
+    // تحديث آخر حالة VehicleTrip مستقل عن وجود واجهة الخريطة.
+    _queueActiveVehicleTripPosition(pos);
   }
 
   Future<void> requestStart({
@@ -69,6 +569,10 @@ class DriverTrackingHub {
     await _lifecycle.requestStart(uid: uid, profile: profile);
   }
 
+  Future<void> restartTrackingStream() {
+    return _lifecycle.restartIfRunning();
+  }
+
   Future<void> requestStop() async {
     _wantOnline = false;
     _wantTrip = false;
@@ -78,6 +582,7 @@ class DriverTrackingHub {
   /// عند تسجيل الخروج — إيقاف كامل.
   Future<void> shutdown() async {
     mapUiHandler = null;
+    clearActiveVehicleTrip();
     await requestStop();
   }
 

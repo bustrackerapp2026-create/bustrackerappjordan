@@ -69,7 +69,7 @@ class AppLocalizations {
 
   String get login => _t('تسجيل الدخول', 'Log in');
   String get loginSubtitle =>
-      _t('أدخل بيانات حسابك للوصول إلى التطبيق', 'Enter your account details to access the app');
+      _t('تابع الحافلات ونقاط التجمع من مكان واحد', 'Track buses and pickup points in one place');
   String get welcomeLogin =>
       _t('مرحباً بك · سجّل دخولك للمتابعة', 'Welcome · Sign in to continue');
   String get email => _t('البريد الإلكتروني', 'Email');
