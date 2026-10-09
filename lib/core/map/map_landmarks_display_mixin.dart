@@ -25,8 +25,6 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   double _lastDisplayLandmarkZoom = -1;
   Timer? _displayLandmarkZoomDebounce;
 
-  final Map<String, Uint8List> _displayIconBytes = {};
-
   int get displayLandmarksCount => _displayLandmarks.length;
 
   void listenToDisplayLandmarks() {
@@ -91,38 +89,6 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     return false;
   }
 
-  String _iconKey(MapLandmark m, bool withLabel, double fontSize) {
-    if (!withLabel) return 'icon_${m.type.name}';
-    return 'lbl_${m.id}_${fontSize.round()}';
-  }
-
-  Future<Uint8List> _bytesForLandmark(
-    MapLandmark m,
-    double zoom,
-  ) async {
-    final name = m.name.trim();
-    final showLabel =
-        LandmarkMarkerImages.showLabelAtZoom(m.type, zoom) && name.isNotEmpty;
-    final fontSize = LandmarkMarkerImages.textSizeForZoom(zoom);
-    final key = _iconKey(m, showLabel, fontSize);
-
-    final cached = _displayIconBytes[key];
-    if (cached != null) return cached;
-
-    final Uint8List bytes;
-    if (showLabel) {
-      bytes = await LandmarkMarkerImages.bytesWithLabel(
-        type: m.type,
-        name: name,
-        fontSize: fontSize > 0 ? fontSize : 12,
-      );
-    } else {
-      bytes = await LandmarkMarkerImages.bytesFor(m.type);
-    }
-    _displayIconBytes[key] = bytes;
-    return bytes;
-  }
-
   PointAnnotationOptions _optionsFor(
     MapLandmark m,
     Uint8List bytes,
@@ -131,14 +97,23 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final name = m.name.trim();
     final showLabel =
         LandmarkMarkerImages.showLabelAtZoom(m.type, zoom) && name.isNotEmpty;
-    // الاسم مرسوم داخل الصورة بخط Flutter — لا نستخدم textField لـ Mapbox
+    final textSize =
+        showLabel ? LandmarkMarkerImages.textSizeForZoom(zoom) : 0.0;
     return PointAnnotationOptions(
       geometry: Point(coordinates: Position(m.longitude, m.latitude)),
       image: bytes,
-      iconSize: showLabel
-          ? LandmarkMarkerImages.labeledIconSizeForZoom(zoom)
-          : LandmarkMarkerImages.iconSizeForZoom(zoom),
-      iconAnchor: showLabel ? IconAnchor.TOP : IconAnchor.CENTER,
+      iconSize: LandmarkMarkerImages.iconSizeForZoom(zoom),
+      iconAnchor: IconAnchor.CENTER,
+      textField: showLabel ? name : null,
+      textSize: textSize,
+      textColor: LandmarkMarkerImages.labelTextColor,
+      textHaloColor: LandmarkMarkerImages.labelHaloColor,
+      textHaloWidth: LandmarkMarkerImages.labelHaloWidth,
+      textLetterSpacing: LandmarkMarkerImages.labelLetterSpacing,
+      textAnchor: TextAnchor.TOP,
+      textOffset: LandmarkMarkerImages.textOffsetForZoom(zoom),
+      textMaxWidth: LandmarkMarkerImages.labelMaxWidth,
+      textJustify: TextJustify.CENTER,
     );
   }
 
@@ -180,7 +155,7 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       for (final m in visible) {
         try {
-          final bytes = await _bytesForLandmark(m, zoom);
+          final bytes = await LandmarkMarkerImages.bytesFor(m.type);
           final ann = await pointAnnotationManager!.create(
             _optionsFor(m, bytes, zoom),
           );
@@ -207,13 +182,19 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
             LandmarkMarkerImages.showLabelAtZoom(m.type, zoom) &&
                 name.isNotEmpty;
 
-        ann.iconSize = showLabel
-            ? LandmarkMarkerImages.labeledIconSizeForZoom(zoom)
-            : LandmarkMarkerImages.iconSizeForZoom(zoom);
-        ann.iconAnchor = showLabel ? IconAnchor.TOP : IconAnchor.CENTER;
-        // مسح أي نص Mapbox قديم
-        ann.textField = '';
-        ann.textSize = 0;
+        ann.iconSize = LandmarkMarkerImages.iconSizeForZoom(zoom);
+        ann.iconAnchor = IconAnchor.CENTER;
+        ann.textField = showLabel ? name : '';
+        ann.textSize =
+            showLabel ? LandmarkMarkerImages.textSizeForZoom(zoom) : 0.0;
+        ann.textOffset = LandmarkMarkerImages.textOffsetForZoom(zoom);
+        ann.textColor = LandmarkMarkerImages.labelTextColor;
+        ann.textHaloColor = LandmarkMarkerImages.labelHaloColor;
+        ann.textHaloWidth = LandmarkMarkerImages.labelHaloWidth;
+        ann.textLetterSpacing = LandmarkMarkerImages.labelLetterSpacing;
+        ann.textAnchor = TextAnchor.TOP;
+        ann.textJustify = TextJustify.CENTER;
+        ann.textMaxWidth = LandmarkMarkerImages.labelMaxWidth;
 
         try {
           await pointAnnotationManager!.update(ann);
@@ -243,7 +224,6 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _drawingDisplayLandmarks = true;
     try {
       LandmarkMarkerImages.clearCache();
-      _displayIconBytes.clear();
 
       await _clearDisplayLandmarkAnnotations();
       if (_displayLandmarks.isEmpty) return;
@@ -261,7 +241,7 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
 
       for (final m in visible) {
         try {
-          final bytes = await _bytesForLandmark(m, zoom);
+          final bytes = await LandmarkMarkerImages.bytesFor(m.type);
           final ann = await pointAnnotationManager!.create(
             _optionsFor(m, bytes, zoom),
           );
@@ -382,6 +362,5 @@ mixin MapLandmarksDisplayMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _landmarksDisplaySub = null;
     _displayLandmarkAnnotations.clear();
     _displayLandmarkById.clear();
-    _displayIconBytes.clear();
   }
 }
