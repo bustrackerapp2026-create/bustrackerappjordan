@@ -25,6 +25,51 @@
 
 ## الحالة الحالية
 
+### نقطة توقف تشخيصية — Follow Camera بعد Screen Lock — 2026-10-09
+
+**الحالة: PAUSED / AWAITING RUNTIME EVIDENCE — لا يوجد Production Patch معتمد.**
+
+- الفرع: `stage/approved-route-line-vehicle-link-v1`.
+- HEAD قبل توثيق نقطة التوقف: `0a1499e63fd6c1e8427d9e7c6b6cc37384dd209b` (`0a1499e`).
+- الـdiagnostic instrumentation أضيف إلى `lib/driver/screens/tabs/mixins/driver_location_mixin.dart` فقط، عبر commits:
+  - `b143f681429383139d234deb1097f868972bfb0a` — إضافة سجلات FOLLOW-DIAG.
+  - `0a1499e63fd6c1e8427d9e7c6b6cc37384dd209b` — تصحيح سطر سجل الخطأ.
+- نتيجة `flutter analyze` التي أرسلها المستخدم بعد خطوة السحب: **No issues found! (ran in 12.0s)**.
+- لم يتم تنفيذ `flutter test` للتحقق من هذا التغيير التشخيصي، ولم تصل بعد سجلات Runtime من تجربة قفل الشاشة وفتحها.
+- هذه التعديلات تشخيصية: لا تعيد تفعيل `followDriverCamera`، ولا تستدعي `_applyPosition(_hub.lastPosition)`، ولا تغيّر منطق GPS أو DriverTrackingHub أو DriverTrackingLifecycle أو Mapbox.
+- لم تُغلق مشكلة Follow Camera، ولم يُعتمد أي Production Fix. الأولوية محفوظة ضمن Field Test follow-ups، ويمكن استئنافها لاحقًا بعد الانتهاء من العمل الحالي.
+
+#### ما ثبت في Inspect
+
+- `detachDriverTrackingUi()` لا يغيّر `followDriverCamera`.
+- `pauseMapUiUpdates()` ليس المسار المستدعى مباشرة من Screen Lock lifecycle.
+- `restartTrackingStream()` يعيد اشتراك GPS فقط، ولا يعيد Follow state أو Predictor أو Mapbox camera state.
+- Hub يستمر بمعالجة Position عندما تكون Map UI detached، بينما `_predictor.update()` موجود داخل `_applyPosition()` الذي لا يستقبل تلك العينات عبر UI أثناء detach.
+- هذه facts تحدد مرشحًا تشخيصيًا، لكنها لا تثبت بمفردها الحلقة التي تنقطع أثناء التشغيل الفعلي.
+
+#### سجلات Runtime المنتظرة
+
+عند استئناف هذه النقطة، شغّل التطبيق على الهاتف عبر `flutter run`، ثم نفّذ Screen Lock / Resume **دون الضغط على زر تحديد الموقع**. احتفظ بمقطع الـTerminal الذي يحتوي على:
+
+```text
+FOLLOW-DIAG detach
+FOLLOW-DIAG resume:start
+FOLLOW-DIAG resume:afterEnsure
+FOLLOW-DIAG resume:afterRestart
+FOLLOW-DIAG resume:afterAttach
+FOLLOW-DIAG hubPosition
+FOLLOW-DIAG applyPosition
+FOLLOW-DIAG setCamera:attempt
+FOLLOW-DIAG setCamera:success
+FOLLOW-DIAG setCamera:FAIL
+```
+
+يُختار الـPatch فقط بعد تحديد الحلقة المكسورة من Runtime evidence. لا يُستخدم `_applyPosition(_hub.lastPosition)` لإحياء Predictor؛ فالدالة تنفذ أيضًا Route Recording وDriverProvider updates وmarker updates وupload logic.
+
+**قاعدة الاستئناف:** Runtime trace أولًا → تحديد السبب → تثبيت العقد → أصغر Production Patch → focused test → `flutter analyze` → `flutter test` → Review → Document → Commit. لا تُعتبر المشكلة مغلقة بمجرد إضافة الـlogs.
+
+---
+
 ### آخر حالة موثقة — 2026-10-03
 
 - الفرع المرجعي: `stage/approved-route-line-vehicle-link-v1`
