@@ -283,8 +283,6 @@ class RoutePlanService {
       'points': points.map((p) => p.toMap()).toList(),
       'status': PlannedRouteStatus.approved.firestoreValue,
       'editRequestPending': false,
-      'editRequestReason': FieldValue.delete(),
-      'editRequestedBy': FieldValue.delete(),
       'reRecordAllowed': false,
       'distanceMeters': distance,
       'source': RouteSource.driver.firestoreValue,
@@ -309,6 +307,9 @@ class RoutePlanService {
       );
     }
 
+    // FieldValue.delete is valid for update; omit these fields on create.
+    payload['editRequestReason'] = FieldValue.delete();
+    payload['editRequestedBy'] = FieldValue.delete();
     await _col.doc(existing.id).update(payload);
     return PlannedRoute(
       id: existing.id,
