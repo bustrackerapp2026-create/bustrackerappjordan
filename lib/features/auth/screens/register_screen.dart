@@ -39,7 +39,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   PlannedRoute? _selectedPlannedRoute;
 
   String _selectedUserType = UserRoles.passenger;
-  int? _selectedCapacity = BusCapacity.medium;
+  final int _selectedCapacity = BusCapacity.medium;
 
   bool get _showDriverFields => UserRoles.isDriverLike(_selectedUserType);
 
@@ -133,16 +133,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       messenger.showSnackBar(
         SnackBar(
           content: Text(l10n.passwordMismatch),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    if (_showDriverFields && _selectedCapacity == null) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ اختر نوع الباص / عدد الركاب'),
           backgroundColor: Colors.orange,
         ),
       );
