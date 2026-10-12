@@ -1,23 +1,35 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:jordan_bus_tracker_new/core/constants/user_roles.dart';
+import 'package:jordan_bus_tracker_new/models/planned_route.dart';
 import 'package:jordan_bus_tracker_new/models/user_model.dart';
+import 'package:jordan_bus_tracker_new/services/driver_line_assignment_service.dart';
+import 'package:jordan_bus_tracker_new/services/driver_route_request_service.dart';
 import 'package:jordan_bus_tracker_new/services/firestore_service.dart';
 import 'package:jordan_bus_tracker_new/services/live_tracking_service.dart';
+import 'package:jordan_bus_tracker_new/services/transit_line_service.dart';
+import 'package:jordan_bus_tracker_new/services/vehicle_trip_service.dart';
+import 'package:jordan_bus_tracker_new/services/vehicle_operational_session_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
   final LiveTrackingService _liveTracking = LiveTrackingService();
+  final VehicleOperationalSessionService _vehicleSession =
+      VehicleOperationalSessionService();
+  final DriverLineAssignmentService _driverLineAssignmentService =
+      DriverLineAssignmentService();
+  final DriverRouteRequestService _driverRouteRequestService =
+      DriverRouteRequestService();
 
   firebase_auth.User? _user;
   UserModel? _userData;
   bool _isLoading = false;
   StreamSubscription<UserModel?>? _userDataSubscription;
 
-  /// يُستدعى عند تسجيل الخروج لتصفير الحالة المحلية فقط (DriverProvider).
   VoidCallback? onBeforeSignOut;
 
   firebase_auth.User? get user => _user;
@@ -87,6 +99,51 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<String?> _resolveLineIdForRoute(String routeId) async {
+    final id = routeId.trim();
+    if (id.isEmpty) return null;
+
+    final catalogRef = FirebaseFirestore.instance.collection('routeCatalog');
+    String? catalogLineName;
+
+    final byId = await catalogRef.doc(id).get();
+    if (byId.exists && byId.data() != null) {
+      final data = byId.data()!;
+      final lineId = data['lineId']?.toString().trim();
+      if (lineId != null && lineId.isNotEmpty) return lineId;
+
+      final lineName = data['lineName']?.toString().trim();
+      if (lineName != null && lineName.isNotEmpty) {
+        catalogLineName = lineName;
+      }
+    }
+
+    final snap = await catalogRef
+        .where('routeId', isEqualTo: id)
+        .where('status', isEqualTo: 'approved')
+        .limit(1)
+        .get();
+    if (snap.docs.isNotEmpty) {
+      final data = snap.docs.first.data();
+      final lineId = data['lineId']?.toString().trim();
+      if (lineId != null && lineId.isNotEmpty) return lineId;
+
+      final lineName = data['lineName']?.toString().trim();
+      if (lineName != null && lineName.isNotEmpty) {
+        catalogLineName ??= lineName;
+      }
+    }
+
+    // توافق رجعي مع routeCatalog القديم الذي لا يحتوي lineId.
+    final fallbackName = catalogLineName;
+    if (fallbackName == null || fallbackName.isEmpty) return null;
+
+    final line = await TransitLineService().findByNormalizedName(fallbackName);
+    if (line == null || !line.isApproved) return null;
+
+    return line.id;
+  }
+
   Future<void> signUp({
     required String email,
     required String password,
@@ -96,7 +153,13 @@ class AuthProvider extends ChangeNotifier {
     String? busNumber,
     String? route,
     String? routeId,
+    String? lineId,
     int? capacity,
+    String? routeRequestLineName,
+    String? routeRequestStartName,
+    String? routeRequestMiddleName,
+    String? routeRequestEndName,
+    RouteDirection? routeRequestDirection,
   }) async {
     try {
       _setLoading(true);
@@ -107,6 +170,13 @@ class AuthProvider extends ChangeNotifier {
       );
 
       if (credential.user != null) {
+        final driver = UserRoles.isDriverLike(userType);
+        final hasRouteRequest = driver &&
+            routeRequestLineName?.trim().isNotEmpty == true &&
+            routeRequestStartName?.trim().isNotEmpty == true &&
+            routeRequestEndName?.trim().isNotEmpty == true &&
+            routeRequestDirection != null;
+
         final newUser = UserModel(
           uid: credential.user!.uid,
           email: email,
@@ -116,11 +186,43 @@ class AuthProvider extends ChangeNotifier {
           busNumber: busNumber ?? '',
           route: route ?? '',
           routeId: routeId,
-          capacity: UserRoles.isDriverLike(userType) ? capacity : null,
+          capacity: driver ? capacity : null,
           isVerified: false,
         );
 
         await _firestoreService.saveUserData(newUser);
+
+        if (driver && routeId != null && routeId.trim().isNotEmpty) {
+          final resolvedLineId = lineId?.trim().isNotEmpty == true
+              ? lineId!.trim()
+              : await _resolveLineIdForRoute(routeId);
+
+          if (resolvedLineId == null || resolvedLineId.isEmpty) {
+            throw const TransitLineServiceException(
+              'تعذر تحديد الخط التشغيلي المرتبط بالمسار المختار.',
+              code: 'driver-line-not-found',
+            );
+          }
+
+          await _driverLineAssignmentService.requestAssignment(
+            driverId: credential.user!.uid,
+            busNumber: busNumber ?? '',
+            routeId: routeId,
+            lineId: resolvedLineId,
+          );
+        }
+
+        if (hasRouteRequest) {
+          await _driverRouteRequestService.createRequest(
+            driverId: credential.user!.uid,
+            lineName: routeRequestLineName!.trim(),
+            startName: routeRequestStartName!.trim(),
+            middleName: routeRequestMiddleName?.trim(),
+            endName: routeRequestEndName!.trim(),
+            direction: routeRequestDirection,
+          );
+        }
+
         _userData = newUser;
         _user = credential.user;
         notifyListeners();
@@ -132,8 +234,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// يغيّر كلمة المرور فقط (إعادة مصادقة + تحديث).
-  /// لا يسجّل خروجاً هنا — الاستدعاء من الواجهة يغلق الورقة ثم يستدعي [signOutAfterPasswordChange].
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -181,7 +281,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// بعد نجاح تغيير كلمة المرور: إطفاء السائق إن لزم + تسجيل خروج آمن.
   Future<void> signOutAfterPasswordChange() async {
     try {
       await _goOfflineIfDriver();
@@ -216,6 +315,19 @@ class AuthProvider extends ChangeNotifier {
 
     if (!UserRoles.isDriverLike(_userData?.userType)) return;
 
+    // إذا كانت هناك رحلة تشغيلية نشطة، فالحالة التشغيلية يجب أن تبقى محفوظة
+    // حتى بعد تسجيل الخروج، لأن الرحلة نفسها لا تُنهى بتسجيل الخروج.
+    // إطفاء isOnline هنا كان يجعل السائق يعود بعد الدخول ويرى «اتصال»
+    // رغم أن الرحلة ما زالت ACTIVE على VehicleTrip والمركبة ما زالت مقفلة.
+    final activeVehicleTrip =
+        await VehicleTripService().findActiveTripForDriver(uid);
+    if (activeVehicleTrip != null) {
+      debugPrint(
+        'الإبقاء على الحالة التشغيلية عند تسجيل الخروج: VehicleTrip=${activeVehicleTrip.id}',
+      );
+      return;
+    }
+
     try {
       await _liveTracking.setDriverOnlineStatus(
         uid: uid,
@@ -224,6 +336,21 @@ class AuthProvider extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint('تعذر إطفاء حالة السائق عند الخروج: $e');
+    }
+
+    final busNumber = _userData?.busNumber?.trim() ?? '';
+    if (busNumber.isEmpty) return;
+
+    try {
+      await _vehicleSession.release(
+        driverId: uid,
+        busNumber: busNumber,
+      );
+    } on VehicleOperationalSessionException catch (e) {
+      // أثناء رحلة نشطة نُبقي القفل عمدًا لحماية المركبة من الاستحواذ.
+      debugPrint('لم يتم تحرير جلسة المركبة عند الخروج: $e');
+    } catch (e) {
+      debugPrint('تعذر تحرير جلسة المركبة عند الخروج: $e');
     }
   }
 

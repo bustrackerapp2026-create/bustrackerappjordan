@@ -52,7 +52,7 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       if (out.isEmpty) { out.addAll(seg); } else {
         final join = seg.first; final prev = out.last;
         final d = _haversineMeters(prev.latitude, prev.longitude, join.latitude, join.longitude);
-        if (d <= 3.0) out.addAll(seg.skip(1)); else out.addAll(seg);
+        if (d <= 3.0) { out.addAll(seg.skip(1)); } else { out.addAll(seg); }
       }
     }
     return out;
@@ -89,7 +89,27 @@ mixin AdminDrawRouteMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       from = _drawPoints[_drawPoints.length - 2]; to = _drawPoints.last; segmentIndex = _roadSegments.length; _roadSegments.add([from, to]); if (mounted) setState(() {});
     } catch (e) {
       MapUtils.log('draw tap: $e', tag: 'AdminDraw');
-      if (mounted && _drawPoints.length >= 2) { final a = _drawPoints[_drawPoints.length - 2]; final b = _drawPoints.last; if (_roadSegments.length < _drawPoints.length - 1) { _roadSegments.add([a, b]); await _redrawDrawLine(phase: 'temp-fallback'); } MapUtils.showSnackBar(context, 'تمت إضافة النقطة، لكن تعذر تحسين المقطع بالطريق', isError: true); setState(() {}); } else if (mounted) { MapUtils.showSnackBar(context, 'تعذر إضافة النقطة', isError: true); }
+      if (mounted && _drawPoints.length >= 2) {
+        final a = _drawPoints[_drawPoints.length - 2];
+        final b = _drawPoints.last;
+        if (_roadSegments.length < _drawPoints.length - 1) {
+          _roadSegments.add([a, b]);
+          await _redrawDrawLine(phase: 'temp-fallback');
+          if (!mounted) return;
+        }
+        MapUtils.showSnackBar(
+          context,
+          'تمت إضافة النقطة، لكن تعذر تحسين المقطع بالطريق',
+          isError: true,
+        );
+        setState(() {});
+      } else if (mounted) {
+        MapUtils.showSnackBar(
+          context,
+          'تعذر إضافة النقطة',
+          isError: true,
+        );
+      }
     } finally { _tapLocked = false; if (mounted) setState(() => isSnappingSegment = false); }
     if (segmentIndex == null || from == null || to == null || session != _drawSession) return;
     final idx = segmentIndex; final a = from; final b = to; final mutation = _drawMutationSeq;

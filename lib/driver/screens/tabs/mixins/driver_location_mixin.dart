@@ -19,6 +19,7 @@ import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../map/utils/map_helpers.dart';
 import '../../../../services/location_service.dart';
 import '../../../../services/driver_public_location_service.dart';
+import '../../../../services/vehicle_operational_session_service.dart';
 
 mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   PointAnnotation? _driverUserAnnotation;
@@ -26,6 +27,11 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
   final LocationService _driverLocationService = LocationService();
   final LocationPredictor _predictor = LocationPredictor();
   final DriverTrackingHub _hub = DriverTrackingHub.instance;
+  final VehicleOperationalSessionService _vehicleSession =
+      VehicleOperationalSessionService();
+
+  bool _vehicleSessionLost = false;
+  DateTime? _lastVehicleHeartbeatAt;
 
   Timer? _predictionTimer;
   bool _didPromptBackground = false;
@@ -109,10 +115,25 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     if (_hub.mapUiHandler == _onHubPosition) {
       _hub.mapUiHandler = null;
     }
+    debugPrint(
+      '📷 FOLLOW-DIAG detach '
+      'follow=$followDriverCamera '
+      'hubLastPositionAt=${_hub.lastPosition?.timestamp.toIso8601String()} '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady',
+    );
     _stopPredictionLoop();
   }
 
   void _onHubPosition(geo.Position pos) {
+    debugPrint(
+      '📷 FOLLOW-DIAG hubPosition '
+      'positionAt=${pos.timestamp.toIso8601String()} '
+      'follow=$followDriverCamera '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady '
+      'active=$isMapTabActive',
+    );
     unawaited(
       _applyPosition(
         pos,
@@ -290,6 +311,8 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     _cachedTripActive = driver.isTripActive;
 
     attachDriverTrackingUi();
+    _vehicleSessionLost = false;
+    _lastVehicleHeartbeatAt = null;
 
     await _hub.requestStart(
       uid: uid,
@@ -373,6 +396,18 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final doMove = _pendingMoveCamera;
     final doForce = _pendingForceUpload;
     _pendingPosition = null;
+
+    debugPrint(
+      '📷 FOLLOW-DIAG applyPosition '
+      'positionAt=${pos.timestamp.toIso8601String()} '
+      'doMove=$doMove '
+      'follow=$followDriverCamera '
+      'mounted=$mounted '
+      'active=$isMapTabActive '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady '
+      'pendingMove=$_pendingMoveCamera',
+    );
     _pendingMoveCamera = false;
     _pendingForceUpload = false;
 
@@ -395,6 +430,13 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
           now.difference(_lastCameraUpdateAt!) >= _minCameraInterval;
       if (canMove) {
         _lastCameraUpdateAt = now;
+        debugPrint(
+          '📷 FOLLOW-DIAG setCamera:attempt '
+          'lat=${filtered.latitude} '
+          'lng=${filtered.longitude} '
+          'follow=$followDriverCamera '
+          'mapReady=$isMapReady',
+        );
         try {
           await mapboxMap!.setCamera(
             CameraOptions(
@@ -409,7 +451,19 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
               bearing: 0,
             ),
           );
-        } catch (_) {}
+          debugPrint(
+            '📷 FOLLOW-DIAG setCamera:success '
+            'follow=$followDriverCamera '
+            'mapReady=$isMapReady',
+          );
+        } catch (e, st) {
+          debugPrint(
+            '📷 FOLLOW-DIAG setCamera:FAIL '
+            'follow=$followDriverCamera '
+            'mapReady=$isMapReady '
+            'error=$e\n$st',
+          );
+        }
       }
     }
 
@@ -462,25 +516,66 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     final profile = _activeProfile;
     final now = DateTime.now();
 
-    if (!force && _lastFirestoreLocationWrite != null) {
-      if (now.difference(_lastFirestoreLocationWrite!) <
-          profile.firestoreMinInterval) {
-        return;
-      }
+    if (_vehicleSessionLost) return;
+
+    var shouldUploadLocation = force;
+
+    if (!shouldUploadLocation && _lastFirestoreLocationWrite != null) {
+      shouldUploadLocation =
+          now.difference(_lastFirestoreLocationWrite!) >=
+              profile.firestoreMinInterval;
     }
 
-    if (!force && _lastUploadedLat != null && _lastUploadedLng != null) {
+    if (!shouldUploadLocation &&
+        _lastUploadedLat != null &&
+        _lastUploadedLng != null) {
       final moved = _distanceMeters(
         _lastUploadedLat!,
         _lastUploadedLng!,
         position.latitude,
         position.longitude,
       );
-      if (moved < profile.firestoreMinDistanceMeters) return;
+      shouldUploadLocation = moved >= profile.firestoreMinDistanceMeters;
     }
+
+    // جلسة المركبة تخص الحالة التشغيلية فقط.
+    // زر «تحديد موقعي» قد يعمل بينما السائق غير متصل، لذلك لا يجوز
+    // أن يتحول طلب تحديد الموقع إلى heartbeat أو إلى فحص ملكية الجلسة.
+    final shouldMaintainVehicleSession =
+        driver.isOnline || driver.isTripActive;
+    final heartbeatDue = shouldMaintainVehicleSession &&
+        (force ||
+            _lastVehicleHeartbeatAt == null ||
+            now.difference(_lastVehicleHeartbeatAt!) >=
+                const Duration(seconds: 60));
+
+    if (!heartbeatDue && !shouldUploadLocation) return;
 
     _isWritingLocation = true;
     try {
+      final busNumber = auth.userData?.busNumber?.trim() ?? '';
+      if (busNumber.isEmpty) return;
+
+      if (heartbeatDue) {
+        final sessionOwned = await _vehicleSession.heartbeat(
+          driverId: uid,
+          busNumber: busNumber,
+          latitude: position.latitude,
+          longitude: position.longitude,
+          isTripActive: driver.isTripActive,
+        );
+
+        if (!sessionOwned) {
+          _vehicleSessionLost = true;
+          await _handleVehicleSessionLost(uid);
+          return;
+        }
+
+        _lastVehicleHeartbeatAt = now;
+      }
+
+      if (!shouldUploadLocation) return;
+
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'currentLatitude': position.latitude,
         'currentLongitude': position.longitude,
@@ -515,6 +610,41 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
       MapUtils.log('⚠️ رفع الموقع: $e', tag: 'DriverLocation');
     } finally {
       _isWritingLocation = false;
+    }
+  }
+
+  Future<void> _handleVehicleSessionLost(String uid) async {
+    if (!mounted) return;
+
+    final driver = context.read<DriverProvider>();
+    driver.setOnline(false, userId: uid);
+    _cachedOnline = false;
+    _cachedTripActive = driver.isTripActive;
+
+    await stopDriverTracking();
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'isOnline': false,
+        'isTripActive': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('vehicle session lost: failed to mark user offline: $e');
+    }
+
+    try {
+      await DriverPublicLocationService().markOffline(uid);
+    } catch (e) {
+      debugPrint('vehicle session lost: failed to mark public driver offline: $e');
+    }
+
+    if (mounted) {
+      MapUtils.showSnackBar(
+        context,
+        '⚠️ فقد حسابك جلسة المركبة لأن سائقًا آخر استلمها. تم إيقاف حالتك التشغيلية.',
+        isError: true,
+      );
     }
   }
 
@@ -566,11 +696,70 @@ mixin DriverLocationMixin<T extends StatefulWidget> on MapCoreMixin<T> {
     }
   }
 
+  Future<void> _resumeDriverTrackingAfterLifecycle() async {
+    debugPrint(
+      '📷 FOLLOW-DIAG resume:start '
+      'follow=$followDriverCamera '
+      'hubLastPositionAt=${_hub.lastPosition?.timestamp.toIso8601String()} '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady',
+    );
+
+    await ensureDriverTrackingRunning();
+
+    debugPrint(
+      '📷 FOLLOW-DIAG resume:afterEnsure '
+      'follow=$followDriverCamera '
+      'hubLastPositionAt=${_hub.lastPosition?.timestamp.toIso8601String()} '
+      'hubState=${_hub.state} '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady',
+    );
+
+    if (!mounted || !_shouldTrackContinuously) return;
+
+    await _hub.restartTrackingStream();
+
+    debugPrint(
+      '📷 FOLLOW-DIAG resume:afterRestart '
+      'follow=$followDriverCamera '
+      'hubLastPositionAt=${_hub.lastPosition?.timestamp.toIso8601String()} '
+      'hubState=${_hub.state} '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady',
+    );
+
+    if (!mounted || !_shouldTrackContinuously) return;
+
+    attachDriverTrackingUi();
+
+    debugPrint(
+      '📷 FOLLOW-DIAG resume:afterAttach '
+      'follow=$followDriverCamera '
+      'hubLastPositionAt=${_hub.lastPosition?.timestamp.toIso8601String()} '
+      'hubState=${_hub.state} '
+      'mapbox=${mapboxMap != null} '
+      'mapReady=$isMapReady',
+    );
+
+    if (isMapTabActive) {
+      _startPredictionLoop();
+
+      debugPrint(
+        '📷 FOLLOW-DIAG predictionLoop:start '
+        'follow=$followDriverCamera '
+        'hubLastPositionAt=${_hub.lastPosition?.timestamp.toIso8601String()} '
+        'mapbox=${mapboxMap != null} '
+        'mapReady=$isMapReady',
+      );
+    }
+  }
+
   void onDriverLocationLifecycle(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
         if (_shouldTrackContinuously) {
-          unawaited(ensureDriverTrackingRunning());
+          unawaited(_resumeDriverTrackingAfterLifecycle());
         }
         break;
       case AppLifecycleState.inactive:

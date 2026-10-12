@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 
 import '../../services/driver_public_location_service.dart';
+import '../../services/historical_sampling_policy.dart';
 import '../../services/location_service.dart';
 
 enum DriverTrackingState {
@@ -20,7 +21,7 @@ class DriverTrackingLifecycle {
   }) : _location = locationService ?? LocationService();
 
   final LocationService _location;
-  final DriverPublicLocationService _public = DriverPublicLocationService();
+  DriverPublicLocationService? _public;
 
   StreamSubscription<geo.Position>? _sub;
   Timer? _heartbeat;
@@ -83,6 +84,31 @@ class DriverTrackingLifecycle {
     return _enqueue(_stopInternal);
   }
 
+  Future<void> restartIfRunning() {
+    if (_disposed ||
+        !_wantRunning ||
+        _boundUid == null ||
+        _activeProfile == null) {
+      return Future<void>.value();
+    }
+
+    final uid = _boundUid!;
+    final profile = _activeProfile!;
+
+    return _enqueue(() async {
+      if (_disposed || !_wantRunning || _boundUid != uid) return;
+
+      await _cancelStreamOnly();
+
+      if (_disposed || !_wantRunning || _boundUid != uid) return;
+
+      await _startInternal(
+        uid: uid,
+        profile: profile,
+      );
+    });
+  }
+
   Future<void> _startInternal({
     required String uid,
     required LocationTrackingProfile profile,
@@ -119,9 +145,7 @@ class DriverTrackingLifecycle {
     try {
       _sub = _location.getPositionStreamForProfile(profile).listen(
         (pos) {
-          lastPosition = pos;
-          lastPositionAt = DateTime.now();
-          onPosition?.call(pos);
+          _acceptPosition(pos);
         },
         onError: (e) {
           debugPrint('🛰️ stream error: $e');
@@ -158,6 +182,7 @@ class DriverTrackingLifecycle {
         cancelOnError: false,
       );
 
+      lastPositionAt = DateTime.now();
       _setState(DriverTrackingState.running);
       _armHeartbeat();
     } catch (e) {
@@ -165,6 +190,22 @@ class DriverTrackingLifecycle {
       await _cancelStreamOnly();
       _setState(DriverTrackingState.stopped);
     }
+  }
+
+  bool _acceptPosition(geo.Position position) {
+    if (_activeProfile == LocationTrackingProfile.driverTrip &&
+        !HistoricalSamplingPolicy.isFresh(position)) {
+      debugPrint(
+        '🛰️ ignored stale driverTrip position '
+        'timestamp=${position.timestamp.toIso8601String()}',
+      );
+      return false;
+    }
+
+    lastPosition = position;
+    lastPositionAt = DateTime.now();
+    onPosition?.call(position);
+    return true;
   }
 
   Future<void> _stopInternal() async {
@@ -198,12 +239,40 @@ class DriverTrackingLifecycle {
       if (last == null) return;
       if (DateTime.now().difference(last) < timeout) return;
 
-      debugPrint('🛰️ heartbeat: stream stale → restart');
       final uid = _boundUid;
       final profile = _activeProfile;
       if (uid == null || profile == null) return;
+
       unawaited(
-        _enqueue(() => _startInternal(uid: uid, profile: profile)),
+        _enqueue(() async {
+          if (_disposed || !_wantRunning || _boundUid != uid) return;
+
+          try {
+            // عدم وصول event لا يعني بالضرورة تعطل stream؛ فـdistanceFilter
+            // قد يمنع event عندما تكون المركبة ثابتة. افحص الموقع فعليًا أولاً.
+            final position = await _location.getCurrentPosition(
+              preferHighAccuracy: profile ==
+                  LocationTrackingProfile.driverTrip,
+              timeout: const Duration(seconds: 8),
+            );
+            if (_disposed || !_wantRunning || _boundUid != uid) return;
+            if (position == null) {
+              throw StateError('لم يتم الحصول على موقع من فحص الـheartbeat.');
+            }
+
+            if (_acceptPosition(position)) {
+              debugPrint('🛰️ heartbeat: location probe healthy');
+            } else {
+              debugPrint('🛰️ heartbeat: stale location probe ignored');
+            }
+          } catch (e) {
+            debugPrint(
+              '🛰️ heartbeat: location probe failed → restart ($e)',
+            );
+            if (_disposed || !_wantRunning || _boundUid != uid) return;
+            await _startInternal(uid: uid, profile: profile);
+          }
+        }),
       );
     });
   }
@@ -234,7 +303,8 @@ class DriverTrackingLifecycle {
         'isTripActive': isTripActive,
       });
 
-      await _public.publishLocation(
+      final publicService = _public ??= DriverPublicLocationService();
+      await publicService.publishLocation(
         uid: uid,
         latitude: position.latitude,
         longitude: position.longitude,

@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart' as geo;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:provider/provider.dart';
 
@@ -20,10 +22,14 @@ import '../../../driver/widgets/driver_active_trip_banner.dart';
 import '../../../driver/widgets/driver_pending_request_banner.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../models/trip_model.dart';
+import '../../../models/planned_route.dart';
 import '../../../models/trip_status.dart';
 import '../../../services/live_tracking_service.dart';
 import '../../../services/map_camera_prefs_service.dart';
+import '../../../services/vehicle_operational_session_service.dart';
 import '../../../services/trip_service.dart';
+import '../../../services/driver_line_assignment_service.dart';
+import '../../../services/transit_line_service.dart';
 import '../../../services/trip_service_exception.dart';
 import '../../../l10n/app_localizations.dart';
 import 'mixins/driver_location_mixin.dart';
@@ -50,11 +56,17 @@ class _DriverMapTabState extends State<DriverMapTab>
         RoutePlanRecordingMixin<DriverMapTab>,
         MapLandmarksDisplayMixin<DriverMapTab> {
   String _selectedRoute = AppConstants.jordanRoutes.first;
+  String? _operationalLineName;
   bool _mapInitialized = false;
   bool _showMap = false;
   Timer? _staleCheckTimer;
 
   final TripService _tripService = TripService();
+  final DriverLineAssignmentService _driverLineAssignmentService =
+      DriverLineAssignmentService();
+  final TransitLineService _transitLineService = TransitLineService();
+  final VehicleOperationalSessionService _vehicleSession =
+      VehicleOperationalSessionService();
   StreamSubscription<List<TripModel>>? _pendingSub;
   StreamSubscription<List<TripModel>>? _activeSub;
 
@@ -64,7 +76,7 @@ class _DriverMapTabState extends State<DriverMapTab>
   bool _completingBoard = false;
   String? _dismissedTripId;
 
-  /// آخر طلب تم تنبيه السائق عليه (اهتزاز + تركيز كاميرا).
+  /// آخر طلب تم تنبيهه للسائق عليه (اهتزاز + تركيز كاميرا).
   String? _lastAlertedPendingId;
 
   PointAnnotation? _pickupAnnotation;
@@ -155,9 +167,7 @@ class _DriverMapTabState extends State<DriverMapTab>
   /// تنبيه مرة واحدة لكل طلب جديد: اهتزاز + توجيه الكاميرا لموقع الراكب.
   void _alertNewPendingIfNeeded(TripModel? next) {
     if (next == null) return;
-    // لا نكرر التنبيه لنفس الطلب
     if (next.id == _lastAlertedPendingId) return;
-    // إذا كان هناك رحلة نشطة فالبانر أصلاً لا يظهر
     if (_activeBoardTrip != null) return;
     if (!widget.isActive) return;
 
@@ -214,7 +224,6 @@ class _DriverMapTabState extends State<DriverMapTab>
     _activeSub = _tripService.getActiveDriverTrips(uid).listen(
       (list) {
         if (!mounted) return;
-        // فضّل رحلة راكب حقيقية (فيها passengerId) على رحلة يدوية فارغة
         TripModel? board;
         for (final t in list) {
           if (t.passengerId.trim().isNotEmpty) {
@@ -244,7 +253,6 @@ class _DriverMapTabState extends State<DriverMapTab>
       return;
     }
 
-    // نفس الرحلة ونفس الموضع → لا إعادة إنشاء
     if (_pickupAnnotation != null &&
         _pickupMarkerTripId == trip.id &&
         trip.pickupLat == lat &&
@@ -308,7 +316,6 @@ class _DriverMapTabState extends State<DriverMapTab>
         'تم قبول طلب ${_passengerLabel(trip)}',
       );
 
-      // حدّث محلياً فوراً قبل وصول الـ stream
       final accepted = trip.copyWith(status: TripStatus.active);
       setState(() {
         _pendingTrip = null;
@@ -327,8 +334,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     } catch (e) {
       debugPrint('accept on map: $e');
       if (!mounted) return;
-      final msg =
-          e is TripServiceException ? e.message : 'تعذر قبول الطلب';
+      final msg = e is TripServiceException ? e.message : 'تعذر قبول الطلب';
       MapUtils.showSnackBar(context, msg, isError: true);
     } finally {
       if (mounted) setState(() => _handlingRequest = false);
@@ -356,8 +362,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     } catch (e) {
       debugPrint('reject on map: $e');
       if (!mounted) return;
-      final msg =
-          e is TripServiceException ? e.message : 'تعذر رفض الطلب';
+      final msg = e is TripServiceException ? e.message : 'تعذر رفض الطلب';
       MapUtils.showSnackBar(context, msg, isError: true);
     } finally {
       if (mounted) setState(() => _handlingRequest = false);
@@ -393,8 +398,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     } catch (e) {
       debugPrint('complete board: $e');
       if (!mounted) return;
-      final msg =
-          e is TripServiceException ? e.message : 'تعذر إكمال الطلب';
+      final msg = e is TripServiceException ? e.message : 'تعذر إكمال الطلب';
       MapUtils.showSnackBar(context, msg, isError: true);
     } finally {
       if (mounted) setState(() => _completingBoard = false);
@@ -413,6 +417,13 @@ class _DriverMapTabState extends State<DriverMapTab>
     final name = trip.passengerName?.trim();
     if (name != null && name.isNotEmpty) return name;
     return 'الراكب';
+  }
+
+  Future<bool> _isNearAssignedRouteStart(
+    String driverId,
+    geo.Position currentPosition,
+  ) async {
+    return isNearAssignedRouteStart(driverId, currentPosition);
   }
 
   @override
@@ -478,7 +489,6 @@ class _DriverMapTabState extends State<DriverMapTab>
     listenToPickupPoints();
     unawaited(initRoutePlanLayer());
     unawaited(redrawDisplayLandmarks());
-    // بعد إعادة إنشاء مديري العلامات
     _pickupAnnotation = null;
     _pickupMarkerTripId = null;
     unawaited(_syncPickupMarker(_activeBoardTrip));
@@ -542,11 +552,43 @@ class _DriverMapTabState extends State<DriverMapTab>
           (driver.isOnline || driver.isTripActive)) {
         await ensureDriverTrackingRunning();
       }
+      await restoreActiveVehicleTripRoute(auth.userId ?? '');
       await _syncPickupMarker(_activeBoardTrip);
       if (mounted) setState(() => isMapReady = true);
     } catch (e, st) {
       debugPrint('DriverMapTab _onMapCreated error: $e\n$st');
       if (mounted) setState(() => isMapReady = true);
+    }
+  }
+
+  Future<String?> _resolveOperationalLineName(String busNumber) async {
+    final bus = busNumber.trim();
+    if (bus.isEmpty) return null;
+
+    try {
+      final assignment =
+          await _driverLineAssignmentService.getApprovedForVehicle(bus);
+      if (assignment == null) return null;
+
+      final line = await _transitLineService.getById(assignment.lineId);
+      final lineName = line?.name.trim() ?? '';
+      if (lineName.isNotEmpty) return lineName;
+
+      final routeSnap = await FirebaseFirestore.instance
+          .collection('plannedRoutes')
+          .doc(assignment.routeId)
+          .get();
+      if (!routeSnap.exists || routeSnap.data() == null) return null;
+
+      final route = PlannedRoute.fromDoc(
+        routeSnap.id,
+        routeSnap.data()!,
+      );
+      final routeLineName = route.lineName.trim();
+      return routeLineName.isEmpty ? null : routeLineName;
+    } catch (e, st) {
+      debugPrint('resolve operational line name failed: $e\n$st');
+      return null;
     }
   }
 
@@ -562,7 +604,15 @@ class _DriverMapTabState extends State<DriverMapTab>
 
     final goingOnline = !driver.isOnline;
 
-    // اتصال: بوابة الصلاحية أولاً — لا Online / driverPublic قبل الجاهزية
+    if (!goingOnline && driver.isTripActive) {
+      MapUtils.showSnackBar(
+        context,
+        '⚠️ أنهِ الرحلة الحالية أولًا قبل قطع الاتصال عن المركبة.',
+        isError: true,
+      );
+      return;
+    }
+
     if (goingOnline) {
       final ready =
           await LocationPermissionSheet.ensureDriverBackgroundAccess(context);
@@ -576,6 +626,86 @@ class _DriverMapTabState extends State<DriverMapTab>
         return;
       }
       markDriverLocationGatePassed();
+
+      // GPS fix حديث عند الاتصال — لا نعتمد على موقع مخزن في DriverProvider.
+      final geo.Position position;
+      try {
+        position = await geo.Geolocator.getCurrentPosition(
+          locationSettings: const geo.LocationSettings(
+            accuracy: geo.LocationAccuracy.high,
+            timeLimit: Duration(seconds: 8),
+          ),
+        );
+      } catch (_) {
+        if (!mounted) return;
+        MapUtils.showSnackBar(
+          context,
+          '⚠️ تعذر الحصول على موقع GPS حديث. تأكد من تفعيل الموقع ثم حاول مرة أخرى.',
+          isError: true,
+        );
+        return;
+      }
+      if (!mounted) return;
+
+      driver.updatePosition(position, userId: uid);
+
+      final nearAssignedRoute = await _isNearAssignedRouteStart(uid, position);
+
+      if (!mounted) return;
+      if (!nearAssignedRoute) {
+        MapUtils.showSnackBar(
+          context,
+          '⚠️ لا يمكنك الاتصال وأنت بعيد عن نقطة بداية المسار المخصص لك. يجب أن تكون ضمن 750م من بداية المسار.',
+          isError: true,
+        );
+        return;
+      }
+
+      final busNumber = auth.userData?.busNumber?.trim() ?? '';
+      if (busNumber.isEmpty) {
+        MapUtils.showSnackBar(
+          context,
+          '⚠️ لا يوجد رقم مركبة صالح لهذا الحساب.',
+          isError: true,
+        );
+        return;
+      }
+
+      final operationalLineName =
+          await _resolveOperationalLineName(busNumber);
+      if (operationalLineName != null && mounted) {
+        setState(() => _operationalLineName = operationalLineName);
+      }
+
+      try {
+        await _vehicleSession.claimOrRefresh(
+          driverId: uid,
+          busNumber: busNumber,
+          latitude: position.latitude,
+          longitude: position.longitude,
+        );
+      } on VehicleOperationalSessionException catch (e) {
+        if (!mounted) return;
+        MapUtils.showSnackBar(context, e.message, isError: true);
+        return;
+      } on FirebaseException catch (e) {
+        debugPrint('vehicle session claim failed: $e');
+        final message = e.code == 'permission-denied'
+            ? '❌ صلاحيات جلسة المركبة غير مفعّلة بعد. يجب نشر firestore.rules ثم المحاولة مرة أخرى.'
+            : '❌ تعذر الاتصال بالمركبة: ${e.message ?? e.code}';
+        if (!mounted) return;
+        MapUtils.showSnackBar(context, message, isError: true);
+        return;
+      } catch (e, st) {
+        debugPrint('vehicle session claim failed: $e\n$st');
+        if (!mounted) return;
+        MapUtils.showSnackBar(
+          context,
+          '❌ تعذر إنشاء جلسة تشغيل المركبة. حاول مرة أخرى.',
+          isError: true,
+        );
+        return;
+      }
     }
 
     final ok = driver.toggleOnlineStatus(userId: uid);
@@ -598,9 +728,39 @@ class _DriverMapTabState extends State<DriverMapTab>
       );
     } catch (_) {
       if (mounted) driver.toggleOnlineStatus(userId: uid);
+      if (goingOnline) {
+        try {
+          final busNumber = auth.userData?.busNumber?.trim() ?? '';
+          if (busNumber.isNotEmpty) {
+            await _vehicleSession.release(
+              driverId: uid,
+              busNumber: busNumber,
+            );
+          }
+        } catch (releaseError) {
+          debugPrint('vehicle session rollback failed: $releaseError');
+        }
+      }
       if (!mounted) return;
       MapUtils.showSnackBar(context, l10n.onlineStatusFailed, isError: true);
     }
+
+    if (!goingOnline) {
+      try {
+        final busNumber = auth.userData?.busNumber?.trim() ?? '';
+        if (busNumber.isNotEmpty) {
+          await _vehicleSession.release(
+            driverId: uid,
+            busNumber: busNumber,
+          );
+        }
+      } on VehicleOperationalSessionException catch (e) {
+        debugPrint('vehicle session release warning: $e');
+      } catch (e) {
+        debugPrint('vehicle session release failed: $e');
+      }
+    }
+
     if (mounted) await refreshDriverTrackingProfile();
   }
 
@@ -625,6 +785,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     } else {
       await startTrip();
       if (!mounted) return;
+      if (!driver.isTripActive) return;
       try {
         await LiveTrackingService()
             .setDriverTripActive(uid: uid, isTripActive: true);
@@ -638,13 +799,25 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   Future<void> _onRouteChanged(String route) async {
     if (!mounted) return;
+
+    final driver = context.read<DriverProvider>();
+    if (driver.isOnline) {
+      MapUtils.showSnackBar(
+        context,
+        '⚠️ لا يمكنك تغيير الخط أثناء الاتصال. اقطع الاتصال أولاً.',
+        isError: true,
+      );
+      return;
+    }
+
     setState(() => _selectedRoute = route);
     MapUtils.lightHaptic();
     listenLinePlannedRoutes(route);
-    final driver = context.read<DriverProvider>();
+
     final auth = context.read<AuthProvider>();
     final uid = auth.userId;
     if (uid == null || !driver.isOnline || driver.boundUserId != uid) return;
+
     final pos = driver.currentPosition;
     try {
       await LiveTrackingService().setDriverOnlineStatus(
@@ -845,7 +1018,9 @@ class _DriverMapTabState extends State<DriverMapTab>
                         state.isTripActive
                             ? l10n.activeTrip
                             : (state.isOnline
-                                ? l10n.onlineWithRoute(_selectedRoute)
+                                ? l10n.onlineWithRoute(
+                                    _operationalLineName ?? _selectedRoute,
+                                  )
                                 : l10n.offlineStatus),
                         style: TextStyle(
                           color: state.isOnline

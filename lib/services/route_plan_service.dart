@@ -138,6 +138,7 @@ class RoutePlanService {
     for (final d in snap.docs) {
       final data = d.data();
       final routeId = data['routeId']?.toString().trim();
+      final lineId = data['lineId']?.toString().trim();
       final lineName = data['lineName']?.toString().trim() ?? '';
       if (lineName.isEmpty) continue;
 
@@ -157,6 +158,7 @@ class RoutePlanService {
           id: routeId == null || routeId.isEmpty ? d.id : routeId,
           createdBy: '',
           lineName: lineName,
+          lineId: lineId == null || lineId.isEmpty ? null : lineId,
           direction: direction,
           points: const [],
           status: PlannedRouteStatus.approved,
@@ -322,6 +324,87 @@ class RoutePlanService {
     );
   }
 
+  Future<String> _ensureAdminTransitLine({
+    required String adminId,
+    required String lineName,
+    required String? startName,
+    required String? middleName,
+    required String? endName,
+    required List<String> aliases,
+  }) async {
+    final cleanName = lineName.trim();
+    final normalized = ArabicSearch.normalize(cleanName);
+    if (cleanName.isEmpty || normalized.isEmpty) {
+      throw ArgumentError('اسم الخط غير صالح');
+    }
+
+    final snap = await _db
+        .collection('transitLines')
+        .where('normalizedName', isEqualTo: normalized)
+        .limit(10)
+        .get();
+
+    QueryDocumentSnapshot<Map<String, dynamic>>? reusable;
+    for (final doc in snap.docs) {
+      final status = doc.data()['status']?.toString().trim();
+      if (status != 'archived') {
+        reusable = doc;
+        if (status == 'approved') break;
+      }
+    }
+
+    final cleanAliases = aliases
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+
+    final data = <String, dynamic>{
+      'name': cleanName,
+      'normalizedName': normalized,
+      'aliases': cleanAliases,
+      'status': 'approved',
+      'proposedBy': adminId,
+      'approvedBy': adminId,
+      'approvedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      if (startName != null && startName.trim().isNotEmpty)
+        'startName': startName.trim(),
+      if (middleName != null && middleName.trim().isNotEmpty)
+        'middleName': middleName.trim(),
+      if (endName != null && endName.trim().isNotEmpty)
+        'endName': endName.trim(),
+    };
+
+    if (reusable != null) {
+      await reusable.reference.update(data);
+      return reusable.id;
+    }
+
+    data['createdAt'] = FieldValue.serverTimestamp();
+    final ref = _db.collection('transitLines').doc();
+    await ref.set(data);
+    return ref.id;
+  }
+
+  Future<void> _writeRouteCatalog({
+    required String routeId,
+    required String lineId,
+    required String lineName,
+    required RouteDirection direction,
+    required List<String> aliases,
+  }) async {
+    final search = _searchPayload(lineName, aliases);
+    await _catalogCol.doc(routeId).set({
+      'routeId': routeId,
+      'lineId': lineId,
+      'lineName': lineName.trim(),
+      'direction': direction.firestoreValue,
+      'status': PlannedRouteStatus.approved.firestoreValue,
+      ...search,
+    });
+  }
+
   Future<PlannedRoute> saveAdminDrawnRoute({
     required String adminId,
     required String lineName,
@@ -362,6 +445,15 @@ class RoutePlanService {
       throw StateError('أضف نقطتين على الأقل على الخريطة');
     }
 
+    final lineId = await _ensureAdminTransitLine(
+      adminId: adminId,
+      lineName: lineName,
+      startName: lineStart,
+      middleName: lineMiddle,
+      endName: lineEnd,
+      aliases: aliases,
+    );
+
     final distance = totalDistanceMeters(finalPoints);
     final search = _searchPayload(lineName.trim(), aliases);
 
@@ -369,6 +461,7 @@ class RoutePlanService {
       'createdBy': adminId,
       'driverId': adminId,
       'lineName': lineName.trim(),
+      'lineId': lineId,
       'direction': direction.firestoreValue,
       'points': finalPoints.map((p) => p.toMap()).toList(),
       'status': PlannedRouteStatus.approved.firestoreValue,
@@ -392,28 +485,29 @@ class RoutePlanService {
       payload['lineEnd'] = lineEnd.trim();
     }
 
+    final String routeId;
     if (existing == null) {
       payload['createdAt'] = FieldValue.serverTimestamp();
       final ref = await _col.add(payload);
-      return PlannedRoute(
-        id: ref.id,
-        createdBy: adminId,
-        lineName: lineName.trim(),
-        direction: direction,
-        points: finalPoints,
-        status: PlannedRouteStatus.approved,
-        distanceMeters: distance,
-        source: RouteSource.admin,
-        searchKeys: List<String>.from(search['searchKeys'] as List),
-        aliases: List<String>.from(search['aliases'] as List),
-      );
+      routeId = ref.id;
+    } else {
+      await _col.doc(existing.id).update(payload);
+      routeId = existing.id;
     }
 
-    await _col.doc(existing.id).update(payload);
+    await _writeRouteCatalog(
+      routeId: routeId,
+      lineId: lineId,
+      lineName: lineName,
+      direction: direction,
+      aliases: aliases,
+    );
+
     return PlannedRoute(
-      id: existing.id,
+      id: routeId,
       createdBy: adminId,
       lineName: lineName.trim(),
+      lineId: lineId,
       direction: direction,
       points: finalPoints,
       status: PlannedRouteStatus.approved,
@@ -528,5 +622,6 @@ class RoutePlanService {
 
   Future<void> deleteRoute(String routeId) async {
     await _col.doc(routeId).delete();
+    await _catalogCol.doc(routeId).delete();
   }
 }

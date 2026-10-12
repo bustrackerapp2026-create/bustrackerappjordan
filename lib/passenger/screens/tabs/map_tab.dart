@@ -20,16 +20,24 @@ import '../../../models/live_driver_location.dart';
 import '../../../models/planned_route.dart';
 import '../../../models/trip_model.dart';
 import '../../../passenger/widgets/active_trip_banner.dart';
+import '../../../passenger/widgets/bus_watch_operational_card.dart';
 import '../../../passenger/widgets/destination_search_sheet.dart';
 import '../../../passenger/widgets/passenger_live_status_bar.dart';
 import '../../../passenger/widgets/passenger_map_fabs.dart';
 import '../../../services/analytics_service.dart';
+import '../../../services/bus_watch_passenger_context_binder.dart';
+import '../../../services/bus_watch_passenger_presentation_state.dart';
+import '../../../services/passenger_journey_presentation_state.dart';
 import '../../../services/location_service.dart';
 import '../../../services/map_camera_prefs_service.dart';
+import '../../../services/passenger_journey_planning_service.dart';
 import '../../../services/nearby_routes_service.dart';
 import '../../../services/route_prefs_service.dart';
 import '../../../services/route_plan_service.dart';
 import '../../../services/trip_service.dart';
+import '../../presentation/journey_route_presentation.dart';
+import '../../presentation/planner_ui_projection.dart';
+import '../../widgets/planner_status_card.dart';
 import 'mixins/passenger_location_mixin.dart';
 import 'mixins/passenger_live_tracking_mixin.dart';
 import 'mixins/passenger_planned_routes_mixin.dart';
@@ -60,13 +68,23 @@ class _MapTabState extends State<MapTab>
   bool _findingNearby = false;
   bool _nearbyMode = false;
   List<String> _nearbyLineNames = const [];
+  bool _hasExplicitRouteContext = false;
+  bool _showLiveStatusBar = true;
 
   PlaceSearchResult? _destination;
+  CameraState? _cameraBeforeDestination;
 
   final TripService _tripService = TripService();
   final NearbyRoutesService _nearbyRoutes = NearbyRoutesService();
   StreamSubscription<List<TripModel>>? _openTripsSub;
   TripModel? _openTrip;
+  final BusWatchPassengerContextBinder _busWatchBinder =
+      BusWatchPassengerContextBinder();
+  final BusWatchPassengerPresentationState _busWatchPresentation =
+      BusWatchPassengerPresentationState();
+  final PassengerJourneyPresentationState _journeyPresentation =
+      PassengerJourneyPresentationState();
+  String? _passengerAuthUid;
 
   @override
   bool get wantKeepAlive => true;
@@ -98,19 +116,138 @@ class _MapTabState extends State<MapTab>
     preloadPassengerMarker();
     liveDriversCount.addListener(_onLiveCountChanged);
     _loadPreferredRoute();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _watchOpenTrips());
   }
 
-  void _watchOpenTrips() {
-    _openTripsSub?.cancel();
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
     final uid = context.read<AuthProvider>().userId;
-    if (uid == null || uid.isEmpty) return;
+    if (_passengerAuthUid == uid) return;
+
+    _passengerAuthUid = uid;
+    _setOpenTrip(null);
+
+    if (uid != null && uid.isNotEmpty) {
+      _watchOpenTrips(uid);
+    }
+  }
+
+  void _watchOpenTrips([String? passengerId]) {
+    _openTripsSub?.cancel();
+    final uid = passengerId ?? context.read<AuthProvider>().userId;
+    if (uid == null || uid.isEmpty) {
+      _setOpenTrip(null);
+      return;
+    }
+
     _openTripsSub = _tripService.watchPassengerOpenTrips(uid).listen((list) {
-      if (!mounted) return;
-      setState(() => _openTrip = list.isEmpty ? null : list.first);
+      if (!mounted || _passengerAuthUid != uid) return;
+      _setOpenTrip(list.isEmpty ? null : list.first);
     }, onError: (e) {
       debugPrint('open trips watch: $e');
     });
+  }
+
+  void _setOpenTrip(TripModel? trip) {
+    if (!mounted) return;
+
+    final previous = _openTrip;
+    final sameTripId = previous?.id.trim().isNotEmpty == true &&
+        trip?.id.trim().isNotEmpty == true &&
+        previous!.id.trim() == trip!.id.trim();
+    final operationalContextChanged = sameTripId &&
+        (previous.status != trip.status ||
+            previous.driverId.trim() != trip.driverId.trim());
+
+    setState(() => _openTrip = trip);
+    unawaited(
+      _syncBusWatchContext(
+        trip,
+        forceRefresh: operationalContextChanged,
+      ),
+    );
+  }
+
+  Future<void> _syncBusWatchContext(
+    TripModel? trip, {
+    bool forceRefresh = false,
+  }) async {
+    final tripId = trip?.id.trim() ?? '';
+
+    if (tripId.isEmpty) {
+      _busWatchPresentation.clear();
+      _busWatchBinder.clear();
+      if (mounted) setState(() {});
+      return;
+    }
+
+    if (_busWatchBinder.currentTripId == tripId && !forceRefresh) {
+      return;
+    }
+
+    final generation = forceRefresh
+        ? _busWatchPresentation.beginRefresh(tripId)
+        : _busWatchPresentation.beginContext(tripId);
+    if (mounted) setState(() {});
+
+    try {
+      if (forceRefresh) {
+        await _busWatchBinder.refresh();
+      } else {
+        await _busWatchBinder.sync(trip);
+      }
+      if (!mounted ||
+          !_busWatchPresentation.isCurrent(generation, tripId)) {
+        return;
+      }
+
+      final result = _busWatchBinder.coordinator.consumer.currentResult;
+      if (result == null) {
+        return;
+      }
+
+      _busWatchPresentation.complete(generation, tripId, result);
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (!mounted ||
+          !_busWatchPresentation.isCurrent(generation, tripId)) {
+        return;
+      }
+
+      _busWatchPresentation.fail(generation, tripId, error);
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _refreshBusWatch() async {
+    final tripId = _busWatchBinder.currentTripId;
+    if (tripId == null || _busWatchPresentation.loading) return;
+
+    final generation = _busWatchPresentation.beginRefresh(tripId);
+    if (mounted) setState(() {});
+
+    try {
+      await _busWatchBinder.refresh();
+      if (!mounted ||
+          !_busWatchPresentation.isCurrent(generation, tripId)) {
+        return;
+      }
+
+      final result = _busWatchBinder.coordinator.consumer.currentResult;
+      if (result == null) return;
+
+      _busWatchPresentation.complete(generation, tripId, result);
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (!mounted ||
+          !_busWatchPresentation.isCurrent(generation, tripId)) {
+        return;
+      }
+
+      _busWatchPresentation.fail(generation, tripId, error);
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _loadPreferredRoute() async {
@@ -170,23 +307,66 @@ class _MapTabState extends State<MapTab>
   }
 
   void _clearDestination() {
+    final previousCamera = _cameraBeforeDestination;
+    _cameraBeforeDestination = null;
+    final restoreNearby = _nearbyMode && hasPassengerLocation;
+    _journeyPresentation.clear();
+
     setState(() {
       _destination = null;
+      _showLiveStatusBar = true;
     });
-    if (_nearbyMode && hasPassengerLocation) {
-      unawaited(_showBusesNearMe(silent: true));
-    } else {
-      setState(() {
-        _nearbyMode = false;
-        _nearbyLineNames = const [];
-      });
-      updateLiveTrackingRouteFilter(_selectedRoute);
-      updatePlannedRoutesLineFilter(_selectedRoute);
+
+    unawaited(_restoreRoutesAfterDestinationClear(restoreNearby));
+
+    if (previousCamera != null) {
+      unawaited(_restoreCamera(previousCamera));
+    }
+  }
+
+  Future<void> _restoreRoutesAfterDestinationClear(
+    bool restoreNearby,
+  ) async {
+    await clearPlannerDisplayedRoutes();
+    endPlannerRoutePresentation();
+
+    if (!mounted) return;
+
+    if (restoreNearby) {
+      await _showBusesNearMe(silent: true);
+      return;
+    }
+
+    setState(() {
+      _nearbyMode = false;
+      _nearbyLineNames = const [];
+    });
+    updateLiveTrackingRouteFilter(_selectedRoute);
+    updatePlannedRoutesLineFilter(_selectedRoute);
+  }
+
+  Future<void> _restoreCamera(CameraState camera) async {
+    if (mapboxMap == null || !mounted) return;
+    try {
+      await mapboxMap!.easeTo(
+        CameraOptions(
+          center: camera.center,
+          zoom: camera.zoom,
+          pitch: camera.pitch,
+          bearing: camera.bearing,
+        ),
+        MapAnimationOptions(duration: 480, startDelay: 0),
+      );
+    } catch (e) {
+      debugPrint('restore camera after destination clear: $e');
     }
   }
 
   @override
   void dispose() {
+    _busWatchBinder.clear();
+    _busWatchPresentation.clear();
+    _journeyPresentation.clear();
     _openTripsSub?.cancel();
     try {
       liveDriversCount.removeListener(_onLiveCountChanged);
@@ -519,7 +699,7 @@ class _MapTabState extends State<MapTab>
         passengerId: uid,
       );
       if (!mounted) return;
-      setState(() => _openTrip = null);
+      _setOpenTrip(null);
       MapUtils.showSnackBar(context, 'تم إلغاء الطلب');
     } catch (e, st) {
       debugPrint('cancel trip failed: $e\n$st');
@@ -616,8 +796,11 @@ class _MapTabState extends State<MapTab>
   }
 
   Future<void> _onRouteChanged(String newRoute) async {
+    _journeyPresentation.clear();
     setState(() {
       _selectedRoute = newRoute;
+      _hasExplicitRouteContext = true;
+      _showLiveStatusBar = true;
       _nearbyMode = false;
       _nearbyLineNames = const [];
       _destination = null;
@@ -652,8 +835,10 @@ class _MapTabState extends State<MapTab>
       if (found.isNotEmpty) {
         final line = found.first.lineName;
         if (!AppConstants.jordanRoutes.contains(line)) {
+          _journeyPresentation.clear();
           setState(() {
             _selectedRoute = line;
+            _hasExplicitRouteContext = true;
             _nearbyMode = false;
             _nearbyLineNames = const [];
             _destination = null;
@@ -679,7 +864,111 @@ class _MapTabState extends State<MapTab>
     await searchPassengerPlace(q);
   }
 
+  Future<void> _showDestinationJourneyPlan({
+    bool silent = false,
+  }) async {
+    if (!hasPassengerLocation) {
+      if (!silent) {
+        MapUtils.showSnackBar(context, 'جاري تحديد موقعك...');
+      }
+      await goToMyLocation();
+      if (!hasPassengerLocation) {
+        if (!mounted) return;
+        MapUtils.showSnackBar(
+          context,
+          'تعذر تحديد الموقع. فعّل GPS ثم أعد المحاولة',
+          isError: true,
+        );
+        return;
+      }
+    }
+
+    if (!mounted || _destination == null) return;
+
+    setState(() => _showLiveStatusBar = true);
+
+    beginPlannerRoutePresentation();
+    final generation = _journeyPresentation.beginLoading();
+    if (mounted) setState(() {});
+    final planner = context.read<PassengerJourneyPlanningService>();
+
+    try {
+      final destination = _destination!;
+      final options = await planner.plan(
+        originLatitude: lastPassengerLat!,
+        originLongitude: lastPassengerLng!,
+        destinationLatitude: destination.latitude,
+        destinationLongitude: destination.longitude,
+      );
+      if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+        return;
+      }
+
+      if (options.isEmpty) {
+        _journeyPresentation.completeEmpty(generation);
+        if (mounted) setState(() {});
+        if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+          return;
+        }
+        await clearPlannerDisplayedRoutes();
+        if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+          return;
+        }
+        MapUtils.showSnackBar(
+          context,
+          'لا توجد رحلة متاحة حاليًا نحو «${destination.name}».',
+          isError: true,
+        );
+        return;
+      }
+
+      final routes = journeyOptionRoutesForPresentation(options);
+      _journeyPresentation.completeSuccess(generation);
+      if (mounted) setState(() {});
+      if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+        return;
+      }
+      await showPlannerRoutesSnapshot(routes);
+      if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+        return;
+      }
+
+      if (!silent) {
+        MapUtils.showSnackBar(
+          context,
+          'تم العثور على ${routes.length} مسار نحو «${destination.name}».',
+        );
+      }
+    } catch (error, stackTrace) {
+      debugPrint('journey planner: $error\\n$stackTrace');
+      if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+        return;
+      }
+
+      _journeyPresentation.completeError(generation, error);
+      if (mounted) setState(() {});
+      if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+        return;
+      }
+      await clearPlannerDisplayedRoutes();
+      if (!mounted || !_journeyPresentation.isCurrent(generation)) {
+        return;
+      }
+
+      MapUtils.showSnackBar(
+        context,
+        'تعذر تخطيط الرحلة. حاول لاحقًا.',
+        isError: true,
+      );
+    }
+  }
+
   Future<void> _showBusesNearMe({bool silent = false}) async {
+    if (_destination != null) {
+      await _showDestinationJourneyPlan(silent: silent);
+      return;
+    }
+
     if (_findingNearby) return;
     if (!silent) MapUtils.mediumHaptic();
 
@@ -699,34 +988,26 @@ class _MapTabState extends State<MapTab>
       }
     }
 
-    setState(() => _findingNearby = true);
+    setState(() {
+      _findingNearby = true;
+      _showLiveStatusBar = true;
+    });
     try {
       final List<NearbyLineMatch> matches;
-      if (_destination != null) {
-        matches = await _nearbyRoutes.findLinesServingTrip(
-          fromLat: lastPassengerLat!,
-          fromLng: lastPassengerLng!,
-          toLat: _destination!.latitude,
-          toLng: _destination!.longitude,
-        );
-      } else {
-        matches = await _nearbyRoutes.findNearbyLines(
-          latitude: lastPassengerLat!,
-          longitude: lastPassengerLng!,
-        );
-      }
+      matches = await _nearbyRoutes.findNearbyLines(
+        latitude: lastPassengerLat!,
+        longitude: lastPassengerLng!,
+      );
       if (!mounted) return;
 
       if (matches.isEmpty) {
         setState(() {
-          _nearbyMode = _destination == null;
+          _nearbyMode = true;
           _nearbyLineNames = const [];
         });
         MapUtils.showSnackBar(
           context,
-          _destination != null
-              ? 'لا يوجد خط معتمد يمر من موقعك ويتجه نحو «${_destination!.name}».'
-              : 'لا يوجد مسار معتمد يمر قرب موقعك حالياً. سجّل مسارات من الأدمن أو السائق ثم أعد المحاولة.',
+          'لا يوجد مسار معتمد يمر قرب موقعك حالياً. سجّل مسارات من الأدمن أو السائق ثم أعد المحاولة.',
           isError: true,
         );
         return;
@@ -745,13 +1026,13 @@ class _MapTabState extends State<MapTab>
       if (!silent) {
         final linesLabel = names.take(3).join(' · ');
         final more = names.length > 3 ? ' +${names.length - 3}' : '';
-        final msg = _destination != null
-            ? 'باصات نحو «${_destination!.name}»: $linesLabel$more'
-            : 'خطوط تمر من هنا: $linesLabel$more';
-        MapUtils.showSnackBar(context, msg);
+        MapUtils.showSnackBar(
+          context,
+          'خطوط تمر من هنا: $linesLabel$more',
+        );
       }
     } catch (e, st) {
-      debugPrint('nearby buses: $e\n$st');
+      debugPrint('nearby buses: $e\\n$st');
       if (!mounted) return;
       MapUtils.showSnackBar(
         context,
@@ -770,6 +1051,12 @@ class _MapTabState extends State<MapTab>
       initialQuery: _destination?.name,
     );
     if (!mounted || result == null) return;
+
+    try {
+      _cameraBeforeDestination = await mapboxMap?.getCameraState();
+    } catch (_) {
+      _cameraBeforeDestination = null;
+    }
 
     setState(() => _destination = result);
 
@@ -842,7 +1129,16 @@ class _MapTabState extends State<MapTab>
     super.build(context);
     final l10n = AppLocalizations.of(context);
     final hasOpenTrip = _openTrip != null;
-    final bottomPad = hasOpenTrip ? 80.0 : 0.0;
+    final plannerUi =
+        PlannerUiProjection.fromState(_journeyPresentation);
+    final showPlannerStatus = !hasOpenTrip &&
+        _destination != null &&
+        (plannerUi.status == PlannerUiProjectionStatus.loading ||
+            plannerUi.status == PlannerUiProjectionStatus.empty ||
+            plannerUi.status == PlannerUiProjectionStatus.error);
+    final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
+    final bottomPad = hasOpenTrip ? 130.0 : 0.0;
+    final busWatch = _busWatchPresentation;
 
     return Stack(
       fit: StackFit.expand,
@@ -878,62 +1174,96 @@ class _MapTabState extends State<MapTab>
           ),
         ),
 
-        // ── 1) باصات من هنا ──
-        Positioned(
-          right: PassengerMapControlPositions.nearbyRight,
-          bottom: PassengerMapControlPositions.nearbyBottom + bottomPad,
-          child: PassengerNearbyChip(
-            loading: _findingNearby,
-            active: _nearbyMode,
-            onPressed: _findingNearby ? null : () => _showBusesNearMe(),
-          ),
-        ),
-
-        // ── 2) إلى أين؟ ──
-        Positioned(
-          right: PassengerMapControlPositions.destinationRight,
-          bottom: PassengerMapControlPositions.destinationBottom + bottomPad,
-          child: PassengerDestinationChip(
-            hasDestination: _destination != null,
-            onPressed: _pickDestination,
-          ),
-        ),
-
-        // ── 3) عمود: أقرب باص · موقعي · طبقات ──
-        Positioned(
-          right: PassengerMapControlPositions.iconsRight,
-          bottom: PassengerMapControlPositions.iconsBottom + bottomPad,
-          child: PassengerMapIconColumn(
-            findingNearest: _findingNearest,
-            isLoadingLocation: isLoadingPassengerLocation,
-            onNearestBus: _findingNearest ? null : _findNearestBus,
-            onMyLocation: () {
-              MapUtils.lightHaptic();
-              goToMyLocation();
-            },
-            onMapLayers: () {
-              MapUtils.lightHaptic();
-              showMapSettingsSheet(context);
-            },
-          ),
-        ),
+        if (!keyboardVisible) ...[
+                  // ── 1) باصات من هنا ──
+                  Positioned(
+                    right: PassengerMapControlPositions.nearbyRight,
+                    bottom: PassengerMapControlPositions.nearbyBottom + bottomPad,
+                    child: PassengerNearbyChip(
+                      loading: _findingNearby,
+                      active: _nearbyMode,
+                      onPressed: _findingNearby ? null : () => _showBusesNearMe(),
+                    ),
+                  ),
+          
+                  // ── 2) إلى أين؟ ──
+                  Positioned(
+                    right: PassengerMapControlPositions.destinationRight,
+                    bottom: PassengerMapControlPositions.destinationBottom + bottomPad,
+                    child: PassengerDestinationChip(
+                      hasDestination: _destination != null,
+                      onPressed: _pickDestination,
+                    ),
+                  ),
+          
+                  // ── 3) عمود: أقرب باص · موقعي · طبقات ──
+                  if (!keyboardVisible)
+                    Positioned(
+                      right: PassengerMapControlPositions.iconsRight,
+                      bottom: PassengerMapControlPositions.iconsBottom + bottomPad,
+                      child: PassengerMapIconColumn(
+                        findingNearest: _findingNearest,
+                        isLoadingLocation: isLoadingPassengerLocation,
+                        onNearestBus: _findingNearest ? null : _findNearestBus,
+                        onMyLocation: () {
+                          MapUtils.lightHaptic();
+                          goToMyLocation();
+                        },
+                        onMapLayers: () {
+                          MapUtils.lightHaptic();
+                          showMapSettingsSheet(context);
+                        },
+                      ),
+                    ),
+        ],
 
         if (hasOpenTrip)
           Positioned(
             bottom: 88,
             left: 16,
             right: 16,
-            child: ActiveTripBanner(
-              trip: _openTrip!,
-              onCancel: _cancelOpenTrip,
-              onFocusDriver: _focusOpenTripDriver,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (busWatch.contextTripId == _openTrip!.id.trim())
+                  BusWatchOperationalCard(
+                    loading: busWatch.loading,
+                    result: busWatch.result,
+                    error: busWatch.error,
+                    onRetry:
+                        busWatch.loading ? null : _refreshBusWatch,
+                  ),
+                const SizedBox(height: 8),
+                ActiveTripBanner(
+                  trip: _openTrip!,
+                  onCancel: _cancelOpenTrip,
+                  onFocusDriver: _focusOpenTripDriver,
+                ),
+              ],
             ),
-          )
-        else
+          ),
+        if (showPlannerStatus)
           Positioned(
             bottom: 88,
             left: 16,
             right: 16,
+            child: RepaintBoundary(
+              child: PlannerStatusCard(
+                projection: plannerUi,
+                onRetry: plannerUi.status == PlannerUiProjectionStatus.error
+                    ? () => _showDestinationJourneyPlan()
+                    : null,
+              ),
+            ),
+          ),
+
+        if (!showPlannerStatus &&
+            _showLiveStatusBar &&
+            (_hasExplicitRouteContext || _nearbyMode || _destination != null))
+          Positioned(
+            bottom: 88,
+            left: 16,
+            right: 80,
             child: RepaintBoundary(
               child: ValueListenableBuilder<int>(
                 valueListenable: liveDriversCount,
@@ -947,6 +1277,9 @@ class _MapTabState extends State<MapTab>
                     destinationName: _destination?.name,
                     onClearDestination:
                         _destination != null ? _clearDestination : null,
+                    onDismiss: () {
+                      setState(() => _showLiveStatusBar = false);
+                    },
                     onTryNearby: (!_nearbyMode && _destination == null)
                         ? () => _showBusesNearMe()
                         : null,

@@ -21,6 +21,9 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
   /// عند تفعيل «باصات من هنا» / الوجهة نعرض عدة خطوط دفعة واحدة.
   Set<String>? _plannedRoutesMultiFilter;
   bool _drawingPlannedRoutes = false;
+  bool _plannerRoutePresentationActive = false;
+  bool _plannerRouteDisplayOwned = false;
+  List<PlannedRoute>? _pendingPlannedRoutes;
   List<PlannedRoute> _lastPlannedRoutes = const [];
 
   /// ذهاب أزرق، إياب أخضر مواصلات
@@ -37,9 +40,12 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
     _plannedRoutesLineFilter = lineName;
 
     _plannedRoutesSub?.cancel();
+    _plannerRoutePresentationActive = false;
     _plannedRoutesSub = _plannedRouteService
         .watchApprovedRoutesForLine(lineName)
         .listen((routes) {
+      if (_plannerRoutePresentationActive) return;
+      _plannerRouteDisplayOwned = false;
       _lastPlannedRoutes = routes;
       unawaited(_drawPlannedRoutes(routes));
     }, onError: (e) {
@@ -73,8 +79,11 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
 
     _plannedRoutesSub?.cancel();
     // نراقب كل المعتمد ثم نفلتر بالأسماء محلياً (عدد الخطوط صغير عادة)
+    _plannerRoutePresentationActive = false;
     _plannedRoutesSub =
         _plannedRouteService.watchAllApprovedRoutes().listen((all) {
+      if (_plannerRoutePresentationActive) return;
+      _plannerRouteDisplayOwned = false;
       final filtered = all
           .where((r) => cleaned.contains(r.lineName))
           .toList();
@@ -87,8 +96,44 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
 
   /// رسم فوري من نتائج NearbyRoutesService بدون انتظار الـ stream.
   Future<void> showPlannedRoutesSnapshot(List<PlannedRoute> routes) async {
+    _plannerRoutePresentationActive = false;
+    _plannerRouteDisplayOwned = false;
     _lastPlannedRoutes = List<PlannedRoute>.from(routes);
     await _drawPlannedRoutes(_lastPlannedRoutes);
+  }
+
+  /// Starts Planner ownership without clearing the existing drawing.
+  ///
+  /// Legacy route streams are detached so they cannot overwrite the Planner
+  /// request while it is in flight.
+  void beginPlannerRoutePresentation() {
+    _plannerRoutePresentationActive = true;
+    _plannedRoutesSub?.cancel();
+    _plannedRoutesSub = null;
+  }
+
+  /// Replaces the route snapshot owned by the current Planner request.
+  Future<void> showPlannerRoutesSnapshot(
+    List<PlannedRoute> routes,
+  ) async {
+    _plannerRoutePresentationActive = true;
+    _plannerRouteDisplayOwned = true;
+    _plannedRoutesSub?.cancel();
+    _plannedRoutesSub = null;
+    _lastPlannedRoutes = List<PlannedRoute>.from(routes);
+    await _drawPlannedRoutes(_lastPlannedRoutes);
+  }
+
+  /// Clears only the route display currently owned by Planner.
+  Future<void> clearPlannerDisplayedRoutes() async {
+    if (!_plannerRouteDisplayOwned) return;
+    _lastPlannedRoutes = const [];
+    _plannerRouteDisplayOwned = false;
+    await clearPlannedRouteLines();
+  }
+
+  void endPlannerRoutePresentation() {
+    _plannerRoutePresentationActive = false;
   }
 
   Future<void> ensurePlannedRoutesPolylineManager() async {
@@ -98,7 +143,11 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
   }
 
   Future<void> _drawPlannedRoutes(List<PlannedRoute> routes) async {
-    if (!mounted || _drawingPlannedRoutes) return;
+    if (!mounted) return;
+    if (_drawingPlannedRoutes) {
+      _pendingPlannedRoutes = List<PlannedRoute>.from(routes);
+      return;
+    }
     _drawingPlannedRoutes = true;
     try {
       await ensurePlannedRoutesPolylineManager();
@@ -135,6 +184,11 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
       }
     } finally {
       _drawingPlannedRoutes = false;
+      final pending = _pendingPlannedRoutes;
+      _pendingPlannedRoutes = null;
+      if (pending != null && mounted) {
+        unawaited(_drawPlannedRoutes(pending));
+      }
     }
   }
 
@@ -151,6 +205,11 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
   }
 
   Future<void> clearPlannedRouteLines() async {
+    if (_drawingPlannedRoutes) {
+      _pendingPlannedRoutes = const [];
+      return;
+    }
+
     for (final ann in _plannedLineAnnotations) {
       try {
         await polylineAnnotationManager?.delete(ann);
@@ -161,6 +220,9 @@ mixin PassengerPlannedRoutesMixin<T extends StatefulWidget>
 
   void disposePlannedRoutes() {
     stopWatchingPlannedRoutes();
+    _plannerRoutePresentationActive = false;
+    _plannerRouteDisplayOwned = false;
+    _pendingPlannedRoutes = null;
     _plannedLineAnnotations.clear();
     _lastPlannedRoutes = const [];
   }

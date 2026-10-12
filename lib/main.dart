@@ -25,6 +25,11 @@ import 'admin/screens/admin_dashboard.dart';
 import 'driver/providers/driver_provider.dart';
 import 'l10n/app_localizations.dart';
 import 'services/analytics_service.dart';
+import 'services/journey_route_vehicle_association_service.dart';
+import 'services/passenger_journey_planning_service.dart';
+import 'services/route_candidate_discovery_service.dart';
+import 'services/route_plan_service.dart';
+import 'services/vehicle_trip_service.dart';
 
 Future<void> _initDotEnv() async {
   try {
@@ -129,6 +134,28 @@ class BusTrackerApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PickupLabelScaleProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => DriverProvider()),
+        Provider<PassengerJourneyPlanningService>(
+          create: (_) {
+            final routePlanService = RoutePlanService();
+            final routeCandidateDiscoveryService =
+                RouteCandidateDiscoveryService(
+              approvedRoutesReader: () =>
+                  routePlanService.listApprovedRoutes(limit: 200),
+              policy: RouteCandidateDiscoveryPolicy(
+                originMaxDistanceMeters: 100,
+                destinationMaxDistanceMeters: 150,
+              ),
+            );
+            final associationService = JourneyRouteVehicleAssociationService(
+              vehicleTripService: VehicleTripService(),
+            );
+            return PassengerJourneyPlanningService(
+              routeCandidateDiscoveryService:
+                  routeCandidateDiscoveryService,
+              associationService: associationService,
+            );
+          },
+        ),
       ],
       child: const _DriverAuthBridge(
         child: _AppRoot(),
