@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -7,7 +6,6 @@ import '../../../core/constants/user_roles.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/user_model.dart';
 import '../../../services/analytics_service.dart';
-import '../../../services/driver_line_assignment_service.dart';
 import '../../../services/firestore_service.dart';
 
 class StatDetailsScreen extends StatefulWidget {
@@ -26,8 +24,6 @@ class StatDetailsScreen extends StatefulWidget {
 
 class _StatDetailsScreenState extends State<StatDetailsScreen> {
   final FirestoreService _firestore = FirestoreService();
-  final DriverLineAssignmentService _assignments =
-      DriverLineAssignmentService();
   final Set<String> _busyIds = {};
 
   bool get _isVerificationList =>
@@ -82,36 +78,12 @@ class _StatDetailsScreenState extends State<StatDetailsScreen> {
     if (_busyIds.contains(user.uid)) return;
     setState(() => _busyIds.add(user.uid));
     try {
-      final adminId = FirebaseAuth.instance.currentUser?.uid.trim();
-      if (adminId == null || adminId.isEmpty) {
-        throw Exception('تعذر تحديد حساب الأدمن الحالي.');
-      }
-
-      final pendingAssignment = await _assignments.getPendingForDriver(user.uid);
-
-      if (pendingAssignment != null) {
-        // وجود طلب مسار معتمد يعني أن هذا هو طلب السائق الموحد:
-        // موافقة الحساب + المسار في معاملة Firestore واحدة.
-        await _assignments.approveDriverAndAssignment(
-          driverId: user.uid,
-          assignmentId: pendingAssignment.id,
-          adminId: adminId,
-        );
-      } else {
-        // لا يوجد تعيين لمسار: هذا يطابق حالة «مساري غير موجود»
-        // التي لها طلبا الحساب والمسار بشكل منفصل.
-        await _firestore.approveDriver(user.uid);
-      }
-
+      await _firestore.approveDriver(user.uid);
       AnalyticsService().adminDriverApproved();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            pendingAssignment != null
-                ? '✅ تمت الموافقة على الحساب والمسار للسائق ${user.fullName}'
-                : '✅ تمت الموافقة على حساب ${user.fullName}',
-          ),
+          content: Text('✅ تمت الموافقة على ${user.fullName}'),
           backgroundColor: Colors.green.shade700,
         ),
       );
