@@ -110,7 +110,7 @@ FOLLOW-DIAG setCamera:FAIL
 | Firebase CLI | `15.26.0` |
 | Java runtime المستخدم في جلسة الاختبار | Eclipse Temurin / OpenJDK `21.0.12.1` |
 | Java compiler | `javac 21.0.12.1` |
-| JAVA_HOME المؤقت | `C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.12.101-hotspot` |
+| JAVA_HOME المؤقت | `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot` |
 | Java الافتراضي قبل تعديل PATH المؤقت | `17.0.12` |
 | Firestore Emulator | `cloud-firestore-emulator-v1.22.0.jar` |
 | Firestore JS SDK الظاهر في سجل الاختبار | `13.0.0` |
@@ -142,7 +142,7 @@ FOLLOW-DIAG setCamera:FAIL
 
 المراجعة أكدت أن طبقة **Authorization / Data Integrity** تحتاج معالجة مستقلة، ولا تُعد جزءًا من العقود التشغيلية المغلقة سابقًا. التقدم الأحدث موثق في قسم **Authorization / Firestore Rules Emulator — الحالة بتاريخ 2026-10-16** أعلاه.
 
-| Finding | الحالة الحالية | القرار |
+| Finding | الحالة وقت المراجعة (2026-10-07) | القرار آنذاك |
 | --- | --- | --- |
 | Vehicle Operational Session authorization | حماية إضافية موجودة في التطبيق، لكن شرط `isVerified` وحدود Rules تحتاج إثباتًا | **Needs Rules Emulator verification ⚠️** |
 | `driverPublic` publishing | Rules تسمح للمالك بالتحديث دون إثبات driver/verified/authorized | **Confirmed issue 🔴** |
