@@ -440,6 +440,7 @@ service cloud.firestore {
         );
 
       allow create: if isDriver()
+        && userDoc().data.get('isVerified', false) == true
         && request.resource.data.busNumber is string
         && request.resource.data.busNumber.size() > 0
         && request.resource.data.busNumber == userDoc().data.busNumber
@@ -451,6 +452,7 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (
           isDriver()
+          && userDoc().data.get('isVerified', false) == true
           && request.resource.data.busNumber is string
           && request.resource.data.busNumber.size() > 0
           && request.resource.data.busNumber == userDoc().data.busNumber
@@ -496,6 +498,9 @@ service cloud.firestore {
               && request.resource.data.status == 'active'
               && request.resource.data.isTripActive == false
               && request.resource.data.tripId == ''
+              && resource.data.lastHeartbeatAt is timestamp
+              && resource.data.lastHeartbeatAt + duration.value(15, 'm') <= request.time
+              && request.resource.data.previousDriverId == resource.data.activeDriverId
               && request.resource.data.handoverReason == 'stale-session-and-location-check'
               && request.resource.data.handedOverAt == request.time
               && request.resource.data.lastHeartbeatAt == request.time
