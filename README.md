@@ -81,6 +81,23 @@ FOLLOW-DIAG setCamera:FAIL
 - لا يوجد حاليًا Consumer أو Requirement يبرر Patch تاريخيًا جديدًا.
 - لا نبدأ Metric أو Framework إضافيًا لمجرد وجود عناصر مستقبلية في الـMaster Plan.
 
+### تحقق Authorization — VehicleOperationalSession — 2026-10-16
+
+**الحالة: Rules Emulator tests PASS (6/6)؛ Flutter analyze/test PASS.**
+
+- تعديل قواعد Firestore في commit `a463280fda0137d15feda78d0d0c672aea0bccf8`.
+- توسيع اختبارات القواعد في commit `b7fcedc9d41b569a61c988171bfe59cd38189cde`.
+- قواعد إنشاء/تحديث جلسة المركبة تشترط الآن `isVerified == true) للسائق، ومسار handover عبر السائق يفرض مرور 15 دقيقة على الأقل منذ `lastHeartbeatAt`، مع ربط `previousDriverId` بمالك الجلسة السابق.
+- Firestore Rules Emulator: **6/6 passed**، بما يشمل رفض إنشاء جلسة لسائق غير موثّق، رفض الاستحواذ المبكر، قبول الإنشاء المصرّح، وقبول handover بعد stale heartbeat.
+- `flutter analyze`: **No issues found!** (192.0s)، وفق مخرجات المستخدم.
+- `flutter test`: **358/358 passed**، وفق مخرجات المستخدم.
+- لم يتم نشر قواعد Firestore على الإنتاج، ولم يُنفّذ اختبار كتابة على بيانات Firebase الحقيقية.
+- نطاق الإثبات: يثبت الاختبار نافذة زمنية للـhandover وصلاحيات الهوية/المركبة المختبرة. لا يثبت وحده صحة موقع GPS الذي يرسله العميل ولا يمنع العميل من اختلاق بيانات الإحداثيات؛ يجب تقييم ذلك منفصلًا.
+
+**الخطوة التالية:** Inspect boundary الخاص بـ`driverPublic` قبل أي Patch مستقل. لا تغييرات على GPS أو Mapbox أو DriverTrackingHub.
+
+---
+
 ### مراجعة أمنية / Authorization Boundary — 2026-10-07
 
 تمت مراجعة تقرير **«المراجعة البرمجية — باصات الأردن»** ومقارنته بحالة الفرع الحالية، دون تعديل كود التطبيق أثناء المراجعة.
