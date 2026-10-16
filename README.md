@@ -89,7 +89,7 @@ FOLLOW-DIAG setCamera:FAIL
 - المجموعة المشتركة: **12/12 passed، 0 failed**؛ انتهى أمر المحاكي بنجاح (code 0)، حسب مخرجات المستخدم.
 - نتائج Flutter بعد patch `VehicleOperationalSession`: `flutter analyze` — **No issues found! (192.0s)**، و`flutter test` — **358/358 All tests passed**.
 - **إعادة التحقق بعد patch `driverPublic`** بتاريخ 2026-10-16: `flutter analyze` — **No issues found! (26.8s)**، و`flutter test` — **358/358 All tests passed**.
-- `plannedRoutes` approval وما تبقى من findings لم تُصلح بعد.
+- `plannedRoutes` approval ما زالت OPEN: ظهر تعارض بين شرط المراجعة الأمنية باعتماد Admin وبين سلوك التطبيق الحالي الذي يحفظ مسار السائق بحالة `approved` ويعرضه للركاب فورًا. لا Patch قبل حسم العقد؛ التفاصيل في التقرير التفصيلي.
 - لم يتم تنفيذ `firebase deploy`؛ لم تُنشر قواعد Firestore إلى الإنتاج.
 
 #### Commits المهمة
@@ -129,7 +129,7 @@ FOLLOW-DIAG setCamera:FAIL
 
 #### حدود الإثبات والخطوة التالية
 
-اختبار `VehicleOperationalSession` يثبت صلاحيات الإنشاء/التحديث وسلوك مهلة 15 دقيقة في الحالات المغطاة. لا يثبت وحده أن العميل يرسل إحداثيات GPS صحيحة أو أنه لا يستطيع تزويرها. اختبارات `driverPublic` الستة اجتازت التشغيل المحلي. مجموعة `VehicleOperationalSession` (6/6) ومجموعة `driverPublic` (6/6) نجحتا معًا: **12/12 passed, 0 failed**. أُضيفت النتيجة إلى التقرير التفصيلي. لا تُفتح المراحل التشغيلية المغلقة ولا تُعدّل GPS / Mapbox / DriverTrackingHub ضمن هذا المسار.
+اختبار `VehicleOperationalSession` يثبت صلاحيات الإنشاء/التحديث وسلوك مهلة 15 دقيقة في الحالات المغطاة. لا يثبت وحده أن العميل يرسل إحداثيات GPS صحيحة أو أنه لا يستطيع تزويرها. اختبارات `driverPublic` الستة اجتازت التشغيل المحلي. مجموعة `VehicleOperationalSession` (6/6) ومجموعة `driverPublic` (6/6) نجحتا معًا: **12/12 passed, 0 failed**. أُضيفت النتيجة إلى التقرير التفصيلي. Inspect-only لـ`plannedRoutes` كشف تعارضًا بين شرط اعتماد Admin وسلوك auto-approval الحالي؛ لم يتم تعديل قواعد أو خدمة حفظ المسارات قبل تثبيت العقد. لا تُفتح المراحل التشغيلية المغلقة ولا تُعدّل GPS / Mapbox / DriverTrackingHub ضمن هذا المسار.
 
 ---
 
