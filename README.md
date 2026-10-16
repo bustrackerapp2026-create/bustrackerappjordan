@@ -83,10 +83,11 @@ FOLLOW-DIAG setCamera:FAIL
 
 ### Authorization / Firestore Rules Emulator — الحالة بتاريخ 2026-10-16
 
-**ملخص الحالة:**
+**ملخص الحالة بتاريخ 2026-10-16:**
 - `VehicleOperationalSession`: **Rules Emulator PASS (6/6)**.
-- تحقق Flutter بعد إصلاح الجلسة: **`flutter analyze` بلا مشاكل** و**`flutter test` 358/358 ناجحة**.
-- `driverPublic`: أُضيف Patch القواعد و6 اختبارات مستقلة؛ **نتيجة تشغيل هذه المجموعة ما زالت بانتظار المخرجات المحلية**. لا ندّعي أن المجموعة المشتركة 12/12 نجحت قبل رؤية النتيجة.
+- `driverPublic`: **Rules Emulator PASS (6/6)**.
+- المجموعة المشتركة: **12/12 passed، 0 failed**؛ انتهى أمر المحاكي بنجاح (code 0)، حسب مخرجات المستخدم.
+- نتائج Flutter التي أبلغ عنها المستخدم بعد patch `VehicleOperationalSession`: `flutter analyze` — **No issues found! (192.0s)**، و`flutter test` — **358/358 All tests passed**. لم تُرسل مخرجات إعادة تشغيل Flutter بعد patch `driverPublic`؛ هذا الـpatch غيّر Rules فقط ولم يغيّر Dart.
 - `plannedRoutes` approval وما تبقى من findings لم تُصلح بعد.
 - لم يتم تنفيذ `firebase deploy`؛ لم تُنشر قواعد Firestore إلى الإنتاج.
 
@@ -127,7 +128,7 @@ FOLLOW-DIAG setCamera:FAIL
 
 #### حدود الإثبات والخطوة التالية
 
-اختبار `VehicleOperationalSession` يثبت صلاحيات الإنشاء/التحديث وسلوك مهلة 15 دقيقة في الحالات المغطاة. لا يثبت وحده أن العميل يرسل إحداثيات GPS صحيحة أو أنه لا يستطيع تزويرها. اختبارات `driverPublic` الستة مضافة لكن لا تزال بانتظار التشغيل المحلي. الخطوة التالية هي سحب أحدث commits وتشغيل المجموعتين معًا، ثم توثيق النتيجة الفعلية. لا تُفتح المراحل التشغيلية المغلقة ولا تُعدّل GPS / Mapbox / DriverTrackingHub ضمن هذا المسار.
+اختبار `VehicleOperationalSession` يثبت صلاحيات الإنشاء/التحديث وسلوك مهلة 15 دقيقة في الحالات المغطاة. لا يثبت وحده أن العميل يرسل إحداثيات GPS صحيحة أو أنه لا يستطيع تزويرها. اختبارات `driverPublic` الستة اجتازت التشغيل المحلي. مجموعة `VehicleOperationalSession` (6/6) ومجموعة `driverPublic` (6/6) نجحتا معًا: **12/12 passed, 0 failed**. أُضيفت النتيجة إلى التقرير التفصيلي. لا تُفتح المراحل التشغيلية المغلقة ولا تُعدّل GPS / Mapbox / DriverTrackingHub ضمن هذا المسار.
 
 ---
 
