@@ -85,6 +85,27 @@ test('an unverified driver must not create a vehicle operational session', async
   );
 });
 
+test('a verified driver assigned to the bus may create its operational session', async () => {
+  await seedData({
+    users: [['driver-1', { isVerified: true, busNumber: 'BUS-1' }]],
+  });
+
+  const db = testEnv.authenticatedContext('driver-1').firestore();
+  await assertSucceeds(
+    setDoc(doc(db, 'vehicleOperationalSessions', 'BUS-1'), {
+      busNumber: 'BUS-1',
+      activeDriverId: 'driver-1',
+      status: 'active',
+      isTripActive: false,
+      tripId: '',
+      lastLatitude: 31.9539,
+      lastLongitude: 35.9106,
+      lastHeartbeatAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }),
+  );
+});
+
 test('a different driver must not take over a fresh active session using handover fields', async () => {
   await seedData({
     users: [
@@ -112,9 +133,48 @@ test('a different driver must not take over a fresh active session using handove
       status: 'active',
       isTripActive: false,
       tripId: '',
+      previousDriverId: 'driver-1',
       handoverReason: 'stale-session-and-location-check',
       handedOverAt: serverTimestamp(),
       lastHeartbeatAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }),
+  );
+});
+
+test('a different verified driver may take over only after the session heartbeat is stale', async () => {
+  await seedData({
+    users: [
+      ['driver-1', { isVerified: true, busNumber: 'BUS-1' }],
+      ['driver-2', { isVerified: true, busNumber: 'BUS-1' }],
+    ],
+    sessions: [
+      [
+        'BUS-1',
+        {
+          activeDriverId: 'driver-1',
+          status: 'active',
+          isTripActive: false,
+          tripId: '',
+          lastHeartbeatAt: new Date(Date.now() - 16 * 60 * 1000),
+        },
+      ],
+    ],
+  });
+
+  const db = testEnv.authenticatedContext('driver-2').firestore();
+  await assertSucceeds(
+    updateDoc(doc(db, 'vehicleOperationalSessions', 'BUS-1'), {
+      activeDriverId: 'driver-2',
+      status: 'active',
+      isTripActive: false,
+      tripId: '',
+      previousDriverId: 'driver-1',
+      handoverReason: 'stale-session-and-location-check',
+      handedOverAt: serverTimestamp(),
+      lastHeartbeatAt: serverTimestamp(),
+      lastLatitude: 31.954,
+      lastLongitude: 35.911,
       updatedAt: serverTimestamp(),
     }),
   );
