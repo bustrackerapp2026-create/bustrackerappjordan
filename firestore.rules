@@ -182,6 +182,8 @@ service cloud.firestore {
       allow read: if isSignedIn();
 
       allow create, update: if isOwner(userId)
+        && isDriver()
+        && userDoc().data.get('isVerified', false) == true
         && onlyDriverPublicKeys();
 
       allow delete: if isOwner(userId) || isAdmin();
