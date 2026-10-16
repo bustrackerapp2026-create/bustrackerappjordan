@@ -87,7 +87,8 @@ FOLLOW-DIAG setCamera:FAIL
 - `VehicleOperationalSession`: **Rules Emulator PASS (6/6)**.
 - `driverPublic`: **Rules Emulator PASS (6/6)**.
 - المجموعة المشتركة: **12/12 passed، 0 failed**؛ انتهى أمر المحاكي بنجاح (code 0)، حسب مخرجات المستخدم.
-- نتائج Flutter التي أبلغ عنها المستخدم بعد patch `VehicleOperationalSession`: `flutter analyze` — **No issues found! (192.0s)**، و`flutter test` — **358/358 All tests passed**. لم تُرسل مخرجات إعادة تشغيل Flutter بعد patch `driverPublic`؛ هذا الـpatch غيّر Rules فقط ولم يغيّر Dart.
+- نتائج Flutter بعد patch `VehicleOperationalSession`: `flutter analyze` — **No issues found! (192.0s)**، و`flutter test` — **358/358 All tests passed**.
+- **إعادة التحقق بعد patch `driverPublic`** بتاريخ 2026-10-16: `flutter analyze` — **No issues found! (26.8s)**، و`flutter test` — **358/358 All tests passed**.
 - `plannedRoutes` approval وما تبقى من findings لم تُصلح بعد.
 - لم يتم تنفيذ `firebase deploy`؛ لم تُنشر قواعد Firestore إلى الإنتاج.
 
