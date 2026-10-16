@@ -81,20 +81,53 @@ FOLLOW-DIAG setCamera:FAIL
 - لا يوجد حاليًا Consumer أو Requirement يبرر Patch تاريخيًا جديدًا.
 - لا نبدأ Metric أو Framework إضافيًا لمجرد وجود عناصر مستقبلية في الـMaster Plan.
 
-### تحقق Authorization — VehicleOperationalSession — 2026-10-16
+### Authorization / Firestore Rules Emulator — الحالة بتاريخ 2026-10-16
 
-**الحالة: Rules Emulator tests PASS (6/6)؛ Flutter analyze/test PASS.**
+**ملخص الحالة:**
+- `VehicleOperationalSession`: **Rules Emulator PASS (6/6)**.
+- تحقق Flutter بعد إصلاح الجلسة: **`flutter analyze` بلا مشاكل** و**`flutter test` 358/358 ناجحة**.
+- `driverPublic`: أُضيف Patch القواعد و6 اختبارات مستقلة؛ **نتيجة تشغيل هذه المجموعة ما زالت بانتظار المخرجات المحلية**. لا ندّعي أن المجموعة المشتركة 12/12 نجحت قبل رؤية النتيجة.
+- `plannedRoutes` approval وما تبقى من findings لم تُصلح بعد.
+- لم يتم تنفيذ `firebase deploy`؛ لم تُنشر قواعد Firestore إلى الإنتاج.
 
-- تعديل قواعد Firestore في commit `a463280fda0137d15feda78d0d0c672aea0bccf8`.
-- توسيع اختبارات القواعد في commit `b7fcedc9d41b569a61c988171bfe59cd38189cde`.
-- قواعد إنشاء/تحديث جلسة المركبة تشترط الآن `isVerified == true) للسائق، ومسار handover عبر السائق يفرض مرور 15 دقيقة على الأقل منذ `lastHeartbeatAt`، مع ربط `previousDriverId` بمالك الجلسة السابق.
-- Firestore Rules Emulator: **6/6 passed**، بما يشمل رفض إنشاء جلسة لسائق غير موثّق، رفض الاستحواذ المبكر، قبول الإنشاء المصرّح، وقبول handover بعد stale heartbeat.
-- `flutter analyze`: **No issues found!** (192.0s)، وفق مخرجات المستخدم.
-- `flutter test`: **358/358 passed**، وفق مخرجات المستخدم.
-- لم يتم نشر قواعد Firestore على الإنتاج، ولم يُنفّذ اختبار كتابة على بيانات Firebase الحقيقية.
-- نطاق الإثبات: يثبت الاختبار نافذة زمنية للـhandover وصلاحيات الهوية/المركبة المختبرة. لا يثبت وحده صحة موقع GPS الذي يرسله العميل ولا يمنع العميل من اختلاق بيانات الإحداثيات؛ يجب تقييم ذلك منفصلًا.
+#### Commits المهمة
 
-**الخطوة التالية:** Inspect boundary الخاص بـ`driverPublic` قبل أي Patch مستقل. لا تغييرات على GPS أو Mapbox أو DriverTrackingHub.
+| الجزء | Commit |
+| --- | --- |
+| VehicleOperationalSession rules patch | [`a463280`](https://github.com/bustrackerapp2026-create/bustrackerappjordan/commit/a463280fda0137d15feda78d0d0c672aea0bccf8) |
+| VehicleOperationalSession expanded tests | [`b7fcedc`](https://github.com/bustrackerapp2026-create/bustrackerappjordan/commit/b7fcedc9d41b569a61c988171bfe59cd38189cde) |
+| توثيق نتائج VehicleOperationalSession | [`e7ef282`](https://github.com/bustrackerapp2026-create/bustrackerappjordan/commit/e7ef282acff4131df4456e7e0cab60d7042b543f) |
+| driverPublic rules patch | [`4a1d69d`](https://github.com/bustrackerapp2026-create/bustrackerappjordan/commit/4a1d69d263e564ebd3bb1b92ed270f830092cdad) |
+| driverPublic rules tests (6 tests) | [`166be10`](https://github.com/bustrackerapp2026-create/bustrackerappjordan/commit/166be10f655edc8826078203b857951a45bd6967) |
+| التقرير التفصيلي للإصدارات والاختبارات | [`FIRESTORE_RULES_EMULATOR_AUTHORIZATION_2026-10-16.md`](docs/FIRESTORE_RULES_EMULATOR_AUTHORIZATION_2026-10-16.md) |
+
+#### إصدارات البيئة التي أكدتها مخرجات المستخدم
+
+| الأداة | الإصدار / الإعداد |
+| --- | --- |
+| Node.js | `v24.18.0` |
+| npm | `12.0.2` |
+| Firebase CLI | `15.26.0` |
+| Java runtime المستخدم في جلسة الاختبار | Eclipse Temurin / OpenJDK `21.0.12.1` |
+| Java compiler | `javac 21.0.12.1` |
+| JAVA_HOME المؤقت | `C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.12.101-hotspot` |
+| Java الافتراضي قبل تعديل PATH المؤقت | `17.0.12` |
+| Firestore Emulator | `cloud-firestore-emulator-v1.22.0.jar` |
+| Firestore JS SDK الظاهر في سجل الاختبار | `13.0.0` |
+| Firebase Rules Unit Testing | لم يُوثق رقم الإصدار في المخرجات؛ لا نفترض إصدارًا غير متحقق منه |
+
+إعداد `firebase.json`: Firestore database `(default)`، المنطقة `eur3`، القواعد `firestore.rules`، والفهارس `firestore.indexes.json`.
+
+#### npm والملفات المحلية
+
+- تم تشغيل `npm install --no-save --package-lock=false @firebase/rules-unit-testing firebase` لتجهيز أدوات اختبار مؤقتة.
+- أبلغ npm عن إضافة 87 حزمة وتدقيق 90 حزمة، مع **5 high severity vulnerabilities** وحجب install scripts لكل من `@firebase/util@1.15.3` و`protobufjs@7.6.6`.
+- لم يتم تشغيل `npm audit fix` ولم تُعتمد ترقية جماعية. تقرير npm يحتاج فحصًا مستقلًا؛ ولا يثبت وحده أن Flutter production dependencies فيها هذه الثغرات الخمس.
+- ظهرت تغييرات محلية تحت `node_modules/` وظهر الملف المحلي `field_test_01_log.txt`. لا تستخدم `git add -A`، لا ترفع `node_modules`، ولا تحذف أو تستبدل `field_test_01_log.txt`.
+
+#### حدود الإثبات والخطوة التالية
+
+اختبار `VehicleOperationalSession` يثبت صلاحيات الإنشاء/التحديث وسلوك مهلة 15 دقيقة في الحالات المغطاة. لا يثبت وحده أن العميل يرسل إحداثيات GPS صحيحة أو أنه لا يستطيع تزويرها. اختبارات `driverPublic` الستة مضافة لكن لا تزال بانتظار التشغيل المحلي. الخطوة التالية هي سحب أحدث commits وتشغيل المجموعتين معًا، ثم توثيق النتيجة الفعلية. لا تُفتح المراحل التشغيلية المغلقة ولا تُعدّل GPS / Mapbox / DriverTrackingHub ضمن هذا المسار.
 
 ---
 
@@ -105,9 +138,9 @@ FOLLOW-DIAG setCamera:FAIL
 **مصدر المراجعة:** تقرير المراجعة البرمجية — باصات الأردن، بتاريخ 2026-10-06، على الفرع:
 `stage/approved-route-line-vehicle-link-v1`.
 
-#### النتيجة الحالية
+#### لقطة الحالة عند المراجعة (2026-10-07 — تاريخية)
 
-المراجعة أكدت أن طبقة **Authorization / Data Integrity** تحتاج معالجة مستقلة، ولا تُعد جزءًا من العقود التشغيلية المغلقة سابقًا.
+المراجعة أكدت أن طبقة **Authorization / Data Integrity** تحتاج معالجة مستقلة، ولا تُعد جزءًا من العقود التشغيلية المغلقة سابقًا. التقدم الأحدث موثق في قسم **Authorization / Firestore Rules Emulator — الحالة بتاريخ 2026-10-16** أعلاه.
 
 | Finding | الحالة الحالية | القرار |
 | --- | --- | --- |
@@ -131,23 +164,20 @@ FOLLOW-DIAG setCamera:FAIL
 - **358/358** اختبارات Dart السابقة لا تثبت سلامة Firestore Rules؛ التقرير أشار إلى عدم وجود مجموعة Rules Emulator كافية لهذه الحدود.
 - فشل APK في بيئة المراجعة بسبب Mapbox SDK Registry token هو **CI/environment issue** ولا يلغي نجاح بناء APK المحلي الذي تم إثباته سابقًا.
 
-#### الأولوية المؤجلة
+#### خطة العمل الأصلية وقت المراجعة — الحالة الحالية أعلاه
 
-**NEXT AUTHORIZATION PATCH — قبل استئناف الاختبارات الميدانية الموسعة:**
-
-1. **VehicleOperationalSession** — إضافة/تثبيت Rules Emulator tests لإثبات من يستطيع إنشاء/نقل الجلسة.
-2. **`driverPublic`** — تثبيت boundary تمنع النشر من حساب غير مصرح له.
-3. **`plannedRoutes`** — منع driver من إنشاء route بحالة `approved`؛ الاعتماد يجب أن يكون من Admin/trusted authority.
-4. بعد ذلك تُعالج بقية Findings في Patches مستقلة: roles، registration recovery، pickup confirmation integrity، cancellation audit، ثم CI/release readiness.
-
-**الحالة:**
+- **VehicleOperationalSession:** تم تنفيذ patch واختباره عبر Rules Emulator بنجاح (6/6).
+- **`driverPublic`:** تم تنفيذ patch وإضافة 6 اختبارات؛ نتيجة تشغيلها لم تصل بعد.
+- **`plannedRoutes` approval:** ما زال finding مفتوحًا؛ يجب منع إنشاء route بحالة `approved` بواسطة driver والاحتفاظ بالاعتماد النهائي لدى Admin/trusted authority.
+- بقية findings تظل مسارات مستقلة: role consistency، registration recovery، pickup confirmation integrity، cancellation audit، ثم CI/release readiness.
 
 ```text
 Authorization / Data Integrity Review
 → REVIEWED
-→ 3 high-priority boundaries identified
-→ NO PATCH IMPLEMENTED YET
-→ AWAITING RULES EMULATOR PRECHECK
+→ VehicleOperationalSession: PATCHED / 6 of 6 Rules tests passed
+→ driverPublic: PATCHED / tests pending local run
+→ plannedRoutes and remaining findings: OPEN
+→ Production rules deployment: NOT PERFORMED
 ```
 
 **قاعدة العمل:** لا ننتقل إلى Patch الإنتاج قبل إنهاء **Inspect → Rules Emulator Precheck → One Small Patch → Focused Test → flutter analyze → flutter test → Review → Document → Commit**.
