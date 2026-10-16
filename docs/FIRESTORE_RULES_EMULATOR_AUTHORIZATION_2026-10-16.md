@@ -16,7 +16,7 @@
 | Firebase CLI | `15.26.0` | من `npx --yes firebase-tools --version` |
 | Java runtime | Eclipse Temurin / OpenJDK `21.0.12.1` | استخدم خلال جلسة PowerShell الحالية |
 | Java compiler | `javac 21.0.12.1` | تم التحقق منه |
-| JAVA_HOME في جلسة الاختبار | `C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.12.101-hotspot` | تعيين مؤقت داخل PowerShell، وليس تغييرًا دائمًا للنظام |
+| JAVA_HOME في جلسة الاختبار | `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot` | تعيين مؤقت داخل PowerShell، وليس تغييرًا دائمًا للنظام |
 | Java الافتراضي قبل تغيير PATH المؤقت | Java `17.0.12` | قد يظهر مجددًا في نافذة جديدة؛ أضيف مسار JDK 21 أولًا في PATH بجلسة الاختبار |
 | Firestore Emulator | `cloud-firestore-emulator-v1.22.0.jar` | نُزّل عند التشغيل الأول (137 MB) وبدأ بنجاح |
 | Firestore JS SDK الظاهر في سجل الاختبار | `13.0.0` | النسخة التي أظهرها سجل `@firebase/firestore` |
@@ -56,8 +56,8 @@ Commits:
 - Expanded tests: `b7fcedc9d41b569a61c988171bfe59cd38189cde`
 
 تعديل القواعد:
-- إنشاء الجلسة من حساب driver يتطلب `isVerified == true).
-- تحديثات driver المسموح بها تتطلب `isVerified == true).
+- إنشاء الجلسة من حساب driver يتطلب `isVerified == true`.
+- تحديثات driver المسموح بها تتطلب `isVerified == true`.
 - handover عبر driver يتطلب أن تكون `lastHeartbeatAt` القديمة timestamp وأن يكون قد مرّ عليها 15 دقيقة أو أكثر.
 - `previousDriverId` المطلوب يطابق `resource.data.activeDriverId`، بالإضافة إلى شروط handover الحالية.
 
