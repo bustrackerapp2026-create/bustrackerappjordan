@@ -27,7 +27,7 @@
 
 ### نقطة توقف تشخيصية — Follow Camera بعد Screen Lock — 2026-10-09
 
-**الحالة: PAUSED / AWAITING RUNTIME EVIDENCE — لا يوجد Production Patch معتمد.**
+**الحالة: DEFERRED / مؤجلة — اختبار Runtime مؤجل إلى ما بعد إنجاز التعديلات الأخرى؛ لا يوجد Production Patch معتمد.**
 
 - الفرع: `stage/approved-route-line-vehicle-link-v1`.
 - HEAD قبل توثيق نقطة التوقف: `0a1499e63fd6c1e8427d9e7c6b6cc37384dd209b` (`0a1499e`).
@@ -37,7 +37,9 @@
 - نتيجة `flutter analyze` التي أرسلها المستخدم بعد خطوة السحب: **No issues found! (ran in 12.0s)**.
 - لم يتم تنفيذ `flutter test` للتحقق من هذا التغيير التشخيصي، ولم تصل بعد سجلات Runtime من تجربة قفل الشاشة وفتحها.
 - هذه التعديلات تشخيصية: لا تعيد تفعيل `followDriverCamera`، ولا تستدعي `_applyPosition(_hub.lastPosition)`، ولا تغيّر منطق GPS أو DriverTrackingHub أو DriverTrackingLifecycle أو Mapbox.
-- لم تُغلق مشكلة Follow Camera، ولم يُعتمد أي Production Fix. الأولوية محفوظة ضمن Field Test follow-ups، ويمكن استئنافها لاحقًا بعد الانتهاء من العمل الحالي.
+- قرار التوثيق بتاريخ 2026-10-16: تأجيل تجربة Screen Lock / Resume عمدًا لأن العمل سينتقل مؤقتًا إلى تعديلات أخرى. لم تُنفذ هذه التجربة في هذه المرحلة، ولم تصل سجلات Runtime جديدة.
+- عند استئناف هذه النقطة لاحقًا، تُنفذ تجربة الهاتف وتُجمع سجلات `FOLLOW-DIAG` كما هو موضح أدناه، دون الضغط على زر Follow Camera أو إعادة تحديد الموقع بعد فتح الشاشة.
+- لم تُغلق مشكلة Follow Camera، ولم يُعتمد أي Production Fix. تبقى مؤجلة حتى استئناف الاختبار التشخيصي ومراجعة الأدلة.
 
 #### ما ثبت في Inspect
 
@@ -47,7 +49,7 @@
 - Hub يستمر بمعالجة Position عندما تكون Map UI detached، بينما `_predictor.update()` موجود داخل `_applyPosition()` الذي لا يستقبل تلك العينات عبر UI أثناء detach.
 - هذه facts تحدد مرشحًا تشخيصيًا، لكنها لا تثبت بمفردها الحلقة التي تنقطع أثناء التشغيل الفعلي.
 
-#### سجلات Runtime المنتظرة
+#### عند استئناف النقطة لاحقًا — سجلات Runtime المطلوبة
 
 عند استئناف هذه النقطة، شغّل التطبيق على الهاتف عبر `flutter run`، ثم نفّذ Screen Lock / Resume **دون الضغط على زر تحديد الموقع**. احتفظ بمقطع الـTerminal الذي يحتوي على:
 
