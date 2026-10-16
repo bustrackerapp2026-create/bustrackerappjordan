@@ -153,6 +153,35 @@ npm install --no-save --package-lock=false @firebase/rules-unit-testing firebase
 - حافظ على `field_test_01_log.txt`؛ لا تحذفه أو تستبدله.
 - لا تغيّر `package.json` أو `package-lock.json` لهذا الاختبار المؤقت إلا بقرار منفصل موثق.
 
+## 5. Inspect-only: تعارض عقد اعتماد `plannedRoutes`
+
+**الحالة: OPEN — Contract Decision Required. لم يتم إجراء Patch على `plannedRoutes`.**
+
+### Facts verified in the current branch
+
+- في `firestore.rules`، قاعدة `match /plannedRoutes/{routeId}` تسمح للسائق بإنشاء وثيقة إذا كان `isDriver()` و`request.resource.data.createdBy == request.auth.uid`؛ لكنها لا تفرض حالة `status` محددة عند الإنشاء.
+- `lib/services/route_plan_service.dart::saveRecordedRoute()` يكتب `status: approved` ويعيد كائنًا حالته `PlannedRouteStatus.approved`.
+- `lib/driver/screens/tabs/mixins/route_plan_recording_mixin.dart` يعرض بعد الحفظ رسالة تفيد أن المسار المخزّن **يظهر للركاب فورًا**.
+- `lib/admin/screens/tabs/pending_routes_tab.dart` يستمع إلى `watchEditRequests()`، ونص واجهته يقول إن المسارات الجديدة تُخزَّن تلقائيًا وأن هذا التبويب يعرض طلبات تعديل المسارات المخزّنة. هذه الشاشة ليست تدفقًا لمراجعة طلبات المسارات الجديدة.
+- تحتوي الخدمة أيضًا على `watchPendingRoutes()`, `approveRoute()` و`rejectRoute()`، لكن لم يثبت من الشاشة التي فُحصت أنها موصولة بتدفق مراجعة للمسارات الجديدة.
+
+### Contradiction requiring resolution
+
+- شرط المراجعة الأمنية المسجل سابقًا: السائق لا يقرر `approved` بنفسه، والاعتماد النهائي بيد Admin أو جهة موثوقة.
+- سلوك التطبيق الحالي المعلن: السائق يحفظ المسار ويُعتمد تلقائيًا ويظهر للركاب فورًا.
+
+لا يمكن تطبيق شرط `pending` على Rules وحدها بأمان؛ سيُرفض عندها مسار `approved` الذي ترسله خدمة السائق الحالية، كما أن واجهة الأدمن التي فُحصت لا توفر تدفق مراجعة للمسارات الجديدة. كذلك فإن الاكتفاء بإضافة `isVerified` إلى القاعدة سيمنع السائق غير الموثّق، لكنه **لن** يفرض مراجعة أدمن على سائق موثّق.
+
+### Design constraint / next patch
+
+قبل Patch جديد يجب اعتماد أحد العقدين على مستوى المنتج:
+1. **Admin approval required:** يتطلب تغييرًا متناسقًا عبر Rules وخدمة الحفظ وحالة كائن النتيجة، بالإضافة إلى توصيل واجهة الأدمن بمراجعة الطلبات الجديدة، ثم اختبار السماح والرفض في Rules Emulator.
+2. **Verified-driver auto-approval remains intended:** يوثّق ذلك بوصفه سياسة منتج مقصودة، ويُعاد تقييم finding الأمني على أساس صلاحيات السائق الموثّق وما يلزم من قيود إضافية.
+
+حتى حسم العقد، لا تعدّل `plannedRoutes` rules ولا تغيّر سلوك الحفظ. لا تغيير هنا على GPS أو Mapbox أو DriverTrackingHub.
+
+---
+
 ## حدود الإثبات والخطوة التالية
 
 - التعديلات موجودة في الفرع التجريبي، ولكن **لم يتم نشر `firestore.rules` إلى Firebase الإنتاجي**.
