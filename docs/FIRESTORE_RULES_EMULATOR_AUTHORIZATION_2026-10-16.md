@@ -69,13 +69,17 @@ Commits:
 
 السيناريوهات المغطاة: رفض إنشاء جلسة لسائق غير موثّق؛ قبول إنشاء السائق الموثّق المعيّن للحافلة؛ رفض الاستيلاء على جلسة حديثة؛ قبول handover بعد stale heartbeat؛ السماح لمالك الجلسة بتحديث حقول heartbeat المسموح بها؛ رفض سائق حافلة أخرى من تحديث الجلسة.
 
-### 3. التحقق العام من Flutter بعد VehicleOperationalSession
+### 3. التحقق العام من Flutter بعد تغييرات قواعد الصلاحيات
 
-النتائج الفعلية التي أرسلها المستخدم:
+نتائج Flutter الأولى بعد Patch `VehicleOperationalSession`، كما أرسلها المستخدم:
 - `flutter analyze`: `No issues found! (ran in 192.0s)`.
 - `flutter test`: `358/358 — All tests passed!`.
 
-هذه النتائج تغطي تحقق تطبيق Flutter على الحالة التي اختبرها المستخدم. لا تعتبر بديلًا عن Rules Emulator tests.
+ثم بعد سحب التحديثات التي تضمنت Patch `driverPublic`، أرسل المستخدم النتائج التالية بتاريخ 2026-10-16:
+- `flutter analyze`: `No issues found! (ran in 26.8s)`.
+- `flutter test`: `00:26 +59` ثم `00:46 +77` ثم `01:56 +358: All tests passed!`.
+
+**الحالة الأحدث: Flutter analyze/test PASS بعد Patch driverPublic، والاختبارات الـ358 كلها ناجحة.** هذه النتائج تختبر تطبيق Flutter في الحالة المسحوبة محليًا؛ ولا تُعد بديلًا عن Rules Emulator tests.
 
 ### 4. driverPublic authorization
 
