@@ -83,7 +83,7 @@ Commits:
 `firestore.rules` — `match /driverPublic/{userId}`.
 
 التعديل:
-- `allow create, update` يتطلب تطابق UID مع معرف الوثيقة (owner)، وأن يكون الحساب من دور `driver`، وأن `isVerified == true)، إضافة إلى قيد المفاتيح الموجود مسبقًا.
+- `allow create, update` يتطلب تطابق UID مع معرف الوثيقة (owner)، وأن يكون الحساب من دور `driver`، وأن `isVerified == true`، إضافة إلى قيد المفاتيح الموجود مسبقًا.
 - لم تتغير قاعدة القراءة أو الحذف في هذا الـpatch.
 - لم تتغير طبقات GPS أو Mapbox أو DriverTrackingHub أو DriverTrackingLifecycle.
 
@@ -94,12 +94,17 @@ Commits:
 ملف الاختبار:
 `test/firestore_rules/driver_public.rules.test.mjs`.
 
-حالة الإثبات في لحظة كتابة هذا المستند:
-- تمت إضافة 6 اختبارات إلى الفرع.
-- **نتيجة تشغيل هذه المجموعة لم تصل بعد ضمن مخرجات المستخدم؛ الحالة PENDING LOCAL RUN.**
-- لا يُدّعى أن الاختبارات الـ12 مجتمعة ناجحة حتى تصل نتيجة تشغيل ملفي الاختبار.
+النتيجة الفعلية المرسلة من المستخدم لتشغيل المجموعتين معًا:
+- `tests 12`
+- `pass 12`
+- `fail 0`
+- `cancelled 0`, `skipped 0`, `todo 0`
+- `duration_ms 21957.9925`
+- `Script exited successfully (code 0)`.
 
-المتوقع أن تغطي المجموعة: منع driver غير موثّق من الإنشاء والتحديث؛ منع passenger من النشر؛ السماح للسائق الموثّق بنشر وتحديث وثيقته؛ منع السائق من الكتابة تحت UID شخص آخر.
+اختبارات `driverPublic`: **6/6 passed**. اختبارات `VehicleOperationalSession`: **6/6 passed**. ظهرت سجلات `PERMISSION_DENIED` في المحاكي للعمليات التي تتوقع الاختبارات رفضها؛ ونجحت الاختبارات المقابلة لأن الرفض كان هو السلوك المطلوب.
+
+المجموعة تغطي: منع driver غير موثّق من الإنشاء والتحديث؛ منع passenger من النشر؛ السماح للسائق الموثّق بنشر وتحديث وثيقته؛ منع السائق من الكتابة تحت UID شخص آخر.
 
 ## أوامر التحقق
 
@@ -115,7 +120,13 @@ npx --yes firebase-tools emulators:exec --project demo-jordan-bus-tracker-rules 
 npx --yes firebase-tools emulators:exec --project demo-jordan-bus-tracker-rules --only firestore "node --test test/firestore_rules/vehicle_operational_session.rules.test.mjs test/firestore_rules/driver_public.rules.test.mjs"
 ```
 
-بعد سحب أحدث commit، يجب أن تكون النتيجة النهائية للمجموعة الثانية `tests 12`, `pass 12`, `fail 0` كي توثّق على أنها ناجحة. ثم يُعاد تنفيذ `flutter analyze` و`flutter test` بعد تغييرات القواعد والاختبارات الحالية وفق دورة التحقق المعتادة.
+الأمر التالي تم تشغيله فعليًا بعد سحب تغييرات القواعد والاختبارات:
+
+```powershell
+npx --yes firebase-tools emulators:exec --project demo-jordan-bus-tracker-rules --only firestore "node --test test/firestore_rules/vehicle_operational_session.rules.test.mjs test/firestore_rules/driver_public.rules.test.mjs"
+```
+
+النتيجة: **12/12 passed, 0 failed**. آخر مخرجات `flutter analyze` و`flutter test` التي أبلغ عنها المستخدم كانت بعد إصلاح `VehicleOperationalSession` وقبل إضافة patch `driverPublic` (تعديل Rules فقط دون تغيير Dart): `flutter analyze` — `No issues found! (192.0s)` و`flutter test` — `358/358 All tests passed`. لم تصل مخرجات إعادة تشغيل Flutter بعد patch `driverPublic`، لذلك لا نضع علامة على أنها أُعيدت بعد آخر تعديل Rules.
 
 ## ملاحظات npm والملفات المحلية
 
@@ -143,5 +154,6 @@ npm install --no-save --package-lock=false @firebase/rules-unit-testing firebase
 - التعديلات موجودة في الفرع التجريبي، ولكن **لم يتم نشر `firestore.rules` إلى Firebase الإنتاجي**.
 - الاختبارات تستعمل مشروع Emulator يبدأ بـ`demo-`، ولا تثبت سلوك قاعدة بيانات الإنتاج أو صحة/موثوقية إحداثيات GPS المقدمة من العميل.
 - قواعد handover تحمي نافذة الزمن والهوية والحقول المختبرة؛ التحقق من موقع GPS الجغرافي ضد عميل خبيث لم يثبت بهذه الاختبارات ويحتاج تصميمًا مستقلًا.
-- الأولوية الحالية: تشغيل مجموعة `driverPublic` مع مجموعة `VehicleOperationalSession`؛ ثم توثيق النتيجة النهائية. لا تنتقل إلى إصلاح أمني آخر قبل ذلك.
+- مجموعة `driverPublic` ومجموعة `VehicleOperationalSession` تعملان الآن بنتيجة **12/12** موثقة من مخرجات المستخدم.
+- الخطوة الأمنية التالية المنفصلة هي Inspect لـ`plannedRoutes` approval. لا تُعد فتح المراحل التشغيلية المغلقة ولا تخلط هذا المسار مع Follow Camera أو فجوة تسجيل المسار أثناء Screen Lock.
 - لا تُعد فتح المراحل التشغيلية المغلقة، ولا تخلط هذه الإصلاحات مع Follow Camera أو فجوة تسجيل المسار أثناء Screen Lock.
