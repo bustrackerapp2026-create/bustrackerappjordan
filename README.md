@@ -1401,6 +1401,32 @@ firebase deploy --only storage
 **النتيجة:** ظهور أسماء المعالم على شاشتي الراكب والسائق — **مغلق بعد التحقق الآلي واليدوي**.
 
 
+
+### إصلاح إنشاء مسار مسجل في Firestore — 2026-10-16
+
+**الحالة: PATCH MERGED TO STAGE / ANALYSIS AND TEST SUITE PASS ✅**
+
+#### السبب والتعديل
+
+- في `lib/services/route_plan_service.dart`، كانت حمولة `saveRecordedRoute()` تحتوي على `FieldValue.delete()` للحقلين `editRequestReason` و`editRequestedBy` قبل تمييز مسار إنشاء مستند جديد عن تحديث مستند موجود.
+- هذا جعل مسار الإنشاء يمرر Delete sentinels إلى `_col.add(payload)`.
+- في commit `dbe54b2af1221b8fa02968b571c96a86c35bece4` (`fix: omit delete sentinels when creating recorded routes`)، أُزيل الحقلان من حمولة الإنشاء، وأُضيفا فقط إلى حمولة التحديث للمسار الموجود.
+- التعديل محصور في `lib/services/route_plan_service.dart`; لم يتغير مسار GPS أو دورة حياة الرحلة.
+
+#### التحقق المحلي
+
+المستخدم أكد أن كلا الأمرين اكتمل بنجاح بعد سحب commit إلى الفرع `stage/approved-route-line-vehicle-link-v1`:
+
+- `flutter analyze` → **نجاح حسب مخرجات المستخدم**.
+- `flutter test` → **All tests passed حسب مخرجات المستخدم**.
+
+لم يذكر المستخدم العدد النهائي للاختبارات في هذه النتيجة، لذلك لم يُسجل عدد محدد هنا.
+
+#### حدّ الإثبات
+
+هذه النتيجة تثبت نجاح التحليل ومجموعة الاختبارات وفق المخرجات التي أكدها المستخدم. لم تُقدَّم نتيجة منفصلة لتجربة حفظ مسار جديد فعليًا في Firestore بعد الإصلاح؛ لذلك يُسجّل هذا التفصيل كحدّ تحقق متبقٍ، دون الادعاء بأن كتابة Firestore الحية تمت تجربتها.
+
+
 ---
 
 **الإصدار:** حسب `pubspec.yaml` (`1.0.0+1`)
